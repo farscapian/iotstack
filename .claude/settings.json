@@ -57,7 +57,11 @@
       "Bash(git checkout *)",
       "Bash(/home/derek/.local/esphome/venv/bin/esphome compile *)",
       "Bash(git commit -m 'feat: Use stable role UUIDs for device names to preserve entity IDs across reassignment *)",
-      "Bash(git commit -m 'feat: Auto-configure discovered ESPHome devices via REST API *)"
+      "Bash(git commit -m 'feat: Auto-configure discovered ESPHome devices via REST API *)",
+      "WebFetch(domain:esphome.io)",
+      "Bash(chmod +x /home/derek/Sync/mini_projects/esp32/esphome/generate_role_mappings.sh)",
+      "Bash(./generate_role_mappings.sh)",
+      "Bash(git commit -m 'refactor: Auto-generate role_id_map from YAML configs *)"
     ],
     "additionalDirectories": [
       "/home/derek/.claude/projects/-home-derek-Sync-mini-projects-esp32-esphome"

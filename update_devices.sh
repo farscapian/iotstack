@@ -580,6 +580,15 @@ if updated_count > 0:
 PYEOF
 }
 
+# ── Generate role ID mappings (pre-flight check) ────────────────────────────
+# Ensures substitutions/role_ids.yaml is always up-to-date with all YAML roles
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ ! -x "$SCRIPT_DIR/generate_role_mappings.sh" ]]; then
+  warn "generate_role_mappings.sh not found or not executable"
+else
+  "$SCRIPT_DIR/generate_role_mappings.sh" > /dev/null 2>&1 || true
+fi
+
 # ── Help ────────────────────────────────────────────────────────────────────
 usage() {
   grep '^#' "$0" | head -20 | sed 's/^# \{0,1\}//'
