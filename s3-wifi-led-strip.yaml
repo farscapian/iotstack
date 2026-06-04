@@ -1,0 +1,96 @@
+substitutions:
+  device_name: "led-strip-01"
+  friendly_name: "LED Strip 01"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  project:
+    name: farscapian.sk6812-led-strip
+    version: 1.0.0
+  name_add_mac_suffix: true
+
+esp32:
+  board: seeed_xiao_esp32s3
+  framework:
+    type: arduino
+  flash_size: 16MB
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+safe_mode:
+  num_attempts: 5
+  boot_is_good_after: 60s
+
+logger:
+  baud_rate: 115200
+
+time:
+  - platform: sntp
+    id: device_time
+
+sensor:
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+    entity_category: diagnostic
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+
+button:
+  - platform: safe_mode
+    name: "Reboot to Safe Mode"
+    entity_category: diagnostic
+  - platform: restart
+    name: "Restart"
+    entity_category: diagnostic
+
+light:
+  # Status LED on GPIO21 (user LED)
+  - platform: status_led
+    name: "Status LED"
+    id: led_status
+    pin:
+      number: GPIO21
+      inverted: true
+
+  # SK6812 RGBW LED strip (full RGBW support via Arduino + neopixelbus)
+  - platform: neopixelbus
+    type: GRBW
+    variant: SK6812
+    pin: GPIO8
+    num_leds: 300
+    name: "LED Strip 01"
+    id: led_strip_01
+    default_transition_length: 500ms
+    gamma_correct: 2.8
+    restore_mode: RESTORE_AND_ON
+    effects:
+      - addressable_rainbow:
+          name: Rainbow
+          speed: 10
+          width: 50
+      - addressable_color_wipe:
+          name: Color Wipe
+      - addressable_scan:
+          name: Scan
+      - addressable_twinkle:
+          name: Twinkle
+      - addressable_random_twinkle:
+          name: Random Twinkle
+      - addressable_fireworks:
+          name: Fireworks
+      - addressable_flicker:
+          name: Flicker

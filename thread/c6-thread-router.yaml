@@ -1,0 +1,107 @@
+# esp32-c6-thread-router.yaml
+substitutions:
+  device_id: "c6-thread-router"
+  device_name: "thread-router"
+  friendly_name: "Thread Router"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  project:
+    name: farscapian.${device_id}
+    version: 1.0.3
+  name_add_mac_suffix: true
+
+esp32:
+  board: seeed_xiao_esp32c6
+  framework:
+    type: esp-idf
+  flash_size: 4MB
+  variant: esp32c6
+  
+openthread:
+  device_type: FTD
+  tlv: !secret thread_tlv
+  force_dataset: true
+
+# 3. Network — required for IPv6/Thread
+network:
+  enable_ipv6: true
+
+# 4. API — native ESPHome over IPv6/Thread; OTA rides this connection
+api:
+  encryption:
+    key: !secret thread_router_api_encryption_key
+
+# 5. OTA
+ota:
+  - platform: esphome
+    password: !secret ota_password
+    allow_partition_access: true
+
+# 6. Safe mode — Thread-only node; safe mode OTA recovery requires USB serial
+#    if Thread is disrupted during update
+safe_mode:
+  num_attempts: 5
+  boot_is_good_after: 60s
+
+# 7. Logger
+logger:
+  baud_rate: 115200
+  # USB serial only; disable (baud_rate: 0) after initial setup if desired
+
+# 8. Onboard LED — XIAO ESP32-C6 GPIO15, active-low
+output:
+  - platform: gpio
+    pin:
+      number: GPIO15
+      inverted: true
+    id: onboard_led_output
+
+light:
+  - platform: binary
+    name: "Onboard LED"
+    output: onboard_led_output
+    id: led
+
+time:
+  - platform: sntp
+    id: device_time
+
+# 9. Uptime sensor
+sensor:
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+    entity_category: diagnostic
+
+# 10. OpenThread info text sensors
+text_sensor:
+  - platform: openthread_info
+    role:
+      name: "Thread Role"
+      icon: "mdi:thread-outline"
+      entity_category: diagnostic
+    ip_address:
+      name: "Thread IPv6 Address"
+      icon: "mdi:ip-network"
+      entity_category: diagnostic
+    channel:
+      name: "Thread Channel"
+      entity_category: diagnostic
+    network_name:
+      name: "Thread Network Name"
+      entity_category: diagnostic
+    rloc16:
+      name: "Thread RLOC16"
+      entity_category: diagnostic
+    # network_key: omitted — exposes sensitive credentials
+
+# 11. Buttons
+button:
+  - platform: safe_mode
+    name: "Reboot to Safe Mode"
+    entity_category: diagnostic
+  - platform: restart
+    name: "Restart"
+    entity_category: diagnostic

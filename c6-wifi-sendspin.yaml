@@ -1,0 +1,155 @@
+# wifi-sendspin.yaml
+# Multi-room synchronized audio via the Sendspin protocol (ESPHome 2026.5+).
+# Pairs with Music Assistant (or any Sendspin-compatible server).
+#
+# ⚠ Sendspin is experimental — breaking changes may occur between releases.
+#
+# Hardware: Seeed XIAO ESP32-C6 + I2S amplifier board
+#   Common options: MAX98357A (mono, simple), UDA1334A / PCM5102A (stereo)
+#   Adjust i2s_audio pin assignments below to match your wiring.
+#
+# Network: TCP port 8928 must be reachable from the Sendspin server.
+#   ESP32-C6 has no PSRAM; buffer_size is capped accordingly.
+
+substitutions:
+  device_id: "wifi-sendspin"          # Legacy name for mDNS transition
+  device_name: "c6-wifi-sendspin"     # New esphome.name
+  friendly_name: "Sendspin Speaker"
+
+esphome:
+  name: "${device_name}"
+  friendly_name: "${friendly_name}"
+  name_add_mac_suffix: true
+  project:
+    name: "farscapian.${device_id}"
+    version: "1.0.0"
+
+esp32:
+  board: seeed_xiao_esp32c6
+  variant: esp32c6
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+# 1. Core services
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret sendspin_api_encryption_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password_01
+
+safe_mode:
+  num_attempts: 5
+  reboot_timeout: 3min
+
+time:
+  - platform: sntp
+    id: device_time
+
+# 2. WiFi — power save disabled to keep audio stream stable
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+
+# 3. Sendspin protocol hub
+# task_stack_in_psram: false is required on ESP32-C6 (no PSRAM).
+
+sendspin:
+  id: sendspin_hub
+  task_stack_in_psram: false
+
+# 4. I2S audio bus + speaker
+# ── PCM5102A → 3.5mm AUX → powered/Bluetooth speaker ─────────────────────
+#   PCM5102A    XIAO ESP32-C6
+#   BCK       → GPIO3  (bit clock)
+#   LCK       → GPIO4  (left/right clock)
+#   DIN       → GPIO5  (data)
+#   VCC       → 3.3V
+#   GND       → GND
+#   SCK       → GND    (internal clock mode — check solder jumper on board)
+#   3.5mm out → AUX cable → speaker
+#
+# If your board's SCK jumper is NOT bridged to GND, uncomment i2s_mclk_pin.
+# ───────────────────────────────────────────────────────────────────────────
+
+i2s_audio:
+  - id: i2s_bus
+    i2s_bclk_pin:  GPIO3
+    i2s_lrclk_pin: GPIO4
+    # i2s_mclk_pin: GPIO2   # only needed if SCK jumper is not tied to GND
+
+speaker:
+  - platform: i2s_audio
+    id: i2s_speaker
+    i2s_audio_id: i2s_bus
+    dout_pin: GPIO5
+    sample_rate: 48000
+    bits_per_sample: 16bit
+    channel: stereo
+
+# 5. Media player + Sendspin source
+# buffer_size reduced from 1 MB default — ESP32-C6 internal RAM only.
+# Increase initial_static_delay if audio glitches on network hiccups.
+
+media_player:
+  - platform: speaker
+    id: sendspin_player
+    name: "Speaker"
+    speaker: i2s_speaker
+    announcement_pipeline:
+      sample_rate: 16000
+
+media_source:
+  - platform: sendspin
+    sendspin_id: sendspin_hub
+    sample_rate: 48000
+    buffer_size: 250000
+    fixed_delay: 0ms
+    initial_static_delay: 100ms
+    static_delay_adjustable: true
+
+# 6. Now-playing metadata from Sendspin server
+
+text_sensor:
+  - platform: sendspin
+    name: "Now Playing"
+    type: title
+  - platform: sendspin
+    name: "Artist"
+    type: artist
+  - platform: sendspin
+    name: "Album"
+    type: album
+
+# 7. Sensors
+
+sensor:
+  - platform: uptime
+    name: "Uptime"
+    entity_category: diagnostic
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+
+# 8. Buttons
+
+button:
+  - platform: restart
+    name: "Restart"
+    entity_category: config
+  - platform: safe_mode
+    name: "Safe Mode"
+    entity_category: config
+  - platform: factory_reset
+    name: "Factory Reset"
+    entity_category: config

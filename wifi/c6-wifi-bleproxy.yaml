@@ -1,0 +1,89 @@
+# BLE Proxy - WiFi Only (C6 Device)
+# ESPHome 2026.5.x compatible
+substitutions:
+  device_id: "wifi-bleproxy"          # Legacy name for mDNS transition
+  device_name: "c6-wifi-bleproxy"     # New esphome.name
+  friendly_name: "WiFi BLEProxy"
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${device_name}
+  name_add_mac_suffix: true
+  project:
+    name: "farscapian.${device_id}"
+    version: "1.1.5"
+
+esp32:
+  board: seeed_xiao_esp32c6
+  framework:
+    type: esp-idf
+  flash_size: 4MB
+  variant: esp32c6
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: none
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+  on_client_connected:
+    - esp32_ble_tracker.start_scan:
+        continuous: true
+  on_client_disconnected:
+    - if:
+        condition:
+          not:
+            api.connected:
+        then:
+          - esp32_ble_tracker.stop_scan:
+
+esp32_ble:
+  max_connections: 4
+
+esp32_ble_tracker:
+  scan_parameters:
+    interval: 320ms
+    window: 300ms
+    active: true
+    continuous: false
+
+bluetooth_proxy:
+  active: true
+  connection_slots: 3
+
+#signed_ota_verification:
+#  signing_key: !secret ota_signing_key
+ota:
+  - platform: esphome
+    id: my_ota
+    password: !secret ota_password_01
+
+safe_mode:
+  num_attempts: 5
+  reboot_timeout: 3min
+
+binary_sensor:
+  - platform: status
+    name: "Connection Status"
+
+sensor:
+  - platform: uptime
+    name: "Uptime"
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+
+button:
+  - platform: safe_mode
+    name: "Restart in Safe Mode"
+  - platform: restart
+    name: "Restart"
+  - platform: factory_reset
+    name: "Factory Reset"
+
+logger:
+  level: DEBUG
+  hardware_uart: USB_SERIAL_JTAG

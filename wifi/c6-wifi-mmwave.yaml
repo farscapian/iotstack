@@ -1,0 +1,308 @@
+# wifi-mmwave.yaml
+
+substitutions:
+  device_name: "wifi-mmwave"
+  device_id: "c6-wifi-mmwave"
+  friendly_name: "${device_name}"
+
+esphome:
+  name: "${device_name}"
+  friendly_name: "${friendly_name}"
+  name_add_mac_suffix: true
+  project:
+    name: "farscapian.${device_id}"
+    version: "1.0.11"
+  on_boot:
+    priority: -100
+    then:
+      - light.turn_on:
+          id: rgb_led
+          red: 100%
+          green: 0%
+          blue: 0%
+          brightness: 100%
+
+esp32:
+  board: seeed_xiao_esp32c6
+  variant: esp32c6
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+# 1. Core services
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+  level: INFO
+
+api:
+  encryption:
+    key: !secret mmwave_wifi_api_encryption_key
+  on_client_connected:
+    - if:
+        condition:
+          binary_sensor.is_on: presence
+        then:
+          - light.turn_on:
+              id: rgb_led
+              red: 100%
+              green: 0%
+              blue: 0%
+              brightness: 60%
+              effect: "Pulse Red"
+        else:
+          - light.turn_on:
+              id: rgb_led
+              red: 0%
+              green: 100%
+              blue: 0%
+              brightness: 60%
+              transition_length: 500ms
+  on_client_disconnected:
+    - if:
+        condition:
+          not:
+            api.connected:
+        then:
+          - light.turn_on:
+              id: rgb_led
+              red: 100%
+              green: 50%
+              blue: 0%
+              brightness: 60%
+              effect: "Pulse Yellow Red"
+
+ota:
+  - platform: esphome
+    password: !secret ota_password_01
+
+safe_mode:
+  num_attempts: 5
+  reboot_timeout: 3min
+
+time:
+  - platform: sntp
+    id: device_time
+
+# 2. WiFi networking
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# 3. Hardware buses
+uart:
+  id: uart_bus
+  baud_rate: 115200
+  rx_pin: GPIO17
+  tx_pin: GPIO16
+  parity: NONE
+  stop_bits: 1
+
+i2c:
+  sda: GPIO6
+  scl: GPIO7
+  scan: false
+
+# 4. mmWave component
+seeed_mr60bha2:
+  id: mr60bha2
+  uart_id: uart_bus
+
+# 5. Sensors
+binary_sensor:
+  # Template driven from num_targets (drops to 0 immediately on no detection)
+  # rather than has_target (which has a multi-minute hardware absence delay).
+  # delayed_off: 20s provides a clean hold before clearing.
+  - platform: template
+    name: "Presence"
+    id: presence
+    lambda: |-
+      return id(target_count).has_state() && id(target_count).state > 0;
+    filters:
+      - delayed_off: 20s
+    on_press:
+      - if:
+          condition:
+            api.connected:
+          then:
+            - light.turn_on:
+                id: rgb_led
+                red: 100%
+                green: 0%
+                blue: 0%
+                brightness: 20%
+                effect: "Pulse Red"
+          else:
+            - light.turn_on:
+                id: rgb_led
+                red: 100%
+                green: 50%
+                blue: 0%
+                brightness: 20%
+                effect: "Pulse Yellow Red"
+    on_release:
+      - if:
+          condition:
+            api.connected:
+          then:
+            - light.turn_on:
+                id: rgb_led
+                red: 0%
+                green: 100%
+                blue: 0%
+                brightness: 20%
+                transition_length: 500ms
+          else:
+            - light.turn_on:
+                id: rgb_led
+                red: 100%
+                green: 50%
+                blue: 0%
+                brightness: 20%
+                effect: "Pulse Yellow Red"
+
+sensor:
+  - platform: seeed_mr60bha2
+    breath_rate:
+      name: "Respiratory Rate"
+      unit_of_measurement: "breaths/min"
+      accuracy_decimals: 1
+      filters:
+        - filter_out: 0.0
+        - sliding_window_moving_average:
+            window_size: 5
+            send_every: 1
+    heart_rate:
+      name: "Heart Rate"
+      unit_of_measurement: "bpm"
+      accuracy_decimals: 1
+      filters:
+        - filter_out: 0.0
+        - sliding_window_moving_average:
+            window_size: 5
+            send_every: 1
+    distance:
+      name: "Detection Distance"
+      unit_of_measurement: "in"
+      accuracy_decimals: 1
+      filters:
+        - multiply: 39.3701  # m to inches
+    num_targets:
+      name: "Target Count"
+      id: target_count
+
+  - platform: uptime
+    name: "Uptime"
+    entity_category: diagnostic
+
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+  - platform: bh1750
+    name: "Illuminance"
+    address: 0x23
+    update_interval: 60s
+
+
+# 7. Buttons
+button:
+  - platform: template
+    name: "Identify"
+    icon: "mdi:led-on"
+    entity_category: diagnostic
+    on_press:
+      - script.execute: identify_pulse
+  - platform: restart
+    name: "Restart"
+    entity_category: config
+  - platform: safe_mode
+    name: "Safe Mode"
+    entity_category: config
+  - platform: factory_reset
+    name: "Factory Reset"
+    entity_category: config
+
+# 7. RGB LED (onboard WS2812, GPIO1)
+light:
+  - platform: esp32_rmt_led_strip
+    id: rgb_led
+    name: "Status LED"
+    pin: GPIO1
+    num_leds: 1
+    rgb_order: GRB
+    chipset: WS2812
+    restore_mode: ALWAYS_OFF
+    effects:
+      - pulse:
+          name: "Pulse"
+          transition_length: 600ms
+          update_interval: 600ms
+      - pulse:
+          name: "Pulse Red"
+          transition_length: 1500ms
+          update_interval: 1800ms
+          min_brightness: 20%
+          max_brightness: 30%
+      - lambda:
+          name: "Pulse Yellow Red"
+          update_interval: 1000ms
+          lambda: |-
+            static bool phase = false;
+            auto call = id(rgb_led).make_call();
+            call.set_transition_length(900);
+            call.set_brightness(0.2);
+            if (phase) {
+              call.set_red(1.0); call.set_green(0.5); call.set_blue(0.0);
+            } else {
+              call.set_red(1.0); call.set_green(0.0); call.set_blue(0.0);
+            }
+            phase = !phase;
+            call.perform();
+
+# 8. Scripts
+script:
+  - id: identify_pulse
+    mode: restart
+    then:
+      - light.turn_on:
+          id: rgb_led
+          red: 0%
+          green: 100%
+          blue: 0%
+          brightness: 100%
+          effect: "Pulse"
+      - delay: 10s
+      - light.turn_off:
+          id: rgb_led
+          transition_length: 300ms
+      - if:
+          condition:
+            api.connected:
+          then:
+            - if:
+                condition:
+                  binary_sensor.is_on: presence
+                then:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 100%
+                      green: 0%
+                      blue: 0%
+                      brightness: 20%
+                      effect: "Pulse Red"
+                else:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 0%
+                      green: 100%
+                      blue: 0%
+                      brightness: 20%
+                      transition_length: 500ms
+          else:
+            - light.turn_on:
+                id: rgb_led
+                red: 100%
+                green: 50%
+                blue: 0%
+                brightness: 20%
+                effect: "Pulse Yellow Red"
