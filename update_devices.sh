@@ -801,8 +801,9 @@ if [[ -n "$RENAME_DEVICE_TO" ]]; then
   ok "Running two-step device rename to: ${RENAME_DEVICE_TO}"
   echo "════════════════════════════════════════════════════════"
 
-  YAML_DIR=$(dirname "$YAML_FILE")
-  TEMP_YAML="${YAML_DIR}/.temp-rename-$$.yaml"
+  ARTIFACTS_DIR=".esphome/artifacts"
+  mkdir -p "$ARTIFACTS_DIR"
+  TEMP_YAML="${ARTIFACTS_DIR}/.temp-rename-$$.yaml"
   trap 'rm -f "$TEMP_YAML"' EXIT
 
   # Step 1: Create temp YAML with device_id and flash

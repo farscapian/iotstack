@@ -4,3 +4,4 @@ secrets.yaml
 archive/
 wifi/secrets.yaml
 thread/secrets.yaml
+**/.temp-rename-*.yaml
