@@ -83,6 +83,102 @@ ensure_websocket_client() {
   fi
 }
 
+# ── Auto-configure discovered ESPHome devices via REST API ──────────────────
+# When devices are flashed with new names, HA discovers them but marks as
+# "Discovered" until they're configured with the encryption key. This function
+# automatically completes that configuration via the REST API.
+auto_configure_discovered_esphome() {
+  local ha_url="$1"
+  local ha_token="$2"
+  local api_key="$3"
+
+  if [[ -z "$ha_url" || -z "$ha_token" || -z "$api_key" ]]; then
+    return 0
+  fi
+
+  python3 - "$ha_url" "$ha_token" "$api_key" <<'PYEOF'
+import json, os, sys, ssl
+try:
+    import urllib.request
+    import urllib.error
+except ImportError:
+    sys.exit(0)
+
+ha_url = sys.argv[1].rstrip('/')
+token = sys.argv[2]
+api_key = sys.argv[3]
+
+# Ignore SSL warnings for self-signed certs
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
+def make_request(method, path, data=None):
+    """Make HTTP request to Home Assistant"""
+    url = f"{ha_url}{path}"
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json',
+    }
+
+    req_data = None
+    if data:
+        req_data = json.dumps(data).encode('utf-8')
+
+    try:
+        req = urllib.request.Request(url, data=req_data, headers=headers, method=method)
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return json.loads(response.read().decode())
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        return None
+    except Exception:
+        return None
+
+# Get all config entries to find discovered ESPHome entries
+entries_resp = make_request('GET', '/api/config/config_entries')
+if not entries_resp:
+    sys.exit(0)
+
+discovered_flows = []
+for entry in entries_resp:
+    # Find entries that are in discovery state and belong to esphome
+    if entry.get('domain') == 'esphome' and entry.get('source') in ['discovery', 'dhcp', 'zeroconf']:
+        discovered_flows.append({
+            'entry_id': entry.get('entry_id'),
+            'title': entry.get('title'),
+            'unique_id': entry.get('unique_id'),
+        })
+
+if not discovered_flows:
+    sys.exit(0)
+
+# For each discovered entry, get its config flow and complete it with API key
+for flow in discovered_flows:
+    entry_id = flow['entry_id']
+
+    # Get the discovery flow to see what step we're on
+    flow_resp = make_request('GET', f'/api/config/config_entries/flow/{entry_id}')
+    if not flow_resp:
+        continue
+
+    # Get the current step to see what data it needs
+    current_step = flow_resp.get('step_id', 'user')
+
+    # Submit the encryption key
+    # The ESPHome flow expects: {"encryption_key": "value"}
+    submit_data = {
+        'encryption_key': api_key
+    }
+
+    result = make_request('POST', f'/api/config/config_entries/flow/{entry_id}/step/{current_step}', submit_data)
+    if result:
+        print(f"Auto-configured discovered device: {flow['title']}")
+
+sys.exit(0)
+PYEOF
+}
+
 # ── Create temporary YAML with device_new_name injected ─────────────────────
 create_temp_yaml_with_device_id() {
   local orig_yaml="$1"
@@ -729,15 +825,17 @@ done < <(awk '
 
 # ── Home Assistant registry check ───────────────────────────────────────────
 # Runs immediately after discovery so it always prints, even when no devices
-# need flashing. Reads ha_url + ha_token from secrets.yaml (at project root).
+# need flashing. Reads ha_url + ha_token + api_encryption_key from secrets.yaml (at project root).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SECRETS_FILE="${SCRIPT_DIR}/secrets.yaml"
 HA_URL=""
 HA_TOKEN=""
+API_KEY=""
 
 if [[ -f "$SECRETS_FILE" ]]; then
-  HA_URL=$(grep   '^ha_url:'   "$SECRETS_FILE" | sed 's/[^:]*:[[:space:]]*//' | tr -d '"'"'")
-  HA_TOKEN=$(grep '^ha_token:' "$SECRETS_FILE" | sed 's/[^:]*:[[:space:]]*//' | tr -d '"'"'")
+  HA_URL=$(grep   '^ha_url:'              "$SECRETS_FILE" | sed 's/[^:]*:[[:space:]]*//' | tr -d '"'"'")
+  HA_TOKEN=$(grep '^ha_token:'            "$SECRETS_FILE" | sed 's/[^:]*:[[:space:]]*//' | tr -d '"'"'")
+  API_KEY=$(grep  '^api_encryption_key:' "$SECRETS_FILE" | sed 's/[^:]*:[[:space:]]*//' | tr -d '"'"'")
 fi
 
 if [[ -z "$HA_URL" || -z "$HA_TOKEN" ]]; then
@@ -1398,6 +1496,17 @@ printf " %d device(s): " "$total"
 [[ ${#FAIL_LIST[@]} -gt 0 ]] && printf "${RED}%d FAILED${RST}"    "${#FAIL_LIST[@]}"
 echo
 echo "════════════════════════════════════════════════════════"
+
+# In reassign mode, auto-configure any discovered devices before updating entity IDs
+# This ensures discovered devices get configured with API key and create new entities with role_id
+if [[ "$DRY_RUN" == false ]] && [[ "$REASSIGN_MODE" == true ]]; then
+  if [[ -n "$HA_URL" && -n "$HA_TOKEN" && -n "$API_KEY" ]]; then
+    warn "Auto-configuring discovered devices with encryption key..."
+    auto_configure_discovered_esphome "$HA_URL" "$HA_TOKEN" "$API_KEY"
+    # Wait a moment for HA to process the new devices
+    sleep 2
+  fi
+fi
 
 # Recreate entity IDs for flashed devices, force-update if requested, or all devices in reassign mode
 # In dry-run mode, skip recreation but still verify consistency below

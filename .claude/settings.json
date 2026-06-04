@@ -56,7 +56,8 @@
       "Bash(bash -c 'set +x; ./update_devices.sh --reassign 19b164 199f38 199ef4 ./wifi/esp32c6-wifi-mmwave.yaml 2>&1')",
       "Bash(git checkout *)",
       "Bash(/home/derek/.local/esphome/venv/bin/esphome compile *)",
-      "Bash(git commit -m 'feat: Use stable role UUIDs for device names to preserve entity IDs across reassignment *)"
+      "Bash(git commit -m 'feat: Use stable role UUIDs for device names to preserve entity IDs across reassignment *)",
+      "Bash(git commit -m 'feat: Auto-configure discovered ESPHome devices via REST API *)"
     ],
     "additionalDirectories": [
       "/home/derek/.claude/projects/-home-derek-Sync-mini-projects-esp32-esphome"
