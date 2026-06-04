@@ -781,7 +781,7 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
         [[ -n "$NEW_CONFIG_HASH" ]] && ok "Build config_hash: ${NEW_CONFIG_HASH}"
       else
         printf " ${RED}✗${RST}\n" >&2
-        err "Compilation failed — see log: $COMPILE_LOG"
+        err "Compilation failed — see log: $COMPILE_LOG_FILE"
         exit 1
       fi
     fi
@@ -1058,7 +1058,7 @@ if [[ "$COMPILED" == false ]]; then
       printf " ${GRN}✓${RST}\n" >&2
     else
       printf " ${RED}✗${RST}\n" >&2
-      err "Compilation failed — see log: $COMPILE_LOG"
+      err "Compilation failed — see log: $COMPILE_LOG_FILE"
       exit 1
     fi
   fi
