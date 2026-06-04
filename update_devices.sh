@@ -7,15 +7,20 @@
 #   ./update_devices.sh [options] <yaml-file>
 #
 # Options:
-#   --upgrade-delta     Only flash devices whose config_hash differs from the
-#                       current build (default: on)
-#   --no-upgrade-delta  Flash all devices regardless of running firmware
-#   --verify            Compile, then check each device's config_hash; report
-#                       pass/fail and exit (no flashing)
-#   --dry-run           Compile and show what would be flashed, without flashing
-#   --jobs <n>          Maximum concurrent flash jobs (default: 4)
-#   -v, --verbose       Show compilation output in terminal (default: silent)
-#   --help              Show this help
+#   --upgrade-delta        Only flash devices whose config_hash differs from the
+#                          current build (default: on)
+#   --no-upgrade-delta     Flash all devices regardless of running firmware
+#   --verify               Compile, then check each device's config_hash; report
+#                          pass/fail and exit (no flashing, no changes to HA)
+#   --force-update-entities Recreate entity IDs for all devices, even if no
+#                          flashing occurs (useful after device renames)
+#   --dry-run              Compile and show what would be flashed, without flashing
+#   --rename-devices-to     Perform two-step device rename: first flash with device_id,
+#   <name>                 then flash with device_name (for renaming discovered devices)
+#   --jobs <n>             Maximum concurrent flash jobs (default: 4)
+#   -v, --verbose          Show compilation output in terminal (default: silent)
+#   --help                 Show this help
+
 
 set -euo pipefail
 
@@ -27,9 +32,11 @@ UPGRADE_DELTA=true
 VERIFY=false
 DRY_RUN=false
 VERBOSE=false
+FORCE_UPDATE_ENTITIES=false
 MAX_JOBS=4
 JOBS_EXPLICIT=false
 YAML_FILE=""
+RENAME_DEVICE_TO=""
 
 # ── Colours ─────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -45,24 +52,389 @@ warn() { echo -e "${YLW}[WARN]${RST}  $*"; }
 err()  { echo -e "${RED}[ERR]${RST}   $*" >&2; }
 dim()  { echo -e "${DIM}$*${RST}"; }
 
+# ── Ensure websocket-client library is installed ────────────────────────────
+ensure_websocket_client() {
+  if python3 -c "import websocket" 2>/dev/null; then
+    return 0
+  fi
+
+  echo
+  warn "python3-websocket library is required for entity ID recreation"
+  echo "Without it, entity IDs won't be updated when devices are renamed."
+  echo
+
+  read -p "Install python3-websocket now? (y/n) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    warn "Skipping entity ID recreation"
+    return 1
+  fi
+
+  if sudo apt-get update -qq && sudo apt-get install -y python3-websocket >/dev/null 2>&1; then
+    ok "python3-websocket installed successfully"
+    return 0
+  else
+    err "Failed to install python3-websocket"
+    warn "You can install manually: sudo apt-get install python3-websocket"
+    return 1
+  fi
+}
+
+# ── Create temporary YAML with device_new_name injected ─────────────────────
+create_temp_yaml_with_device_id() {
+  local orig_yaml="$1"
+  local device_id_value="$2"
+  local temp_yaml="$3"
+
+  python3 - "$orig_yaml" "$device_id_value" "$temp_yaml" <<'PYTHONEOF'
+import sys, re
+
+orig_yaml = sys.argv[1]
+device_new_name = sys.argv[2]
+temp_yaml = sys.argv[3]
+
+with open(orig_yaml, 'r') as f:
+    content = f.read()
+
+# Check if substitutions section exists and add device_new_name
+if re.search(r'^substitutions:', content, re.MULTILINE):
+    # Find the substitutions section and add device_new_name to it
+    content = re.sub(
+        r'^(substitutions:)(.*?)(?=^[a-z])',
+        lambda m: m.group(1) + m.group(2) + f'  device_new_name: "{device_new_name}"\n',
+        content,
+        flags=re.MULTILINE | re.DOTALL,
+        count=1
+    )
+else:
+    # Create substitutions section before esphome
+    content = re.sub(
+        r'^(esphome:)',
+        f'substitutions:\n  device_new_name: "{device_new_name}"\n\n\\1',
+        content,
+        flags=re.MULTILINE,
+        count=1
+    )
+
+# Replace project.name to use device_new_name instead of device_name
+# Match: name: "farscapian.${device_name}" or similar patterns
+content = re.sub(
+    r'name:\s*["\']([^"\']*)\$\{device_name\}([^"\']*)["\']',
+    lambda m: f'name: "{m.group(1)}${{device_new_name}}{m.group(2)}"',
+    content
+)
+
+with open(temp_yaml, 'w') as f:
+    f.write(content)
+PYTHONEOF
+}
+
+# ── Update YAML device_name substitution ─────────────────────────────────────
+update_yaml_device_name() {
+  local yaml_file="$1"
+  local new_device_name="$2"
+
+  if grep -q 'device_name:' "$yaml_file"; then
+    sed -i 's/device_name: .*/device_name: "'$new_device_name'"/' "$yaml_file"
+  else
+    sed -i '/^substitutions:/a\  device_name: "'$new_device_name'"' "$yaml_file"
+  fi
+}
+
+# ── Verify entity ID consistency with device name ──────────────────────────────
+verify_entity_id_consistency() {
+  local ha_url="$1"
+  local ha_token="$2"
+  local base_name="$3"
+  local hostnames="$4"  # space-separated list of device hostnames
+
+  if [[ -z "$ha_url" || -z "$ha_token" || -z "$hostnames" ]]; then
+    return 0
+  fi
+
+  HA_URL="$ha_url" HA_TOKEN="$ha_token" BASE_NAME="$base_name" HOSTNAMES="$hostnames" python3 - <<'VERIFYEOF'
+import json, os, sys, ssl, re
+try:
+    import websocket
+except ImportError:
+    # Skip if websocket not available (check will be skipped silently)
+    sys.exit(0)
+
+ha_url = os.environ['HA_URL'].rstrip('/')
+token = os.environ['HA_TOKEN']
+base_name = os.environ['BASE_NAME']
+hostnames = os.environ['HOSTNAMES'].strip().split()
+
+# Extract MAC suffixes
+mac_suffixes = {}
+for hostname in hostnames:
+    m = re.search(r'([0-9a-f]{6})$', hostname, re.IGNORECASE)
+    if m:
+        mac = m.group(1).lower()
+        mac_suffixes[mac] = hostname
+
+if not mac_suffixes:
+    sys.exit(0)
+
+# Connect to WebSocket
+ws_url = ha_url.replace('http://', 'ws://').replace('https://', 'wss://') + '/api/websocket'
+import warnings
+warnings.filterwarnings('ignore')
+
+try:
+    ws = websocket.create_connection(
+        ws_url,
+        sslopt={"cert_reqs": ssl.CERT_NONE},
+        timeout=10
+    )
+except Exception:
+    sys.exit(0)
+
+msg_id = 1
+
+# Authenticate
+try:
+    init_msg = json.loads(ws.recv())
+    if init_msg.get('type') != 'auth_required':
+        ws.close()
+        sys.exit(0)
+    ws.send(json.dumps({'type': 'auth', 'access_token': token}))
+    auth_result = json.loads(ws.recv())
+    if auth_result.get('type') != 'auth_ok':
+        ws.close()
+        sys.exit(0)
+except Exception:
+    ws.close()
+    sys.exit(0)
+
+# Get entity registry
+try:
+    msg_id += 1
+    ws.send(json.dumps({'id': msg_id, 'type': 'config/entity_registry/list'}))
+    entities_msg = json.loads(ws.recv())
+    if not entities_msg.get('success'):
+        ws.close()
+        sys.exit(0)
+    all_entities = entities_msg.get('result', [])
+except Exception:
+    ws.close()
+    sys.exit(0)
+
+ws.close()
+
+# Check entity ID consistency (only ESPHome entities)
+base_slug = base_name.replace('-', '_')
+inconsistent = []
+
+for entity in all_entities:
+    entity_id = entity.get('entity_id', '').lower()
+    platform = entity.get('platform', '').lower()
+
+    # Only check ESPHome entities
+    if platform != 'esphome':
+        continue
+
+    # Check if entity belongs to any of our devices
+    for mac, hostname in mac_suffixes.items():
+        if mac not in entity_id:
+            continue
+
+        # Entity belongs to this device - check if device name is correct
+        if base_slug not in entity_id:
+            inconsistent.append({
+                'entity_id': entity_id,
+                'device': hostname,
+                'mac': mac
+            })
+        break
+
+if inconsistent:
+    print('WARNING: Entity ID inconsistencies detected:', file=sys.stderr)
+    for item in inconsistent:
+        print(f"  {item['entity_id']} (should contain '{base_slug}', from {item['device']})", file=sys.stderr)
+    sys.exit(0)
+
+print('✓ All entity IDs are consistent with device names.')
+VERIFYEOF
+}
+
+# ── Recreate entity IDs for renamed devices ────────────────────────────────
+recreate_entity_ids() {
+  local ha_url="$1"
+  local ha_token="$2"
+  local hostnames="$3"  # space-separated list of device hostnames
+
+  if [[ -z "$ha_url" || -z "$ha_token" || -z "$hostnames" ]]; then
+    warn "HA credentials or device list not configured, skipping entity ID recreation"
+    return 0
+  fi
+
+  # Check if websocket library is available
+  if ! ensure_websocket_client; then
+    return 0
+  fi
+
+  ok "Recreating entity IDs for renamed devices..."
+
+  HA_URL="$ha_url" HA_TOKEN="$ha_token" HOSTNAMES="$hostnames" python3 - <<'PYEOF'
+import json, os, sys, ssl, re, websocket
+
+ha_url = os.environ['HA_URL'].rstrip('/')
+token = os.environ['HA_TOKEN']
+hostnames = os.environ['HOSTNAMES'].strip().split()
+
+# Extract MAC suffixes from hostnames
+mac_suffixes = set()
+for hostname in hostnames:
+    m = re.search(r'([0-9a-f]{6})$', hostname, re.IGNORECASE)
+    if m:
+        mac_suffixes.add(m.group(1).lower())
+
+if not mac_suffixes:
+    sys.exit(0)
+
+# Convert HTTP(S) URL to WS(S) URL
+ws_url = ha_url.replace('http://', 'ws://').replace('https://', 'wss://') + '/api/websocket'
+
+import warnings
+warnings.filterwarnings('ignore')
+
+try:
+    ws = websocket.create_connection(
+        ws_url,
+        sslopt={"cert_reqs": ssl.CERT_NONE},
+        timeout=10
+    )
+except Exception as e:
+    print(f'ERROR: Failed to connect to HA WebSocket: {e}', file=sys.stderr)
+    sys.exit(1)
+
+msg_id = 1
+
+# Authenticate
+try:
+    init_msg = json.loads(ws.recv())
+    if init_msg.get('type') != 'auth_required':
+        sys.exit(1)
+
+    ws.send(json.dumps({'type': 'auth', 'access_token': token}))
+    auth_result = json.loads(ws.recv())
+
+    if auth_result.get('type') != 'auth_ok':
+        sys.exit(1)
+except Exception as e:
+    print(f'ERROR: Authentication failed: {e}', file=sys.stderr)
+    sys.exit(1)
+
+# Get entity registry list
+try:
+    msg_id += 1
+    ws.send(json.dumps({
+        'id': msg_id,
+        'type': 'config/entity_registry/list'
+    }))
+
+    entities_msg = json.loads(ws.recv())
+    if not entities_msg.get('success'):
+        sys.exit(1)
+
+    all_entities = entities_msg.get('result', [])
+except Exception as e:
+    print(f'ERROR: Failed to list entities: {e}', file=sys.stderr)
+    ws.close()
+    sys.exit(1)
+
+# Find entities belonging to renamed devices (match by MAC suffix)
+# IMPORTANT: Only update entities that belong to the ESPHome integration
+entity_ids_to_update = []
+for entity in all_entities:
+    entity_id = entity.get('entity_id', '').lower()
+    platform = entity.get('platform', '').lower()
+
+    # Skip entities that don't belong to ESPHome
+    if platform != 'esphome':
+        continue
+
+    for mac in mac_suffixes:
+        if mac in entity_id:
+            entity_ids_to_update.append(entity.get('entity_id'))
+            break
+
+if not entity_ids_to_update:
+    ws.close()
+    sys.exit(0)
+
+# Get automatic entity IDs for these entities
+try:
+    msg_id += 1
+    ws.send(json.dumps({
+        'id': msg_id,
+        'type': 'config/entity_registry/get_automatic_entity_ids',
+        'entity_ids': entity_ids_to_update
+    }))
+
+    auto_ids_msg = json.loads(ws.recv())
+    if not auto_ids_msg.get('success'):
+        print(f'WARNING: Failed to get automatic entity IDs', file=sys.stderr)
+        ws.close()
+        sys.exit(0)
+
+    id_mapping = auto_ids_msg.get('result', {})
+except Exception as e:
+    print(f'WARNING: Failed to get automatic entity IDs: {e}', file=sys.stderr)
+    ws.close()
+    sys.exit(0)
+
+# Update entity IDs if they changed
+updated_count = 0
+for old_id, new_id in id_mapping.items():
+    if old_id == new_id or not new_id:
+        continue
+
+    try:
+        msg_id += 1
+        ws.send(json.dumps({
+            'id': msg_id,
+            'type': 'config/entity_registry/update',
+            'entity_id': old_id,
+            'new_entity_id': new_id
+        }))
+
+        result = json.loads(ws.recv())
+        if result.get('success'):
+            print(f'Recreated: {old_id} → {new_id}')
+            updated_count += 1
+        else:
+            print(f'WARNING: Failed to update {old_id}: {result.get("error")}', file=sys.stderr)
+    except Exception as e:
+        print(f'WARNING: Error updating {old_id}: {e}', file=sys.stderr)
+
+ws.close()
+if updated_count > 0:
+    print(f'Successfully recreated {updated_count} entity ID(s).')
+PYEOF
+}
+
 # ── Help ────────────────────────────────────────────────────────────────────
 usage() {
-  grep '^#' "$0" | sed 's/^# \{0,1\}//'
+  grep '^#' "$0" | head -20 | sed 's/^# \{0,1\}//'
   exit 0
 }
 
 # ── Argument parsing ────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --upgrade-delta)    UPGRADE_DELTA=true;  shift ;;
-    --no-upgrade-delta) UPGRADE_DELTA=false; shift ;;
-    --verify)           VERIFY=true;         shift ;;
-    --dry-run)          DRY_RUN=true;        shift ;;
-    --jobs)             MAX_JOBS="$2"; JOBS_EXPLICIT=true; shift 2 ;;
-    -v|--verbose)       VERBOSE=true;        shift ;;
-    --help|-h)          usage ;;
-    -*)                 err "Unknown option: $1"; exit 1 ;;
-    *)                  YAML_FILE="$1";      shift ;;
+    --upgrade-delta)         UPGRADE_DELTA=true;  shift ;;
+    --no-upgrade-delta)      UPGRADE_DELTA=false; shift ;;
+    --verify)                VERIFY=true;         shift ;;
+    --force-update-entities) FORCE_UPDATE_ENTITIES=true; shift ;;
+    --dry-run)               DRY_RUN=true;        shift ;;
+    --jobs)                  MAX_JOBS="$2"; JOBS_EXPLICIT=true; shift 2 ;;
+    --rename-devices-to)      RENAME_DEVICE_TO="$2"; shift 2 ;;
+    -v|--verbose)            VERBOSE=true;        shift ;;
+    --help|-h)               usage ;;
+    -*)                      err "Unknown option: $1"; exit 1 ;;
+    *)                       YAML_FILE="$1";      shift ;;
   esac
 done
 
@@ -160,13 +532,6 @@ BASE_NAME=$(awk '/^esphome:/{found=1; next} found && /^\s+name:/{print; found=0}
   | sed 's/.*name:[[:space:]]*//' | tr -d '"')
 BASE_NAME=$(resolve_subs "$BASE_NAME")
 
-# Extract device_id from project name (format: "namespace.device_id") for transition support
-# Allows matching both old devices (using device_id) and new devices (using BASE_NAME)
-DEVICE_ID=""
-if [[ -n "$EXPECTED_PROJECT" && "$EXPECTED_PROJECT" == *"."* ]]; then
-  DEVICE_ID=$(echo "$EXPECTED_PROJECT" | cut -d. -f2)
-fi
-
 if [[ -z "$BASE_NAME" ]]; then
   err "Could not parse esphome.name from $YAML_FILE."
   exit 1
@@ -176,17 +541,12 @@ log "Discovering ${BASE_NAME}-* devices via mDNS..."
 
 RAW=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null || true)
 
-# Match on both BASE_NAME (current esphome.name) and DEVICE_ID (project-based legacy name)
-# This allows seamless transition when renaming esphome.name
-GREP_PATTERN="^${BASE_NAME}-"
-if [[ -n "$DEVICE_ID" && "$DEVICE_ID" != "$BASE_NAME" ]]; then
-  GREP_PATTERN="^(${BASE_NAME}|${DEVICE_ID})-"
-fi
-
+# Extract device hostnames from mDNS
+# Match by device_name to avoid cross-config flashing (MAC suffix is compared per-device later)
 HOSTNAMES=$(echo "$RAW" \
   | grep "^= " \
   | awk '{print $4}' \
-  | grep -E "$GREP_PATTERN" \
+  | grep "^${BASE_NAME}-" \
   | sort -u)
 
 if [[ -z "$HOSTNAMES" ]]; then
@@ -241,33 +601,88 @@ if [[ -z "$HA_URL" || -z "$HA_TOKEN" ]]; then
 else
   log "Querying Home Assistant: ${HA_URL}..."
   HA_DEVICE_LIST=$(
-    HA_URL="$HA_URL" HA_TOKEN="$HA_TOKEN" BASE_NAME="$BASE_NAME" \
+    HA_URL="$HA_URL" HA_TOKEN="$HA_TOKEN" HOSTNAMES="$HOSTNAMES" \
     python3 - <<'PYEOF'
-import urllib.request, json, re, os, sys
-
-url        = os.environ['HA_URL'].rstrip('/') + '/api/states'
-token      = os.environ['HA_TOKEN']
-base_name  = os.environ['BASE_NAME']
-base_slug  = base_name.replace('-', '_')
-
-req = urllib.request.Request(url, headers={'Authorization': f'Bearer {token}'})
+import json, os, sys, ssl, re
 try:
-    with urllib.request.urlopen(req, timeout=5) as r:
-        states = json.load(r)
+    import websocket
+except ImportError:
+    sys.exit(0)
+
+ha_url = os.environ['HA_URL'].rstrip('/')
+token = os.environ['HA_TOKEN']
+mdns_devices = os.environ['HOSTNAMES'].strip().split('\n')
+
+# Connect to WebSocket
+ws_url = ha_url.replace('http://', 'ws://').replace('https://', 'wss://') + '/api/websocket'
+import warnings
+warnings.filterwarnings('ignore')
+
+try:
+    ws = websocket.create_connection(
+        ws_url,
+        sslopt={"cert_reqs": ssl.CERT_NONE},
+        timeout=10
+    )
 except Exception as e:
-    print(f'ERROR: {e}', file=sys.stderr)
-    sys.exit(1)
+    sys.exit(0)
 
-pattern = re.compile(
-    r'\.' + re.escape(base_slug) + r'_([0-9a-f]{6})(?:_|$)'
-)
-devices = set()
-for s in states:
-    m = pattern.search(s['entity_id'])
+msg_id = 1
+
+# Authenticate
+try:
+    init_msg = json.loads(ws.recv())
+    if init_msg.get('type') != 'auth_required':
+        ws.close()
+        sys.exit(0)
+    ws.send(json.dumps({'type': 'auth', 'access_token': token}))
+    auth_result = json.loads(ws.recv())
+    if auth_result.get('type') != 'auth_ok':
+        ws.close()
+        sys.exit(0)
+except Exception:
+    ws.close()
+    sys.exit(0)
+
+# Get entity registry
+try:
+    msg_id += 1
+    ws.send(json.dumps({'id': msg_id, 'type': 'config/entity_registry/list'}))
+    entities_msg = json.loads(ws.recv())
+    if not entities_msg.get('success'):
+        ws.close()
+        sys.exit(0)
+    all_entities = entities_msg.get('result', [])
+except Exception:
+    ws.close()
+    sys.exit(0)
+
+ws.close()
+
+# Extract MAC suffixes from mDNS devices (last 6 hex chars, e.g., c6-wifi-bleproxy-0f4df4 -> 0f4df4)
+mac_to_device = {}
+for dev in mdns_devices:
+    m = re.search(r'([0-9a-f]{6})$', dev, re.IGNORECASE)
     if m:
-        devices.add(base_name + '-' + m.group(1))
+        mac = m.group(1).lower()
+        mac_to_device[mac] = dev
 
-for d in sorted(devices):
+# Find ESPHome entities whose IDs contain any of these MAC suffixes
+registered_devices = set()
+for entity in all_entities:
+    entity_id = entity.get('entity_id', '').lower()
+    platform = entity.get('platform', '').lower()
+
+    # Only check ESPHome entities
+    if platform != 'esphome':
+        continue
+
+    for mac, device in mac_to_device.items():
+        if mac in entity_id:
+            registered_devices.add(device)
+            break
+
+for d in sorted(registered_devices):
     print(d)
 PYEOF
   ) || { warn "Home Assistant query failed — skipping registry check."; HA_DEVICE_LIST=""; }
@@ -374,6 +789,135 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
   fi
 fi
 
+# ── Two-step rename (if requested) ───────────────────────────────────────────
+if [[ -n "$RENAME_DEVICE_TO" ]]; then
+  if [[ -z "$HOSTNAMES" ]]; then
+    err "No devices found to rename."
+    exit 1
+  fi
+
+  echo
+  echo "════════════════════════════════════════════════════════"
+  ok "Running two-step device rename to: ${RENAME_DEVICE_TO}"
+  echo "════════════════════════════════════════════════════════"
+
+  YAML_DIR=$(dirname "$YAML_FILE")
+  TEMP_YAML="${YAML_DIR}/.temp-rename-$$.yaml"
+  trap 'rm -f "$TEMP_YAML"' EXIT
+
+  # Step 1: Create temp YAML with device_id and flash
+  echo
+  warn "Step 1 of 2: Introduce device_id..."
+  create_temp_yaml_with_device_id "$YAML_FILE" "$RENAME_DEVICE_TO" "$TEMP_YAML"
+
+  printf "  ⚙ Compiling with device_id..." >&2
+  TEMP_COMPILE_LOG=$(mktemp)
+  trap 'rm -f "$TEMP_COMPILE_LOG"' EXIT
+
+  if "$ESPHOME_BIN" compile "$TEMP_YAML" >> "$TEMP_COMPILE_LOG" 2>&1; then
+    printf " ${GRN}✓${RST}\n" >&2
+    ok "Compiled successfully for step 1."
+  else
+    printf " ${RED}✗${RST}\n" >&2
+    err "Step 1 compilation failed."
+    cat "$TEMP_COMPILE_LOG"
+    exit 1
+  fi
+
+  STEP1_FAIL_LIST=()
+  STEP1_OK_LIST=()
+  WORK_DIR=$(mktemp -d)
+  trap 'rm -rf "$WORK_DIR"' EXIT
+
+  for HOSTNAME in $(echo "$HOSTNAMES" | grep -v "^ttyACM0$"); do
+    FQDN="${HOSTNAME}.local"
+    dim "  step1: ${HOSTNAME}"
+    (
+      if "$ESPHOME_BIN" run "$TEMP_YAML" --device "$FQDN" --no-logs 2>&1 >/dev/null; then
+        echo ok > "$WORK_DIR/${HOSTNAME}.step1.result"
+      else
+        echo fail > "$WORK_DIR/${HOSTNAME}.step1.result"
+      fi
+    ) > "$WORK_DIR/${HOSTNAME}.step1.log" 2>&1 &
+  done
+
+  wait 2>/dev/null || true
+
+  for HOSTNAME in $(echo "$HOSTNAMES" | grep -v "^ttyACM0$"); do
+    if [[ "$(cat "$WORK_DIR/${HOSTNAME}.step1.result" 2>/dev/null)" == ok ]]; then
+      ok "${HOSTNAME}: step 1 successful."
+      STEP1_OK_LIST+=("$HOSTNAME")
+    else
+      err "${HOSTNAME}: step 1 FAILED."
+      STEP1_FAIL_LIST+=("$HOSTNAME")
+    fi
+  done
+
+  if [[ ${#STEP1_FAIL_LIST[@]} -gt 0 ]]; then
+    err "Step 1 failed for ${#STEP1_FAIL_LIST[@]} device(s): ${STEP1_FAIL_LIST[*]}"
+    exit 1
+  fi
+
+  echo
+  warn "Step 2 of 2: Update device_name in YAML and flash..."
+
+  # Update the original YAML file with the new device_name
+  update_yaml_device_name "$YAML_FILE" "$RENAME_DEVICE_TO"
+  ok "Updated YAML device_name to: ${RENAME_DEVICE_TO}"
+
+  printf "  ⚙ Compiling with updated device_name..." >&2
+  STEP2_COMPILE_LOG=$(mktemp)
+  trap 'rm -f "$STEP2_COMPILE_LOG"' EXIT
+
+  if "$ESPHOME_BIN" compile "$YAML_FILE" >> "$STEP2_COMPILE_LOG" 2>&1; then
+    printf " ${GRN}✓${RST}\n" >&2
+    ok "Compiled successfully for step 2."
+  else
+    printf " ${RED}✗${RST}\n" >&2
+    err "Step 2 compilation failed."
+    cat "$STEP2_COMPILE_LOG"
+    exit 1
+  fi
+
+  STEP2_FAIL_LIST=()
+  STEP2_OK_LIST=()
+
+  for HOSTNAME in $(echo "$HOSTNAMES" | grep -v "^ttyACM0$"); do
+    FQDN="${HOSTNAME}.local"
+    dim "  step2: ${HOSTNAME}"
+    (
+      if "$ESPHOME_BIN" run "$YAML_FILE" --device "$FQDN" --no-logs 2>&1 >/dev/null; then
+        echo ok > "$WORK_DIR/${HOSTNAME}.step2.result"
+      else
+        echo fail > "$WORK_DIR/${HOSTNAME}.step2.result"
+      fi
+    ) > "$WORK_DIR/${HOSTNAME}.step2.log" 2>&1 &
+  done
+
+  wait 2>/dev/null || true
+
+  for HOSTNAME in $(echo "$HOSTNAMES" | grep -v "^ttyACM0$"); do
+    if [[ "$(cat "$WORK_DIR/${HOSTNAME}.step2.result" 2>/dev/null)" == ok ]]; then
+      ok "${HOSTNAME}: step 2 successful."
+      STEP2_OK_LIST+=("$HOSTNAME")
+    else
+      err "${HOSTNAME}: step 2 FAILED."
+      STEP2_FAIL_LIST+=("$HOSTNAME")
+    fi
+  done
+
+  if [[ ${#STEP2_FAIL_LIST[@]} -gt 0 ]]; then
+    err "Step 2 failed for ${#STEP2_FAIL_LIST[@]} device(s): ${STEP2_FAIL_LIST[*]}"
+    exit 1
+  fi
+
+  echo
+  ok "Two-step rename completed successfully!"
+  ok "Devices will report name: ${RENAME_DEVICE_TO}-* on next mDNS discovery"
+  echo
+  exit 0
+fi
+
 # ── Per-device triage ────────────────────────────────────────────────────────
 FLASH_LIST=()
 SKIP_LIST=()
@@ -450,6 +994,7 @@ if [[ "$VERIFY" == true ]]; then
   [[ ${#VERIFY_OK_LIST[@]}      -gt 0 ]] && ok  "Matched  : ${VERIFY_OK_LIST[*]}"
   [[ ${#VERIFY_FAIL_LIST[@]}    -gt 0 ]] && err "Mismatch : ${VERIFY_FAIL_LIST[*]}"
   [[ ${#VERIFY_UNKNOWN_LIST[@]} -gt 0 ]] && warn "Unknown  : ${VERIFY_UNKNOWN_LIST[*]}"
+
   if [[ ${#VERIFY_FAIL_LIST[@]} -gt 0 || ${#VERIFY_UNKNOWN_LIST[@]} -gt 0 ]]; then
     exit 1
   fi
@@ -460,6 +1005,22 @@ fi
 if [[ ${#FLASH_LIST[@]} -eq 0 ]]; then
   if [[ ${#OK_LIST[@]} -eq 0 && ${#FAIL_LIST[@]} -eq 0 ]]; then
     ok "All devices are up to date. Nothing to do."
+
+    # Verify entity ID consistency even when no flashing needed
+    echo
+    echo "════════════════════════════════════════════════════════"
+    CONSISTENCY_OUTPUT=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$BASE_NAME" "$HOSTNAMES" 2>&1)
+    if [[ -n "$CONSISTENCY_OUTPUT" ]]; then
+      if echo "$CONSISTENCY_OUTPUT" | grep -q "WARNING"; then
+        echo "$CONSISTENCY_OUTPUT"
+      else
+        ok "Entity ID consistency: All entity IDs match device names"
+      fi
+    else
+      dim "(Entity ID consistency check skipped — websocket-client not installed)"
+    fi
+    echo "════════════════════════════════════════════════════════"
+
     exit 0
   fi
   # USB was flashed; skip OTA and fall through to final report
@@ -658,6 +1219,32 @@ printf " %d device(s): " "$total"
 [[ ${#SKIP_LIST[@]} -gt 0 ]] && printf "${DIM}%d skipped${RST}  " "${#SKIP_LIST[@]}"
 [[ ${#FAIL_LIST[@]} -gt 0 ]] && printf "${RED}%d FAILED${RST}"    "${#FAIL_LIST[@]}"
 echo
+echo "════════════════════════════════════════════════════════"
+
+# Recreate entity IDs for flashed devices, or force-update if requested
+if [[ ${#OK_LIST[@]} -gt 0 ]] || [[ "$FORCE_UPDATE_ENTITIES" == true ]]; then
+  ENTITIES_TO_UPDATE=""
+  if [[ "$FORCE_UPDATE_ENTITIES" == true ]]; then
+    ENTITIES_TO_UPDATE="$HOSTNAMES"
+  else
+    ENTITIES_TO_UPDATE="$(printf '%s ' "${OK_LIST[@]}")"
+  fi
+  recreate_entity_ids "$HA_URL" "$HA_TOKEN" "$ENTITIES_TO_UPDATE"
+fi
+
+# Verify entity ID consistency for all discovered devices (always)
+echo
+echo "════════════════════════════════════════════════════════"
+CONSISTENCY_OUTPUT=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$BASE_NAME" "$HOSTNAMES" 2>&1)
+if [[ -n "$CONSISTENCY_OUTPUT" ]]; then
+  if echo "$CONSISTENCY_OUTPUT" | grep -q "WARNING"; then
+    echo "$CONSISTENCY_OUTPUT"
+  else
+    ok "Entity ID consistency: All entity IDs match device names"
+  fi
+else
+  dim "(Entity ID consistency check skipped — websocket-client not installed)"
+fi
 echo "════════════════════════════════════════════════════════"
 
 if [[ ${#FAIL_LIST[@]} -gt 0 ]]; then
