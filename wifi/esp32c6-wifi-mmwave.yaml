@@ -1,16 +1,17 @@
 # wifi-mmwave.yaml
+# Uses stable role UUID for device name (not changed by reassignment)
+# MAC suffix appended to make device-specific identifier
 
 substitutions:
-  device_name: "wifi-mmwave"
-  device_id: "c6-wifi-mmwave"
-  friendly_name: "${device_name}"
+  role_id: "a44bb2f755825e3280"  # Stable identifier for this role (18 chars + 6 MAC = 24 char hostname)
+  friendly_name: "WiFi mmWave"   # Display name, can change without breaking entities
 
 esphome:
-  name: "${device_name}"
+  name: "${role_id}"
   friendly_name: "${friendly_name}"
-  name_add_mac_suffix: true
+  name_add_mac_suffix: true  # Results in: role_id<MAC> (32 chars total)
   project:
-    name: "farscapian.${device_id}"
+    name: "farscapian.${friendly_name}"
     version: "1.0.11"
   on_boot:
     priority: -100

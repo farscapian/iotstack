@@ -1,15 +1,17 @@
 # BLE Proxy - WiFi Only (C6 Device)
 # ESPHome 2026.5.x compatible
+# Uses stable role UUID for device name (not changed by reassignment)
+# MAC suffix appended to make device-specific identifier
 substitutions:
-  device_name: "esp32c6-wifi-bleproxy"
-  friendly_name: "WiFi BLEProxy"
+  role_id: "f9ae844f309077c78b"  # Stable identifier for this role (18 chars + 6 MAC = 24 char hostname)
+  friendly_name: "WiFi BLEProxy"  # Display name, can change without breaking entities
 
 esphome:
-  name: ${device_name}
+  name: ${role_id}
   friendly_name: ${friendly_name}
-  name_add_mac_suffix: true
+  name_add_mac_suffix: true  # Results in: role_id<MAC> (32 chars total)
   project:
-    name: "farscapian.${device_name}"
+    name: "farscapian.${friendly_name}"
     version: "1.3.0"
 
 esp32:

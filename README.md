@@ -113,12 +113,18 @@ Runs `update_devices.sh` for every device config in the project directory (any `
 
 - `avahi-browse` (`avahi-utils`)
 - `esphome` CLI at `~/.local/esphome/venv/bin/esphome` or on `$PATH`
-- `python3` (for Home Assistant registry query)
+- `python3` (for Home Assistant integration)
+- `python3-websocket` (for entity ID recreation) — installed automatically if needed
 - Bash 4.3+ (for `wait -n`)
 
-### Home Assistant registry check
+### Home Assistant integration
 
-If `ha_url` and `ha_token` (long-lived access token) are present in `secrets.yaml`, each run appends a report comparing HA-registered devices against the mDNS-discovered set — surfacing any device that is registered but not currently reachable on the network.
+If `ha_url` and `ha_token` (long-lived access token) are present in `secrets.yaml`, the script:
+
+1. **Device registry check** — Compares HA-registered devices against the mDNS-discovered set, surfacing any that are registered but not reachable on the network
+2. **Entity ID recreation** — When devices are flashed with a new name (e.g., renaming from `wifi-bleproxy` to `c6-wifi-bleproxy`), automatically recreates entity IDs to match the new device name while preserving device metadata (area, labels, custom names)
+
+Entity ID recreation is performed via Home Assistant's official WebSocket API and preserves all device configuration, relationships, and long-term statistics.
 
 ```yaml
 # secrets.yaml additions

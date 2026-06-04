@@ -1,0 +1,233 @@
+<svg width="100%" viewBox="0 0 680 760" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>SK6812 LED strip wiring diagram v4</title>
+<desc>Wiring from wall outlet through PSU to SK6812 strip and XIAO ESP32-C6, correct PSU terminal labels L N earth -V -V +V +V</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+  <style>
+    text { font-family: sans-serif; fill: #1a1a1a; }
+    .th { font-size: 14px; font-weight: 600; }
+    .ts { font-size: 12px; }
+  </style>
+</defs>
+
+<!-- ═══════════════════════════════════════════
+     WALL OUTLET
+═══════════════════════════════════════════ -->
+<rect x="20" y="290" width="82" height="56" rx="8" fill="#f1f5f9" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="th" x="61" y="314" text-anchor="middle">Wall</text>
+<text class="ts" x="61" y="332" text-anchor="middle">NEMA 5-15P</text>
+
+<!-- E156136 cord wires -->
+<text class="ts" x="125" y="288" text-anchor="middle">E156136 cord</text>
+<line x1="102" y1="304" x2="150" y2="304" stroke="#7C2D12" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="102" y1="318" x2="150" y2="318" stroke="#1D4ED8" stroke-width="2.5" stroke-linecap="round"/>
+<line x1="102" y1="332" x2="150" y2="332" stroke="#15803D" stroke-width="2.5" stroke-linecap="round"/>
+
+<!-- ═══════════════════════════════════════════
+     PSU BOX
+═══════════════════════════════════════════ -->
+<rect x="150" y="220" width="185" height="240" rx="8" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.5"/>
+<text class="th" x="242" y="244" text-anchor="middle">PSU — Aclorol 5V 20A</text>
+
+<!-- terminal label bar (mimics embossed label on unit) -->
+<rect x="160" y="256" width="165" height="20" rx="4" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="173" y="266" text-anchor="middle" font-weight="700">L</text>
+<text class="ts" x="193" y="266" text-anchor="middle" font-weight="700">N</text>
+<text class="ts" x="213" y="266" text-anchor="middle" font-weight="700">⏚</text>
+<text class="ts" x="236" y="266" text-anchor="middle" font-weight="700">−V</text>
+<text class="ts" x="258" y="266" text-anchor="middle" font-weight="700">−V</text>
+<text class="ts" x="280" y="266" text-anchor="middle" font-weight="700">+V</text>
+<text class="ts" x="300" y="266" text-anchor="middle" font-weight="700">+V</text>
+
+<!-- terminal screw boxes -->
+<!-- L -->
+<rect x="163" y="280" width="20" height="20" rx="3" fill="white" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="173" y="290" text-anchor="middle" dominant-baseline="central">L</text>
+<!-- N -->
+<rect x="183" y="280" width="20" height="20" rx="3" fill="white" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="193" y="290" text-anchor="middle" dominant-baseline="central">N</text>
+<!-- earth -->
+<rect x="203" y="280" width="20" height="20" rx="3" fill="white" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="213" y="290" text-anchor="middle" dominant-baseline="central">⏚</text>
+<!-- -V 1 -->
+<rect x="224" y="280" width="24" height="20" rx="3" fill="#fef9c3" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="236" y="290" text-anchor="middle" dominant-baseline="central">−V</text>
+<!-- -V 2 -->
+<rect x="248" y="280" width="24" height="20" rx="3" fill="#fef9c3" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="260" y="290" text-anchor="middle" dominant-baseline="central">−V</text>
+<!-- +V 1 -->
+<rect x="272" y="280" width="24" height="20" rx="3" fill="#fef2f2" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="284" y="290" text-anchor="middle" dominant-baseline="central">+V</text>
+<!-- +V 2 -->
+<rect x="296" y="280" width="24" height="20" rx="3" fill="#fef2f2" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="308" y="290" text-anchor="middle" dominant-baseline="central">+V</text>
+
+<!-- divider -->
+<line x1="222" y1="260" x2="222" y2="304" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="3 2"/>
+<text class="ts" x="186" y="312" text-anchor="middle" fill="#64748b">AC in</text>
+<text class="ts" x="272" y="312" text-anchor="middle" fill="#64748b">DC out</text>
+
+<!-- AC cord wires landing on terminals -->
+<line x1="150" y1="304" x2="163" y2="290" stroke="#7C2D12" stroke-width="2" stroke-linecap="round"/>
+<line x1="150" y1="318" x2="183" y2="290" stroke="#1D4ED8" stroke-width="2" stroke-linecap="round"/>
+<line x1="150" y1="332" x2="203" y2="290" stroke="#15803D" stroke-width="2" stroke-linecap="round"/>
+
+<!-- ═══════════════════════════════════════════
+     DC power runs
+     strip red  → +V (first +V terminal)
+     strip white → -V (first -V terminal)
+     XIAO 5V tap → +V (second +V terminal)
+     XIAO GND tap → -V (second -V terminal)
+═══════════════════════════════════════════ -->
+
+<!-- strip red: +V1 → down → strip VCC -->
+<path d="M284 300 L284 340 L358 340 L358 548" fill="none" stroke="#DC2626" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+<!-- strip white: -V1 → down → strip GND -->
+<path d="M236 300 L236 352 L370 352 L370 548" fill="none" stroke="#e2e8f0" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+<path d="M236 300 L236 352 L370 352 L370 548" fill="none" stroke="#94a3b8" stroke-width="0.8" stroke-linecap="round"/>
+
+<!-- XIAO 5V tap: +V2 → up → XIAO 5V -->
+<path d="M308 280 L308 120 L428 120" fill="none" stroke="#DC2626" stroke-width="1.5" stroke-dasharray="5 3" stroke-linecap="round" marker-end="url(#arrow)"/>
+
+<!-- XIAO GND tap: -V2 → up → XIAO GND -->
+<path d="M260 280 L260 136 L428 136" fill="none" stroke="#e2e8f0" stroke-width="1.5" stroke-dasharray="5 3" stroke-linecap="round" marker-end="url(#arrow)"/>
+<path d="M260 280 L260 136 L428 136" fill="none" stroke="#94a3b8" stroke-width="0.5" stroke-dasharray="5 3" stroke-linecap="round"/>
+
+<!-- wire labels -->
+<text class="ts" x="376" y="334" text-anchor="start" fill="#DC2626">red → +V</text>
+<text class="ts" x="376" y="350" text-anchor="start" fill="#64748b">white → −V</text>
+<text class="ts" x="314" y="113" text-anchor="start">XIAO 5V tap → +V</text>
+<text class="ts" x="266" y="130" text-anchor="start">XIAO GND tap → −V</text>
+
+<!-- ═══════════════════════════════════════════
+     XIAO ESP32-C6
+═══════════════════════════════════════════ -->
+<rect x="428" y="66" width="184" height="210" rx="8" fill="#ccfbf1" stroke="#14b8a6" stroke-width="0.5"/>
+<text class="th" x="520" y="90" text-anchor="middle">XIAO ESP32-C6</text>
+<text class="ts" x="520" y="106" text-anchor="middle">seeed_xiao_esp32c6</text>
+<rect x="504" y="66" width="32" height="8" rx="3" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="520" y="78" text-anchor="middle">USB-C</text>
+
+<!-- Left pins -->
+<rect x="414" y="124" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="434" y="131" dominant-baseline="central" font-weight="600">D0 / GPIO1  ← data out</text>
+<rect x="414" y="144" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="434" y="151" dominant-baseline="central">D1 / GPIO2</text>
+<rect x="414" y="164" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="434" y="171" dominant-baseline="central">D2 / GPIO3</text>
+<rect x="414" y="184" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="434" y="191" dominant-baseline="central">D3 / GPIO4</text>
+<rect x="414" y="204" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="434" y="211" dominant-baseline="central">D4 / GPIO22</text>
+<rect x="414" y="224" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="434" y="231" dominant-baseline="central">D5 / GPIO23</text>
+
+<!-- Right pins — 5V and GND highlighted -->
+<rect x="612" y="124" width="14" height="14" rx="2" fill="#DC2626" stroke="none"/>
+<text class="ts" x="610" y="131" text-anchor="end" dominant-baseline="central" font-weight="600">5V ←</text>
+<rect x="612" y="144" width="14" height="14" rx="2" fill="#94a3b8" stroke="none"/>
+<text class="ts" x="610" y="151" text-anchor="end" dominant-baseline="central" font-weight="600">GND ←</text>
+<rect x="612" y="164" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="610" y="171" text-anchor="end" dominant-baseline="central">3V3</text>
+<rect x="612" y="184" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="610" y="191" text-anchor="end" dominant-baseline="central">D10</text>
+<rect x="612" y="204" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="610" y="211" text-anchor="end" dominant-baseline="central">D9</text>
+<rect x="612" y="224" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="610" y="231" text-anchor="end" dominant-baseline="central">D8</text>
+
+<!-- antenna -->
+<line x1="520" y1="276" x2="520" y2="294" stroke="#64748b" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="508" y1="286" x2="532" y2="286" stroke="#64748b" stroke-width="1" stroke-linecap="round"/>
+<line x1="512" y1="280" x2="528" y2="280" stroke="#64748b" stroke-width="1" stroke-linecap="round"/>
+<text class="ts" x="520" y="308" text-anchor="middle">u.FL antenna</text>
+
+<!-- dashed taps land on XIAO pins -->
+<line x1="428" y1="120" x2="426" y2="131" stroke="#DC2626" stroke-width="1.5" stroke-linecap="round"/>
+<line x1="428" y1="136" x2="426" y2="151" stroke="#94a3b8" stroke-width="1.5" stroke-linecap="round"/>
+
+<!-- ═══════════════════════════════════════════
+     DATA LINE: D0 → 330Ω → strip green/DIN
+═══════════════════════════════════════════ -->
+<line x1="414" y1="131" x2="386" y2="131" stroke="#16A34A" stroke-width="1.5" stroke-linecap="round"/>
+<path d="M386 131 L386 404" fill="none" stroke="#16A34A" stroke-width="1.5" stroke-linecap="round"/>
+
+<!-- 330Ω resistor body + bands -->
+<line x1="386" y1="404" x2="386" y2="394" stroke="#64748b" stroke-width="0.8" stroke-linecap="round"/>
+<rect x="370" y="404" width="32" height="14" rx="3" fill="white" stroke="#1a1a1a" stroke-width="1"/>
+<line x1="376" y1="404" x2="376" y2="418" stroke="#EA580C" stroke-width="2.5"/>
+<line x1="381" y1="404" x2="381" y2="418" stroke="#EA580C" stroke-width="2.5"/>
+<line x1="386" y1="404" x2="386" y2="418" stroke="#1a1a1a" stroke-width="2.5"/>
+<line x1="391" y1="404" x2="391" y2="418" stroke="#1a1a1a" stroke-width="2.5"/>
+<line x1="397" y1="404" x2="397" y2="418" stroke="#78350F" stroke-width="2.5"/>
+<line x1="386" y1="418" x2="386" y2="428" stroke="#64748b" stroke-width="0.8" stroke-linecap="round"/>
+<text class="ts" x="410" y="406" dominant-baseline="central">330 Ω — no polarity</text>
+<text class="ts" x="410" y="420" dominant-baseline="central">orange · orange · blk · blk · brn</text>
+
+<path d="M386 428 L386 548" fill="none" stroke="#16A34A" stroke-width="1.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+<text class="ts" x="372" y="492" text-anchor="end">green</text>
+<text class="ts" x="372" y="506" text-anchor="end">22 AWG</text>
+
+<!-- ═══════════════════════════════════════════
+     LED STRIP
+═══════════════════════════════════════════ -->
+<rect x="310" y="548" width="310" height="118" rx="8" fill="#fee2e2" stroke="#f87171" stroke-width="0.5"/>
+<text class="th" x="465" y="570" text-anchor="middle">SK6812 RGBW strip</text>
+<text class="ts" x="465" y="587" text-anchor="middle">female JST-SM — input (DIN) end</text>
+<rect x="322" y="598" width="10" height="10" rx="2" fill="#DC2626" stroke="none"/>
+<text class="ts" x="338" y="603" dominant-baseline="central">red   → +V terminal</text>
+<rect x="322" y="616" width="10" height="10" rx="2" fill="#f1f5f9" stroke="#94a3b8" stroke-width="0.5"/>
+<text class="ts" x="338" y="621" dominant-baseline="central">white → −V terminal</text>
+<rect x="322" y="634" width="10" height="10" rx="2" fill="#16A34A" stroke="none"/>
+<text class="ts" x="338" y="639" dominant-baseline="central">green → DIN (D0 via 330 Ω)</text>
+
+<!-- 1000µF cap -->
+<rect x="310" y="678" width="130" height="36" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="0.5"/>
+<text class="th" x="375" y="696" text-anchor="middle">1000 µF cap</text>
+<text class="ts" x="375" y="724" text-anchor="middle">across +V / −V at strip input</text>
+<line x1="354" y1="666" x2="354" y2="678" stroke="#DC2626" stroke-width="1" stroke-dasharray="3 2" stroke-linecap="round" marker-end="url(#arrow)"/>
+<line x1="364" y1="666" x2="364" y2="678" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3 2" stroke-linecap="round"/>
+
+<!-- ═══════════════════════════════════════════
+     LEGEND
+═══════════════════════════════════════════ -->
+<rect x="20" y="420" width="240" height="290" rx="8" fill="none" stroke="#cbd5e1" stroke-width="0.5"/>
+<text class="th" x="32" y="442" dominant-baseline="central">Legend</text>
+
+<line x1="32" y1="462" x2="62" y2="462" stroke="#7C2D12" stroke-width="2.5" stroke-linecap="round"/>
+<text class="ts" x="70" y="462" dominant-baseline="central">Brown — Live AC → L</text>
+
+<line x1="32" y1="480" x2="62" y2="480" stroke="#1D4ED8" stroke-width="2.5" stroke-linecap="round"/>
+<text class="ts" x="70" y="480" dominant-baseline="central">Blue — Neutral AC → N</text>
+
+<line x1="32" y1="498" x2="62" y2="498" stroke="#15803D" stroke-width="2.5" stroke-linecap="round"/>
+<text class="ts" x="70" y="498" dominant-baseline="central">Green/yellow — Earth → ⏚</text>
+
+<line x1="32" y1="516" x2="62" y2="516" stroke="#DC2626" stroke-width="2.5" stroke-linecap="round"/>
+<text class="ts" x="70" y="516" dominant-baseline="central">Red — +5V DC → +V</text>
+
+<line x1="32" y1="534" x2="62" y2="534" stroke="#e2e8f0" stroke-width="3" stroke-linecap="round"/>
+<line x1="32" y1="534" x2="62" y2="534" stroke="#94a3b8" stroke-width="0.8" stroke-linecap="round"/>
+<text class="ts" x="70" y="534" dominant-baseline="central">White — GND DC → −V</text>
+
+<line x1="32" y1="552" x2="62" y2="552" stroke="#16A34A" stroke-width="1.5" stroke-linecap="round"/>
+<text class="ts" x="70" y="552" dominant-baseline="central">Green — data signal (D0)</text>
+
+<line x1="32" y1="570" x2="62" y2="570" stroke="#DC2626" stroke-width="1.5" stroke-dasharray="5 3" stroke-linecap="round"/>
+<text class="ts" x="70" y="570" dominant-baseline="central">Dashed — PSU tap to XIAO</text>
+
+<!-- PSU terminal summary box -->
+<rect x="30" y="588" width="220" height="108" rx="6" fill="#f8fafc" stroke="#cbd5e1" stroke-width="0.5"/>
+<text class="ts" x="40" y="604" font-weight="600">PSU terminal summary</text>
+<text class="ts" x="40" y="620">L  → brown (Live)</text>
+<text class="ts" x="40" y="636">N  → blue (Neutral)</text>
+<text class="ts" x="40" y="652">⏚  → green/yellow (Earth)</text>
+<text class="ts" x="40" y="668">−V → white (strip GND)</text>
+<text class="ts" x="40" y="684">−V → XIAO GND tap</text>
+<text class="ts" x="130" y="668">+V → red (strip VCC)</text>
+<text class="ts" x="130" y="684">+V → XIAO 5V tap</text>
+
+</svg>

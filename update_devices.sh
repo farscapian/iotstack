@@ -22,7 +22,7 @@
 #   --help                 Show this help
 
 
-set -euox pipefail
+set -euo pipefail
 
 # ── Cleanup on exit ──────────────────────────────────────────────────────────
 trap 'printf "\n" 2>/dev/null; exit' EXIT
@@ -37,6 +37,9 @@ MAX_JOBS=4
 JOBS_EXPLICIT=false
 YAML_FILE=""
 RENAME_DEVICE_TO=""
+REASSIGN_MODE=false
+declare -a REASSIGN_MACS=()
+REASSIGN_YAML=""
 
 # ── Colours ─────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -117,10 +120,10 @@ else:
     )
 
 # Replace project.name to use device_new_name instead of device_name
-# Match: name: "farscapian.${device_name}" or similar patterns
+# Match: name: "farscapian.${device_name}" or name: farscapian.${device_name}
 content = re.sub(
-    r'name:\s*["\']([^"\']*)\$\{device_name\}([^"\']*)["\']',
-    lambda m: f'name: "{m.group(1)}${{device_new_name}}{m.group(2)}"',
+    r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)',
+    lambda m: f'{m.group(1)}{m.group(2)}${{device_new_name}}{m.group(3)}',
     content
 )
 
@@ -274,7 +277,7 @@ recreate_entity_ids() {
     return 0
   fi
 
-  ok "Recreating entity IDs for renamed devices..."
+  ok "Updating device names and entity IDs..."
 
   HA_URL="$ha_url" HA_TOKEN="$ha_token" HOSTNAMES="$hostnames" python3 - <<'PYEOF'
 import json, os, sys, ssl, re, websocket
@@ -344,8 +347,74 @@ except Exception as e:
     ws.close()
     sys.exit(1)
 
-# Find entities belonging to renamed devices (match by MAC suffix)
-# IMPORTANT: Only update entities that belong to the ESPHome integration
+# Get device registry to match MACs and update device names
+try:
+    msg_id += 1
+    ws.send(json.dumps({
+        'id': msg_id,
+        'type': 'config/device_registry/list'
+    }))
+
+    devices_msg = json.loads(ws.recv())
+    if not devices_msg.get('success'):
+        ws.close()
+        sys.exit(0)
+
+    all_devices = devices_msg.get('result', [])
+except Exception:
+    ws.close()
+    sys.exit(0)
+
+# Build hostname map from hostname list
+hostname_map = {}
+for hostname in hostnames:
+    m = re.search(r'([0-9a-f]{6})$', hostname, re.IGNORECASE)
+    if m:
+        mac = m.group(1).lower()
+        hostname_map[mac] = hostname
+
+# Find and update devices by MAC, extracting new names from hostnames
+updated_devices = []
+for device in all_devices:
+    device_id = device.get('id')
+    if not device_id:
+        continue
+
+    # Check if device has a MAC identifier matching our devices
+    identifiers = device.get('identifiers', [])
+    for identifier_set in identifiers:
+        if not isinstance(identifier_set, (list, tuple)):
+            continue
+        for identifier in identifier_set:
+            if not isinstance(identifier, str):
+                continue
+            # Check if this identifier contains a MAC we're looking for
+            for mac, hostname in hostname_map.items():
+                if mac in identifier.lower():
+                    # Extract new device name from hostname (e.g., "c6-wifi-mmwave" from "c6-wifi-mmwave-199f38")
+                    # Keep only the part before the last dash followed by MAC
+                    new_name = hostname.rsplit('-', 1)[0] if '-' in hostname else hostname
+                    updated_devices.append((device_id, hostname, new_name))
+                    break
+
+# Update device names in registry (this triggers HA to regenerate entity IDs)
+for device_id, hostname, new_name in updated_devices:
+    try:
+        msg_id += 1
+        ws.send(json.dumps({
+            'id': msg_id,
+            'type': 'config/device_registry/update',
+            'device_id': device_id,
+            'name_by_user': new_name
+        }))
+
+        result = json.loads(ws.recv())
+        if result.get('success'):
+            print(f'Updated device: {hostname} → {new_name}')
+    except Exception:
+        pass
+
+# Find entities for entity ID updates
 entity_ids_to_update = []
 for entity in all_entities:
     entity_id = entity.get('entity_id', '').lower()
@@ -430,7 +499,22 @@ while [[ $# -gt 0 ]]; do
     --force-update-entities) FORCE_UPDATE_ENTITIES=true; shift ;;
     --dry-run)               DRY_RUN=true;        shift ;;
     --jobs)                  MAX_JOBS="$2"; JOBS_EXPLICIT=true; shift 2 ;;
-    --rename-devices-to)      RENAME_DEVICE_TO="$2"; shift 2 ;;
+    --rename-devices-to)     RENAME_DEVICE_TO="$2"; shift 2 ;;
+    --reassign)
+      REASSIGN_MODE=true
+      shift
+      # Collect MAC suffixes until we hit a path (contains /)
+      while [[ $# -gt 0 ]] && [[ "$1" != */* ]]; do
+        REASSIGN_MACS+=("$1")
+        shift
+      done
+      if [[ $# -eq 0 ]]; then
+        err "--reassign requires target YAML file"
+        exit 1
+      fi
+      REASSIGN_YAML="$1"
+      shift
+      ;;
     -v|--verbose)            VERBOSE=true;        shift ;;
     --help|-h)               usage ;;
     -*)                      err "Unknown option: $1"; exit 1 ;;
@@ -439,10 +523,18 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ── Validate inputs ─────────────────────────────────────────────────────────
-if [[ -z "$YAML_FILE" ]]; then
-  err "No yaml file specified."
-  echo "Usage: $0 [--upgrade-delta] [--no-upgrade-delta] [--verify] [--dry-run] [--jobs N] <yaml-file>"
-  exit 1
+if [[ "$REASSIGN_MODE" == true ]]; then
+  if [[ -z "$REASSIGN_YAML" ]] || [[ ${#REASSIGN_MACS[@]} -eq 0 ]]; then
+    err "--reassign requires: <MAC1> [MAC2 ...] <yaml-file>"
+    exit 1
+  fi
+  YAML_FILE="$REASSIGN_YAML"
+else
+  if [[ -z "$YAML_FILE" ]]; then
+    err "No yaml file specified."
+    echo "Usage: $0 [--upgrade-delta] [--no-upgrade-delta] [--verify] [--dry-run] [--jobs N] <yaml-file>"
+    exit 1
+  fi
 fi
 
 if [[ ! -f "$YAML_FILE" ]]; then
@@ -537,21 +629,73 @@ if [[ -z "$BASE_NAME" ]]; then
   exit 1
 fi
 
-log "Discovering ${BASE_NAME}-* devices via mDNS..."
+if [[ "$REASSIGN_MODE" == true ]]; then
+  log "Discovering devices to reassign: ${REASSIGN_MACS[*]}"
+else
+  log "Discovering ${BASE_NAME}-* devices via mDNS..."
+fi
 
 RAW=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null || true)
 
 # Extract device hostnames from mDNS
-# Match by device_name to avoid cross-config flashing (MAC suffix is compared per-device later)
-HOSTNAMES=$(echo "$RAW" \
-  | grep "^= " \
-  | awk '{print $4}' \
-  | grep "^${BASE_NAME}-" \
-  | sort -u)
+if [[ "$REASSIGN_MODE" == true ]]; then
+  # In reassign mode, discover ALL devices then filter by MAC suffix
+  ALL_DEVICES=$(echo "$RAW" \
+    | grep "^= " \
+    | awk '{print $4}' \
+    | sort -u)
+
+  HOSTNAMES=""
+  for mac in "${REASSIGN_MACS[@]}"; do
+    # Match devices ending with the MAC suffix (strip special chars, just use the MAC)
+    matching=$(echo "$ALL_DEVICES" | grep "${mac}" || true)
+    if [[ -n "$matching" ]]; then
+      HOSTNAMES+="$matching"$'\n'
+    fi
+  done
+  HOSTNAMES=$(echo "$HOSTNAMES" | sed '/^$/d' | sort -u)
+else
+  # Normal mode: Match by device_name to avoid cross-config flashing
+  HOSTNAMES=$(echo "$RAW" \
+    | grep "^= " \
+    | awk '{print $4}' \
+    | grep "^${BASE_NAME}-" \
+    | sort -u)
+fi
 
 if [[ -z "$HOSTNAMES" ]]; then
-  warn "No ${BASE_NAME}-* devices found on the network."
+  if [[ "$REASSIGN_MODE" == true ]]; then
+    warn "No devices found with MAC suffixes: ${REASSIGN_MACS[*]}"
+  else
+    warn "No ${BASE_NAME}-* devices found on the network."
+  fi
   exit 0
+fi
+
+# In reassign mode, check if all requested MACs were found
+if [[ "$REASSIGN_MODE" == true ]]; then
+  declare -a FOUND_MACS=()
+  for hostname in $HOSTNAMES; do
+    mac=$(echo "$hostname" | grep -oE '[0-9a-f]{6}$')
+    [[ -n "$mac" ]] && FOUND_MACS+=("$mac")
+  done
+
+  declare -a MISSING_MACS=()
+  for mac in "${REASSIGN_MACS[@]}"; do
+    if [[ ! " ${FOUND_MACS[*]} " =~ " ${mac} " ]]; then
+      MISSING_MACS+=("$mac")
+    fi
+  done
+
+  if [[ ${#MISSING_MACS[@]} -gt 0 ]]; then
+    echo >&2
+    warn "WARNING: The following devices are offline or not found:" >&2
+    for mac in "${MISSING_MACS[@]}"; do
+      echo "  - ${mac}" >&2
+    done
+    warn "Proceeding with ${#FOUND_MACS[@]} device(s)..."
+    echo >&2
+  fi
 fi
 
 DEVICE_COUNT=$(echo "$HOSTNAMES" | wc -l | tr -d ' ')
@@ -781,7 +925,11 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
         [[ -n "$NEW_CONFIG_HASH" ]] && ok "Build config_hash: ${NEW_CONFIG_HASH}"
       else
         printf " ${RED}✗${RST}\n" >&2
-        err "Compilation failed — see log: $COMPILE_LOG_FILE"
+        err "Compilation failed:"
+        echo
+        cat "$COMPILE_LOG"
+        echo
+        err "Full log: $COMPILE_LOG_FILE"
         exit 1
       fi
     fi
@@ -803,6 +951,13 @@ if [[ -n "$RENAME_DEVICE_TO" ]]; then
 
   ARTIFACTS_DIR=".esphome/artifacts"
   mkdir -p "$ARTIFACTS_DIR"
+
+  # Copy secrets.yaml so ESPHome can find it from artifacts directory
+  if [[ -f "secrets.yaml" ]]; then
+    rm -f "$ARTIFACTS_DIR/secrets.yaml"
+    cp "secrets.yaml" "$ARTIFACTS_DIR/secrets.yaml"
+  fi
+
   TEMP_YAML="${ARTIFACTS_DIR}/.temp-rename-$$.yaml"
   trap 'rm -f "$TEMP_YAML"' EXIT
 
@@ -1032,6 +1187,24 @@ else
   if [[ "$DRY_RUN" == true ]]; then
     echo
     warn "Dry run — no OTA devices will be flashed."
+
+    # In reassign mode, still show entity inconsistencies even in dry-run
+    if [[ "$REASSIGN_MODE" == true ]]; then
+      echo
+      echo "════════════════════════════════════════════════════════"
+      CONSISTENCY_OUTPUT=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$BASE_NAME" "$HOSTNAMES" 2>&1)
+      if [[ -n "$CONSISTENCY_OUTPUT" ]]; then
+        if echo "$CONSISTENCY_OUTPUT" | grep -q "WARNING"; then
+          warn "Entity ID inconsistencies would need fixing:"
+          echo "$CONSISTENCY_OUTPUT" | grep -v "^WARNING:" | sed 's/^/  /'
+        else
+          ok "Entity ID consistency: All entity IDs match device names"
+        fi
+      else
+        dim "(Entity ID consistency check skipped — websocket-client not installed)"
+      fi
+      echo "════════════════════════════════════════════════════════"
+    fi
     exit 0
   fi
   echo
@@ -1058,7 +1231,11 @@ if [[ "$COMPILED" == false ]]; then
       printf " ${GRN}✓${RST}\n" >&2
     else
       printf " ${RED}✗${RST}\n" >&2
-      err "Compilation failed — see log: $COMPILE_LOG_FILE"
+      err "Compilation failed:"
+      echo
+      cat "$COMPILE_LOG"
+      echo
+      err "Full log: $COMPILE_LOG_FILE"
       exit 1
     fi
   fi
@@ -1222,10 +1399,11 @@ printf " %d device(s): " "$total"
 echo
 echo "════════════════════════════════════════════════════════"
 
-# Recreate entity IDs for flashed devices, or force-update if requested
-if [[ ${#OK_LIST[@]} -gt 0 ]] || [[ "$FORCE_UPDATE_ENTITIES" == true ]]; then
+# Recreate entity IDs for flashed devices, force-update if requested, or all devices in reassign mode
+# In dry-run mode, skip recreation but still verify consistency below
+if [[ "$DRY_RUN" == false ]] && ([[ ${#OK_LIST[@]} -gt 0 ]] || [[ "$FORCE_UPDATE_ENTITIES" == true ]] || [[ "$REASSIGN_MODE" == true ]]); then
   ENTITIES_TO_UPDATE=""
-  if [[ "$FORCE_UPDATE_ENTITIES" == true ]]; then
+  if [[ "$FORCE_UPDATE_ENTITIES" == true ]] || [[ "$REASSIGN_MODE" == true ]]; then
     ENTITIES_TO_UPDATE="$HOSTNAMES"
   else
     ENTITIES_TO_UPDATE="$(printf '%s ' "${OK_LIST[@]}")"
@@ -1233,13 +1411,18 @@ if [[ ${#OK_LIST[@]} -gt 0 ]] || [[ "$FORCE_UPDATE_ENTITIES" == true ]]; then
   recreate_entity_ids "$HA_URL" "$HA_TOKEN" "$ENTITIES_TO_UPDATE"
 fi
 
-# Verify entity ID consistency for all discovered devices (always)
+# Verify entity ID consistency for all discovered devices (always, even in dry-run)
 echo
 echo "════════════════════════════════════════════════════════"
 CONSISTENCY_OUTPUT=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$BASE_NAME" "$HOSTNAMES" 2>&1)
 if [[ -n "$CONSISTENCY_OUTPUT" ]]; then
   if echo "$CONSISTENCY_OUTPUT" | grep -q "WARNING"; then
-    echo "$CONSISTENCY_OUTPUT"
+    if [[ "$DRY_RUN" == true ]]; then
+      warn "Entity ID inconsistencies would need fixing:"
+      echo "$CONSISTENCY_OUTPUT" | grep -v "^WARNING:" | sed 's/^/  /'
+    else
+      echo "$CONSISTENCY_OUTPUT"
+    fi
   else
     ok "Entity ID consistency: All entity IDs match device names"
   fi
