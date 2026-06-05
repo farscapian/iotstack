@@ -61,7 +61,21 @@
       "WebFetch(domain:esphome.io)",
       "Bash(chmod +x /home/derek/Sync/mini_projects/esp32/esphome/generate_role_mappings.sh)",
       "Bash(./generate_role_mappings.sh)",
-      "Bash(git commit -m 'refactor: Auto-generate role_id_map from YAML configs *)"
+      "Bash(git commit -m 'refactor: Auto-generate role_id_map from YAML configs *)",
+      "Bash(grep -n '\"$ESPHOME_BIN\" compile' /home/derek/Sync/mini_projects/esp32/esphome/update_devices.sh)",
+      "Bash(./update_devices.sh --reassign 19b164 ./wifi/esp32c6-wifi-mmwave.yaml)",
+      "Bash(timeout 10 bash -x /home/derek/Sync/mini_projects/esp32/esphome/update_devices.sh --reassign 19b164 ./wifi/esp32c6-wifi-mmwave.yaml)",
+      "Bash(sed -n '857,860p' /home/derek/Sync/mini_projects/esp32/esphome/update_devices.sh)",
+      "Bash(sed -n '938,943p' /home/derek/Sync/mini_projects/esp32/esphome/update_devices.sh)",
+      "Bash(awk '/^if \\\\[\\\\[.*HA_URL.*HA_TOKEN/,/^fi$/ { print NR\": \"$0 }' /home/derek/Sync/mini_projects/esp32/esphome/update_devices.sh)",
+      "Bash(/bin/bash -x /home/derek/Sync/mini_projects/esp32/esphome/update_devices.sh --reassign 19b164 ./wifi/esp32c6-wifi-mmwave.yaml)",
+      "Bash(grep -n \"^if \\\\|^else\\\\|^elif\\\\|^fi$\" /home/derek/Sync/mini_projects/esp32/esphome/update_devices.sh)",
+      "Bash(grep -n \"if \\\\[\\\\[.*SECRETS_FILE\\\\|^fi$\\\\|if false\\\\|elif.*HA_URL\\\\|^else$\" /home/derek/Sync/mini_projects/esp32/esphome/update_devices.sh)",
+      "Bash(timeout 30 ./update_devices.sh --reassign 199ef4 ./wifi/esp32c6-wifi-mmwave.yaml --dry-run)",
+      "Bash(timeout 60 ./update_devices.sh --reassign 199ef4 ./wifi/esp32c6-wifi-mmwave.yaml)",
+      "Bash(./update_devices.sh --reassign 199ef4 ./wifi/esp32c6-wifi-mmwave.yaml)",
+      "Bash(bash ./update_devices.sh --help)",
+      "Bash(bash ./update_devices.sh --reassign 8dfcac 0f4df4 ./wifi/esp32c6-wifi-bleproxy.yaml)"
     ],
     "additionalDirectories": [
       "/home/derek/.claude/projects/-home-derek-Sync-mini-projects-esp32-esphome"

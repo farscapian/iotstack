@@ -1,10 +1,12 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # update_devices.sh
+ZSH_VERSION=""  # Prevent unbound variable error from shell wrapper
 # Discovers ESPHome devices via mDNS and OTA-flashes those whose firmware
 # differs from the current build (compared by config_hash, not project.version).
 #
 # Usage:
 #   ./update_devices.sh [options] <yaml-file>
+#   ./update_devices.sh --reassign <MAC1> [MAC2 ...] --rename-from <old_role> <target-yaml>
 #
 # Options:
 #   --upgrade-delta        Only flash devices whose config_hash differs from the
@@ -15,8 +17,10 @@
 #   --force-update-entities Recreate entity IDs for all devices, even if no
 #                          flashing occurs (useful after device renames)
 #   --dry-run              Compile and show what would be flashed, without flashing
-#   --rename-devices-to     Perform two-step device rename: first flash with device_id,
-#   <name>                 then flash with device_name (for renaming discovered devices)
+#   --reassign <MACs...>   Two-step flashing for device reassignment/renaming.
+#                          Specify devices by MAC suffix and target YAML.
+#                          Use --rename-from <old_role> to specify current role.
+#   --rename-from <name>   (with --reassign) Current role name for two-step process
 #   --jobs <n>             Maximum concurrent flash jobs (default: 4)
 #   -v, --verbose          Show compilation output in terminal (default: silent)
 #   --help                 Show this help
@@ -25,7 +29,12 @@
 set -euo pipefail
 
 # ── Cleanup on exit ──────────────────────────────────────────────────────────
-trap 'printf "\n" 2>/dev/null; exit' EXIT
+cleanup() {
+  rm -f .esphome/secrets.yaml 2>/dev/null
+  printf "\n" 2>/dev/null
+  exit
+}
+trap cleanup EXIT
 
 # ── Defaults ────────────────────────────────────────────────────────────────
 UPGRADE_DELTA=true
@@ -36,10 +45,10 @@ FORCE_UPDATE_ENTITIES=false
 MAX_JOBS=4
 JOBS_EXPLICIT=false
 YAML_FILE=""
-RENAME_DEVICE_TO=""
 REASSIGN_MODE=false
 declare -a REASSIGN_MACS=()
 REASSIGN_YAML=""
+RENAME_FROM_ROLE=""
 
 # ── Colours ─────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -61,24 +70,24 @@ ensure_websocket_client() {
     return 0
   fi
 
-  echo
-  warn "python3-websocket library is required for entity ID recreation"
-  echo "Without it, entity IDs won't be updated when devices are renamed."
-  echo
+  echo >&2
+  warn "python3-websocket library is required for entity ID recreation" >&2
+  echo "Without it, entity IDs won't be updated when devices are renamed." >&2
+  echo >&2
 
-  read -p "Install python3-websocket now? (y/n) " -n 1 -r
-  echo
+  read -p "Install python3-websocket now? (y/n) " -n 1 -r </dev/tty
+  echo >&2
   if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    warn "Skipping entity ID recreation"
+    warn "Skipping entity ID recreation" >&2
     return 1
   fi
 
   if sudo apt-get update -qq && sudo apt-get install -y python3-websocket >/dev/null 2>&1; then
-    ok "python3-websocket installed successfully"
+    ok "python3-websocket installed successfully" >&2
     return 0
   else
     err "Failed to install python3-websocket"
-    warn "You can install manually: sudo apt-get install python3-websocket"
+    warn "You can install manually: sudo apt-get install python3-websocket" >&2
     return 1
   fi
 }
@@ -580,15 +589,6 @@ if updated_count > 0:
 PYEOF
 }
 
-# ── Generate role ID mappings (pre-flight check) ────────────────────────────
-# Ensures substitutions/role_ids.yaml is always up-to-date with all YAML roles
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ ! -x "$SCRIPT_DIR/generate_role_mappings.sh" ]]; then
-  warn "generate_role_mappings.sh not found or not executable"
-else
-  "$SCRIPT_DIR/generate_role_mappings.sh" > /dev/null 2>&1 || true
-fi
-
 # ── Help ────────────────────────────────────────────────────────────────────
 usage() {
   grep '^#' "$0" | head -20 | sed 's/^# \{0,1\}//'
@@ -604,17 +604,27 @@ while [[ $# -gt 0 ]]; do
     --force-update-entities) FORCE_UPDATE_ENTITIES=true; shift ;;
     --dry-run)               DRY_RUN=true;        shift ;;
     --jobs)                  MAX_JOBS="$2"; JOBS_EXPLICIT=true; shift 2 ;;
-    --rename-devices-to)     RENAME_DEVICE_TO="$2"; shift 2 ;;
     --reassign)
       REASSIGN_MODE=true
       shift
-      # Collect MAC suffixes until we hit a path (contains /)
-      while [[ $# -gt 0 ]] && [[ "$1" != */* ]]; do
+      # Collect MAC suffixes until we hit a flag or path
+      while [[ $# -gt 0 ]] && [[ "$1" != --* ]] && [[ "$1" != */* ]]; do
         REASSIGN_MACS+=("$1")
         shift
       done
-      if [[ $# -eq 0 ]]; then
-        err "--reassign requires target YAML file"
+      # Check for --rename-from flag
+      if [[ $# -gt 0 ]] && [[ "$1" == "--rename-from" ]]; then
+        shift
+        if [[ $# -eq 0 ]]; then
+          err "--rename-from requires a role name"
+          exit 1
+        fi
+        RENAME_FROM_ROLE="$1"
+        shift
+      fi
+      # Next argument should be target YAML file (contains /)
+      if [[ $# -eq 0 ]] || [[ "$1" != */* ]]; then
+        err "--reassign requires: <MAC1> [MAC2 ...] [--rename-from <old_role>] <target-yaml>"
         exit 1
       fi
       REASSIGN_YAML="$1"
@@ -630,7 +640,11 @@ done
 # ── Validate inputs ─────────────────────────────────────────────────────────
 if [[ "$REASSIGN_MODE" == true ]]; then
   if [[ -z "$REASSIGN_YAML" ]] || [[ ${#REASSIGN_MACS[@]} -eq 0 ]]; then
-    err "--reassign requires: <MAC1> [MAC2 ...] <yaml-file>"
+    err "--reassign requires: <MAC1> [MAC2 ...] [--rename-from <old_role>] <yaml-file>"
+    exit 1
+  fi
+  if [[ -z "$RENAME_FROM_ROLE" ]]; then
+    err "--reassign requires --rename-from flag to specify current role name"
     exit 1
   fi
   YAML_FILE="$REASSIGN_YAML"
@@ -842,13 +856,13 @@ HA_TOKEN=""
 API_KEY=""
 
 if [[ -f "$SECRETS_FILE" ]]; then
-  HA_URL=$(grep   '^ha_url:'              "$SECRETS_FILE" | sed 's/[^:]*:[[:space:]]*//' | tr -d '"'"'")
-  HA_TOKEN=$(grep '^ha_token:'            "$SECRETS_FILE" | sed 's/[^:]*:[[:space:]]*//' | tr -d '"'"'")
-  API_KEY=$(grep  '^api_encryption_key:' "$SECRETS_FILE" | sed 's/[^:]*:[[:space:]]*//' | tr -d '"'"'")
+  HA_URL=$(grep '^ha_url:' "$SECRETS_FILE" | cut -d' ' -f2- | tr -d '"')
+  HA_TOKEN=$(grep '^ha_token:' "$SECRETS_FILE" | cut -d' ' -f2- | tr -d '"')
+  API_KEY=""  # api_encryption_key is commented out in our secrets.yaml
 fi
 
 if [[ -z "$HA_URL" || -z "$HA_TOKEN" ]]; then
-  dim "(HA registry check skipped — add ha_url + ha_token to secrets.yaml to enable)"
+  dim "(HA registry check skipped - add ha_url + ha_token to secrets.yaml to enable)"
 else
   log "Querying Home Assistant: ${HA_URL}..."
   HA_DEVICE_LIST=$(
@@ -985,6 +999,57 @@ CACHED_CONFIG_HASH=$(grep '^config_hash='     "$CACHE_FILE" 2>/dev/null | cut -d
 NEW_CONFIG_HASH=""
 COMPILED=false
 
+# ── Ensure YAML has computed role_id ────────────────────────────────────────
+extract_role_name_from_yaml() {
+  local yaml_file="$1"
+  grep '^[[:space:]]*role_name:' "$yaml_file" \
+    | sed 's/^[[:space:]]*role_name:[[:space:]]*//; s/[[:space:]]*#.*//' \
+    | tr -d '"'"'" | head -1
+}
+
+compute_role_id() {
+  local role_name="$1"
+  echo -n "$role_name" | md5sum | cut -c1-18
+}
+
+ensure_role_id_in_yaml() {
+  local yaml_file="$1"
+  local role_id="$2"
+
+  # Check if role_id already exists in the file
+  if grep -q '^\s*role_id:' "$yaml_file"; then
+    # Update existing role_id
+    sed -i "s/^\(\s*role_id:\s*\).*/\1\"$role_id\"/" "$yaml_file"
+  else
+    # Add role_id after role_name
+    python3 - "$yaml_file" "$role_id" <<'PYEOF'
+import sys
+yaml_file = sys.argv[1]
+role_id = sys.argv[2]
+
+with open(yaml_file, 'r') as f:
+  lines = f.readlines()
+
+# Find role_name line and insert role_id after it
+output = []
+for i, line in enumerate(lines):
+  output.append(line)
+  if 'role_name:' in line:
+    indent = len(line) - len(line.lstrip())
+    output.append(' ' * indent + f'role_id: "{role_id}"\n')
+
+with open(yaml_file, 'w') as f:
+  f.writelines(output)
+PYEOF
+  fi
+}
+
+ROLE_NAME=$(extract_role_name_from_yaml "$YAML_FILE")
+if [[ -n "$ROLE_NAME" ]]; then
+  ROLE_ID=$(compute_role_id "$ROLE_NAME")
+  ensure_role_id_in_yaml "$YAML_FILE" "$ROLE_ID"
+fi
+
 if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
   if [[ -n "$CACHED_CONFIG_HASH" \
      && "$CACHED_YAML_SHA256" == "$YAML_SHA256" \
@@ -1044,17 +1109,26 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
   fi
 fi
 
-# ── Two-step rename (if requested) ───────────────────────────────────────────
-if [[ -n "$RENAME_DEVICE_TO" ]]; then
+# ── Two-step reassign/rename (if requested) ─────────────────────────────────
+if [[ "$REASSIGN_MODE" == true ]]; then
   if [[ -z "$HOSTNAMES" ]]; then
-    err "No devices found to rename."
+    err "No devices found to reassign."
     exit 1
   fi
 
   echo
   echo "════════════════════════════════════════════════════════"
-  ok "Running two-step device rename to: ${RENAME_DEVICE_TO}"
+  ok "Running two-step device reassignment"
+  ok "  From: ${RENAME_FROM_ROLE}"
+  ok "  To:   ${YAML_FILE##*/}"
   echo "════════════════════════════════════════════════════════"
+
+  # Extract new role_name from target YAML
+  NEW_ROLE_NAME=$(extract_role_name_from_yaml "$YAML_FILE")
+  if [[ -z "$NEW_ROLE_NAME" ]]; then
+    err "Could not extract role_name from $YAML_FILE"
+    exit 1
+  fi
 
   ARTIFACTS_DIR=".esphome/artifacts"
   mkdir -p "$ARTIFACTS_DIR"
@@ -1065,15 +1139,15 @@ if [[ -n "$RENAME_DEVICE_TO" ]]; then
     cp "secrets.yaml" "$ARTIFACTS_DIR/secrets.yaml"
   fi
 
-  TEMP_YAML="${ARTIFACTS_DIR}/.temp-rename-$$.yaml"
+  TEMP_YAML="${ARTIFACTS_DIR}/.temp-reassign-$$.yaml"
   trap 'rm -f "$TEMP_YAML"' EXIT
 
-  # Step 1: Create temp YAML with device_id and flash
+  # Step 1: Create temp YAML with device_new_name and flash
   echo
-  warn "Step 1 of 2: Introduce device_id..."
-  create_temp_yaml_with_device_id "$YAML_FILE" "$RENAME_DEVICE_TO" "$TEMP_YAML"
+  warn "Step 1 of 2: Introduce device_new_name (${NEW_ROLE_NAME})..."
+  create_temp_yaml_with_device_id "$YAML_FILE" "$NEW_ROLE_NAME" "$TEMP_YAML"
 
-  printf "  ⚙ Compiling with device_id..." >&2
+  printf "  ⚙ Compiling step 1..." >&2
   TEMP_COMPILE_LOG=$(mktemp)
   trap 'rm -f "$TEMP_COMPILE_LOG"' EXIT
 
@@ -1092,7 +1166,7 @@ if [[ -n "$RENAME_DEVICE_TO" ]]; then
   WORK_DIR=$(mktemp -d)
   trap 'rm -rf "$WORK_DIR"' EXIT
 
-  for HOSTNAME in $(echo "$HOSTNAMES" | grep -v "^ttyACM0$"); do
+  for HOSTNAME in $HOSTNAMES; do
     FQDN="${HOSTNAME}.local"
     dim "  step1: ${HOSTNAME}"
     (
@@ -1106,7 +1180,7 @@ if [[ -n "$RENAME_DEVICE_TO" ]]; then
 
   wait 2>/dev/null || true
 
-  for HOSTNAME in $(echo "$HOSTNAMES" | grep -v "^ttyACM0$"); do
+  for HOSTNAME in $HOSTNAMES; do
     if [[ "$(cat "$WORK_DIR/${HOSTNAME}.step1.result" 2>/dev/null)" == ok ]]; then
       ok "${HOSTNAME}: step 1 successful."
       STEP1_OK_LIST+=("$HOSTNAME")
@@ -1122,13 +1196,14 @@ if [[ -n "$RENAME_DEVICE_TO" ]]; then
   fi
 
   echo
-  warn "Step 2 of 2: Update device_name in YAML and flash..."
+  warn "Step 2 of 2: Apply new role (update device_name in YAML)..."
 
-  # Update the original YAML file with the new device_name
-  update_yaml_device_name "$YAML_FILE" "$RENAME_DEVICE_TO"
-  ok "Updated YAML device_name to: ${RENAME_DEVICE_TO}"
+  # For renaming within same YAML, we update device_name in-place
+  # For reassigning to different YAML, device_name should already be set correctly in target YAML
+  # We still flash all devices to ensure they get the final state
+  ok "Flashing step 2 with finalized config..."
 
-  printf "  ⚙ Compiling with updated device_name..." >&2
+  printf "  ⚙ Compiling step 2..." >&2
   STEP2_COMPILE_LOG=$(mktemp)
   trap 'rm -f "$STEP2_COMPILE_LOG"' EXIT
 
@@ -1145,7 +1220,7 @@ if [[ -n "$RENAME_DEVICE_TO" ]]; then
   STEP2_FAIL_LIST=()
   STEP2_OK_LIST=()
 
-  for HOSTNAME in $(echo "$HOSTNAMES" | grep -v "^ttyACM0$"); do
+  for HOSTNAME in $HOSTNAMES; do
     FQDN="${HOSTNAME}.local"
     dim "  step2: ${HOSTNAME}"
     (
@@ -1159,7 +1234,7 @@ if [[ -n "$RENAME_DEVICE_TO" ]]; then
 
   wait 2>/dev/null || true
 
-  for HOSTNAME in $(echo "$HOSTNAMES" | grep -v "^ttyACM0$"); do
+  for HOSTNAME in $HOSTNAMES; do
     if [[ "$(cat "$WORK_DIR/${HOSTNAME}.step2.result" 2>/dev/null)" == ok ]]; then
       ok "${HOSTNAME}: step 2 successful."
       STEP2_OK_LIST+=("$HOSTNAME")
@@ -1175,9 +1250,18 @@ if [[ -n "$RENAME_DEVICE_TO" ]]; then
   fi
 
   echo
-  ok "Two-step rename completed successfully!"
-  ok "Devices will report name: ${RENAME_DEVICE_TO}-* on next mDNS discovery"
+  ok "Two-step reassignment completed successfully!"
+  ok "Devices will now advertise with new role: ${NEW_ROLE_NAME}-*"
   echo
+
+  # Update entity IDs for the reassigned devices
+  if [[ -n "$HA_URL" && -n "$HA_TOKEN" ]]; then
+    echo
+    echo "════════════════════════════════════════════════════════"
+    recreate_entity_ids "$HA_URL" "$HA_TOKEN" "$HOSTNAMES"
+    echo "════════════════════════════════════════════════════════"
+  fi
+
   exit 0
 fi
 

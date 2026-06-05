@@ -20,14 +20,26 @@ The `update_devices.sh` script is a batch OTA flash tool for managing multiple E
 
 ### YAML Substitution Handling
 - Script parses the `substitutions:` block into a bash associative array
-- Resolves `${var}` references in: device_name, friendly_name, project name/version
-- Example:
+- Resolves `${var}` references in: friendly_name, project name/version
+- **Role-based stable UUIDs**: Script extracts `role:` substitution and computes role_id via MD5 truncation:
+  ```bash
+  role_name="esp32c6-wifi-bleproxy"  # Read from YAML, not injected
+  role_id=$(echo -n "$role_name" | md5sum | cut -c1-18)
+  # Result: f9ae844f309077c78b
+  ```
+- Only `role_id` is injected at compile time via `-s` flag (computed on the fly):
+  ```bash
+  esphome compile <yaml> -s role_id "f9ae844f309077c78b"
+  ```
+- Example YAML:
   ```yaml
   substitutions:
-    device_name: "esp32c6-wifi-bleproxy"
+    role_name: "esp32c6-wifi-bleproxy"  # Stays in YAML, not overridden
+    role_id: "f9ae844f309077c78b"        # Default value, overridden by -s at compile time
     friendly_name: "WiFi BLEProxy"
   esphome:
-    name: ${device_name}  # resolved to "esp32c6-wifi-bleproxy"
+    name: ${role_id}                      # Device announces as: role_id-MAC
+    name_add_mac_suffix: true
   ```
 
 ## Features
@@ -38,33 +50,38 @@ The `update_devices.sh` script is a batch OTA flash tool for managing multiple E
 - `--no-upgrade-delta` forces flash all devices
 - Fallback to `project_version` comparison if config_hash unavailable
 
-### 2. Device Renaming (`--rename-device-to <name>`)
-Two-step process for renaming devices without hardcoding old names:
-
-**Step 1: Introduce device_new_name**
-- Creates temp YAML with `device_new_name: "<new_name>"` injected
-- Updates `project.name` to use `${device_new_name}` instead of `${device_name}`
-- Flashes all discovered devices with temp YAML
-- Devices don't change their advertised mDNS name yet
-
-**Step 2: Apply new device_name**
-- Updates original YAML file's `device_name: "<new_name>"`
-- Compiles and flashes with updated YAML
-- Devices now report new name in mDNS (with MAC suffix if `name_add_mac_suffix: true`)
-
-**Why two steps:** Ensures all devices use consistent identity before updating their advertised name.
-
-### 3. Device Role Reassignment (`--reassign <MAC1> [MAC2 ...] <yaml>`)
-Moves devices between YAML configurations by MAC suffix:
+### 2. Device Reassignment & Renaming (`--reassign <MACs...> --rename-from <old_role> <target_yaml>`)
+Unified two-step process for moving devices between roles or renaming within a role:
 
 ```bash
-./update_devices.sh --reassign 19b164 199ef4 ./wifi/esp32c6-wifi-mmwave.yaml
+# Move devices to a different role
+./update_devices.sh --reassign 19b164 199ef4 --rename-from esp32c6-wifi-bleproxy ./wifi/esp32c6-wifi-mmwave.yaml
+
+# Rename devices within same role
+./update_devices.sh --reassign 8dfcac 0f4df4 --rename-from esp32c6-wifi-bleproxy ./wifi/esp32c6-wifi-bleproxy.yaml
 ```
 
-- Discovers ALL devices (not filtered by device_name)
-- Filters to only specified MAC suffixes
+**Arguments:**
+- `<MACs...>`: One or more MAC suffixes (space-separated)
+- `--rename-from <old_role>`: Current role name (for two-step process)
+- `<target_yaml>`: Target YAML file
+
+**Two-step process:**
+1. **Step 1: Introduce device_new_name**
+   - Creates temp YAML with `device_new_name` injected (from target YAML's `role_name`)
+   - Updates `project.name` to use `${device_new_name}` instead of `${device_name}`
+   - Flashes specified devices with temp YAML
+   - Devices don't change their advertised mDNS name yet
+
+2. **Step 2: Apply final state**
+   - Compiles and flashes target YAML (final, permanent config)
+   - Devices now report new name in mDNS (with MAC suffix if `name_add_mac_suffix: true`)
+   - Updates Home Assistant entity IDs automatically
+
+**Behavior:**
+- Discovers ALL devices on network, filters to specified MACs only
 - Warns if any requested MACs are offline
-- Asks for confirmation before continuing with partial device set
+- Role_id remains stable throughout reassignment, preserving Home Assistant entity IDs
 
 ### 4. Home Assistant Integration
 - Uses WebSocket API (NOT REST API — REST endpoints are internal, not public)
@@ -115,7 +132,8 @@ This is used in the `--reassign` offline device warning and the websocket client
 - `secrets.yaml` is copied to artifacts directory so ESPHome can find it
 - Dangling symlinks are removed before copying: `rm -f .esphome/artifacts/secrets.yaml`
 - Temp files are cleaned up on script exit via `trap` handler
-- Pattern: `.temp-rename-<PID>.yaml` is gitignored
+- Pattern: `.temp-reassign-<PID>.yaml` is gitignored
+- `secrets.yaml` copy is deleted after script completion to avoid accumulation
 
 ### Project.name Regex Handling
 The `project.name` field in YAML can be quoted or unquoted:
@@ -154,24 +172,28 @@ r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)'
 
 ### WiFi BLE Proxy
 - YAML: `wifi/c6-wifi-bleproxy.yaml`
-- Device name: `esp32c6-wifi-bleproxy`
-- Project: `farscapian.esp32c6-wifi-bleproxy`
+- Role: `esp32c6-wifi-bleproxy`
+- Role ID: `f9ae844f309077c78b` (computed from MD5)
+- Project: `farscapian.WiFi BLEProxy`
 - Board: ESP32-C6
-- Example mDNS: `esp32c6-wifi-bleproxy-19b164`
+- Example mDNS: `f9ae844f309077c78b-19b164` (role_id-MAC suffix)
 
 ### Thread Router
 - YAML: `thread/c6-thread-router.yaml`
-- Device name: `c6-thread-router`
-- Project: `farscapian.c6-thread-router`
+- Role: `c6-thread-router`
+- Role ID: `6b671191303c9a2979` (computed from MD5)
+- Project: `farscapian.Thread Router`
 - Board: ESP32-C6
 - Network: Thread (IPv6)
 - Force `--jobs 1` (Thread OTA is slow)
-- Example mDNS: `thread-router-135b60`
+- Example mDNS: `6b671191303c9a2979-135b60` (role_id-MAC suffix)
 
 ### WiFi mmWave (Multi-Purpose)
 - YAML: `wifi/esp32c6-wifi-mmwave.yaml`
-- Supports renaming via `--rename-device-to`
-- Supports reassignment via `--reassign`
+- Role: `esp32c6-wifi-mmwave`
+- Role ID: `a44bb2f755825e3280` (computed from MD5)
+- Supports reassignment and renaming via `--reassign --rename-from`
+- Role ID remains stable across reassignments (preserves HA entity IDs)
 
 ## Testing Checklist
 
