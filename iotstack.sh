@@ -19,11 +19,77 @@ info() { echo -e "${BLU}[INFO]${RST} $*"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UPDATE_SCRIPT="${SCRIPT_DIR}/update_devices.sh"
+DEVICES_CONF="${SCRIPT_DIR}/iotstack-devices.conf"
 
 # Check if update_devices.sh exists
 if [[ ! -f "$UPDATE_SCRIPT" ]]; then
   err "update_devices.sh not found at $UPDATE_SCRIPT"
 fi
+
+# ── Device Mapping ─────────────────────────────────────────────────────────────
+# Load device mappings from iotstack-devices.conf
+declare -A DEVICE_MAP
+
+load_device_mappings() {
+  if [[ ! -f "$DEVICES_CONF" ]]; then
+    err "iotstack-devices.conf not found at $DEVICES_CONF"
+  fi
+
+  while IFS='=' read -r device mapping; do
+    # Skip comments and empty lines
+    [[ "$device" =~ ^#.*$ ]] && continue
+    [[ -z "$device" ]] && continue
+
+    device=$(echo "$device" | xargs)  # trim whitespace
+    mapping=$(echo "$mapping" | xargs)
+
+    DEVICE_MAP["$device"]="$mapping"
+  done < "$DEVICES_CONF"
+}
+
+# Resolve device name to YAML path
+# Args: device_name [--thread]
+# Returns: yaml file path
+resolve_device() {
+  local device_name="$1"
+  local use_thread="${2:-}"
+
+  if [[ ! -v DEVICE_MAP["$device_name"] ]]; then
+    err "Unknown device: $device_name"
+  fi
+
+  local mapping="${DEVICE_MAP[$device_name]}"
+  local wifi_yaml="${mapping%%:*}"
+  local thread_yaml="${mapping##*:}"
+
+  # Decide which variant to use
+  if [[ "$use_thread" == "--thread" ]]; then
+    if [[ -z "$thread_yaml" ]]; then
+      err "Device '$device_name' does not have a Thread variant"
+    fi
+    echo "$thread_yaml"
+  else
+    if [[ -z "$wifi_yaml" ]]; then
+      err "Device '$device_name' does not have a WiFi variant"
+    fi
+    echo "$wifi_yaml"
+  fi
+}
+
+# List available device names
+list_device_names() {
+  local devices=()
+  for device in "${!DEVICE_MAP[@]}"; do
+    [[ "$device" != "" ]] && devices+=("$device")
+  done
+
+  # Sort and print
+  for device in $(printf '%s\n' "${devices[@]}" | sort); do
+    echo "$device"
+  done
+}
+
+load_device_mappings
 
 # ── Subcommands ──────────────────────────────────────────────────────────────
 
@@ -32,64 +98,76 @@ usage() {
 iotstack — Manage IoT Stack ESPHome Devices
 
 Usage:
-  iotstack update [options] [<yaml>|all]
-  iotstack verify [<yaml>|all]
+  iotstack update [options] [<device>|<yaml>|all] [--thread]
+  iotstack verify [<device>|<yaml>|all] [--thread]
+  iotstack reassign <MAC1> [MAC2 ...] --rename-from <role> [<device>|<yaml>]
   iotstack list
+  iotstack devices
   iotstack help [command]
 
 Commands:
 
-  update [<yaml>|all]
+  update [<device>|<yaml>|all]
     Compile and flash device(s) over-the-air (OTA).
     - Detects devices on network automatically
     - Only flashes devices that need updates (delta mode)
     Examples:
-      iotstack update wifi/esp32c6-wifi-bleproxy.yaml
+      iotstack update bleproxy              # update WiFi variant (default)
+      iotstack update bleproxy --thread     # update Thread variant
       iotstack update all
-      iotstack update --dry-run wifi/esp32c6-wifi-mmwave.yaml
+      iotstack update --dry-run mmwave
 
-  update --reassign <MAC1> [MAC2 ...] --rename-from <old_role> <yaml>
+  reassign <MAC1> [MAC2 ...] --rename-from <role> [<device>|<yaml>]
+    Alias for: iotstack update --reassign <MACs...> --rename-from <role> <device/yaml>
     Two-step process: reassign devices to a different role or rename within role.
-    Example:
-      iotstack update --reassign 8dfcac 0f4df4 \
-        --rename-from esp32c6-wifi-bleproxy \
-        wifi/esp32c6-wifi-bleproxy.yaml
+    Examples:
+      iotstack reassign 8dfcac 0f4df4 --rename-from esp32c6-wifi-bleproxy bleproxy
+      iotstack reassign 8dfcac --rename-from esp32c6-wifi-bleproxy wifi/esp32c6-wifi-bleproxy.yaml
 
-  verify [<yaml>|all]
+  verify [<device>|<yaml>|all]
     Check if devices match the current build hash (no flashing).
     Examples:
-      iotstack verify wifi/esp32c6-wifi-bleproxy.yaml
+      iotstack verify bleproxy
       iotstack verify all
+      iotstack verify thread_router --thread
 
   list
-    Show all available device configurations.
+    Show all available device configurations (full paths).
+
+  devices
+    Show all available device shortcuts (friendly names).
 
   help [command]
     Show help for a specific command.
 
-Update Options (used with 'update'):
-  --dry-run              Show what would be flashed without flashing
-  --no-upgrade-delta     Flash all devices even if already up-to-date
+Options:
+  --thread               Use Thread variant instead of WiFi (for devices with both)
+  --dry-run              Compile and show what would be flashed (no flashing)
+  --no-upgrade-delta     Flash all devices regardless of version
   --jobs N               Max concurrent flash jobs (default: 4)
   -v, --verbose          Show compilation output
 
 Examples:
-  # Update all BLE proxies
-  iotstack update wifi/esp32c6-wifi-bleproxy.yaml
+  # Update single device (WiFi default)
+  iotstack update bleproxy
 
-  # Update everything
+  # Update Thread variant
+  iotstack update router --thread
+
+  # Update all devices
   iotstack update all
 
-  # Preview updates without flashing
-  iotstack update --dry-run wifi/esp32c6-wifi-bleproxy.yaml
+  # Preview without flashing
+  iotstack update --dry-run mmwave
 
-  # Verify entire fleet is up-to-date
+  # Verify entire fleet
   iotstack verify all
 
-  # Reassign specific devices to a new role
-  iotstack update --reassign 8dfcac 0f4df4 \
-    --rename-from esp32c6-wifi-bleproxy \
-    wifi/esp32c6-wifi-bleproxy.yaml
+  # Reassign devices
+  iotstack reassign 8dfcac 0f4df4 --rename-from esp32c6-wifi-bleproxy bleproxy
+
+  # Show available device names
+  iotstack devices
 
 EOF
 }
@@ -200,30 +278,15 @@ list_devices() {
 # ── Command Handlers ─────────────────────────────────────────────────────────
 
 cmd_update() {
-  local yaml_file=""
-  local reassign_mode=false
-  declare -a reassign_macs=()
-  local rename_from_role=""
+  local device_or_yaml=""
+  local use_thread=""
   declare -a update_args=()
 
   # Parse arguments
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --reassign)
-        reassign_mode=true
-        shift
-        # Collect MAC suffixes
-        while [[ $# -gt 0 ]] && [[ "$1" != --* ]] && [[ "$1" != */* ]]; do
-          reassign_macs+=("$1")
-          shift
-        done
-        ;;
-      --rename-from)
-        shift
-        if [[ $# -eq 0 ]]; then
-          err "--rename-from requires a role name"
-        fi
-        rename_from_role="$1"
+      --thread)
+        use_thread="--thread"
         shift
         ;;
       --dry-run|--no-upgrade-delta|--verbose|-v|--jobs)
@@ -235,41 +298,32 @@ cmd_update() {
         shift
         ;;
       all)
-        yaml_file="all"
+        device_or_yaml="all"
         shift
         ;;
       *)
-        if [[ -z "$yaml_file" ]]; then
-          yaml_file="$1"
+        if [[ -z "$device_or_yaml" ]]; then
+          device_or_yaml="$1"
         fi
         shift
         ;;
     esac
   done
 
-  if [[ -z "$yaml_file" ]]; then
-    err "Usage: iotstack update [options] [<yaml>|all]"
+  if [[ -z "$device_or_yaml" ]]; then
+    err "Usage: iotstack update [options] [<device>|<yaml>|all] [--thread]"
   fi
 
-  # Handle reassign mode
-  if [[ "$reassign_mode" == true ]]; then
-    if [[ ${#reassign_macs[@]} -eq 0 ]] || [[ -z "$rename_from_role" ]]; then
-      err "Usage: iotstack update --reassign <MACs...> --rename-from <role> <yaml>"
-    fi
-
-    if [[ ! -f "$yaml_file" ]]; then
-      err "File not found: $yaml_file"
-    fi
-
-    info "Reassigning devices..."
-    echo "  MACs: ${reassign_macs[*]}"
-    echo "  From: $rename_from_role"
-    echo "  To:   $yaml_file"
-    echo
-
-    # Build and invoke update_devices.sh with reassign flags
-    "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" --rename-from "$rename_from_role" "${update_args[@]}" "$yaml_file"
-    return $?
+  # Resolve device name to YAML if needed
+  local yaml_file
+  if [[ "$device_or_yaml" == "all" ]]; then
+    yaml_file="all"
+  elif [[ -f "$device_or_yaml" ]]; then
+    # Already a file path
+    yaml_file="$device_or_yaml"
+  else
+    # Try to resolve as device name
+    yaml_file=$(resolve_device "$device_or_yaml" "$use_thread")
   fi
 
   # Handle normal update mode
@@ -312,11 +366,115 @@ cmd_update() {
   fi
 }
 
-cmd_verify() {
-  local yaml_file="${1:-}"
+cmd_reassign() {
+  local rename_from_role=""
+  local device_or_yaml=""
+  local use_thread=""
+  declare -a reassign_macs=()
+  declare -a update_args=()
 
-  if [[ -z "$yaml_file" ]]; then
-    err "Usage: iotstack verify [<yaml>|all]"
+  # Parse arguments: <MAC1> [MAC2 ...] --rename-from <role> [<device>|<yaml>]
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --rename-from)
+        shift
+        if [[ $# -eq 0 ]]; then
+          err "--rename-from requires a role name"
+        fi
+        rename_from_role="$1"
+        shift
+        ;;
+      --thread)
+        use_thread="--thread"
+        shift
+        ;;
+      --dry-run|--verbose|-v|--jobs)
+        update_args+=("$1")
+        if [[ "$1" == "--jobs" ]]; then
+          shift
+          update_args+=("$1")
+        fi
+        shift
+        ;;
+      *)
+        # If we don't have rename_from yet, collect MACs
+        if [[ -z "$rename_from_role" ]]; then
+          reassign_macs+=("$1")
+        else
+          # Once we have rename_from, rest is device/yaml
+          if [[ -z "$device_or_yaml" ]]; then
+            device_or_yaml="$1"
+          fi
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ ${#reassign_macs[@]} -eq 0 ]] || [[ -z "$rename_from_role" ]]; then
+    err "Usage: iotstack reassign <MAC1> [MAC2 ...] --rename-from <role> [<device>|<yaml>]"
+  fi
+
+  # If no device/yaml specified, try to infer from rename_from_role
+  if [[ -z "$device_or_yaml" ]]; then
+    err "Please specify a device or YAML file to reassign to"
+  fi
+
+  # Resolve device name to YAML if needed
+  local yaml_file
+  if [[ -f "$device_or_yaml" ]]; then
+    yaml_file="$device_or_yaml"
+  else
+    yaml_file=$(resolve_device "$device_or_yaml" "$use_thread")
+  fi
+
+  info "Reassigning devices..."
+  echo "  MACs: ${reassign_macs[*]}"
+  echo "  From: $rename_from_role"
+  echo "  To:   $yaml_file"
+  echo
+
+  # Build and invoke update_devices.sh with reassign flags
+  "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" --rename-from "$rename_from_role" "${update_args[@]}" "$yaml_file"
+  return $?
+}
+
+cmd_verify() {
+  local device_or_yaml=""
+  local use_thread=""
+
+  # Parse arguments
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --thread)
+        use_thread="--thread"
+        shift
+        ;;
+      all)
+        device_or_yaml="all"
+        shift
+        ;;
+      *)
+        if [[ -z "$device_or_yaml" ]]; then
+          device_or_yaml="$1"
+        fi
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "$device_or_yaml" ]]; then
+    err "Usage: iotstack verify [<device>|<yaml>|all] [--thread]"
+  fi
+
+  # Resolve device name to YAML if needed
+  local yaml_file
+  if [[ "$device_or_yaml" == "all" ]]; then
+    yaml_file="all"
+  elif [[ -f "$device_or_yaml" ]]; then
+    yaml_file="$device_or_yaml"
+  else
+    yaml_file=$(resolve_device "$device_or_yaml" "$use_thread")
   fi
 
   if [[ "$yaml_file" == "all" ]]; then
@@ -356,6 +514,27 @@ cmd_verify() {
   fi
 }
 
+cmd_devices() {
+  info "Available device shortcuts:"
+  echo
+  list_device_names | while read -r device; do
+    mapping="${DEVICE_MAP[$device]}"
+    wifi_yaml="${mapping%%:*}"
+    thread_yaml="${mapping##*:}"
+
+    printf "  ${GRN}%-15s${RST}" "$device"
+    if [[ -n "$wifi_yaml" ]]; then
+      printf " (wifi: %s)" "$wifi_yaml"
+    fi
+    if [[ -n "$thread_yaml" ]]; then
+      printf " (thread: %s)" "$thread_yaml"
+    fi
+    echo
+  done
+  echo
+  ok "Use 'iotstack help' for more information"
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 main() {
@@ -370,14 +549,22 @@ main() {
       shift
       cmd_verify "$@"
       ;;
+    reassign)
+      shift
+      cmd_reassign "$@"
+      ;;
     list)
       list_devices
+      ;;
+    devices)
+      cmd_devices
       ;;
     help)
       if [[ $# -gt 1 ]]; then
         case "$2" in
           update)  help_update ;;
           verify)  help_verify ;;
+          reassign) help_update ;; # reassign uses same help as update
           list)    help_list ;;
           *)       err "Unknown command: $2" ;;
         esac
