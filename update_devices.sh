@@ -677,7 +677,7 @@ fi
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 YAML_NAME="$(basename "${YAML_FILE%.yaml}")"
-BASE_LOG_DIR="${HOME}/.ancapistan/esphome/logs"
+BASE_LOG_DIR="${HOME}/.iotstack/logs"
 LOG_ROOT="${BASE_LOG_DIR}/${YAML_NAME}"
 RUN_TS="$(date '+%Y%m%d_%H%M%S')"
 COMPILE_LOG_FILE="${LOG_ROOT}/${RUN_TS}.compile.log"

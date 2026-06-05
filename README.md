@@ -249,7 +249,7 @@ To get your Home Assistant token:
 
 ### Logs (If Something Goes Wrong)
 
-When the script runs, it keeps detailed logs of what happened. These are stored in `~/.ancapistan/esphome/logs/` organized by device type.
+When the script runs, it keeps detailed logs of what happened. These are stored in `~/.iotstack/logs/` organized by device type.
 
 If an update fails, look here for error messages. The logs show:
 - Build errors (if the config has a problem)

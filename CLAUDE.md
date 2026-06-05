@@ -149,9 +149,9 @@ r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)'
 - `["\']?` matches optional quote (end)
 
 ### Logging Strategy
-- Compilation output goes to: `.ancapistan/esphome/logs/<device>/<timestamp>.compile.log`
-- Flash logs per device: `.ancapistan/esphome/logs/<device>/<timestamp>-<hash>/`
-- Build cache: `.ancapistan/esphome/logs/<device>.build.cache` (SHA256 + version)
+- Compilation output goes to: `~/.iotstack/logs/<device>/<timestamp>.compile.log`
+- Flash logs per device: `~/.iotstack/logs/<device>/<timestamp>-<hash>/`
+- Build cache: `~/.iotstack/logs/<device>.build.cache` (SHA256 + version)
 - Cache invalidated if YAML or ESPHome version changes
 
 ## Common Pitfalls & Solutions
