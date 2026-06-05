@@ -83,7 +83,7 @@ Unified two-step process for moving devices between roles or renaming within a r
 - Warns if any requested MACs are offline
 - Role_id remains stable throughout reassignment, preserving Home Assistant entity IDs
 
-### 4. Home Assistant Integration
+### 3. Home Assistant Integration
 - Uses WebSocket API (NOT REST API — REST endpoints are internal, not public)
 - Recreates entity IDs after device rename to reflect new device_name
 - Filters updates to ESPHome platform only (`platform == 'esphome'`)
@@ -92,11 +92,7 @@ Unified two-step process for moving devices between roles or renaming within a r
   - `config/entity_registry/list` — get all entities
   - `config/entity_registry/get_automatic_entity_ids` — compute new IDs for given device_name
   - `config/entity_registry/update` — update entity ID
-
-### 5. Entity ID Security
-- Only updates entities with `platform == 'esphome'`
-- Prevents accidental updates to beacon trackers, iBeacon integrations, etc.
-- Validates consistency before flashing
+- Entity ID security: only updates entities with `platform == 'esphome'`, preventing accidental updates to beacon trackers, iBeacon integrations, etc.
 
 ## Important Implementation Details
 
@@ -171,29 +167,29 @@ r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)'
 ## Device Types
 
 ### WiFi BLE Proxy
-- YAML: `wifi/c6-wifi-bleproxy.yaml`
+- YAML: `wifi/esp32c6-wifi-bleproxy.yaml`
 - Role: `esp32c6-wifi-bleproxy`
-- Role ID: `f9ae844f309077c78b` (computed from MD5)
+- Role ID: `f9ae844f309077c78b` (computed from MD5 of role_name)
 - Project: `farscapian.WiFi BLEProxy`
 - Board: ESP32-C6
-- Example mDNS: `f9ae844f309077c78b-19b164` (role_id-MAC suffix)
+- Example mDNS advertised name: `f9ae844f309077c78b-19b164` (role_id-MAC suffix)
 
 ### Thread Router
 - YAML: `thread/c6-thread-router.yaml`
 - Role: `c6-thread-router`
-- Role ID: `6b671191303c9a2979` (computed from MD5)
+- Role ID: `6b671191303c9a2979` (computed from MD5 of role_name)
 - Project: `farscapian.Thread Router`
 - Board: ESP32-C6
 - Network: Thread (IPv6)
-- Force `--jobs 1` (Thread OTA is slow)
-- Example mDNS: `6b671191303c9a2979-135b60` (role_id-MAC suffix)
+- Special handling: forces `--jobs 1` (Thread OTA is slow; parallelism causes mesh contention)
+- Example mDNS advertised name: `6b671191303c9a2979-135b60` (role_id-MAC suffix)
 
 ### WiFi mmWave (Multi-Purpose)
 - YAML: `wifi/esp32c6-wifi-mmwave.yaml`
 - Role: `esp32c6-wifi-mmwave`
-- Role ID: `a44bb2f755825e3280` (computed from MD5)
+- Role ID: `a44bb2f755825e3280` (computed from MD5 of role_name)
 - Supports reassignment and renaming via `--reassign --rename-from`
-- Role ID remains stable across reassignments (preserves HA entity IDs)
+- Role ID remains stable across reassignments (preserves Home Assistant entity IDs)
 
 ## Testing Checklist
 
