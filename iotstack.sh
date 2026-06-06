@@ -443,7 +443,6 @@ cmd_reassign() {
 
   info "Reassigning devices..."
   echo "  MACs: ${reassign_macs[*]}"
-  echo "  To:   $yaml_file"
   echo
 
   # Build and invoke update_devices.sh with reassign flags

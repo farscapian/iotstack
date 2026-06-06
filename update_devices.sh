@@ -1100,7 +1100,6 @@ if [[ "$REASSIGN_MODE" == true ]]; then
   echo
   echo "════════════════════════════════════════════════════════"
   ok "Reassigning devices"
-  ok "  To:   ${YAML_FILE##*/}"
   echo "════════════════════════════════════════════════════════"
 
   # Extract new role_name from target YAML
