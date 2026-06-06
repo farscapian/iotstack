@@ -6,7 +6,7 @@ ZSH_VERSION=""  # Prevent unbound variable error from shell wrapper
 #
 # Usage:
 #   ./update_devices.sh [options] <yaml-file>
-#   ./update_devices.sh --reassign <MAC1> [MAC2 ...] --rename-from <old_role> <target-yaml>
+#   ./update_devices.sh --reassign <MAC1> [MAC2 ...] <target-yaml>
 #
 # Options:
 #   --upgrade-delta        Only flash devices whose config_hash differs from the
@@ -17,10 +17,8 @@ ZSH_VERSION=""  # Prevent unbound variable error from shell wrapper
 #   --force-update-entities Recreate entity IDs for all devices, even if no
 #                          flashing occurs (useful after device renames)
 #   --dry-run              Compile and show what would be flashed, without flashing
-#   --reassign <MACs...>   Two-step flashing for device reassignment/renaming.
+#   --reassign <MACs...>   Flash specific devices to a different configuration.
 #                          Specify devices by MAC suffix and target YAML.
-#                          Use --rename-from <old_role> to specify current role.
-#   --rename-from <name>   (with --reassign) Current role name for two-step process
 #   --jobs <n>             Maximum concurrent flash jobs (default: 4)
 #   -v, --verbose          Show compilation output in terminal (default: silent)
 #   --help                 Show this help
@@ -1101,8 +1099,7 @@ if [[ "$REASSIGN_MODE" == true ]]; then
 
   echo
   echo "════════════════════════════════════════════════════════"
-  ok "Running two-step device reassignment"
-  ok "  From: ${RENAME_FROM_ROLE}"
+  ok "Reassigning devices"
   ok "  To:   ${YAML_FILE##*/}"
   echo "════════════════════════════════════════════════════════"
 

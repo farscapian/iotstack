@@ -123,7 +123,7 @@ iotstack — Manage IoT Stack ESPHome Devices
 Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
   iotstack verify [<device>|<yaml>|all] [--thread]
-  iotstack reassign <MAC1> [MAC2 ...] --rename-from <role> [<device>|<yaml>]
+  iotstack reassign <MAC1> [MAC2 ...] <device|yaml>
   iotstack list
   iotstack devices
   iotstack help [command]
@@ -140,12 +140,11 @@ Commands:
       iotstack update all
       iotstack update --dry-run mmwave
 
-  reassign <MAC1> [MAC2 ...] --rename-from <role> [<device>|<yaml>]
-    Alias for: iotstack update --reassign <MACs...> --rename-from <role> <device/yaml>
-    Two-step process: reassign devices to a different role or rename within role.
+  reassign <MAC1> [MAC2 ...] <device|yaml>
+    Flash specific devices to a different configuration.
     Examples:
-      iotstack reassign 8dfcac 0f4df4 --rename-from esp32c6-wifi-bleproxy bleproxy
-      iotstack reassign 8dfcac --rename-from esp32c6-wifi-bleproxy wifi/esp32c6-wifi-bleproxy.yaml
+      iotstack reassign 8dfcac 0f4df4 bleproxy
+      iotstack reassign 8dfcac yamls/mmwave.yaml
 
   verify [<device>|<yaml>|all]
     Check if devices match the current build hash (no flashing).
@@ -187,7 +186,7 @@ Examples:
   iotstack verify all
 
   # Reassign devices
-  iotstack reassign 8dfcac 0f4df4 --rename-from esp32c6-wifi-bleproxy bleproxy
+  iotstack reassign 8dfcac 0f4df4 bleproxy
 
   # Show available device names
   iotstack devices
@@ -200,43 +199,38 @@ help_update() {
 iotstack update — Flash ESPHome devices
 
 Usage:
-  iotstack update [options] [<yaml>|all]
-  iotstack update --reassign <MACs...> --rename-from <role> <yaml>
+  iotstack update [options] [<device>|<yaml>|all] [--thread]
 
 Arguments:
-  <yaml>     Path to device config (e.g., wifi/esp32c6-wifi-bleproxy.yaml)
+  <device>   Device shortcut (e.g., bleproxy, mmwave)
+  <yaml>     Path to device config (e.g., yamls/bleproxy.yaml)
   all        Update all device configs in the project
 
 Options:
+  --thread               Use Thread variant instead of WiFi
   --dry-run              Compile and show what would be flashed (no flashing)
-  --no-upgrade-delta     Flash all devices regardless of version
+  --force-reflash        Flash all devices regardless of version
   --jobs N               Max concurrent OTA jobs (default: 4)
   -v, --verbose          Show full compilation output
 
-Reassignment Options:
-  --reassign <MACs...>   Device MAC suffixes to reassign
-  --rename-from <role>   Current role name (e.g., esp32c6-wifi-bleproxy)
-
 Examples:
-  # Update a single device type
-  iotstack update wifi/esp32c6-wifi-bleproxy.yaml
+  # Update a single device by name (WiFi default)
+  iotstack update bleproxy
+
+  # Update Thread variant
+  iotstack update threadrouter --thread
 
   # Update everything
   iotstack update all
 
   # Preview without flashing
-  iotstack update --dry-run wifi/esp32c6-wifi-bleproxy.yaml
+  iotstack update --dry-run mmwave
 
   # Force flash all devices
-  iotstack update --no-upgrade-delta thread/c6-thread-router.yaml
+  iotstack update --force-reflash bleproxy
 
   # Update 8 devices in parallel
-  iotstack update --jobs 8 wifi/esp32c6-wifi-mmwave.yaml
-
-  # Reassign two devices
-  iotstack update --reassign 8dfcac 0f4df4 \
-    --rename-from esp32c6-wifi-bleproxy \
-    wifi/esp32c6-wifi-bleproxy.yaml
+  iotstack update --jobs 8 bleproxy
 
 EOF
 }
@@ -398,23 +392,14 @@ cmd_update() {
 }
 
 cmd_reassign() {
-  local rename_from_role=""
   local device_or_yaml=""
   local use_thread=""
   declare -a reassign_macs=()
   declare -a update_args=()
 
-  # Parse arguments: <MAC1> [MAC2 ...] --rename-from <role> [<device>|<yaml>]
+  # Parse arguments: <MAC1> [MAC2 ...] <device|yaml>
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --rename-from)
-        shift
-        if [[ $# -eq 0 ]]; then
-          err "--rename-from requires a role name"
-        fi
-        rename_from_role="$1"
-        shift
-        ;;
       --thread)
         use_thread="--thread"
         shift
@@ -428,27 +413,24 @@ cmd_reassign() {
         shift
         ;;
       *)
-        # If we don't have rename_from yet, collect MACs
-        if [[ -z "$rename_from_role" ]]; then
+        # Collect MACs until we hit the target device/yaml
+        if [[ -z "$device_or_yaml" ]]; then
           reassign_macs+=("$1")
         else
-          # Once we have rename_from, rest is device/yaml
-          if [[ -z "$device_or_yaml" ]]; then
-            device_or_yaml="$1"
-          fi
+          err "Too many arguments: $1"
         fi
         shift
+        # Last argument is the target device/yaml
+        if [[ $# -eq 1 ]]; then
+          device_or_yaml="$1"
+          shift
+        fi
         ;;
     esac
   done
 
-  if [[ ${#reassign_macs[@]} -eq 0 ]] || [[ -z "$rename_from_role" ]]; then
-    err "Usage: iotstack reassign <MAC1> [MAC2 ...] --rename-from <role> [<device>|<yaml>]"
-  fi
-
-  # If no device/yaml specified, try to infer from rename_from_role
-  if [[ -z "$device_or_yaml" ]]; then
-    err "Please specify a device or YAML file to reassign to"
+  if [[ ${#reassign_macs[@]} -eq 0 ]] || [[ -z "$device_or_yaml" ]]; then
+    err "Usage: iotstack reassign <MAC1> [MAC2 ...] <device|yaml>"
   fi
 
   # Resolve device name to YAML if needed
@@ -461,7 +443,6 @@ cmd_reassign() {
 
   info "Reassigning devices..."
   echo "  MACs: ${reassign_macs[*]}"
-  echo "  From: $rename_from_role"
   echo "  To:   $yaml_file"
   echo
 
