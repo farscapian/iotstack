@@ -327,15 +327,49 @@ list_devices() {
     echo
     echo "]"
   else
-    # Text format
+    # Text format - calculate column widths
+    local margin=2
+    local header_device="Device"
+    local header_friendly="Friendly Name"
+    local header_project="Project"
+    local header_version="Version"
+    local header_hash="Hash"
+
+    local w_device=$(( ${#header_device} + margin ))
+    local w_friendly=$(( ${#header_friendly} + margin ))
+    local w_project=$(( ${#header_project} + margin ))
+    local w_version=$(( ${#header_version} + margin ))
+    local w_hash=$(( ${#header_hash} + margin ))
+
+    # Scan data to find max widths
+    while IFS='|' read -r hostname friendly project version hash; do
+      (( ${#hostname} + margin > w_device )) && w_device=$(( ${#hostname} + margin ))
+      (( ${#friendly} + margin > w_friendly )) && w_friendly=$(( ${#friendly} + margin ))
+      (( ${#project} + margin > w_project )) && w_project=$(( ${#project} + margin ))
+      (( ${#version} + margin > w_version )) && w_version=$(( ${#version} + margin ))
+      (( ${#hash} + margin > w_hash )) && w_hash=$(( ${#hash} + margin ))
+    done < "${device_data}.sorted"
+
     info "Discovered ESPHome devices on network:"
     echo
-    printf "  ${GRN}%-25s %-30s %-20s %-15s %-12s${RST}\n" "Device" "Friendly Name" "Project" "Version" "Hash"
-    printf "  ${DIM}%-25s %-30s %-20s %-15s %-12s${RST}\n" "─────────────────────────" "──────────────────────────────" "────────────────────" "───────────────" "────────────"
 
+    # Print headers with calculated widths
+    printf "  ${GRN}%-${w_device}s %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_hash}s${RST}\n" \
+      "Device" "Friendly Name" "Project" "Version" "Hash"
+
+    # Print separator
+    printf "  ${DIM}"
+    printf "%-${w_device}s " "$(printf '─%.0s' $(seq 1 $((w_device-1))))"
+    printf "%-${w_friendly}s " "$(printf '─%.0s' $(seq 1 $((w_friendly-1))))"
+    printf "%-${w_project}s " "$(printf '─%.0s' $(seq 1 $((w_project-1))))"
+    printf "%-${w_version}s " "$(printf '─%.0s' $(seq 1 $((w_version-1))))"
+    printf "%-${w_hash}s" "$(printf '─%.0s' $(seq 1 $((w_hash-1))))"
+    printf "${RST}\n"
+
+    # Print data rows with calculated widths
     local found=0
     while IFS='|' read -r hostname friendly project version hash; do
-      printf "  ${GRN}%-25s${RST} %-30s %-20s %-15s %-12s\n" \
+      printf "  ${GRN}%-${w_device}s${RST} %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_hash}s\n" \
         "$hostname" "$friendly" "$project" "$version" "$hash"
       found=$((found + 1))
     done < "${device_data}.sorted"
