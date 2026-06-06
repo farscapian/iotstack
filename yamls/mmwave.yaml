@@ -252,13 +252,33 @@ sensor:
     device_class: illuminance
     state_class: measurement
     accuracy_decimals: 1
+    on_value:
+      then:
+        - lambda: |-
+            // Adaptive brightness based on illuminance
+            // Dark room (0 lux) = 0.2x, bright daylight (10000+ lux) = 1.0x
+            float lux = x;
+            float multiplier;
+            if (lux < 100) {
+              multiplier = 0.2f;  // Very dark
+            } else if (lux > 10000) {
+              multiplier = 1.0f;  // Very bright
+            } else {
+              // Linear interpolation between 100-10000 lux (0.2-1.0 brightness)
+              multiplier = 0.2f + ((lux - 100.0f) / 9900.0f) * 0.8f;
+            }
+            id(brightness_multiplier) = multiplier;
 
 
-# 6. Global variable to track current effect
+# 6. Global variables
 globals:
   - id: current_effect
     type: int
     initial_value: '0'
+    restore_value: no
+  - id: brightness_multiplier
+    type: float
+    initial_value: '0.5'  # Default to 50%
     restore_value: no
 
 # 7. Buttons
@@ -337,7 +357,7 @@ light:
 
               auto call = id(rgb_led).make_call();
               call.set_transition_length(transition_time);
-              call.set_brightness(0.8);
+              call.set_brightness(0.8 * id(brightness_multiplier));
               call.set_red(1.0); call.set_green(0.0); call.set_blue(0.0);
               call.perform();
             } else if (is_pulsing && (now - last_pulse_time) >= transition_time) {
@@ -346,7 +366,7 @@ light:
 
               auto call = id(rgb_led).make_call();
               call.set_transition_length(transition_time);
-              call.set_brightness(0.2);
+              call.set_brightness(0.2 * id(brightness_multiplier));
               call.set_red(1.0); call.set_green(0.0); call.set_blue(0.0);
               call.perform();
             }
@@ -387,7 +407,7 @@ light:
             // Smooth sine wave for natural breathing (0.2 to 0.8 brightness)
             // sin(phase * pi) gives smooth 0→1→0 curve
             float sine_value = sin(cycle_phase * 3.14159265f);
-            float brightness = 0.2f + (sine_value * 0.6f);  // Maps sine to 0.2-0.8
+            float brightness = (0.2f + (sine_value * 0.6f)) * id(brightness_multiplier);
 
             auto call = id(rgb_led).make_call();
             call.set_brightness(brightness);
@@ -400,7 +420,7 @@ light:
           lambda: |-
             static bool is_red = true;
             auto call = id(rgb_led).make_call();
-            call.set_brightness(1.0);
+            call.set_brightness(1.0 * id(brightness_multiplier));
             if (is_red) {
               call.set_red(1.0); call.set_green(0.0); call.set_blue(0.0);
             } else {
@@ -415,7 +435,7 @@ light:
           lambda: |-
             static bool is_yellow = true;
             auto call = id(rgb_led).make_call();
-            call.set_brightness(1.0);
+            call.set_brightness(1.0 * id(brightness_multiplier));
             if (is_yellow) {
               call.set_red(1.0); call.set_green(1.0); call.set_blue(0.0);
             } else {
