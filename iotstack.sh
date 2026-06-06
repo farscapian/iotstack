@@ -133,8 +133,11 @@ Commands:
 
   reassign <MAC1> [MAC2 ...] <device|yaml>
     Flash specific devices to a different configuration.
+    Options:
+      --api-key <key>    Use specific API encryption key (from secrets.yaml) for OTA auth
     Examples:
       iotstack reassign 8dfcac 0f4df4 bleproxy
+      iotstack reassign 11cdc4 bleproxy --api-key thread_router_api_encryption_key
       iotstack reassign 8dfcac yamls/mmwave.yaml
 
   verify [<device>|<yaml>|all]
@@ -166,7 +169,8 @@ Examples:
   iotstack update all                        # Update all devices
   iotstack update --dry-run mmwave           # Preview without flashing
   iotstack verify all                        # Verify entire fleet
-  iotstack reassign 8dfcac 0f4df4 bleproxy   # Reassign devices
+  iotstack reassign 8dfcac 0f4df4 bleproxy                          # Reassign devices
+  iotstack reassign 11cdc4 bleproxy --api-key thread_router_key   # With custom API key
   iotstack list roles                        # Show available roles
 
 EOF
@@ -686,6 +690,7 @@ cmd_update() {
 
 cmd_reassign() {
   local use_thread=""
+  local api_key=""
   declare -a update_args=()
   declare -a positional_args=()
 
@@ -695,6 +700,10 @@ cmd_reassign() {
       --thread)
         use_thread="--thread"
         shift
+        ;;
+      --api-key)
+        api_key="$2"
+        shift 2
         ;;
       --dry-run|-v|--verbose)
         update_args+=("$1")
@@ -737,10 +746,15 @@ cmd_reassign() {
 
   info "Reassigning devices..."
   echo "  MACs: ${reassign_macs[*]}"
+  [[ -n "$api_key" ]] && echo "  API Key: $api_key"
   echo
 
   # Build and invoke update_devices.sh with reassign flags
-  "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" "${update_args[@]}"
+  if [[ -n "$api_key" ]]; then
+    "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" --api-key "$api_key" "${update_args[@]}"
+  else
+    "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" "${update_args[@]}"
+  fi
   return $?
 }
 
