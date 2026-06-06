@@ -287,10 +287,14 @@ list_devices() {
       current_hostname="${BASH_REMATCH[1]%.local}"
     fi
     if [[ $line =~ txt\ = ]]; then
-      [[ $line =~ friendly_name=([^ \"]+) ]] && current_friendly="${BASH_REMATCH[1]}"
-      [[ $line =~ project_name=([^ \"]+) ]] && current_project="${BASH_REMATCH[1]}"
-      [[ $line =~ project_version=([^ \"]+) ]] && current_version="${BASH_REMATCH[1]}"
-      [[ $line =~ config_hash=([^ \"]+) ]] && current_hash="${BASH_REMATCH[1]}"
+      if [[ $line =~ friendly_name=([^\"]*) ]]; then
+        current_friendly="${BASH_REMATCH[1]}"
+        # Remove trailing MAC suffix (last 6 hex chars)
+        current_friendly="${current_friendly% [0-9a-f][0-9a-f]*}"
+      fi
+      [[ $line =~ project_name=([^\"]*) ]] && current_project="${BASH_REMATCH[1]}"
+      [[ $line =~ project_version=([^\"]*) ]] && current_version="${BASH_REMATCH[1]}"
+      [[ $line =~ config_hash=([^\"]*) ]] && current_hash="${BASH_REMATCH[1]}"
 
       if [[ -n "$current_hostname" ]]; then
         echo "$current_hostname|$current_friendly|$current_project|$current_version|$current_hash" >> "$device_data"
