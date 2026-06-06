@@ -993,12 +993,12 @@ cmd_rotate_password() {
 
   # Discover all devices with this role
   echo "[INFO] Discovering devices with role '$role'..."
-  local devices=()
   local mac_suffixes=()
+  local mac_line
 
-  while IFS=' ' read -r mac; do
-    [[ -n "$mac" ]] && mac_suffixes+=("$mac")
-  done < <(iotstack list devices "$role" --id 2>/dev/null)
+  # Discover all MACs for this role (--id outputs space-separated on one line)
+  mac_line=$(iotstack list devices "$role" --id 2>/dev/null)
+  read -ra mac_suffixes <<< "$mac_line"
 
   if [[ ${#mac_suffixes[@]} -eq 0 ]]; then
     warn "No devices found for role: $role"
