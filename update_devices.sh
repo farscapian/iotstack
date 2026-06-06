@@ -1304,37 +1304,8 @@ fi
 WORK_DIR=$(mktemp -d)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-# ── USB serial flash ─────────────────────────────────────────────────────────
-# If /dev/ttyACM0 exists, flash it first via serial before starting OTA.
-# Always flashes regardless of --upgrade-delta (plugged in = intentional).
-USB_DEVICE="/dev/ttyACM0"
-USB_LOG=""
-[[ -n "$FLASH_LOG_DIR" ]] && USB_LOG="${FLASH_LOG_DIR}/ttyACM0.log"
-
-if [[ -c "$USB_DEVICE" ]]; then
-  if [[ "$DRY_RUN" == true ]]; then
-    warn "USB device at ${USB_DEVICE} detected — would flash (dry run, skipping)."
-  else
-    warn "USB device at ${USB_DEVICE} — flashing via serial..."
-    echo
-    if [[ -n "$USB_LOG" ]]; then
-      "$ESPHOME_BIN" run "$YAML_FILE" --device "$USB_DEVICE" --no-logs >> "$USB_LOG" 2>&1 && USBOK=true || USBOK=false
-    else
-      "$ESPHOME_BIN" run "$YAML_FILE" --device "$USB_DEVICE" --no-logs && USBOK=true || USBOK=false
-    fi
-
-    if [[ "$USBOK" == true ]]; then
-      ok "ttyACM0: flash successful."
-      OK_LIST+=("ttyACM0")
-    else
-      err "ttyACM0: flash FAILED."
-      FAIL_LIST+=("ttyACM0")
-    fi
-    echo
-  fi
-fi
-
 # ── Parallel flash ───────────────────────────────────────────────────────────
+# Note: USB devices are NOT flashed here. Use 'iotstack flash' for serial flashing.
 
 log "Flashing ${#FLASH_LIST[@]} device(s) (max ${MAX_JOBS} parallel)..."
 echo
@@ -1440,7 +1411,6 @@ done
 # ── Copy OTA logs to persistent log directory ───────────────────────────────
 if [[ -n "$FLASH_LOG_DIR" ]]; then
   for hostname in "${OK_LIST[@]}" "${FAIL_LIST[@]}"; do
-    [[ "$hostname" == "ttyACM0" ]] && continue
     [[ -f "$WORK_DIR/${hostname}.log" ]] && cp "$WORK_DIR/${hostname}.log" "$FLASH_LOG_DIR/${hostname}.log" 2>/dev/null || true
   done
 fi
@@ -1456,12 +1426,8 @@ for h in "${SKIP_LIST[@]}"; do
   printf " ${DIM}%-6s  %-30s  %s${RST}\n" "–" "$h" "$info"
 done
 for h in "${OK_LIST[@]}"; do
-  if [[ "$h" == "ttyACM0" ]]; then
-    info="USB serial"
-  else
-    info="${DEVICE_HASHES[$h]:+${DEVICE_HASHES[$h]} → ${NEW_CONFIG_HASH}}"
-    info="${info:-flashed}"
-  fi
+  info="${DEVICE_HASHES[$h]:+${DEVICE_HASHES[$h]} → ${NEW_CONFIG_HASH}}"
+  info="${info:-flashed}"
   printf " ${GRN}%-6s${RST}  %-30s  %s\n" "✓" "$h" "$info"
 done
 for h in "${FAIL_LIST[@]}"; do
