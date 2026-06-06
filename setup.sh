@@ -270,10 +270,13 @@ if [[ -f "$SECRETS_YAML" ]]; then
 
         # Add to pass if not already present
         if ! pass show "$pass_path" >/dev/null 2>&1; then
-          if echo "$value" | pass insert -f "$pass_path" 2>&1; then
+          local insert_output
+          insert_output=$(echo "$value" | pass insert -f "$pass_path" 2>&1)
+          if [[ $? -eq 0 ]]; then
             ok "Added: $pass_path"
           else
             warn "Failed to add: $pass_path"
+            [[ -n "$insert_output" ]] && echo "    Error: $insert_output" >&2
           fi
         fi
       fi
