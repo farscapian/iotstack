@@ -723,10 +723,6 @@ cmd_update() {
     failed=0
     while IFS= read -r yaml; do
       if grep -q '^esphome:' "$yaml" 2>/dev/null; then
-        role=$(grep -A 2 '^substitutions:' "$yaml" 2>/dev/null | grep 'role_name:' | sed 's/.*role_name:[[:space:]]*//; s/[[:space:]]*#.*//' | tr -d '"'"'" || echo "$(basename "$yaml")")
-        echo "────────────────────────────────────────────────────────────"
-        info "Updating: $yaml (role: $role)"
-        echo "────────────────────────────────────────────────────────────"
         if "$UPDATE_SCRIPT" "${update_args[@]}" "$yaml"; then
           found=$((found + 1))
         else
@@ -749,7 +745,6 @@ cmd_update() {
       err "File not found: $yaml_file"
     fi
 
-    info "Updating: $yaml_file"
     "$UPDATE_SCRIPT" "${update_args[@]}" "$yaml_file"
   fi
 }
