@@ -600,6 +600,7 @@ while [[ $# -gt 0 ]]; do
     --force-update-entities) FORCE_UPDATE_ENTITIES=true; shift ;;
     --dry-run)               DRY_RUN=true;        shift ;;
     --jobs)                  MAX_JOBS="$2"; JOBS_EXPLICIT=true; shift 2 ;;
+    --api-key)               API_KEY="$2";        shift 2 ;;
     --reassign)
       REASSIGN_MODE=true
       shift
