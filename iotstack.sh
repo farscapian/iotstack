@@ -124,7 +124,7 @@ Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml>
-  iotstack list [devices|configs|shortcuts]
+  iotstack list [devices|configs|roles]
   iotstack help [command]
 
 Commands:
@@ -152,12 +152,12 @@ Commands:
       iotstack verify all
       iotstack verify thread_router --thread
 
-  list [devices|configs|shortcuts]
-    Show devices, configurations, and shortcuts.
+  list [devices|configs|roles]
+    Show devices, configurations, and roles.
     Subcommands:
       devices   Show discovered ESPHome devices on network (default)
       configs   Show available YAML device configurations
-      shortcuts Show device role shortcuts for quick access
+      roles Show available device roles for quick access
 
   help [command]
     Show help for a specific command.
@@ -188,8 +188,8 @@ Examples:
   # Reassign devices
   iotstack reassign 8dfcac 0f4df4 bleproxy
 
-  # Show device shortcuts
-  iotstack list shortcuts
+  # Show device roles
+  iotstack list roles
 
 EOF
 }
@@ -202,7 +202,7 @@ Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
 
 Arguments:
-  <device>   Device shortcut (e.g., bleproxy, mmwave)
+  <device>   Device role (e.g., bleproxy, mmwave)
   <yaml>     Path to device config (e.g., yamls/bleproxy.yaml)
   all        Update all device configs in the project
 
@@ -258,15 +258,15 @@ EOF
 
 help_list() {
   cat << 'EOF'
-iotstack list — Show devices, configurations, and shortcuts
+iotstack list — Show devices, configurations, and roles
 
 Usage:
-  iotstack list [devices|configs|shortcuts]
+  iotstack list [devices|configs|roles]
 
 Subcommands:
   devices    Show discovered ESPHome devices on network (default)
   configs    Show available YAML device configurations
-  shortcuts  Show device role shortcuts for quick access
+  roles      Show available device roles for quick access
 
 Examples:
   # Show discovered devices on network (default)
@@ -276,8 +276,8 @@ Examples:
   # Show available YAML configurations
   iotstack list configs
 
-  # Show device shortcuts
-  iotstack list shortcuts
+  # Show device roles
+  iotstack list roles
 
 EOF
 }
@@ -617,8 +617,8 @@ cmd_list() {
     configs)
       list_yaml_configs
       ;;
-    shortcuts)
-      info "Available device shortcuts:"
+    roles)
+      info "Available device roles:"
       echo
       list_device_names | while read -r device; do
         mapping="${DEVICE_MAP[$device]}"
@@ -638,7 +638,7 @@ cmd_list() {
       ok "Use 'iotstack help' for more information"
       ;;
     *)
-      err "Unknown subcommand: $subcommand. Try 'iotstack list devices', 'iotstack list configs', or 'iotstack list shortcuts'"
+      err "Unknown subcommand: $subcommand. Try 'iotstack list devices', 'iotstack list configs', or 'iotstack list roles'"
       ;;
   esac
 }
