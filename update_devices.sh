@@ -10,7 +10,7 @@
 # Options:
 #   --upgrade-delta        Only flash devices whose config_hash differs from the
 #                          current build (default: on)
-#   --flash-anyway     Flash all devices regardless of running firmware
+#   --flash-anyway         sFlash all devices regardless of running firmware
 #   --verify               Compile, then check each device's config_hash; report
 #                          pass/fail and exit (no flashing, no changes to HA)
 #   --force-update-entities Recreate entity IDs for all devices, even if no
@@ -1320,7 +1320,8 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   FQDN="${HOSTNAME}.local"
   dim "  started → ${HOSTNAME}"
   (
-    if "$ESPHOME_BIN" upload "$YAML_FILE" --device "$FQDN" --no-logs; then
+    # Run upload with 30-second timeout (fail fast if auth fails)
+    if timeout 30 "$ESPHOME_BIN" upload "$YAML_FILE" --device "$FQDN" --no-logs; then
       echo ok > "$WORK_DIR/${HOSTNAME}.result"
     else
       echo fail > "$WORK_DIR/${HOSTNAME}.result"
@@ -1330,8 +1331,10 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   slot_count=$((slot_count + 1))
 done
 
+
 # ── Background progress monitor ──────────────────────────────────────────────
 # Polls each device's log file every 4s and prints a one-line status summary.
+# Also detects authentication failures and stops early.
 # ESPHome OTA logs progress as e.g. "OTA in progress: 25%" — captured by the
 # percentage regex. Thread OTA is slower so this is especially useful there.
 (
@@ -1343,6 +1346,14 @@ done
     for hostname in "${FLASH_LIST[@]}"; do
       result_f="${WORK_DIR}/${hostname}.result"
       log_f="${WORK_DIR}/${hostname}.log"
+
+      # Check for authentication failure and stop early
+      if [[ -f "$log_f" ]] && grep -q "Authentication invalid" "$log_f" 2>/dev/null; then
+        echo fail > "$result_f"
+        parts+=("${RED}✗${RST} ${hostname} (auth failed)")
+        continue
+      fi
+
       if [[ -f "$result_f" ]]; then
         if [[ "$(cat "$result_f")" == ok ]]; then
           parts+=("${GRN}✓${RST} ${hostname}")
@@ -1391,16 +1402,23 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
     FAIL_LIST+=("$HOSTNAME")
 
     # Check if it's an authentication error and provide guidance
-    if grep -q "Authentication invalid" "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null; then
+    if grep -q "Authentication invalid" "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null || \
+       grep -q "timed out" "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null; then
       echo
-      echo "  ⚠️  OTA Authentication Failed"
-      echo "  The device's OTA password or API encryption key doesn't match the target."
+      echo "  ⚠️  OTA Authentication Failed (Wrong OTA Password?)"
       echo
-      echo "  Solution: Provide the device's current OTA password:"
+      echo "  The device rejected the OTA password. This likely means:"
+      echo "  • The device is using a different OTA password than expected"
+      echo "  • The device's previous password hasn't been rotated yet"
+      echo
+      echo "  Solution: Provide the device's CURRENT OTA password using CLI:"
       mac_suffix="${HOSTNAME##*-}"
-      echo "    iotstack reassign $mac_suffix <target-role> --ota-password \"<current-password>\""
+      echo "    iotstack reassign $mac_suffix <target-role> --ota-password \"<password>\""
       echo
-      echo "  Where <current-password> is the OTA password the device is currently using."
+      echo "  Replace <password> with the OTA password currently in use on the device."
+      echo
+      echo "  Example:"
+      echo "    iotstack reassign $mac_suffix bleproxy --ota-password \"asdpTzVteFsaegVm2pesbaYZsdwWF8\""
       echo
     fi
   fi
