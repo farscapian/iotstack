@@ -169,6 +169,7 @@ binary_sensor:
       mode:
         input: true
         pullup: true
+      ignore_strapping_warning: true
     name: "Device Button"
     internal: true
     on_click:
@@ -181,10 +182,14 @@ binary_sensor:
       max_length: 350ms
       then:
         - button.press: restart_btn
-    on_press:
-      min_length: 1500ms
-      then:
-        - button.press: safe_mode_btn
+    on_multi_click:
+      - min_length: 50ms
+        max_length: 350ms
+        on_multi_click:
+          - min_clicks: 3
+            max_clicks: 3
+            then:
+              - button.press: safe_mode_btn
 
 text_sensor:
   - platform: template
