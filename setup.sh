@@ -192,10 +192,19 @@ else
   gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
 
   if [[ -n "$gpg_key" ]]; then
-    pass init "$gpg_key" >/dev/null 2>&1 || warn "pass init may have failed, but continuing..."
-    ok "Initialized pass repository with GPG key: $gpg_key"
+    pass init "$gpg_key" 2>&1 | grep -v "^Password store initialized" || true
+    if [[ -d "${PASS_DIR}/.git" ]]; then
+      ok "Initialized pass repository with GPG key: $gpg_key"
+    else
+      err "pass init failed. Try manually:
+  export PASSWORD_STORE_DIR=${PASS_DIR}
+  pass init <your-gpg-key-id>"
+    fi
   else
-    warn "Could not find GPG key. Please run: pass init <your-gpg-key-id>"
+    err "Could not find GPG key. Please run:
+  gpg --list-secret-keys
+  export PASSWORD_STORE_DIR=${PASS_DIR}
+  pass init <your-gpg-key-id>"
   fi
 fi
 
