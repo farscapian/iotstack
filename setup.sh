@@ -216,16 +216,29 @@ echo "════════════════════════�
 echo "Setup Complete!"
 echo "════════════════════════════════════════════════════════"
 echo
-echo "To use iotstack, run:"
+echo "Next steps:"
+echo
+echo "1. Load environment:"
 echo -e "  ${GRN}source $BASHRC${RST}"
 echo
-echo "Then test it with:"
-echo -e "  ${GRN}which iotstack${RST}"
-echo -e "  ${GRN}iotstack help${RST}"
+echo "2. Mount secrets into RAM (no unencrypted disk writes):"
+echo -e "  ${GRN}./scripts/mount-secrets${RST}"
 echo
-echo "Your secrets are stored in:"
+echo "3. Use iotstack:"
+echo -e "  ${GRN}iotstack update bleproxy${RST}"
+echo -e "  ${GRN}iotstack rotate-password mmwave${RST}"
+echo
+echo "4. When done (optional, auto-erased on reboot):"
+echo -e "  ${GRN}./scripts/unmount-secrets${RST}"
+echo
+echo "Your encrypted secrets are stored in:"
 echo -e "  ${GRN}${PASS_DIR}${RST}"
 echo
-echo "To view/add passwords:"
-echo -e "  ${GRN}pass ls${RST}"
-echo -e "  ${GRN}pass insert iotstack/role/secret_type${RST}"
+echo "To manage passwords:"
+echo -e "  ${GRN}pass ls iotstack${RST}"
+echo -e "  ${GRN}pass insert iotstack/<role>/<secret-type>${RST}"
+echo
+echo "For more information:"
+echo -e "  ${GRN}docs/RAMDISK-SECRETS.md${RST}  (RAM-only secrets)"
+echo -e "  ${GRN}docs/QUICK-START-SECRETS.md${RST}  (Password manager setup)"
+echo -e "  ${GRN}iotstack help${RST}  (CLI commands)"
