@@ -612,19 +612,33 @@ cmd_list() {
     roles)
       info "Available device roles:"
       echo
+      printf "  ${GRN}%-15s %-10s %-10s %-30s %-30s${RST}\n" "Role" "Type" "Network" "WiFi Config" "Thread Config"
+      printf "  ${DIM}%-15s %-10s %-10s %-30s %-30s${RST}\n" "───────────────" "──────────" "──────────" "──────────────────────────" "──────────────────────────"
+
       list_device_names | while read -r device; do
         mapping="${DEVICE_MAP[$device]}"
         wifi_yaml="${mapping%%:*}"
         thread_yaml="${mapping##*:}"
 
-        printf "  ${GRN}%-15s${RST}" "$device"
-        if [[ -n "$wifi_yaml" ]]; then
-          printf " (wifi: %s)" "$wifi_yaml"
+        # Extract device info from WiFi YAML if present
+        device_type=""
+        network_type=""
+        if [[ -n "$wifi_yaml" && -f "$wifi_yaml" ]]; then
+          device_info=$(get_yaml_device_info "$wifi_yaml")
+          device_type="${device_info%%|*}"
+          network_type="${device_info##*|}"
+        elif [[ -n "$thread_yaml" && -f "$thread_yaml" ]]; then
+          device_info=$(get_yaml_device_info "$thread_yaml")
+          device_type="${device_info%%|*}"
+          network_type="${device_info##*|}"
         fi
-        if [[ -n "$thread_yaml" ]]; then
-          printf " (thread: %s)" "$thread_yaml"
-        fi
-        echo
+
+        # Truncate YAML paths for display
+        wifi_display="${wifi_yaml##*/}"
+        thread_display="${thread_yaml##*/}"
+
+        printf "  ${GRN}%-15s${RST} %-10s %-10s %-30s %-30s\n" \
+          "$device" "$device_type" "$network_type" "$wifi_display" "$thread_display"
       done
       echo
       ok "Use 'iotstack help' for more information"
