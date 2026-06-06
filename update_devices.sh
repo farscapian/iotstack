@@ -62,6 +62,17 @@ warn() { echo -e "${YLW}[WARN]${RST}  $*"; }
 err()  { echo -e "${RED}[ERR]${RST}   $*" >&2; }
 dim()  { echo -e "${DIM}$*${RST}"; }
 
+# Animate dots while waiting (1 to 5 dots, repeating)
+animate_compile() {
+  local pid=$1
+  local dots=0
+  while kill -0 "$pid" 2>/dev/null; do
+    dots=$(( (dots % 5) + 1 ))
+    printf "\r  ⚙ Compiling%-5s" "$(printf '.%.0s' $(seq 1 $dots))" >&2
+    sleep 0.3
+  done
+}
+
 # ── Ensure websocket-client library is installed ────────────────────────────
 ensure_websocket_client() {
   if python3 -c "import websocket" 2>/dev/null; then
@@ -1078,22 +1089,29 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
       fi
     else
       # Silent mode: compile with output to log file only
-      printf "  ⚙ Compiling firmware (ESPHome ${ESPHOME_VERSION})..." >&2
       COMPILE_LOG=$(mktemp)
       trap 'rm -f "$COMPILE_LOG"' EXIT
 
-      if "$ESPHOME_BIN" compile "$YAML_FILE" >> "$COMPILE_LOG" 2>&1; then
+      # Run compilation in background for animation
+      "$ESPHOME_BIN" compile "$YAML_FILE" >> "$COMPILE_LOG" 2>&1 &
+      COMPILE_PID=$!
+
+      # Animate dots while compiling
+      animate_compile $COMPILE_PID
+
+      # Wait for compilation to finish
+      if wait $COMPILE_PID; then
         NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG" \
           | tail -1 | sed 's/config_hash=0x//')
         COMPILED=true
-        printf " ${GRN}✓${RST}\n" >&2
+        printf "\r  ⚙ Compiling ${GRN}✓${RST}\n" >&2
         # Persist cache for next run
         printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
           "$YAML_SHA256" "$ESPHOME_VERSION" "$NEW_CONFIG_HASH" > "$CACHE_FILE"
         setup_flash_logs "$NEW_CONFIG_HASH"
         [[ -n "$NEW_CONFIG_HASH" ]] && ok "Build config_hash: ${NEW_CONFIG_HASH}"
       else
-        printf " ${RED}✗${RST}\n" >&2
+        printf "\r  ⚙ Compiling ${RED}✗${RST}\n" >&2
         err "Compilation failed:"
         echo
         cat "$COMPILE_LOG"
