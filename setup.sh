@@ -266,6 +266,12 @@ if [[ -f "$SECRETS_YAML" ]]; then
       if [[ "$key" =~ ^([a-z_]+)_(api_encryption_key|ota_password)$ ]]; then
         role="${BASH_REMATCH[1]}"
         secret_type="${BASH_REMATCH[2]}"
+
+        # Only seed if corresponding YAML file exists
+        if [[ ! -f "${SCRIPT_DIR}/yamls/${role}.yaml" ]]; then
+          continue
+        fi
+
         pass_path="iotstack/${role}/${secret_type}"
 
         # Add to pass if not already present
