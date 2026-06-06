@@ -243,16 +243,28 @@ else
   fi
 fi
 
-# Seed pass repository with secrets from secrets.yaml
+# Seed pass repository with secrets and config from secrets.yaml
 echo
-echo "Seeding pass repository with API keys and OTA passwords..."
+echo "Seeding pass repository with secrets and configuration..."
 SECRETS_YAML="${SCRIPT_DIR}/yamls/secrets.yaml"
 
 if [[ -f "$SECRETS_YAML" ]]; then
   export GNUPGHOME="${IOTSTACK_HOME}/.gnupg"
   export PASSWORD_STORE_DIR="$PASS_DIR"
 
-  # Extract all secrets and add them to pass
+  # Config items that should exist but can be empty
+  declare -a config_items=("wifi_ssid" "wifi_password" "thread_tlv" "ha_url" "ha_token")
+
+  # Seed config items with empty values
+  for config_key in "${config_items[@]}"; do
+    pass_path="iotstack/config/${config_key}"
+    if ! pass show "$pass_path" >/dev/null 2>&1; then
+      echo "" | pass insert -f "$pass_path" 2>/dev/null
+      ok "Initialized: $pass_path (empty)"
+    fi
+  done
+
+  # Extract secrets and add them to pass
   # Format: key: "value" or key: value
   while IFS= read -r line; do
     [[ "$line" =~ ^#.*$ ]] && continue  # Skip comments
@@ -262,7 +274,7 @@ if [[ -f "$SECRETS_YAML" ]]; then
       key="${BASH_REMATCH[1]}"
       value="${BASH_REMATCH[2]}"
 
-      # Convert key format: bleproxy_api_encryption_key → iotstack/bleproxy/api_encryption_key
+      # Handle device secrets: bleproxy_api_encryption_key -> iotstack/bleproxy/api_encryption_key
       if [[ "$key" =~ ^([a-z_]+)_(api_encryption_key|ota_password)$ ]]; then
         role="${BASH_REMATCH[1]}"
         secret_type="${BASH_REMATCH[2]}"
