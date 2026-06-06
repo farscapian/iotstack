@@ -2,7 +2,7 @@
 # setup.sh — Add iotstack command to PATH
 # This script sets up the iotstack CLI tool so you can run 'iotstack' from anywhere
 
-set -euox pipefail
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IOTSTACK_SCRIPT="${SCRIPT_DIR}/iotstack.sh"
@@ -117,11 +117,11 @@ echo "Setting up GPG key (required for pass)"
 echo "════════════════════════════════════════════════════════"
 echo
 
-# Check if GPG key exists
-gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+# Try to find existing GPG key
+gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -m1 "^sec" | awk '{print $2}' | cut -d'/' -f2 || echo "")
 
 if [[ -z "$gpg_key" ]]; then
-  echo "No GPG keys found. Generating one..."
+  echo "Generating GPG key (this may take a moment)..."
   gpg --batch --generate-key <<'EOF'
 Key-Type: RSA
 Key-Length: 2048
@@ -131,12 +131,12 @@ Expire-Date: 0
 %no-protection
 %commit
 EOF
-  sleep 2
+  sleep 3
 
-  # Get the newly created key
-  gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+  # Verify key was created
+  gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -m1 "^sec" | awk '{print $2}' | cut -d'/' -f2 || echo "")
   if [[ -z "$gpg_key" ]]; then
-    err "Failed to generate GPG key"
+    err "Failed to generate or locate GPG key"
   fi
   ok "Generated GPG key: $gpg_key"
 else
