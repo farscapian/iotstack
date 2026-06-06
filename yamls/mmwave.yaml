@@ -68,7 +68,7 @@ api:
               green: 50%
               blue: 0%
               brightness: 60%
-              effect: "Home Assistant API Disconnected"
+              effect: "Strobe Red Yellow"
 
 ota:
   - platform: esphome
