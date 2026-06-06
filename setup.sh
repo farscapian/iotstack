@@ -257,10 +257,9 @@ if [[ -f "$SECRETS_YAML" ]]; then
 
   # Seed config items with empty values
   for config_key in "${config_items[@]}"; do
-    pass_path="iotstack/config/${config_key}"
+    pass_path="iotstack/${config_key}"
     if ! pass show "$pass_path" >/dev/null 2>&1; then
-      echo "" | pass insert -f "$pass_path" 2>/dev/null
-      ok "Initialized: $pass_path (empty)"
+      echo "" | pass insert -f "$pass_path" >/dev/null 2>&1
     fi
   done
 
