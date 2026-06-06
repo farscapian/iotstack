@@ -262,9 +262,9 @@ if [[ -f "$SECRETS_YAML" ]]; then
   # Config items that should exist but can be empty (seeded with placeholder)
   declare -a config_items=("wifi_ssid" "wifi_password" "thread_tlv" "ha_url" "ha_token")
 
-  # Seed config items with placeholder (user can update via: pass edit iotstack/wifi_ssid)
+  # Seed config items under iotstack/common/ (user can update via: pass edit iotstack/common/wifi_ssid)
   for config_key in "${config_items[@]}"; do
-    pass_path="iotstack/${config_key}"
+    pass_path="iotstack/common/${config_key}"
     if ! pass show "$pass_path" >/dev/null 2>&1; then
       {
         echo "CONFIGURE_ME"
