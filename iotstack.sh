@@ -31,22 +31,32 @@ if [[ ! -d "$YAMLS_DIR" ]]; then
   err "yamls directory not found at $YAMLS_DIR"
 fi
 
-# ── Security: Verify secrets tmpfs is mounted ────────────────────────────────
+# ── Security: Verify/ensure secrets tmpfs is mounted ────────────────────────
 # All secrets must be in RAM only, never on unencrypted disk
 verify_secrets_mounted() {
   local secrets_mount="${HOME}/.iotstack/secrets"
-  if ! mount | grep -q "tmpfs.*${secrets_mount}"; then
-    err "Secrets tmpfs not mounted at ${secrets_mount}
+
+  # Check if already mounted
+  if mount | grep -q "tmpfs.*${secrets_mount}"; then
+    return 0
+  fi
+
+  # Not mounted - auto-mount
+  echo "[INFO] Secrets tmpfs not mounted. Auto-mounting..."
+  if ! "$SCRIPT_DIR/scripts/mount-secrets" >/dev/null 2>&1; then
+    err "Failed to auto-mount secrets tmpfs at ${secrets_mount}
 
 SECURITY REQUIREMENT: All secrets must exist only in RAM.
 
-To mount secrets into RAM:
+To debug, run manually:
   ./scripts/mount-secrets
 
 This decrypts secrets from pass and places them only in memory.
 They will be automatically erased on reboot or unmount.
 "
   fi
+
+  ok "Secrets mounted to RAM"
 }
 
 # ── Dynamic Role Discovery ──────────────────────────────────────────────────
