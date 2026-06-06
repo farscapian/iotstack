@@ -647,8 +647,10 @@ fi
 # ── Handle custom API key for OTA ───────────────────────────────────────────
 # If user provided a custom API key, create a temporary YAML with that key
 if [[ -n "$API_KEY" ]]; then
-  TEMP_YAML="${HOME}/.iotstack/artifacts/.temp-api-key-$$.yaml"
-  mkdir -p "${HOME}/.iotstack/artifacts"
+  # Create temp YAML in same directory as original so it can find secrets.yaml
+  YAML_DIR="$(dirname "$YAML_FILE")"
+  YAML_BASENAME="$(basename "$YAML_FILE")"
+  TEMP_YAML="${YAML_DIR}/.temp-api-key-$$.${YAML_BASENAME}"
 
   # Create temp YAML with API key substituted for any !secret references
   sed 's|key: !secret [^ ]*|key: '"$API_KEY"'|g' "$YAML_FILE" > "$TEMP_YAML"
