@@ -266,10 +266,25 @@ light:
             static uint32_t last_pulse_time = 0;
             static bool is_pulsing = false;
 
-            // Get current heart rate (default to 60 BPM if not available)
-            float heart_rate = 60.0f;
-            if (id(heart_rate_sensor).has_state()) {
-              heart_rate = id(heart_rate_sensor).state;
+            // Check if heart rate is available (indicates human presence)
+            if (!id(heart_rate_sensor).has_state()) {
+              // No heart rate reading - turn off LED
+              auto call = id(rgb_led).make_call();
+              call.set_state(false);
+              call.perform();
+              is_pulsing = false;
+              return;
+            }
+
+            // Get current heart rate from sensor
+            float heart_rate = id(heart_rate_sensor).state;
+            if (heart_rate <= 0) {
+              // Invalid heart rate - turn off LED
+              auto call = id(rgb_led).make_call();
+              call.set_state(false);
+              call.perform();
+              is_pulsing = false;
+              return;
             }
 
             // Calculate pulse interval in milliseconds (60000 / BPM)
