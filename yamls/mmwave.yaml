@@ -161,11 +161,6 @@ binary_sensor:
                 brightness: 20%
                 effect: "Pulse Yellow Red"
 
-  # WiFi connectivity status for LED effects
-  - platform: connectivity
-    id: api_connected
-    internal: true
-
   # Physical button (GPIO9 - boot button on Seeed XIAO)
   - platform: gpio
     pin:
@@ -367,12 +362,11 @@ light:
             static uint32_t last_pulse_time = 0;
             static bool is_pulsing = false;
 
-            // Check if breath rate is available and WiFi is connected
-            if (!id(breath_rate_sensor).has_state() || !id(api_connected).state) {
-              // No breath rate or WiFi disconnected - show blue stroke
+            // Check if breath rate is available
+            if (!id(breath_rate_sensor).has_state()) {
+              // No breath rate - turn off LED
               auto call = id(rgb_led).make_call();
-              call.set_brightness(0.6);
-              call.set_red(0.0); call.set_green(0.0); call.set_blue(1.0);
+              call.set_state(false);
               call.perform();
               is_pulsing = false;
               return;
