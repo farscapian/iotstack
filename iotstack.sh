@@ -242,31 +242,11 @@ EOF
 list_devices() {
   local output_format="${1:-text}"
   local filter_role="${2:-}"
-  local expected_project=""
   local current_hostname=""
   local current_friendly=""
   local current_project=""
   local current_version=""
   local current_hash=""
-
-  # If filtering by role, extract expected project name from YAML
-  if [[ -n "$filter_role" ]]; then
-    if [[ ! -v DEVICE_MAP["$filter_role"] ]]; then
-      err "Unknown role: $filter_role"
-    fi
-    local mapping="${DEVICE_MAP[$filter_role]}"
-    local yaml_path="${mapping%:*}"
-    [[ -z "$yaml_path" ]] && yaml_path="${mapping#*:}"
-
-    if [[ -z "$yaml_path" || ! -f "$yaml_path" ]]; then
-      err "No valid YAML found for role: $filter_role"
-    fi
-
-    # Extract project name from nested project: name: structure, handling substitutions
-    expected_project=$(awk '/project:/{flag=1; next} flag && /name:/{print; exit}' "$yaml_path" | sed 's/.*name:\s*"\?\([^"]*\)"\?.*/\1/')
-    # Handle substitutions - if contains ${device_role}, replace with filter_role
-    expected_project="${expected_project//\$\{device_role\}/$filter_role}"
-  fi
 
   # Gather device data into temp buffer
   local device_data=$(mktemp)
@@ -304,8 +284,8 @@ list_devices() {
   if [[ "$output_format" == "csv" ]]; then
     echo "Device,Friendly Name,Project,Version,Hash"
     while IFS='|' read -r hostname friendly project version hash; do
-      # Filter by role if specified
-      if [[ -n "$filter_role" && "$project" != "$expected_project" ]]; then
+      # Filter by role if specified (match role name in project field)
+      if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
         continue
       fi
       echo "$hostname,$friendly,$project,$version,$hash"
@@ -314,8 +294,8 @@ list_devices() {
     echo "["
     first=true
     while IFS='|' read -r hostname friendly project version hash; do
-      # Filter by role if specified
-      if [[ -n "$filter_role" && "$project" != "$expected_project" ]]; then
+      # Filter by role if specified (match role name in project field)
+      if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
         continue
       fi
       [[ "$first" != true ]] && echo ","
@@ -368,8 +348,8 @@ list_devices() {
     # Print data rows with calculated widths
     local found=0
     while IFS='|' read -r hostname friendly project version hash; do
-      # Filter by role if specified
-      if [[ -n "$filter_role" && "$project" != "$expected_project" ]]; then
+      # Filter by role if specified (match role name in project field)
+      if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
         continue
       fi
       printf "  ${GRN}%-${w_device}s${RST} %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_hash}s\n" \
