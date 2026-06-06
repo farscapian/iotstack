@@ -162,7 +162,7 @@ binary_sensor:
 sensor:
   # 4.2 mmWave — respiratory rate
   - platform: seeed_mr60bha2
-    seeed_mr60bha2_id: my_mr60bha2
+    mr60bha2_id: my_mr60bha2
     breath_rate:
       name: "${friendly_name} Respiratory Rate"
       device_class: ""
@@ -173,7 +173,7 @@ sensor:
 
   # 4.3 mmWave — heart rate
   - platform: seeed_mr60bha2
-    seeed_mr60bha2_id: my_mr60bha2
+    mr60bha2_id: my_mr60bha2
     heart_rate:
       name: "${friendly_name} Heart Rate"
       device_class: ""
@@ -184,7 +184,7 @@ sensor:
 
   # 4.4 mmWave — detection distance
   - platform: seeed_mr60bha2
-    seeed_mr60bha2_id: my_mr60bha2
+    mr60bha2_id: my_mr60bha2
     distance:
       name: "${friendly_name} Detection Distance"
       unit_of_measurement: "m"
