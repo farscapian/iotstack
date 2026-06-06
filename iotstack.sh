@@ -20,53 +20,32 @@ info() { echo -e "${BLU}[INFO]${RST} $*"; }
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 UPDATE_SCRIPT="${SCRIPT_DIR}/update_devices.sh"
-DEVICES_CONF="${SCRIPT_DIR}/iotstack-roles.conf"
+YAMLS_DIR="${SCRIPT_DIR}/yamls"
 
 # Check if update_devices.sh exists
 if [[ ! -f "$UPDATE_SCRIPT" ]]; then
   err "update_devices.sh not found at $UPDATE_SCRIPT"
 fi
 
-# ── Device Mapping ─────────────────────────────────────────────────────────────
-# Load device mappings from iotstack-roles.conf
-declare -A DEVICE_MAP
+if [[ ! -d "$YAMLS_DIR" ]]; then
+  err "yamls directory not found at $YAMLS_DIR"
+fi
 
-load_device_mappings() {
-  if [[ ! -f "$DEVICES_CONF" ]]; then
-    err "iotstack-roles.conf not found at $DEVICES_CONF"
-  fi
-
-  while IFS='=' read -r device mapping; do
-    # Skip comments and empty lines
-    [[ "$device" =~ ^#.*$ ]] && continue
-    [[ -z "$device" ]] && continue
-
-    device=$(echo "$device" | xargs)  # trim whitespace
-    mapping=$(echo "$mapping" | xargs)
-
-    DEVICE_MAP["$device"]="$mapping"
-  done < "$DEVICES_CONF"
-}
+# ── Dynamic Role Discovery ──────────────────────────────────────────────────
+# Roles are discovered from YAML filenames in yamls/ directory
+# File: yamls/bleproxy.yaml → Role: bleproxy
 
 # Resolve role name to YAML path
+# If given "bleproxy", returns "yamls/bleproxy.yaml"
 resolve_device() {
   local role_name="$1"
+  local yaml_file="${YAMLS_DIR}/${role_name}.yaml"
 
-  if [[ ! -v DEVICE_MAP["$role_name"] ]]; then
-    err "Unknown role: $role_name"
+  if [[ ! -f "$yaml_file" ]]; then
+    err "Unknown role: $role_name (expected: $yaml_file)"
   fi
 
-  # Extract the YAML path from the mapping (now just a single path, no variants)
-  local mapping="${DEVICE_MAP[$role_name]}"
-  # Remove empty colon-separated parts
-  local yaml_path="${mapping%:*}"
-  [[ -z "$yaml_path" ]] && yaml_path="${mapping#*:}"
-
-  if [[ -z "$yaml_path" ]]; then
-    err "Role '$role_name' has no YAML configuration"
-  fi
-
-  echo "$yaml_path"
+  echo "$yaml_file"
 }
 
 # Extract device_type and network_type from YAML file
@@ -91,20 +70,14 @@ get_yaml_device_info() {
   echo "${device_type}|${network_type}"
 }
 
-# List available device names
+# List available role names (YAML filenames without extension)
 list_device_names() {
-  local devices=()
-  for device in "${!DEVICE_MAP[@]}"; do
-    [[ "$device" != "" ]] && devices+=("$device")
-  done
-
-  # Sort and print
-  for device in $(printf '%s\n' "${devices[@]}" | sort); do
-    echo "$device"
-  done
+  for yaml_file in "$YAMLS_DIR"/*.yaml; do
+    if [[ -f "$yaml_file" ]]; then
+      basename "$yaml_file" .yaml
+    fi
+  done | sort
 }
-
-load_device_mappings
 
 # ── Subcommands ──────────────────────────────────────────────────────────────
 
@@ -326,7 +299,7 @@ list_devices() {
         if [[ -n "$filter_role" ]]; then
           if [[ "$filter_role" == "other" ]]; then
             local matches_role=false
-            for role in "${!DEVICE_MAP[@]}"; do
+            for role in $(list_device_names); do
               if [[ "$project" == *"$role"* ]]; then
                 matches_role=true
                 break
@@ -350,7 +323,7 @@ list_devices() {
           if [[ -n "$filter_role" ]]; then
             if [[ "$filter_role" == "other" ]]; then
               local matches_role=false
-              for role in "${!DEVICE_MAP[@]}"; do
+              for role in $(list_device_names); do
                 if [[ "$project" == *"$role"* ]]; then
                   matches_role=true
                   break
@@ -378,7 +351,7 @@ list_devices() {
         if [[ -n "$filter_role" ]]; then
           if [[ "$filter_role" == "other" ]]; then
             local matches_role=false
-            for role in "${!DEVICE_MAP[@]}"; do
+            for role in $(list_device_names); do
               if [[ "$project" == *"$role"* ]]; then
                 matches_role=true
                 break
@@ -416,7 +389,7 @@ list_devices() {
         if [[ "$filter_role" == "other" ]]; then
           # Match devices that don't match any defined role
           local matches_role=false
-          for role in "${!DEVICE_MAP[@]}"; do
+          for role in $(list_device_names); do
             if [[ "$project" == *"$role"* ]]; then
               matches_role=true
               break
@@ -443,7 +416,7 @@ list_devices() {
           if [[ "$filter_role" == "other" ]]; then
             # Match devices that don't match any defined role
             local matches_role=false
-            for role in "${!DEVICE_MAP[@]}"; do
+            for role in $(list_device_names); do
               if [[ "$project" == *"$role"* ]]; then
                 matches_role=true
                 break
@@ -519,7 +492,7 @@ list_devices() {
         if [[ "$filter_role" == "other" ]]; then
           # Match devices that don't match any defined role
           local matches_role=false
-          for role in "${!DEVICE_MAP[@]}"; do
+          for role in $(list_device_names); do
             if [[ "$project" == *"$role"* ]]; then
               matches_role=true
               break
@@ -951,9 +924,9 @@ cmd_rotate_password() {
     err "Usage: iotstack rotate-password <role> [new-password]"
   fi
 
-  # Verify role exists
-  if [[ ! -v DEVICE_MAP["$role"] ]]; then
-    err "Unknown role: $role"
+  # Verify role exists (check if YAML file exists)
+  if [[ ! -f "${YAMLS_DIR}/${role}.yaml" ]]; then
+    err "Unknown role: $role (expected: ${YAMLS_DIR}/${role}.yaml)"
   fi
 
   info "Rotating OTA password for role: $role"
@@ -1018,21 +991,53 @@ cmd_rotate_password() {
 
   # Flash all devices with new password using old password for authentication
   echo "[INFO] Flashing devices with new password (authenticating with old password)..."
+  echo "[INFO] Using parallel jobs (4 devices at a time)..."
   echo
 
   local success_count=0
   local fail_count=0
   declare -a failed_macs=()
+  local max_jobs=4
 
-  for mac in "${mac_suffixes[@]}"; do
-    echo "[INFO] Flashing $mac..."
-    if "$UPDATE_SCRIPT" --reassign "$mac" "$(resolve_device "$role")" --ota-password "$current_password" >/dev/null 2>&1; then
-      echo "[OK] $mac flashed successfully"
-      success_count=$((success_count + 1))
-    else
-      echo "[ERR] $mac flash failed"
-      fail_count=$((fail_count + 1))
-      failed_macs+=("$mac")
+  # Track job status per MAC
+  declare -A job_pids=()
+  declare -a pending_macs=("${mac_suffixes[@]}")
+
+  # Start all jobs with queue management
+  local mac_idx=0
+  while [[ $mac_idx -lt ${#mac_suffixes[@]} ]] || [[ -n "${job_pids[*]:-}" ]]; do
+    # Start new jobs until we hit max parallel
+    while [[ $mac_idx -lt ${#mac_suffixes[@]} ]] && [[ ${#job_pids[@]} -lt $max_jobs ]]; do
+      local mac="${mac_suffixes[$mac_idx]}"
+      (
+        if "$UPDATE_SCRIPT" --reassign "$mac" "$(resolve_device "$role")" --ota-password "$current_password" >/dev/null 2>&1; then
+          echo "[OK] $mac flashed successfully"
+        else
+          echo "[ERR] $mac flash failed"
+          exit 1
+        fi
+      ) &
+      job_pids[$!]="$mac"
+      mac_idx=$((mac_idx + 1))
+    done
+
+    # Wait for any job to complete and check result
+    if [[ -n "${job_pids[*]:-}" ]]; then
+      wait -n 2>/dev/null
+      local wait_exit=$?
+      # Find which job completed
+      for pid in "${!job_pids[@]}"; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+          local mac="${job_pids[$pid]}"
+          if wait "$pid" 2>/dev/null; then
+            success_count=$((success_count + 1))
+          else
+            fail_count=$((fail_count + 1))
+            failed_macs+=("$mac")
+          fi
+          unset "job_pids[$pid]"
+        fi
+      done
     fi
   done
 
@@ -1078,65 +1083,41 @@ list_roles() {
   if [[ "$output_format" == "csv" ]]; then
     echo "Role,Type,Network,Config"
     list_device_names | while read -r device; do
-      mapping="${DEVICE_MAP[$device]}"
-      wifi_yaml="${mapping%%:*}"
-      thread_yaml="${mapping##*:}"
+      yaml_file="${YAMLS_DIR}/${device}.yaml"
 
-      device_type=""
-      network_type=""
-      if [[ -n "$wifi_yaml" && -f "$wifi_yaml" ]]; then
-        device_info=$(get_yaml_device_info "$wifi_yaml")
+      if [[ -f "$yaml_file" ]]; then
+        device_info=$(get_yaml_device_info "$yaml_file")
         device_type="${device_info%%|*}"
         network_type="${device_info##*|}"
-      elif [[ -n "$thread_yaml" && -f "$thread_yaml" ]]; then
-        device_info=$(get_yaml_device_info "$thread_yaml")
-        device_type="${device_info%%|*}"
-        network_type="${device_info##*|}"
+        config_file=$(basename "$yaml_file")
+      else
+        device_type=""
+        network_type=""
+        config_file=""
       fi
 
-      config_display=""
-      if [[ -n "$wifi_yaml" && -n "$thread_yaml" ]]; then
-        config_display="${wifi_yaml##*/} / ${thread_yaml##*/}"
-      elif [[ -n "$wifi_yaml" ]]; then
-        config_display="${wifi_yaml##*/}"
-      elif [[ -n "$thread_yaml" ]]; then
-        config_display="${thread_yaml##*/}"
-      fi
-
-      echo "$device,$device_type,$network_type,$config_display"
+      echo "$device,$device_type,$network_type,$config_file"
     done
   elif [[ "$output_format" == "json" ]]; then
     echo "["
     first=true
     list_device_names | while read -r device; do
-      mapping="${DEVICE_MAP[$device]}"
-      wifi_yaml="${mapping%%:*}"
-      thread_yaml="${mapping##*:}"
+      yaml_file="${YAMLS_DIR}/${device}.yaml"
 
-      device_type=""
-      network_type=""
-      if [[ -n "$wifi_yaml" && -f "$wifi_yaml" ]]; then
-        device_info=$(get_yaml_device_info "$wifi_yaml")
+      if [[ -f "$yaml_file" ]]; then
+        device_info=$(get_yaml_device_info "$yaml_file")
         device_type="${device_info%%|*}"
         network_type="${device_info##*|}"
-      elif [[ -n "$thread_yaml" && -f "$thread_yaml" ]]; then
-        device_info=$(get_yaml_device_info "$thread_yaml")
-        device_type="${device_info%%|*}"
-        network_type="${device_info##*|}"
-      fi
-
-      config_display=""
-      if [[ -n "$wifi_yaml" && -n "$thread_yaml" ]]; then
-        config_display="${wifi_yaml##*/} / ${thread_yaml##*/}"
-      elif [[ -n "$wifi_yaml" ]]; then
-        config_display="${wifi_yaml##*/}"
-      elif [[ -n "$thread_yaml" ]]; then
-        config_display="${thread_yaml##*/}"
+        config_file=$(basename "$yaml_file")
+      else
+        device_type=""
+        network_type=""
+        config_file=""
       fi
 
       [[ "$first" != true ]] && echo ","
       printf '  {"role": "%s", "type": "%s", "network": "%s", "config": "%s"}' \
-        "$device" "$device_type" "$network_type" "$config_display"
+        "$device" "$device_type" "$network_type" "$config_file"
       first=false
     done
     echo
@@ -1149,29 +1130,17 @@ list_roles() {
 
     # Gather role data into temp file
     list_device_names | while read -r device; do
-      mapping="${DEVICE_MAP[$device]}"
-      wifi_yaml="${mapping%%:*}"
-      thread_yaml="${mapping##*:}"
+      yaml_file="${YAMLS_DIR}/${device}.yaml"
 
-      device_type=""
-      network_type=""
-      if [[ -n "$wifi_yaml" && -f "$wifi_yaml" ]]; then
-        device_info=$(get_yaml_device_info "$wifi_yaml")
+      if [[ -f "$yaml_file" ]]; then
+        device_info=$(get_yaml_device_info "$yaml_file")
         device_type="${device_info%%|*}"
         network_type="${device_info##*|}"
-      elif [[ -n "$thread_yaml" && -f "$thread_yaml" ]]; then
-        device_info=$(get_yaml_device_info "$thread_yaml")
-        device_type="${device_info%%|*}"
-        network_type="${device_info##*|}"
-      fi
-
-      config_display=""
-      if [[ -n "$wifi_yaml" && -n "$thread_yaml" ]]; then
-        config_display="${wifi_yaml##*/} / ${thread_yaml##*/}"
-      elif [[ -n "$wifi_yaml" ]]; then
-        config_display="${wifi_yaml##*/}"
-      elif [[ -n "$thread_yaml" ]]; then
-        config_display="${thread_yaml##*/}"
+        config_display=$(basename "$yaml_file")
+      else
+        device_type=""
+        network_type=""
+        config_display=""
       fi
 
       echo "$device|$device_type|$network_type|$config_display" >> "$temp_data"
