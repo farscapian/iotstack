@@ -643,6 +643,22 @@ if [[ ! -f "$YAML_FILE" ]]; then
   exit 1
 fi
 
+# ── Handle custom API key for OTA ───────────────────────────────────────────
+# If user provided a custom API key, create a temporary YAML with that key
+if [[ -n "$API_KEY" ]]; then
+  TEMP_YAML="${HOME}/.iotstack/artifacts/.temp-api-key-$$.yaml"
+  mkdir -p "${HOME}/.iotstack/artifacts"
+
+  # Create temp YAML with API key substituted for any !secret references
+  sed 's|key: !secret [^ ]*|key: '"$API_KEY"'|g' "$YAML_FILE" > "$TEMP_YAML"
+
+  # Use temp YAML for compilation and OTA
+  YAML_FILE="$TEMP_YAML"
+
+  # Clean up temp file on exit
+  trap 'rm -f "$TEMP_YAML" 2>/dev/null; cleanup' EXIT
+fi
+
 if ! [[ "$MAX_JOBS" =~ ^[1-9][0-9]*$ ]]; then
   err "--jobs must be a positive integer."
   exit 1
