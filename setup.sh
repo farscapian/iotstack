@@ -230,7 +230,7 @@ echo "Seeding pass repository with API keys and OTA passwords..."
 SECRETS_YAML="${SCRIPT_DIR}/yamls/secrets.yaml"
 
 if [[ -f "$SECRETS_YAML" ]]; then
-  export GNUPGHOME="${HOME}/.gnupg"
+  export GNUPGHOME="${IOTSTACK_HOME}/.gnupg"
   export PASSWORD_STORE_DIR="$PASS_DIR"
 
   # Extract all secrets and add them to pass

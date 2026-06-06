@@ -966,7 +966,7 @@ cmd_secret() {
   local value="${4:-}"
 
   # Export GPG and pass environment for iotstack-secrets
-  export GNUPGHOME="${HOME}/.gnupg"
+  export GNUPGHOME="${HOME}/.iotstack/.gnupg"
   export PASSWORD_STORE_DIR="${HOME}/.iotstack/.pass"
 
   case "$command" in
