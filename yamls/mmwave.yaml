@@ -10,7 +10,7 @@ esphome:
   name_add_mac_suffix: true
   project:
     name: "iotstack.${device_role}"
-    version: "1.4.2"
+    version: "1.5.0"
   on_boot:
     priority: -100
     then:
@@ -161,6 +161,11 @@ binary_sensor:
                 brightness: 20%
                 effect: "Pulse Yellow Red"
 
+  # WiFi connectivity status for LED effects
+  - platform: connectivity
+    id: api_connected
+    internal: true
+
 text_sensor:
   - platform: template
     name: "Presence"
@@ -173,6 +178,7 @@ sensor:
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     breath_rate:
+      id: breath_rate_sensor
       name: "Respiratory Rate"
       device_class: ""
       unit_of_measurement: "brpm"
@@ -260,16 +266,8 @@ light:
     chipset: WS2812
     restore_mode: ALWAYS_OFF
     effects:
-      - pulse:
-          name: "Pulse"
-          transition_length: 500ms
-          update_interval: 1000ms
-      - pulse:
-          name: "Pulse Red"
-          transition_length: 500ms
-          update_interval: 1000ms
-          min_brightness: 20%
-          max_brightness: 60%
+      - none:
+          name: "Presence Not Detected"
       - lambda:
           name: "Pulse Heart Rate"
           update_interval: 100ms
@@ -325,20 +323,60 @@ light:
               call.perform();
             }
       - lambda:
-          name: "Pulse Yellow Red"
-          update_interval: 1000ms
+          name: "Pulse Breath Rate"
+          update_interval: 100ms
           lambda: |-
-            static bool phase = false;
-            auto call = id(rgb_led).make_call();
-            call.set_transition_length(500);
-            call.set_brightness(0.2);
-            if (phase) {
-              call.set_red(1.0); call.set_green(0.5); call.set_blue(0.0);
-            } else {
-              call.set_red(1.0); call.set_green(0.0); call.set_blue(0.0);
+            static uint32_t last_pulse_time = 0;
+            static bool is_pulsing = false;
+
+            // Check if breath rate is available and WiFi is connected
+            if (!id(breath_rate_sensor).has_state() || !id(api_connected).state) {
+              // No breath rate or WiFi disconnected - show blue stroke
+              auto call = id(rgb_led).make_call();
+              call.set_brightness(0.6);
+              call.set_red(0.0); call.set_green(0.0); call.set_blue(1.0);
+              call.perform();
+              is_pulsing = false;
+              return;
             }
-            phase = !phase;
-            call.perform();
+
+            // Get current breath rate from sensor
+            float breath_rate = id(breath_rate_sensor).state;
+            if (breath_rate <= 0) {
+              // Invalid breath rate - turn off LED
+              auto call = id(rgb_led).make_call();
+              call.set_state(false);
+              call.perform();
+              is_pulsing = false;
+              return;
+            }
+
+            // Calculate pulse interval in milliseconds (60000 / BPM)
+            uint32_t pulse_interval = (uint32_t)(60000.0f / breath_rate);
+            uint32_t transition_time = pulse_interval / 2;
+
+            uint32_t now = millis();
+
+            if (!is_pulsing && (now - last_pulse_time) >= pulse_interval) {
+              // Start pulse
+              is_pulsing = true;
+              last_pulse_time = now;
+
+              auto call = id(rgb_led).make_call();
+              call.set_transition_length(transition_time);
+              call.set_brightness(0.8);
+              call.set_red(0.0); call.set_green(1.0); call.set_blue(0.0);
+              call.perform();
+            } else if (is_pulsing && (now - last_pulse_time) >= transition_time) {
+              // End pulse
+              is_pulsing = false;
+
+              auto call = id(rgb_led).make_call();
+              call.set_transition_length(transition_time);
+              call.set_brightness(0.2);
+              call.set_red(0.0); call.set_green(1.0); call.set_blue(0.0);
+              call.perform();
+            }
 
 # 8. Scripts
 script:
