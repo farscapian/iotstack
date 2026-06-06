@@ -392,46 +392,47 @@ cmd_update() {
 }
 
 cmd_reassign() {
-  local device_or_yaml=""
   local use_thread=""
-  declare -a reassign_macs=()
   declare -a update_args=()
+  declare -a positional_args=()
 
-  # Parse arguments: <MAC1> [MAC2 ...] <device|yaml>
+  # Separate options from positional arguments
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --thread)
         use_thread="--thread"
         shift
         ;;
-      --dry-run|--verbose|-v|--jobs)
+      --dry-run|-v|--verbose)
         update_args+=("$1")
-        if [[ "$1" == "--jobs" ]]; then
-          shift
-          update_args+=("$1")
-        fi
         shift
         ;;
-      *)
-        # Collect MACs until we hit the target device/yaml
-        if [[ -z "$device_or_yaml" ]]; then
-          reassign_macs+=("$1")
-        else
-          err "Too many arguments: $1"
-        fi
+      --jobs)
+        update_args+=("$1" "$2")
+        shift 2
+        ;;
+      --)
         shift
-        # Last argument is the target device/yaml
-        if [[ $# -eq 1 ]]; then
-          device_or_yaml="$1"
-          shift
-        fi
+        positional_args+=("$@")
+        break
+        ;;
+      -*)
+        err "Unknown option: $1"
+        ;;
+      *)
+        positional_args+=("$1")
+        shift
         ;;
     esac
   done
 
-  if [[ ${#reassign_macs[@]} -eq 0 ]] || [[ -z "$device_or_yaml" ]]; then
+  # Last positional is the target device/yaml, rest are MACs
+  if [[ ${#positional_args[@]} -lt 2 ]]; then
     err "Usage: iotstack reassign <MAC1> [MAC2 ...] <device|yaml>"
   fi
+
+  local device_or_yaml="${positional_args[-1]}"
+  declare -a reassign_macs=("${positional_args[@]:0:${#positional_args[@]}-1}")
 
   # Resolve device name to YAML if needed
   local yaml_file
