@@ -225,14 +225,15 @@ help_list() {
 iotstack list — Show devices and roles
 
 Usage:
-  iotstack list [devices|roles]
+  iotstack list [devices [role]|roles]
 
 Subcommands:
-  devices   Show discovered ESPHome devices on network
-  roles     Show available device roles with their configurations
+  devices [role]   Show discovered devices (optionally filtered by role)
+  roles            Show available device roles with their configurations
 
 Examples:
-  iotstack list devices                      # Show discovered devices on network
+  iotstack list devices                      # Show all discovered devices
+  iotstack list devices bleproxy             # Show only bleproxy devices
   iotstack list roles                        # Show available device roles
 
 EOF
@@ -240,11 +241,32 @@ EOF
 
 list_devices() {
   local output_format="${1:-text}"
+  local filter_role="${2:-}"
+  local expected_project=""
   local current_hostname=""
   local current_friendly=""
   local current_project=""
   local current_version=""
   local current_hash=""
+
+  # If filtering by role, extract expected project name from YAML
+  if [[ -n "$filter_role" ]]; then
+    if [[ ! -v DEVICE_MAP["$filter_role"] ]]; then
+      err "Unknown role: $filter_role"
+    fi
+    local mapping="${DEVICE_MAP[$filter_role]}"
+    local yaml_path="${mapping%:*}"
+    [[ -z "$yaml_path" ]] && yaml_path="${mapping#*:}"
+
+    if [[ -z "$yaml_path" || ! -f "$yaml_path" ]]; then
+      err "No valid YAML found for role: $filter_role"
+    fi
+
+    # Extract project name from nested project: name: structure, handling substitutions
+    expected_project=$(awk '/project:/{flag=1; next} flag && /name:/{print; exit}' "$yaml_path" | sed 's/.*name:\s*"\?\([^"]*\)"\?.*/\1/')
+    # Handle substitutions - if contains ${device_role}, replace with filter_role
+    expected_project="${expected_project//\$\{device_role\}/$filter_role}"
+  fi
 
   # Gather device data into temp buffer
   local device_data=$(mktemp)
@@ -282,12 +304,20 @@ list_devices() {
   if [[ "$output_format" == "csv" ]]; then
     echo "Device,Friendly Name,Project,Version,Hash"
     while IFS='|' read -r hostname friendly project version hash; do
+      # Filter by role if specified
+      if [[ -n "$filter_role" && "$project" != "$expected_project" ]]; then
+        continue
+      fi
       echo "$hostname,$friendly,$project,$version,$hash"
     done < "${device_data}.sorted"
   elif [[ "$output_format" == "json" ]]; then
     echo "["
     first=true
     while IFS='|' read -r hostname friendly project version hash; do
+      # Filter by role if specified
+      if [[ -n "$filter_role" && "$project" != "$expected_project" ]]; then
+        continue
+      fi
       [[ "$first" != true ]] && echo ","
       printf '  {"device": "%s", "friendly_name": "%s", "project": "%s", "version": "%s", "hash": "%s"}' \
         "$hostname" "$friendly" "$project" "$version" "$hash"
@@ -338,17 +368,24 @@ list_devices() {
     # Print data rows with calculated widths
     local found=0
     while IFS='|' read -r hostname friendly project version hash; do
+      # Filter by role if specified
+      if [[ -n "$filter_role" && "$project" != "$expected_project" ]]; then
+        continue
+      fi
       printf "  ${GRN}%-${w_device}s${RST} %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_hash}s\n" \
         "$hostname" "$friendly" "$project" "$version" "$hash"
       found=$((found + 1))
     done < "${device_data}.sorted"
 
     echo
-    local devices_count=$(wc -l < "${device_data}.sorted")
-    if [[ $devices_count -eq 0 ]]; then
-      warn "No ESPHome devices found on network"
+    if [[ $found -eq 0 ]]; then
+      if [[ -n "$filter_role" ]]; then
+        warn "No devices found for role: $filter_role"
+      else
+        warn "No ESPHome devices found on network"
+      fi
     else
-      ok "Found $devices_count device(s) on network"
+      ok "Found $found device(s) on network"
     fi
   fi
 }
@@ -651,6 +688,7 @@ cmd_verify() {
 cmd_list() {
   local output_format="text"
   local subcommand=""
+  local filter_role=""
 
   # Parse flags
   while [[ $# -gt 0 ]]; do
@@ -672,6 +710,11 @@ cmd_list() {
       devices|roles)
         subcommand="$1"
         shift
+        # For devices subcommand, next argument might be a role filter
+        if [[ "$subcommand" == "devices" && $# -gt 0 && "$1" != --* ]]; then
+          filter_role="$1"
+          shift
+        fi
         ;;
       *)
         err "Unknown argument: $1"
@@ -687,7 +730,7 @@ cmd_list() {
 
   case "$subcommand" in
     devices)
-      list_devices "$output_format"
+      list_devices "$output_format" "$filter_role"
       ;;
     roles)
       list_roles "$output_format"
