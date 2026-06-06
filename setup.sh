@@ -292,7 +292,7 @@ if [[ -f "$SECRETS_YAML" ]]; then
       continue
     fi
 
-    # Handle device secrets: bleproxy_api_encryption_key -> iotstack/bleproxy/api_encryption_key
+    # Handle device secrets: bleproxy_api_encryption_key -> iotstack/roles/bleproxy/api_encryption_key
     if [[ "$key" =~ ^([a-z_]+)_(api_encryption_key|ota_password)$ ]]; then
       role="${BASH_REMATCH[1]}"
       secret_type="${BASH_REMATCH[2]}"
@@ -302,7 +302,7 @@ if [[ -f "$SECRETS_YAML" ]]; then
         continue
       fi
 
-      pass_path="iotstack/${role}/${secret_type}"
+      pass_path="iotstack/roles/${role}/${secret_type}"
 
       # Add to pass if not already present
       if ! pass show "$pass_path" >/dev/null 2>&1; then
