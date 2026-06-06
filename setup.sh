@@ -119,8 +119,8 @@ echo "Setting up GPG key (required for pass)"
 echo "════════════════════════════════════════════════════════"
 echo
 
-# Check if user has existing GPG key in ~/.gnupg
-parent_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -m1 "^sec" | awk '{print $2}' | cut -d'/' -f2 || echo "")
+# Check if user has existing GPG key in ~/.gnupg (use LONG format for pass compatibility)
+parent_key=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null | grep -m1 "^sec" | awk '{print $2}' | cut -d'/' -f2 || echo "")
 
 if [[ -n "$parent_key" ]]; then
   echo "Found existing GPG key in ~/.gnupg: $parent_key"
@@ -155,8 +155,8 @@ Expire-Date: 0
 EOF
   sleep 3
 
-  # Verify key was created
-  gpg_key=$(GNUPGHOME="$GNUPGHOME" gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -m1 "^sec" | awk '{print $2}' | cut -d'/' -f2 || echo "")
+  # Verify key was created (use LONG format for pass compatibility)
+  gpg_key=$(GNUPGHOME="$GNUPGHOME" gpg --list-secret-keys --keyid-format LONG 2>/dev/null | grep -m1 "^sec" | awk '{print $2}' | cut -d'/' -f2 || echo "")
   if [[ -z "$gpg_key" ]]; then
     err "Failed to generate or locate GPG key"
   fi
