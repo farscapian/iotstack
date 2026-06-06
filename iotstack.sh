@@ -326,12 +326,12 @@ list_devices() {
     # Text format
     info "Discovered ESPHome devices on network:"
     echo
-    printf "  ${GRN}%-25s %-20s %-20s %-15s %-12s${RST}\n" "Device" "Friendly Name" "Project" "Version" "Hash"
-    printf "  ${DIM}%-25s %-20s %-20s %-15s %-12s${RST}\n" "─────────────────────────" "────────────────────" "────────────────────" "───────────────" "────────────"
+    printf "  ${GRN}%-25s %-30s %-20s %-15s %-12s${RST}\n" "Device" "Friendly Name" "Project" "Version" "Hash"
+    printf "  ${DIM}%-25s %-30s %-20s %-15s %-12s${RST}\n" "─────────────────────────" "──────────────────────────────" "────────────────────" "───────────────" "────────────"
 
     local found=0
     while IFS='|' read -r hostname friendly project version hash; do
-      printf "  ${GRN}%-25s${RST} %-20s %-20s %-15s %-12s\n" \
+      printf "  ${GRN}%-25s${RST} %-30s %-20s %-15s %-12s\n" \
         "$hostname" "$friendly" "$project" "$version" "$hash"
       found=$((found + 1))
     done < "${device_data}.sorted"
