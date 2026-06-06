@@ -1023,13 +1023,29 @@ cmd_rotate_secrets() {
   fi
   echo
 
-  # Get current OTA password from password manager or prompt
+  # Get current OTA password from password manager (versioned)
   local current_password
-  echo "[INFO] Retrieving current OTA password from password manager..."
+  echo "[INFO] Retrieving current OTA password from version history..."
   current_password=$(cmd_secret get "$role" ota 2>/dev/null) || {
-    warn "Could not retrieve password from password manager"
-    read -p "Enter current OTA password for '$role': " -rs current_password
-    echo
+    # Not in pass yet - extract from YAML's secret reference
+    echo "[INFO] Not in version history yet - extracting from YAML..."
+
+    # Extract the secret name from YAML (e.g., !secret mmwave_ota_password)
+    local secret_name
+    secret_name=$(grep -oP '!secret\s+\K\S+(?=\s*$)' "${YAMLS_DIR}/${role}.yaml" | grep ota_password | head -1)
+
+    if [[ -n "$secret_name" ]]; then
+      # Look up the value in tmpfs secrets.yaml
+      current_password=$(grep "^${secret_name}:" "$secrets_yaml" | sed "s/${secret_name}:[[:space:]]*['\"]//; s/['\"][[:space:]]*$//" || true)
+
+      if [[ -z "$current_password" ]]; then
+        err "Could not find secret '${secret_name}' in secrets.yaml"
+      fi
+
+      echo "[OK] Found current password from YAML secret reference"
+    else
+      err "Could not find OTA password secret in ${role}.yaml"
+    fi
   }
 
   if [[ -z "$current_password" ]]; then
