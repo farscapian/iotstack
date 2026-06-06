@@ -237,6 +237,39 @@ sensor:
     accuracy_decimals: 1
 
 
+# 6. Global variable to track current effect
+globals:
+  - id: current_effect
+    type: int
+    initial_value: '0'
+    restore_value: no
+
+# 7. Physical button (GPIO9 - boot button on Seeed XIAO)
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO9
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "Device Button"
+    internal: true
+    on_click:
+      min_length: 50ms
+      max_length: 350ms
+      then:
+        - script.execute: cycle_effect
+    on_double_click:
+      min_length: 50ms
+      max_length: 350ms
+      then:
+        - button.press: restart_btn
+    on_press:
+      min_length: 1500ms
+      then:
+        - button.press: safe_mode_btn
+
 # 7. Buttons
 button:
   - platform: template
@@ -245,6 +278,12 @@ button:
     entity_category: diagnostic
     on_press:
       - script.execute: identify_pulse
+  - platform: restart
+    id: restart_btn
+    internal: true
+  - platform: safe_mode
+    id: safe_mode_btn
+    internal: true
   - platform: restart
     name: "Restart"
     entity_category: config
@@ -380,6 +419,22 @@ light:
 
 # 8. Scripts
 script:
+  - id: cycle_effect
+    mode: restart
+    then:
+      - lambda: |-
+          int current = id(current_effect);
+          current = (current + 1) % 2;  // Toggle between 0 and 1
+          id(current_effect) = current;
+
+          auto call = id(rgb_led).make_call();
+          if (current == 0) {
+            call.set_effect("Pulse Heart Rate");
+          } else {
+            call.set_effect("Pulse Breath Rate");
+          }
+          call.perform();
+
   - id: identify_pulse
     mode: restart
     then:
@@ -389,39 +444,19 @@ script:
           green: 100%
           blue: 0%
           brightness: 100%
-          effect: "Pulse"
+          effect: "Pulse Heart Rate"
       - delay: 10s
       - light.turn_off:
           id: rgb_led
           transition_length: 300ms
       - if:
           condition:
-            api.connected:
+            binary_sensor.is_on: presence
           then:
-            - if:
-                condition:
-                  binary_sensor.is_on: presence
-                then:
-                  - light.turn_on:
-                      id: rgb_led
-                      red: 100%
-                      green: 0%
-                      blue: 0%
-                      brightness: 20%
-                      effect: "Pulse Red"
-                else:
-                  - light.turn_on:
-                      id: rgb_led
-                      red: 0%
-                      green: 100%
-                      blue: 0%
-                      brightness: 20%
-                      transition_length: 500ms
+            - light.turn_on:
+                id: rgb_led
+                effect: "Pulse Heart Rate"
           else:
             - light.turn_on:
                 id: rgb_led
-                red: 100%
-                green: 50%
-                blue: 0%
-                brightness: 20%
-                effect: "Pulse Yellow Red"
+                effect: "Presence Not Detected"
