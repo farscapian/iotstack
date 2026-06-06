@@ -136,21 +136,39 @@ echo
 if ! command -v gocryptfs &>/dev/null; then
   echo "Installing gocryptfs (user-land encrypted filesystem)..."
   if command -v apt &>/dev/null; then
-    sudo apt update && sudo apt install -y gocryptfs
+    # Try standard install
+    if sudo apt update && sudo apt install -y gocryptfs 2>/dev/null; then
+      ok "gocryptfs installed via apt"
+    else
+      # Try enabling universe repo (common for gocryptfs)
+      echo "gocryptfs not in default repos. Trying universe repository..."
+      sudo add-apt-repository -y universe 2>/dev/null || true
+      if sudo apt update && sudo apt install -y gocryptfs 2>/dev/null; then
+        ok "gocryptfs installed via apt (universe)"
+      else
+        warn "Could not install gocryptfs via apt. Please install manually:"
+        echo "  https://github.com/rfjakob/gocryptfs/releases"
+      fi
+    fi
   elif command -v brew &>/dev/null; then
-    brew install gocryptfs
+    if brew install gocryptfs 2>/dev/null; then
+      ok "gocryptfs installed via brew"
+    else
+      warn "Could not install gocryptfs via brew. Please install manually:"
+      echo "  https://github.com/rfjakob/gocryptfs/releases"
+    fi
   else
-    warn "Could not install gocryptfs automatically. Please install manually:"
-    echo "  Ubuntu/Debian: sudo apt install gocryptfs"
-    echo "  macOS: brew install gocryptfs"
-    echo "  Or: https://github.com/rfjakob/gocryptfs/releases"
+    warn "Could not install gocryptfs automatically (no apt or brew found)."
+    echo "Please install manually:"
+    echo "  https://github.com/rfjakob/gocryptfs/releases"
   fi
 fi
 
 if command -v gocryptfs &>/dev/null; then
   ok "gocryptfs is installed"
 else
-  warn "gocryptfs not found. iotstack will not work without it."
+  err "gocryptfs not found. iotstack requires gocryptfs for encrypted secrets.
+Please install from: https://github.com/rfjakob/gocryptfs/releases"
 fi
 
 # Create pass repository in ~/.iotstack/.pass
