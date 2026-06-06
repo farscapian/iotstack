@@ -1035,11 +1035,16 @@ cmd_rotate_secrets() {
     secret_name=$(grep -oP '!secret\s+\K\S+(?=\s*$)' "${YAMLS_DIR}/${role}.yaml" | grep ota_password | head -1)
 
     if [[ -n "$secret_name" ]]; then
-      # Look up the value in tmpfs secrets.yaml
-      current_password=$(grep "^${secret_name}:" "$secrets_yaml" | sed "s/${secret_name}:[[:space:]]*['\"]//; s/['\"][[:space:]]*$//" || true)
+      # Look up the value in yamls/secrets.yaml (source file)
+      local source_secrets="${YAMLS_DIR}/secrets.yaml"
+      if [[ ! -f "$source_secrets" ]]; then
+        err "Source secrets file not found: $source_secrets"
+      fi
+
+      current_password=$(grep "^${secret_name}:" "$source_secrets" | sed "s/${secret_name}:[[:space:]]*['\"]//; s/['\"][[:space:]]*$//" || true)
 
       if [[ -z "$current_password" ]]; then
-        err "Could not find secret '${secret_name}' in secrets.yaml"
+        err "Could not find secret '${secret_name}' in $source_secrets"
       fi
 
       # Set it in pass as v00 so future rotations have it versioned
@@ -1170,8 +1175,9 @@ cmd_rotate_secrets() {
         api_secret_name=$(grep -oP '!secret\s+\K\S+(?=\s*$)' "${YAMLS_DIR}/${role}.yaml" | grep api_encryption_key | head -1)
 
         if [[ -n "$api_secret_name" ]]; then
-          # Look up the value in tmpfs secrets.yaml
-          current_api_key=$(grep "^${api_secret_name}:" "$secrets_yaml" | sed "s/${api_secret_name}:[[:space:]]*['\"]//; s/['\"][[:space:]]*$//" || true)
+          # Look up the value in yamls/secrets.yaml (source file)
+          local source_secrets="${YAMLS_DIR}/secrets.yaml"
+          current_api_key=$(grep "^${api_secret_name}:" "$source_secrets" | sed "s/${api_secret_name}:[[:space:]]*['\"]//; s/['\"][[:space:]]*$//" || true)
 
           if [[ -n "$current_api_key" ]]; then
             echo "[INFO] Storing current API key in pass as v00..."
