@@ -79,6 +79,42 @@ list_device_names() {
   done | sort
 }
 
+# ── Parallel Job Queue ────────────────────────────────────────────────────────
+# Helper to run multiple commands in parallel with job limiting
+# Usage: run_parallel_jobs <max_jobs> <"cmd1" "cmd2" ...>
+# Each command is executed in background, with at most max_jobs running
+# Returns array job_results[i] with exit code of command i
+run_parallel_jobs() {
+  local max_jobs=$1
+  shift
+  local commands=("$@")
+  local slot_count=0
+  declare -a job_pids=()
+  declare -a job_commands=()
+
+  for i in "${!commands[@]}"; do
+    # Wait for a slot to free up
+    while [[ $slot_count -ge $max_jobs ]]; do
+      wait -n 2>/dev/null || true
+      slot_count=$((slot_count - 1))
+    done
+
+    # Start job in background
+    local cmd="${commands[$i]}"
+    eval "$cmd" &
+    job_pids[$i]=$!
+    slot_count=$((slot_count + 1))
+  done
+
+  # Wait for all remaining jobs
+  job_results=()
+  for i in "${!job_pids[@]}"; do
+    local pid="${job_pids[$i]}"
+    wait "$pid" 2>/dev/null
+    job_results[$i]=$?
+  done
+}
+
 # ── Subcommands ──────────────────────────────────────────────────────────────
 
 usage() {
@@ -994,50 +1030,29 @@ cmd_rotate_password() {
   echo "[INFO] Using parallel jobs (4 devices at a time)..."
   echo
 
+  local max_jobs=4
+  declare -a commands=()
+
+  # Build command list for parallel execution
+  for mac in "${mac_suffixes[@]}"; do
+    commands+=("if \"$UPDATE_SCRIPT\" --reassign \"$mac\" \"$(resolve_device "$role")\" --ota-password \"$current_password\" >/dev/null 2>&1; then echo \"[OK] $mac flashed successfully\"; else echo \"[ERR] $mac flash failed\"; fi")
+  done
+
+  # Run all flashing jobs in parallel
+  job_results=()
+  run_parallel_jobs "$max_jobs" "${commands[@]}"
+
+  # Collect results
   local success_count=0
   local fail_count=0
   declare -a failed_macs=()
-  local max_jobs=4
 
-  # Track job status per MAC
-  declare -A job_pids=()
-  declare -a pending_macs=("${mac_suffixes[@]}")
-
-  # Start all jobs with queue management
-  local mac_idx=0
-  while [[ $mac_idx -lt ${#mac_suffixes[@]} ]] || [[ -n "${job_pids[*]:-}" ]]; do
-    # Start new jobs until we hit max parallel
-    while [[ $mac_idx -lt ${#mac_suffixes[@]} ]] && [[ ${#job_pids[@]} -lt $max_jobs ]]; do
-      local mac="${mac_suffixes[$mac_idx]}"
-      (
-        if "$UPDATE_SCRIPT" --reassign "$mac" "$(resolve_device "$role")" --ota-password "$current_password" >/dev/null 2>&1; then
-          echo "[OK] $mac flashed successfully"
-        else
-          echo "[ERR] $mac flash failed"
-          exit 1
-        fi
-      ) &
-      job_pids[$!]="$mac"
-      mac_idx=$((mac_idx + 1))
-    done
-
-    # Wait for any job to complete and check result
-    if [[ -n "${job_pids[*]:-}" ]]; then
-      wait -n 2>/dev/null
-      local wait_exit=$?
-      # Find which job completed
-      for pid in "${!job_pids[@]}"; do
-        if ! kill -0 "$pid" 2>/dev/null; then
-          local mac="${job_pids[$pid]}"
-          if wait "$pid" 2>/dev/null; then
-            success_count=$((success_count + 1))
-          else
-            fail_count=$((fail_count + 1))
-            failed_macs+=("$mac")
-          fi
-          unset "job_pids[$pid]"
-        fi
-      done
+  for i in "${!job_results[@]}"; do
+    if [[ ${job_results[$i]} -eq 0 ]]; then
+      success_count=$((success_count + 1))
+    else
+      fail_count=$((fail_count + 1))
+      failed_macs+=("${mac_suffixes[$i]}")
     fi
   done
 
