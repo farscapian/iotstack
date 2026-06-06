@@ -180,31 +180,40 @@ if [[ -d "${PASS_DIR}/.git" ]]; then
   dim "pass repository already initialized at $PASS_DIR"
 else
   echo "Initializing pass repository at $PASS_DIR..."
-  # Create a GPG key if none exists, or use default key
-  if command -v gpg &>/dev/null && ! gpg --list-secret-keys &>/dev/null; then
-    echo "No GPG keys found. Creating a GPG key for pass..."
-    echo "You will be prompted to create a GPG key. Enter your details:"
-    gpg --gen-key || warn "GPG key generation may have been skipped"
-  fi
 
-  # Initialize pass with the default (or first available) GPG key
-  export PASSWORD_STORE_DIR="$PASS_DIR"
+  # Create a GPG key if none exists
   gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
 
-  if [[ -n "$gpg_key" ]]; then
-    pass init "$gpg_key" 2>&1 | grep -v "^Password store initialized" || true
-    if [[ -d "${PASS_DIR}/.git" ]]; then
-      ok "Initialized pass repository with GPG key: $gpg_key"
-    else
-      err "pass init failed. Try manually:
-  export PASSWORD_STORE_DIR=${PASS_DIR}
-  pass init <your-gpg-key-id>"
+  if [[ -z "$gpg_key" ]]; then
+    echo "No GPG keys found. Generating one for pass..."
+    # Generate GPG key non-interactively
+    gpg --batch --generate-key <<EOF
+Key-Type: RSA
+Key-Length: 2048
+Name-Real: iotstack
+Name-Email: iotstack@localhost
+Expire-Date: 0
+%no-protection
+%commit
+EOF
+    # Get the newly created key
+    gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+    if [[ -z "$gpg_key" ]]; then
+      err "Failed to generate GPG key"
     fi
+    ok "Generated GPG key: $gpg_key"
+  fi
+
+  # Initialize pass with the GPG key
+  export PASSWORD_STORE_DIR="$PASS_DIR"
+  pass init "$gpg_key" 2>&1 | grep -v "^Password store initialized" || true
+
+  if [[ -d "${PASS_DIR}/.git" ]]; then
+    ok "Initialized pass repository with GPG key: $gpg_key"
   else
-    err "Could not find GPG key. Please run:
-  gpg --list-secret-keys
+    err "pass init failed. Try manually:
   export PASSWORD_STORE_DIR=${PASS_DIR}
-  pass init <your-gpg-key-id>"
+  pass init $gpg_key"
   fi
 fi
 
