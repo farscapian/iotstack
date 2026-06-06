@@ -287,27 +287,53 @@ list_devices() {
   # Sort and deduplicate
   sort -u "$device_data" > "${device_data}.sorted"
 
-  # If suffix-only mode, just output MAC suffixes
+  # If ID-only mode, output device IDs in requested format
   if [[ "$suffix_only" == "true" ]]; then
-    local suffixes=()
-    while IFS='|' read -r hostname friendly project version hash; do
-      # Filter by role if specified
-      if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
-        continue
-      fi
-      # Extract MAC suffix (last 6 hex chars after last hyphen)
-      suffix="${hostname##*-}"
-      suffixes+=("$suffix")
-    done < "${device_data}.sorted"
-
-    if [[ ${#suffixes[@]} -eq 0 ]]; then
-      if [[ -n "$filter_role" ]]; then
-        warn "No devices found for role: $filter_role"
-      else
-        warn "No ESPHome devices found on network"
-      fi
+    if [[ "$output_format" == "csv" ]]; then
+      echo "ID"
+      while IFS='|' read -r hostname friendly project version hash; do
+        if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
+          continue
+        fi
+        suffix="${hostname##*-}"
+        echo "$suffix"
+      done < "${device_data}.sorted"
+    elif [[ "$output_format" == "json" ]]; then
+      (
+        echo "["
+        first=true
+        while IFS='|' read -r hostname friendly project version hash; do
+          if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
+            continue
+          fi
+          suffix="${hostname##*-}"
+          [[ "$first" != true ]] && echo ","
+          printf '  "%s"' "$suffix"
+          first=false
+        done < "${device_data}.sorted"
+        echo
+        echo "]"
+      ) | jq '.'
     else
-      echo "${suffixes[@]}"
+      # Text format: space-separated IDs
+      local suffixes=()
+      while IFS='|' read -r hostname friendly project version hash; do
+        if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
+          continue
+        fi
+        suffix="${hostname##*-}"
+        suffixes+=("$suffix")
+      done < "${device_data}.sorted"
+
+      if [[ ${#suffixes[@]} -eq 0 ]]; then
+        if [[ -n "$filter_role" ]]; then
+          warn "No devices found for role: $filter_role"
+        else
+          warn "No ESPHome devices found on network"
+        fi
+      else
+        echo "${suffixes[@]}"
+      fi
     fi
     return
   fi
@@ -322,20 +348,22 @@ list_devices() {
       echo "$hostname,$friendly,$project,$version,$hash"
     done < "${device_data}.sorted"
   elif [[ "$output_format" == "json" ]]; then
-    echo "["
-    first=true
-    while IFS='|' read -r hostname friendly project version hash; do
-      # Filter by role if specified (match role name in project field)
-      if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
-        continue
-      fi
-      [[ "$first" != true ]] && echo ","
-      printf '  {"device": "%s", "friendly_name": "%s", "project": "%s", "version": "%s", "hash": "%s"}' \
-        "$hostname" "$friendly" "$project" "$version" "$hash"
-      first=false
-    done < "${device_data}.sorted"
-    echo
-    echo "]"
+    (
+      echo "["
+      first=true
+      while IFS='|' read -r hostname friendly project version hash; do
+        # Filter by role if specified (match role name in project field)
+        if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
+          continue
+        fi
+        [[ "$first" != true ]] && echo ","
+        printf '  {"device": "%s", "friendly_name": "%s", "project": "%s", "version": "%s", "hash": "%s"}' \
+          "$hostname" "$friendly" "$project" "$version" "$hash"
+        first=false
+      done < "${device_data}.sorted"
+      echo
+      echo "]"
+    ) | jq '.'
   else
     # Text format - calculate column widths
     local margin=2
