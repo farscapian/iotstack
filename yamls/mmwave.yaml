@@ -103,7 +103,7 @@ i2c:
 
 # 4. mmWave component
 seeed_mr60bha2:
-  id: mr60bha2
+  id: my_mr60bha2
   uart_id: uart_bus
 
 # 5. Sensors
@@ -190,11 +190,10 @@ sensor:
       unit_of_measurement: "m"
       state_class: measurement
       accuracy_decimals: 2
-
-      
     num_targets:
       name: "Target Count"
       id: target_count
+      state_class: measurement
 
   - platform: uptime
     name: "Uptime"
