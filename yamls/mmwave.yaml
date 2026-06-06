@@ -352,18 +352,14 @@ light:
             }
       - lambda:
           name: "Pulse Breath Rate"
-          update_interval: 100ms
+          update_interval: 50ms
           lambda: |-
-            static uint32_t last_pulse_time = 0;
-            static bool is_pulsing = false;
-
             // Check if breath rate is available
             if (!id(breath_rate_sensor).has_state()) {
               // No breath rate - turn off LED
               auto call = id(rgb_led).make_call();
               call.set_state(false);
               call.perform();
-              is_pulsing = false;
               return;
             }
 
@@ -374,36 +370,30 @@ light:
               auto call = id(rgb_led).make_call();
               call.set_state(false);
               call.perform();
-              is_pulsing = false;
               return;
             }
 
-            // Calculate pulse interval in milliseconds (60000 / BPM)
-            uint32_t pulse_interval = (uint32_t)(60000.0f / breath_rate);
-            uint32_t transition_time = pulse_interval / 2;
+            // Calculate breath cycle time in milliseconds (60000 / BPM)
+            float cycle_time = 60000.0f / breath_rate;
 
+            // Get current position in breath cycle (0 to cycle_time)
             uint32_t now = millis();
+            static uint32_t cycle_start = 0;
+            if (cycle_start == 0) cycle_start = now;
 
-            if (!is_pulsing && (now - last_pulse_time) >= pulse_interval) {
-              // Start pulse
-              is_pulsing = true;
-              last_pulse_time = now;
+            float cycle_pos = fmod((float)(now - cycle_start), cycle_time);
+            float cycle_phase = cycle_pos / cycle_time;  // 0.0 to 1.0
 
-              auto call = id(rgb_led).make_call();
-              call.set_transition_length(transition_time);
-              call.set_brightness(0.8);
-              call.set_red(0.0); call.set_green(1.0); call.set_blue(0.0);
-              call.perform();
-            } else if (is_pulsing && (now - last_pulse_time) >= transition_time) {
-              // End pulse
-              is_pulsing = false;
+            // Smooth sine wave for natural breathing (0.2 to 0.8 brightness)
+            // sin(phase * pi) gives smooth 0→1→0 curve
+            float sine_value = sin(cycle_phase * 3.14159265f);
+            float brightness = 0.2f + (sine_value * 0.6f);  // Maps sine to 0.2-0.8
 
-              auto call = id(rgb_led).make_call();
-              call.set_transition_length(transition_time);
-              call.set_brightness(0.2);
-              call.set_red(0.0); call.set_green(1.0); call.set_blue(0.0);
-              call.perform();
-            }
+            auto call = id(rgb_led).make_call();
+            call.set_brightness(brightness);
+            call.set_red(0.0); call.set_green(1.0); call.set_blue(0.0);
+            call.set_transition_length(0);  // No transition, smooth via update_interval
+            call.perform();
       - lambda:
           name: "Strobe Red Yellow"
           update_interval: 250ms
