@@ -31,7 +31,7 @@ esp32:
 # 1. Core services
 logger:
   hardware_uart: USB_SERIAL_JTAG
-  level: INFO
+  level: DEBUG
 
 api:
   encryption:
@@ -97,9 +97,9 @@ uart:
   stop_bits: 1
 
 i2c:
-  sda: GPIO6
-  scl: GPIO7
-  scan: false
+  sda: GPIO22
+  scl: GPIO23
+  scan: true
 
 # 4. mmWave component
 seeed_mr60bha2:
@@ -160,34 +160,38 @@ binary_sensor:
                 effect: "Pulse Yellow Red"
 
 sensor:
+  # 4.2 mmWave — respiratory rate
   - platform: seeed_mr60bha2
+    seeed_mr60bha2_id: my_mr60bha2
     breath_rate:
-      name: "Respiratory Rate"
-      unit_of_measurement: "breaths/min"
-      accuracy_decimals: 1
-      filters:
-        - filter_out: 0.0
-        - sliding_window_moving_average:
-            window_size: 5
-            send_every: 1
+      name: "${friendly_name} Respiratory Rate"
+      device_class: ""
+      unit_of_measurement: "brpm"
+      state_class: measurement
+      accuracy_decimals: 0
+
+
+  # 4.3 mmWave — heart rate
+  - platform: seeed_mr60bha2
+    seeed_mr60bha2_id: my_mr60bha2
     heart_rate:
-      name: "Heart Rate"
+      name: "${friendly_name} Heart Rate"
+      device_class: ""
       unit_of_measurement: "bpm"
-      accuracy_decimals: 1
-      filters:
-        - filter_out: 0.0
-        - sliding_window_moving_average:
-            window_size: 5
-            send_every: 1
+      state_class: measurement
+      accuracy_decimals: 0
+
+
+  # 4.4 mmWave — detection distance
+  - platform: seeed_mr60bha2
+    seeed_mr60bha2_id: my_mr60bha2
     distance:
-      name: "Detection Distance"
-      unit_of_measurement: "in"
-      accuracy_decimals: 1
-      filters:
-        - multiply: 0.393701  # cm to inches (sensor outputs in centimeters)
-        - clamp:
-            min_value: 0
-            max_value: 400  # max ~10 meters / 33 feet
+      name: "${friendly_name} Detection Distance"
+      unit_of_measurement: "m"
+      state_class: measurement
+      accuracy_decimals: 2
+
+      
     num_targets:
       name: "Target Count"
       id: target_count
@@ -200,10 +204,20 @@ sensor:
     name: "WiFi Signal"
     update_interval: 60s
     entity_category: diagnostic
+
+  # 4.1 BH1750 illuminance
+  #   Resolution mode: defaults to HIGH_RES (1 lx, 120 ms measurement time)
+  #   address: 0x23 (ADDR tied to GND on this carrier board)
+  #   update_interval: 10s is a reasonable default; lower if you need faster response
   - platform: bh1750
-    name: "Illuminance"
+    name: "${friendly_name} Illuminance"
     address: 0x23
-    update_interval: 60s
+    i2c_id: bus_a
+    update_interval: 10s
+    unit_of_measurement: lx
+    device_class: illuminance
+    state_class: measurement
+    accuracy_decimals: 1
 
 
 # 7. Buttons
