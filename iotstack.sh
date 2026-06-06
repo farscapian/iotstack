@@ -172,9 +172,10 @@ Commands:
   rotate-password <role> [new-password]
     Rotate OTA password for all devices in a role.
     Keeps historical passwords for recovery and audit trails.
+    If password not provided, generates a cryptographically secure one.
     Examples:
-      iotstack rotate-password bleproxy                    # Prompt for new password
-      iotstack rotate-password bleproxy "newPassword123"   # Provide password directly
+      iotstack rotate-password bleproxy                    # Generate strong password
+      iotstack rotate-password bleproxy "newPassword123"   # Use specific password
 
   help [command]
     Show help for a specific command.
@@ -960,28 +961,33 @@ cmd_rotate_password() {
 
   # Get current OTA password from password manager or prompt
   local current_password
-  if command -v ./iotstack-secrets &>/dev/null; then
-    echo "[INFO] Retrieving current OTA password from password manager..."
-    current_password=$(./iotstack-secrets get "$role" ota_password 2>/dev/null) || {
-      warn "Could not retrieve password from password manager"
-      read -p "Enter current OTA password for '$role': " -rs current_password
-      echo
-    }
-  else
+  echo "[INFO] Retrieving current OTA password from password manager..."
+  current_password=$(cmd_secret get "$role" ota 2>/dev/null) || {
+    warn "Could not retrieve password from password manager"
     read -p "Enter current OTA password for '$role': " -rs current_password
     echo
-  fi
+  }
 
   if [[ -z "$current_password" ]]; then
     err "Current password is required"
   fi
 
-  # If no new password provided, prompt for it
+  # If no new password provided, generate a cryptographically secure one
   if [[ -z "$new_password" ]]; then
-    read -p "Enter new OTA password for '$role': " -rs new_password
+    echo "[INFO] Generating cryptographically secure password..."
+    # Generate 32 bytes of random data, encode as base64, remove padding/special chars for compatibility
+    new_password=$(openssl rand -base64 32 | tr -d '=+/' | cut -c1-32)
+    echo "[OK] Generated password (32 chars): $new_password"
     echo
-    if [[ -z "$new_password" ]]; then
-      err "New password cannot be empty"
+    read -p "Use this password? (Y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Nn]$ ]]; then
+      echo "[INFO] Using interactive password entry instead..."
+      read -p "Enter new OTA password for '$role': " -rs new_password
+      echo
+      if [[ -z "$new_password" ]]; then
+        err "New password cannot be empty"
+      fi
     fi
   fi
 
