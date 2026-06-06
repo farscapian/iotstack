@@ -999,9 +999,17 @@ cmd_rotate_secrets() {
     err "Unknown role: $role (expected: ${YAMLS_DIR}/${role}.yaml)"
   fi
 
+  # Read HA credentials from secrets.yaml if they exist
+  local ha_url=""
+  local ha_token=""
+  if [[ -f "$SECRETS_YAML" ]]; then
+    ha_url=$(grep '^ha_url:' "$SECRETS_YAML" | sed 's/ha_url:[[:space:]]*"\?//; s/"\?[[:space:]]*$//' || true)
+    ha_token=$(grep '^ha_token:' "$SECRETS_YAML" | sed 's/ha_token:[[:space:]]*"\?//; s/"\?[[:space:]]*$//' || true)
+  fi
+
   # Check if HA credentials are configured
   local ha_configured=false
-  if [[ -n "$HA_URL" && -n "$HA_TOKEN" ]]; then
+  if [[ -n "$ha_url" && -n "$ha_token" ]]; then
     ha_configured=true
   fi
 
