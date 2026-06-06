@@ -1350,7 +1350,7 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   FQDN="${HOSTNAME}.local"
   dim "  started → ${HOSTNAME}"
   (
-    if "$ESPHOME_BIN" run "$YAML_FILE" --device "$FQDN" --no-logs; then
+    if "$ESPHOME_BIN" upload "$YAML_FILE" --device "$FQDN" --no-logs; then
       echo ok > "$WORK_DIR/${HOSTNAME}.result"
     else
       echo fail > "$WORK_DIR/${HOSTNAME}.result"
