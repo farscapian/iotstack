@@ -2,7 +2,7 @@
 # setup.sh — Add iotstack command to PATH
 # This script sets up the iotstack CLI tool so you can run 'iotstack' from anywhere
 
-set -euo pipefail
+set -euox pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IOTSTACK_SCRIPT="${SCRIPT_DIR}/iotstack.sh"
@@ -110,6 +110,39 @@ if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
   fi
 fi
 
+# ── GPG Key Setup (required before pass) ──────────────────────────────────
+echo
+echo "════════════════════════════════════════════════════════"
+echo "Setting up GPG key (required for pass)"
+echo "════════════════════════════════════════════════════════"
+echo
+
+# Check if GPG key exists
+gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+
+if [[ -z "$gpg_key" ]]; then
+  echo "No GPG keys found. Generating one..."
+  gpg --batch --generate-key <<'EOF'
+Key-Type: RSA
+Key-Length: 2048
+Name-Real: iotstack
+Name-Email: iotstack@localhost
+Expire-Date: 0
+%no-protection
+%commit
+EOF
+  sleep 2
+
+  # Get the newly created key
+  gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+  if [[ -z "$gpg_key" ]]; then
+    err "Failed to generate GPG key"
+  fi
+  ok "Generated GPG key: $gpg_key"
+else
+  ok "Using existing GPG key: $gpg_key"
+fi
+
 # ── Pass Password Manager Setup ────────────────────────────────────────────
 echo
 echo "════════════════════════════════════════════════════════"
@@ -173,62 +206,21 @@ fi
 
 # Create pass repository in ~/.iotstack/.pass
 PASS_DIR="${IOTSTACK_HOME}/.pass"
-mkdir -p "$PASS_DIR"
 
 # Initialize pass repository
 if [[ -d "${PASS_DIR}/.git" ]]; then
   dim "pass repository already initialized at $PASS_DIR"
 else
-  echo "Initializing pass repository at $PASS_DIR..."
-
-  # Create a GPG key if none exists
-  gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
-  echo "[DEBUG] Initial gpg_key check: '$gpg_key'"
-
-  if [[ -z "$gpg_key" ]]; then
-    echo "No GPG keys found. Generating one for pass..."
-    # Generate GPG key non-interactively
-    gpg --batch --generate-key <<EOF
-Key-Type: RSA
-Key-Length: 2048
-Name-Real: iotstack
-Name-Email: iotstack@localhost
-Expire-Date: 0
-%no-protection
-%commit
-EOF
-    echo "[DEBUG] GPG key generation completed, waiting..."
-    # Wait for GPG to finish processing the key
-    sleep 2
-
-    # Get the newly created key
-    gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
-    echo "[DEBUG] After generation, gpg_key: '$gpg_key'"
-    if [[ -z "$gpg_key" ]]; then
-      err "Failed to generate GPG key"
-    fi
-    ok "Generated GPG key: $gpg_key"
-  else
-    echo "[DEBUG] Found existing GPG key: $gpg_key"
-  fi
-
-  # Initialize pass with the GPG key
-  export PASSWORD_STORE_DIR="$PASS_DIR"
+  echo "Initializing pass repository at $PASS_DIR with GPG key $gpg_key..."
   mkdir -p "$PASS_DIR"
 
-  init_output=$(pass init "$gpg_key" 2>&1)
-  init_status=$?
+  export PASSWORD_STORE_DIR="$PASS_DIR"
+  pass init "$gpg_key" || err "pass init failed"
 
-  if [[ $init_status -eq 0 ]] && [[ -d "${PASS_DIR}/.git" ]]; then
+  if [[ -d "${PASS_DIR}/.git" ]]; then
     ok "Initialized pass repository with GPG key: $gpg_key"
   else
-    echo "[DEBUG] pass init output: $init_output"
-    echo "[DEBUG] pass init status: $init_status"
-    echo "[DEBUG] Pass dir: $PASS_DIR"
-    echo "[DEBUG] .git exists: $([[ -d "${PASS_DIR}/.git" ]] && echo yes || echo no)"
-    err "pass init failed. Try manually:
-  export PASSWORD_STORE_DIR=${PASS_DIR}
-  pass init $gpg_key"
+    err "pass init succeeded but .git directory not created"
   fi
 fi
 
