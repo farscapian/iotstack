@@ -644,16 +644,17 @@ if [[ ! -f "$YAML_FILE" ]]; then
   exit 1
 fi
 
-# ── Handle custom API key for OTA ───────────────────────────────────────────
-# If user provided a custom API key, create a temporary YAML with that key
+# ── Handle custom OTA password for authentication ─────────────────────────
+# If user provided a custom OTA password/API key, create a temporary YAML with it
 if [[ -n "$API_KEY" ]]; then
   # Create temp YAML in same directory as original so it can find secrets.yaml
   YAML_DIR="$(dirname "$YAML_FILE")"
   YAML_BASENAME="$(basename "$YAML_FILE")"
   TEMP_YAML="${YAML_DIR}/.temp-api-key-$$.${YAML_BASENAME}"
 
-  # Create temp YAML with API key substituted for any !secret references
-  sed 's|key: !secret [^ ]*|key: '"$API_KEY"'|g' "$YAML_FILE" > "$TEMP_YAML"
+  # The API_KEY can be either OTA password or API encryption key
+  # Replace both password: !secret ... and key: !secret ... with the provided value
+  sed 's|password: !secret [^ ]*|password: '"$API_KEY"'|g; s|key: !secret [^ ]*|key: '"$API_KEY"'|g' "$YAML_FILE" > "$TEMP_YAML"
 
   # Use temp YAML for compilation and OTA
   YAML_FILE="$TEMP_YAML"
@@ -1404,13 +1405,13 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
     if grep -q "Authentication invalid" "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null; then
       echo
       echo "  ⚠️  OTA Authentication Failed"
-      echo "  The device's API encryption key doesn't match the target configuration."
+      echo "  The device's OTA password or API encryption key doesn't match the target."
       echo
-      echo "  Solution: Provide the device's current API encryption key:"
+      echo "  Solution: Provide the device's current OTA password or API key:"
       mac_suffix="${HOSTNAME##*-}"
-      echo "    iotstack reassign $mac_suffix <target-role> --api-key \"<current-key>\""
+      echo "    iotstack reassign $mac_suffix <target-role> --api-key \"<current-password>\""
       echo
-      echo "  Where <current-key> is the API encryption key the device is currently using."
+      echo "  Where <current-password> is the OTA password or API key the device is currently using."
       echo
     fi
   fi

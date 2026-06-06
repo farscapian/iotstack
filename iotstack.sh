@@ -134,10 +134,10 @@ Commands:
   reassign <MAC1> [MAC2 ...] <device|yaml>
     Flash specific devices to a different configuration.
     Options:
-      --api-key <key>    Use specific API encryption key for OTA authentication
+      --api-key <key>    Use specific OTA password or API key for device authentication
     Examples:
       iotstack reassign 8dfcac 0f4df4 bleproxy
-      iotstack reassign 11cdc4 bleproxy --api-key "ZAD818dH7tBlvO382z4sF58GmzYK3rUWnI4H3tjxFbs="
+      iotstack reassign 11cdc4 threadrouter --api-key "kOKuNAPXcbSdYch5AJFtrcoZPr3RyljAkN5Yu9n9oA"
       iotstack reassign 8dfcac yamls/mmwave.yaml
 
   verify [<device>|<yaml>|all]
