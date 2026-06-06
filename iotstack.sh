@@ -48,33 +48,25 @@ load_device_mappings() {
   done < "$DEVICES_CONF"
 }
 
-# Resolve device name to YAML path
-# Args: device_name [--thread]
-# Returns: yaml file path
+# Resolve role name to YAML path
 resolve_device() {
-  local device_name="$1"
-  local use_thread="${2:-}"
+  local role_name="$1"
 
-  if [[ ! -v DEVICE_MAP["$device_name"] ]]; then
-    err "Unknown device: $device_name"
+  if [[ ! -v DEVICE_MAP["$role_name"] ]]; then
+    err "Unknown role: $role_name"
   fi
 
-  local mapping="${DEVICE_MAP[$device_name]}"
-  local wifi_yaml="${mapping%%:*}"
-  local thread_yaml="${mapping##*:}"
+  # Extract the YAML path from the mapping (now just a single path, no variants)
+  local mapping="${DEVICE_MAP[$role_name]}"
+  # Remove empty colon-separated parts
+  local yaml_path="${mapping%:*}"
+  [[ -z "$yaml_path" ]] && yaml_path="${mapping#*:}"
 
-  # Decide which variant to use
-  if [[ "$use_thread" == "--thread" ]]; then
-    if [[ -z "$thread_yaml" ]]; then
-      err "Device '$device_name' does not have a Thread variant"
-    fi
-    echo "$thread_yaml"
-  else
-    if [[ -z "$wifi_yaml" ]]; then
-      err "Device '$device_name' does not have a WiFi variant"
-    fi
-    echo "$wifi_yaml"
+  if [[ -z "$yaml_path" ]]; then
+    err "Role '$role_name' has no YAML configuration"
   fi
+
+  echo "$yaml_path"
 }
 
 # Extract device_type and network_type from YAML file
