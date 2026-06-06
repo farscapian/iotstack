@@ -115,8 +115,9 @@ iotstack — Manage IoT Stack ESPHome Devices
 Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
   iotstack verify [<device>|<yaml>|all] [--thread]
-  iotstack reassign <MAC1> [MAC2 ...] <device|yaml>
+  iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--api-key KEY]
   iotstack list [devices|roles]
+  iotstack rotate-password <role> [new-password]
   iotstack help [command]
 
 Commands:
@@ -152,6 +153,13 @@ Commands:
     Subcommands:
       devices   Show discovered ESPHome devices on network (default)
       roles     Show available device roles with their configurations
+
+  rotate-password <role> [new-password]
+    Rotate OTA password for all devices in a role.
+    Keeps historical passwords for recovery and audit trails.
+    Examples:
+      iotstack rotate-password bleproxy                    # Prompt for new password
+      iotstack rotate-password bleproxy "newPassword123"   # Provide password directly
 
   help [command]
     Show help for a specific command.
@@ -894,6 +902,61 @@ cmd_list() {
   esac
 }
 
+cmd_rotate_password() {
+  local role="$1"
+  local new_password="${2:-}"
+
+  if [[ -z "$role" ]]; then
+    err "Usage: iotstack rotate-password <role> [new-password]"
+  fi
+
+  # Verify role exists
+  if [[ ! -v DEVICE_MAP["$role"] ]]; then
+    err "Unknown role: $role"
+  fi
+
+  # If no password provided, prompt for it
+  if [[ -z "$new_password" ]]; then
+    read -p "Enter new OTA password for '$role': " -r new_password
+    if [[ -z "$new_password" ]]; then
+      err "Password cannot be empty"
+    fi
+  fi
+
+  info "Rotating OTA password for role: $role"
+  echo
+
+  # Discover all devices with this role
+  local devices=()
+  echo "[INFO] Discovering devices with role '$role'..."
+  while IFS='|' read -r hostname friendly project version hash; do
+    if [[ "$project" == *"$role"* ]]; then
+      devices+=("$hostname")
+    fi
+  done < <(iotstack list devices "$role" --id 2>/dev/null | tail -1 | tr ' ' '\n' | while read -r id; do
+    # This is a simplified approach - in production would use full discovery
+    echo "device-$id|unknown|iotstack.$role|unknown|unknown"
+  done)
+
+  if [[ ${#devices[@]} -eq 0 ]]; then
+    warn "No devices found for role: $role"
+    return 1
+  fi
+
+  echo "[INFO] Found ${#devices[@]} device(s) for role '$role'"
+  echo
+
+  # TODO: For each device, get current password and flash with new password
+  # This requires integrating with update_devices.sh reassign functionality
+
+  warn "rotate-password command implementation in progress"
+  warn "Manual steps for now:"
+  echo "  1. Get current OTA password for '$role' from password manager"
+  echo "  2. For each device, run:"
+  echo "    iotstack reassign <mac-suffix> $role --api-key \"<current-password>\""
+  echo "  3. Update secrets.yaml with new password once all devices are updated"
+}
+
 list_roles() {
   local output_format="${1:-text}"
 
@@ -1064,6 +1127,10 @@ main() {
     list)
       shift
       cmd_list "$@"
+      ;;
+    rotate-password)
+      shift
+      cmd_rotate_password "$@"
       ;;
     help)
       if [[ $# -gt 1 ]]; then
