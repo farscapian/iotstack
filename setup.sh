@@ -110,154 +110,106 @@ if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
   fi
 fi
 
-# ── Password Manager Setup ──────────────────────────────────────────────────
+# ── Pass Password Manager Setup ────────────────────────────────────────────
 echo
 echo "════════════════════════════════════════════════════════"
-echo "Password Manager Setup (for secure credential management)"
+echo "Initializing pass password manager"
 echo "════════════════════════════════════════════════════════"
 echo
-echo "iotstack can integrate with a password manager to:"
-echo "  • Keep OTA passwords out of git (more secure)"
-echo "  • Maintain audit trail of password changes"
-echo "  • Enable easy password rotation across devices"
-echo
-read -p "Would you like to set up a password manager? (y/N) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-  echo
-  echo "Available password managers:"
-  echo "  1. pass (default) — Simple, local, no external account"
-  echo "  2. Bitwarden — Cloud-based, team-friendly"
-  echo "  3. 1Password — Enterprise option"
-  echo "  4. Skip password manager setup"
-  echo
-  read -p "Choose password manager [1-4, default 1]: " -r pm_choice
-  pm_choice="${pm_choice:-1}"
 
-  case "$pm_choice" in
-    1|"pass")
-      echo
-      echo "Installing pass..."
-      if command -v apt &>/dev/null; then
-        sudo apt update && sudo apt install -y pass
-      elif command -v brew &>/dev/null; then
-        brew install pass
-      else
-        warn "Could not find apt or brew. Please install pass manually."
-        echo "  Ubuntu/Debian: sudo apt install pass"
-        echo "  macOS: brew install pass"
-      fi
-
-      if command -v pass &>/dev/null; then
-        ok "pass installed successfully"
-        echo
-        echo "Next steps for pass:"
-        echo "  1. Initialize pass with your GPG key:"
-        echo "    pass init <your-gpg-key-id>"
-        echo "  2. Add OTA passwords:"
-        echo "    pass insert iotstack/bleproxy/ota_password"
-      fi
-      PM_PROVIDER="pass"
-      ;;
-
-    2|"Bitwarden"|"bitwarden")
-      echo
-      echo "Installing Bitwarden CLI..."
-      if command -v npm &>/dev/null; then
-        npm install -g @bitwarden/cli
-      else
-        warn "npm not found. Please install Bitwarden CLI manually:"
-        echo "  npm install -g @bitwarden/cli"
-      fi
-
-      if command -v bw &>/dev/null; then
-        ok "Bitwarden CLI installed successfully"
-        echo
-        echo "Next steps for Bitwarden:"
-        echo "  1. Login to Bitwarden:"
-        echo "    bw login"
-        echo "  2. Create vault and add secrets as described in docs/"
-      fi
-      PM_PROVIDER="bitwarden"
-      ;;
-
-    3|"1Password"|"1password")
-      echo
-      warn "1Password setup requires manual installation."
-      echo "Please install the 1Password CLI from:"
-      echo "  https://developer.1password.com/docs/cli/"
-      echo
-      echo "After installation, login with:"
-      echo "  op account add --shorthand myaccount"
-      PM_PROVIDER="1password"
-      ;;
-
-    *)
-      echo
-      warn "Skipping password manager setup"
-      PM_PROVIDER=""
-      ;;
-  esac
-else
-  echo "Skipping password manager setup"
-  PM_PROVIDER=""
+# Check if pass is installed
+if ! command -v pass &>/dev/null; then
+  echo "Installing pass..."
+  if command -v apt &>/dev/null; then
+    sudo apt update && sudo apt install -y pass
+  elif command -v brew &>/dev/null; then
+    brew install pass
+  else
+    err "Could not install pass automatically. Please install manually:\n  Ubuntu/Debian: sudo apt install pass\n  macOS: brew install pass"
+  fi
 fi
 
-# Create ~/.iotstack/config
-echo
-echo "Creating password manager configuration..."
-mkdir -p "$IOTSTACK_HOME"
+ok "pass is installed"
 
-if [[ -f "${IOTSTACK_HOME}/config" ]]; then
-  dim "${IOTSTACK_HOME}/config already exists"
+# Create pass repository in ~/.iotstack/.pass
+PASS_DIR="${IOTSTACK_HOME}/.pass"
+mkdir -p "$PASS_DIR"
+
+# Initialize pass repository
+if [[ -d "${PASS_DIR}/.git" ]]; then
+  dim "pass repository already initialized at $PASS_DIR"
 else
-  # Determine which provider to set as default
-  if [[ -n "$PM_PROVIDER" ]]; then
-    DEFAULT_PROVIDER="$PM_PROVIDER"
-  else
-    DEFAULT_PROVIDER="pass"
+  echo "Initializing pass repository at $PASS_DIR..."
+  # Create a GPG key if none exists, or use default key
+  if command -v gpg &>/dev/null && ! gpg --list-secret-keys &>/dev/null; then
+    echo "No GPG keys found. Creating a GPG key for pass..."
+    echo "You will be prompted to create a GPG key. Enter your details:"
+    gpg --gen-key || warn "GPG key generation may have been skipped"
   fi
 
-  cat > "${IOTSTACK_HOME}/config" << EOF
+  # Initialize pass with the default (or first available) GPG key
+  export PASSWORD_STORE_DIR="$PASS_DIR"
+  gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+
+  if [[ -n "$gpg_key" ]]; then
+    pass init "$gpg_key" >/dev/null 2>&1 || warn "pass init may have failed, but continuing..."
+    ok "Initialized pass repository with GPG key: $gpg_key"
+  else
+    warn "Could not find GPG key. Please run: pass init <your-gpg-key-id>"
+  fi
+fi
+
+# Seed pass repository with secrets from secrets.yaml
+echo
+echo "Seeding pass repository with API keys and OTA passwords..."
+SECRETS_YAML="${SCRIPT_DIR}/yamls/secrets.yaml"
+
+if [[ -f "$SECRETS_YAML" ]]; then
+  export PASSWORD_STORE_DIR="$PASS_DIR"
+
+  # Extract all secrets and add them to pass
+  # Format: key: "value" or key: value
+  while IFS= read -r line; do
+    [[ "$line" =~ ^#.*$ ]] && continue  # Skip comments
+    [[ -z "$line" ]] && continue         # Skip empty lines
+
+    if [[ "$line" =~ ^([a-z_]+):[[:space:]]+\"?([^\"]+)\"?$ ]]; then
+      key="${BASH_REMATCH[1]}"
+      value="${BASH_REMATCH[2]}"
+
+      # Convert key format: bleproxy_api_encryption_key → iotstack/bleproxy/api_encryption_key
+      if [[ "$key" =~ ^([a-z_]+)_(api_encryption_key|ota_password)$ ]]; then
+        role="${BASH_REMATCH[1]}"
+        secret_type="${BASH_REMATCH[2]}"
+        pass_path="iotstack/${role}/${secret_type}"
+
+        # Add to pass if not already present
+        if ! pass show "$pass_path" >/dev/null 2>&1; then
+          echo "$value" | pass insert -f "$pass_path" >/dev/null 2>&1
+          ok "Added: $pass_path"
+        fi
+      fi
+    fi
+  done < "$SECRETS_YAML"
+else
+  warn "secrets.yaml not found, skipping seeding"
+fi
+
+# Create config file pointing to pass repository
+echo
+echo "Creating configuration..."
+cat > "${IOTSTACK_HOME}/config" << 'EOF'
 # iotstack password manager configuration
-# See docs/PASSWORD-MANAGER-SETUP.md for complete setup instructions
+# Uses pass repository at ~/.iotstack/.pass
 
 [password-manager]
-# Which password manager to use: bitwarden, pass, 1password, keepassxc
-provider = $DEFAULT_PROVIDER
+provider = pass
 
-# ── Bitwarden Configuration ─────────────────────────────────────────────────
-# Requirements: bw CLI installed
-# Secrets stored as: iotstack/<role>/<secret-type>
-#
-# [bitwarden]
-# vault = iotstack  # Optional: specific vault name
-
-# ── pass Configuration ──────────────────────────────────────────────────────
-# Requirements: pass installed
-# Secrets stored in: ~/.password-store/iotstack/<role>/<secret-type>
-#
-# [pass]
-# # No additional config needed
-
-# ── 1Password Configuration ─────────────────────────────────────────────────
-# Requirements: op CLI installed
-# Secrets stored as: iotstack_<role>_<secret-type>
-#
-# [1password]
-# vault = iotstack  # Optional: specific vault name
-# account = myaccount.1password.com  # Optional: specific account
-
-# ── KeePassXC Configuration ─────────────────────────────────────────────────
-# Requirements: keepassxc-cli installed
-#
-# [keepassxc]
-# database = /path/to/database.kdbx
-# password = your-master-password  # Or use KEEPASSXC_PASSWORD env var
+[pass]
+store_dir = ~/.iotstack/.pass
 EOF
 
-  ok "Created configuration at ${IOTSTACK_HOME}/config"
-fi
+ok "Created configuration at ${IOTSTACK_HOME}/config"
 
 echo
 echo "════════════════════════════════════════════════════════"
@@ -271,7 +223,9 @@ echo "Then test it with:"
 echo -e "  ${GRN}which iotstack${RST}"
 echo -e "  ${GRN}iotstack help${RST}"
 echo
-if [[ -n "$PM_PROVIDER" ]]; then
-  echo "For password manager setup, see:"
-  echo -e "  ${GRN}docs/QUICK-START-SECRETS.md${RST}"
-fi
+echo "Your secrets are stored in:"
+echo -e "  ${GRN}${PASS_DIR}${RST}"
+echo
+echo "To view/add passwords:"
+echo -e "  ${GRN}pass ls${RST}"
+echo -e "  ${GRN}pass insert iotstack/role/secret_type${RST}"
