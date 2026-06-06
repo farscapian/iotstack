@@ -261,7 +261,7 @@ if [[ -f "$SECRETS_YAML" ]]; then
   for config_key in "${config_items[@]}"; do
     pass_path="iotstack/${config_key}"
     if ! pass show "$pass_path" >/dev/null 2>&1; then
-      echo "CONFIGURE_ME" | pass insert -f "$pass_path" 2>/dev/null
+      echo "CONFIGURE_ME" | pass insert -f "$pass_path" 2>&1
     fi
   done
 
