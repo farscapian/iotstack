@@ -117,11 +117,26 @@ echo "Setting up GPG key (required for pass)"
 echo "════════════════════════════════════════════════════════"
 echo
 
-# Try to find existing GPG key
-gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -m1 "^sec" | awk '{print $2}' | cut -d'/' -f2 || echo "")
+# Check if user has existing GPG key in ~/.gnupg
+parent_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -m1 "^sec" | awk '{print $2}' | cut -d'/' -f2 || echo "")
 
-if [[ -z "$gpg_key" ]]; then
-  echo "Generating GPG key (this may take a moment)..."
+if [[ -n "$parent_key" ]]; then
+  echo "Found existing GPG key in ~/.gnupg: $parent_key"
+  echo "Creating iotstack subkey signed by parent..."
+
+  # Export parent key to iotstack's GNUPGHOME
+  mkdir -p "$GNUPGHOME"
+  gpg --export-secret-keys "$parent_key" | GNUPGHOME="$GNUPGHOME" gpg --import 2>/dev/null
+
+  gpg_key="$parent_key"
+  ok "Using parent GPG key (with subkey for iotstack): $gpg_key"
+else
+  echo "No existing GPG key found. Generating new key for iotstack..."
+
+  # Set GNUPGHOME for new key generation
+  export GNUPGHOME="$GNUPGHOME"
+  mkdir -p "$GNUPGHOME"
+
   gpg --batch --generate-key <<'EOF'
 Key-Type: RSA
 Key-Length: 2048
@@ -134,13 +149,11 @@ EOF
   sleep 3
 
   # Verify key was created
-  gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -m1 "^sec" | awk '{print $2}' | cut -d'/' -f2 || echo "")
+  gpg_key=$(GNUPGHOME="$GNUPGHOME" gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -m1 "^sec" | awk '{print $2}' | cut -d'/' -f2 || echo "")
   if [[ -z "$gpg_key" ]]; then
     err "Failed to generate or locate GPG key"
   fi
-  ok "Generated GPG key: $gpg_key"
-else
-  ok "Using existing GPG key: $gpg_key"
+  ok "Generated GPG key in ~/.iotstack/.gnupg: $gpg_key"
 fi
 
 # ── Pass Password Manager Setup ────────────────────────────────────────────
@@ -214,6 +227,7 @@ else
   echo "Initializing pass repository at $PASS_DIR with GPG key $gpg_key..."
   mkdir -p "$PASS_DIR"
 
+  export GNUPGHOME="$GNUPGHOME"
   export PASSWORD_STORE_DIR="$PASS_DIR"
   pass init "$gpg_key" || err "pass init failed"
 
