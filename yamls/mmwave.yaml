@@ -68,7 +68,7 @@ api:
               green: 50%
               blue: 0%
               brightness: 60%
-              effect: "Strobe Red Yellow"
+              effect: "API Disconnected"
 
 ota:
   - platform: esphome
@@ -419,6 +419,21 @@ light:
             call.set_transition_length(0);
             call.perform();
             is_red = !is_red;
+      - lambda:
+          name: "Wifi Disconnected"
+          update_interval: 250ms
+          lambda: |-
+            static bool is_yellow = true;
+            auto call = id(rgb_led).make_call();
+            call.set_brightness(1.0);
+            if (is_yellow) {
+              call.set_red(1.0); call.set_green(1.0); call.set_blue(0.0);
+            } else {
+              call.set_red(0.0); call.set_green(0.0); call.set_blue(1.0);
+            }
+            call.set_transition_length(0);
+            call.perform();
+            is_yellow = !is_yellow;
 
 # 8. Scripts
 script:
