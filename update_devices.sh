@@ -43,6 +43,7 @@ FORCE_UPDATE_ENTITIES=false
 MAX_JOBS=4
 JOBS_EXPLICIT=false
 YAML_FILE=""
+API_KEY=""
 REASSIGN_MODE=false
 declare -a REASSIGN_MACS=()
 REASSIGN_YAML=""
@@ -1396,6 +1397,20 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   else
     err "${HOSTNAME}: flash FAILED."
     FAIL_LIST+=("$HOSTNAME")
+
+    # Check if it's an authentication error and provide guidance
+    if grep -q "Authentication invalid" "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null; then
+      echo
+      echo "  ⚠️  OTA Authentication Failed"
+      echo "  The device's API encryption key doesn't match the target configuration."
+      echo
+      echo "  Solution: Provide the device's current API encryption key:"
+      mac_suffix="${HOSTNAME##*-}"
+      echo "    iotstack reassign $mac_suffix <target-role> --api-key \"<current-key>\""
+      echo
+      echo "  Where <current-key> is the API encryption key the device is currently using."
+      echo
+    fi
   fi
   echo
 done
