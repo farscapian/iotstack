@@ -620,10 +620,16 @@ cmd_list() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --csv)
+        if [[ "$output_format" != "text" ]]; then
+          err "Only one output format allowed (--csv or --json)"
+        fi
         output_format="csv"
         shift
         ;;
       --json)
+        if [[ "$output_format" != "text" ]]; then
+          err "Only one output format allowed (--csv or --json)"
+        fi
         output_format="json"
         shift
         ;;
