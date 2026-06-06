@@ -266,7 +266,10 @@ if [[ -f "$SECRETS_YAML" ]]; then
   for config_key in "${config_items[@]}"; do
     pass_path="iotstack/${config_key}"
     if ! pass show "$pass_path" >/dev/null 2>&1; then
-      echo "CONFIGURE_ME" | pass insert -f "$pass_path" 2>&1
+      {
+        echo "CONFIGURE_ME"
+        echo "CONFIGURE_ME"
+      } | pass insert -f "$pass_path" 2>&1 | grep -v "^mkdir:" || true
     fi
   done
 
@@ -303,7 +306,11 @@ if [[ -f "$SECRETS_YAML" ]]; then
 
       # Add to pass if not already present
       if ! pass show "$pass_path" >/dev/null 2>&1; then
-        if insert_output=$(echo "$value" | pass insert -f "$pass_path" 2>&1); then
+        insert_output=$({
+          echo "$value"
+          echo "$value"
+        } | pass insert -f "$pass_path" 2>&1)
+        if [[ $? -eq 0 ]]; then
           ok "Added: $pass_path"
         else
           warn "Failed to add: $pass_path"
