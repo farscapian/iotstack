@@ -154,6 +154,7 @@ Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
+  iotstack flash <device|yaml> <tty-device>
   iotstack list [devices|roles]
   iotstack secret get <role> <ota|api> [version]
   iotstack secret set <role> <ota|api> <value>
@@ -187,6 +188,14 @@ Commands:
       iotstack verify bleproxy
       iotstack verify all
       iotstack verify thread_router --thread
+
+  flash <device|yaml> <tty-device>
+    Flash device via serial/USB (for bricked devices).
+    Use when OTA is not available.
+    Examples:
+      iotstack flash bleproxy /dev/ttyACM0
+      iotstack flash mmwave /dev/ttyUSB0
+      iotstack flash yamls/custom.yaml /dev/ttyUSB1
 
   list [devices|roles]
     Show devices and roles.
@@ -1240,6 +1249,35 @@ list_roles() {
   fi
 }
 
+# ── Flash command: serial/USB flashing ─────────────────────────────────────
+cmd_flash() {
+  local device="$1"
+  local tty_device="$2"
+
+  if [[ -z "$device" || -z "$tty_device" ]]; then
+    err "Usage: iotstack flash <role|yaml> <tty-device>
+Examples:
+  iotstack flash bleproxy /dev/ttyACM0
+  iotstack flash yamls/mmwave.yaml /dev/ttyUSB0"
+  fi
+
+  # Resolve device role to YAML path
+  local yaml_path
+  yaml_path=$(resolve_device "$device")
+
+  # Verify TTY device exists
+  if [[ ! -e "$tty_device" ]]; then
+    err "TTY device not found: $tty_device"
+  fi
+
+  echo "[INFO] Flashing to: $tty_device"
+  echo "[INFO] Configuration: $yaml_path"
+  echo ""
+
+  # Use esphome to flash via serial
+  esphome run "$yaml_path" --device "$tty_device"
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 main() {
@@ -1269,6 +1307,10 @@ main() {
     rotate-password)
       shift
       cmd_rotate_password "$@"
+      ;;
+    flash)
+      shift
+      cmd_flash "$@"
       ;;
     help)
       if [[ $# -gt 1 ]]; then
