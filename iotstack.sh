@@ -989,6 +989,7 @@ cmd_rotate_secrets() {
 
   local role="$1"
   local new_password="${2:-}"
+  local secrets_yaml="${HOME}/.iotstack/secrets/secrets.yaml"
 
   if [[ -z "$role" ]]; then
     err "Usage: iotstack rotate-secrets <role> [new-secret]"
@@ -1002,9 +1003,9 @@ cmd_rotate_secrets() {
   # Read HA credentials from secrets.yaml if they exist
   local ha_url=""
   local ha_token=""
-  if [[ -f "$SECRETS_YAML" ]]; then
-    ha_url=$(grep '^ha_url:' "$SECRETS_YAML" | sed 's/ha_url:[[:space:]]*"\?//; s/"\?[[:space:]]*$//' || true)
-    ha_token=$(grep '^ha_token:' "$SECRETS_YAML" | sed 's/ha_token:[[:space:]]*"\?//; s/"\?[[:space:]]*$//' || true)
+  if [[ -f "$secrets_yaml" ]]; then
+    ha_url=$(grep '^ha_url:' "$secrets_yaml" | sed 's/ha_url:[[:space:]]*"\?//; s/"\?[[:space:]]*$//' || true)
+    ha_token=$(grep '^ha_token:' "$secrets_yaml" | sed 's/ha_token:[[:space:]]*"\?//; s/"\?[[:space:]]*$//' || true)
   fi
 
   # Check if HA credentials are configured
