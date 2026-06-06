@@ -1,6 +1,5 @@
 #!/bin/bash
 # update_devices.sh
-ZSH_VERSION=""  # Prevent unbound variable error from shell wrapper
 # Discovers ESPHome devices via mDNS and OTA-flashes those whose firmware
 # differs from the current build (compared by config_hash, not project.version).
 #
@@ -252,9 +251,9 @@ update_yaml_device_name() {
   local new_device_name="$2"
 
   if grep -q 'device_name:' "$yaml_file"; then
-    sed -i 's/device_name: .*/device_name: "'$new_device_name'"/' "$yaml_file"
+    sed -i "s/device_name: .*/device_name: \"$new_device_name\"/" "$yaml_file"
   else
-    sed -i '/^substitutions:/a\  device_name: "'$new_device_name'"' "$yaml_file"
+    sed -i "/^substitutions:/a\\  device_name: \"$new_device_name\"" "$yaml_file"
   fi
 }
 
@@ -815,7 +814,7 @@ if [[ "$REASSIGN_MODE" == true ]]; then
 
   declare -a MISSING_MACS=()
   for mac in "${REASSIGN_MACS[@]}"; do
-    if [[ ! " ${FOUND_MACS[*]} " =~ " ${mac} " ]]; then
+    if [[ ! " ${FOUND_MACS[*]} " == *" ${mac} "* ]]; then
       MISSING_MACS+=("$mac")
     fi
   done

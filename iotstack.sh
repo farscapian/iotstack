@@ -110,7 +110,6 @@ run_parallel_jobs() {
   local commands=("$@")
   local slot_count=0
   declare -a job_pids=()
-  declare -a job_commands=()
 
   for i in "${!commands[@]}"; do
     # Wait for a slot to free up
@@ -122,7 +121,7 @@ run_parallel_jobs() {
     # Start job in background
     local cmd="${commands[$i]}"
     eval "$cmd" &
-    job_pids[$i]=$!
+    job_pids[i]=$!
     slot_count=$((slot_count + 1))
   done
 
@@ -131,7 +130,7 @@ run_parallel_jobs() {
   for i in "${!job_pids[@]}"; do
     local pid="${job_pids[$i]}"
     wait "$pid" 2>/dev/null
-    job_results[$i]=$?
+    job_results[i]=$?
   done
 }
 
@@ -328,8 +327,9 @@ list_devices() {
   local current_hash=""
 
   # Gather device data into temp buffer
-  local device_data=$(mktemp)
-  trap "rm -f $device_data" RETURN
+  local device_data
+  device_data=$(mktemp)
+  trap 'rm -f "$device_data"' RETURN
 
   # Query mDNS and extract device data
   while IFS= read -r line; do
@@ -1256,8 +1256,9 @@ list_roles() {
   else
     # Text format - gather data first
     local margin=2
-    local temp_data=$(mktemp)
-    trap "rm -f $temp_data" RETURN
+    local temp_data
+    temp_data=$(mktemp)
+    trap 'rm -f "$temp_data"' RETURN
 
     # Gather role data into temp file
     list_device_names | while read -r device; do
