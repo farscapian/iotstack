@@ -284,27 +284,26 @@ if [[ -f "$SECRETS_YAML" ]]; then
       continue
     fi
 
-      # Handle device secrets: bleproxy_api_encryption_key -> iotstack/bleproxy/api_encryption_key
-      if [[ "$key" =~ ^([a-z_]+)_(api_encryption_key|ota_password)$ ]]; then
-        role="${BASH_REMATCH[1]}"
-        secret_type="${BASH_REMATCH[2]}"
+    # Handle device secrets: bleproxy_api_encryption_key -> iotstack/bleproxy/api_encryption_key
+    if [[ "$key" =~ ^([a-z_]+)_(api_encryption_key|ota_password)$ ]]; then
+      role="${BASH_REMATCH[1]}"
+      secret_type="${BASH_REMATCH[2]}"
 
-        # Only seed if corresponding YAML file exists
-        if [[ ! -f "${SCRIPT_DIR}/yamls/${role}.yaml" ]]; then
-          continue
-        fi
+      # Only seed if corresponding YAML file exists
+      if [[ ! -f "${SCRIPT_DIR}/yamls/${role}.yaml" ]]; then
+        continue
+      fi
 
-        pass_path="iotstack/${role}/${secret_type}"
+      pass_path="iotstack/${role}/${secret_type}"
 
-        # Add to pass if not already present
-        if ! pass show "$pass_path" >/dev/null 2>&1; then
-          insert_output=$(echo "$value" | pass insert -f "$pass_path" 2>&1)
-          if [[ $? -eq 0 ]]; then
-            ok "Added: $pass_path"
-          else
-            warn "Failed to add: $pass_path"
-            [[ -n "$insert_output" ]] && echo "    Error: $insert_output" >&2
-          fi
+      # Add to pass if not already present
+      if ! pass show "$pass_path" >/dev/null 2>&1; then
+        insert_output=$(echo "$value" | pass insert -f "$pass_path" 2>&1)
+        if [[ $? -eq 0 ]]; then
+          ok "Added: $pass_path"
+        else
+          warn "Failed to add: $pass_path"
+          [[ -n "$insert_output" ]] && echo "    Error: $insert_output" >&2
         fi
       fi
     fi
