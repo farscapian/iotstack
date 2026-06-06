@@ -160,6 +160,13 @@ binary_sensor:
                 brightness: 20%
                 effect: "Pulse Yellow Red"
 
+text_sensor:
+  - platform: template
+    name: "Presence Status"
+    lambda: |-
+      return id(presence).state ? std::string("Detected") : std::string("Not Detected");
+    update_interval: 1s
+
 sensor:
   # 4.2 mmWave — respiratory rate
   - platform: seeed_mr60bha2
@@ -189,9 +196,11 @@ sensor:
     mr60bha2_id: my_mr60bha2
     distance:
       name: "${friendly_name} Detection Distance"
-      unit_of_measurement: "m"
+      unit_of_measurement: "ft"
       state_class: measurement
       accuracy_decimals: 2
+      filters:
+        - multiply: 0.0328084  # Convert cm to feet
     num_targets:
       name: "Target Count"
       id: target_count
