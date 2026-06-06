@@ -225,10 +225,11 @@ help_list() {
 iotstack list — Show devices and roles
 
 Usage:
-  iotstack list [devices [role] [--id]|roles]
+  iotstack list [devices [role|other] [--id]|roles]
 
 Subcommands:
   devices [role]   Show discovered devices (optionally filtered by role)
+  devices other    Show devices that don't match any defined role
   roles            Show available device roles with their configurations
 
 Options:
@@ -237,8 +238,10 @@ Options:
 Examples:
   iotstack list devices                      # Show all discovered devices
   iotstack list devices bleproxy             # Show only bleproxy devices
+  iotstack list devices other                # Show devices not matching any role
   iotstack list devices --id                 # Output all device IDs
   iotstack list devices bleproxy --id        # Output bleproxy device IDs
+  iotstack list devices other --id           # Output IDs of unmatched devices
   iotstack list roles                        # Show available device roles
 
 EOF
@@ -292,8 +295,21 @@ list_devices() {
     if [[ "$output_format" == "csv" ]]; then
       echo "ID"
       while IFS='|' read -r hostname friendly project version hash; do
-        if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
-          continue
+        if [[ -n "$filter_role" ]]; then
+          if [[ "$filter_role" == "other" ]]; then
+            local matches_role=false
+            for role in "${!DEVICE_MAP[@]}"; do
+              if [[ "$project" == *"$role"* ]]; then
+                matches_role=true
+                break
+              fi
+            done
+            [[ "$matches_role" == true ]] && continue
+          else
+            if [[ "$project" != *"$filter_role"* ]]; then
+              continue
+            fi
+          fi
         fi
         suffix="${hostname##*-}"
         echo "$suffix"
@@ -303,8 +319,21 @@ list_devices() {
         echo "["
         first=true
         while IFS='|' read -r hostname friendly project version hash; do
-          if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
-            continue
+          if [[ -n "$filter_role" ]]; then
+            if [[ "$filter_role" == "other" ]]; then
+              local matches_role=false
+              for role in "${!DEVICE_MAP[@]}"; do
+                if [[ "$project" == *"$role"* ]]; then
+                  matches_role=true
+                  break
+                fi
+              done
+              [[ "$matches_role" == true ]] && continue
+            else
+              if [[ "$project" != *"$filter_role"* ]]; then
+                continue
+              fi
+            fi
           fi
           suffix="${hostname##*-}"
           [[ "$first" != true ]] && echo ","
@@ -318,8 +347,21 @@ list_devices() {
       # Text format: space-separated IDs
       local suffixes=()
       while IFS='|' read -r hostname friendly project version hash; do
-        if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
-          continue
+        if [[ -n "$filter_role" ]]; then
+          if [[ "$filter_role" == "other" ]]; then
+            local matches_role=false
+            for role in "${!DEVICE_MAP[@]}"; do
+              if [[ "$project" == *"$role"* ]]; then
+                matches_role=true
+                break
+              fi
+            done
+            [[ "$matches_role" == true ]] && continue
+          else
+            if [[ "$project" != *"$filter_role"* ]]; then
+              continue
+            fi
+          fi
         fi
         suffix="${hostname##*-}"
         suffixes+=("$suffix")
@@ -341,9 +383,24 @@ list_devices() {
   if [[ "$output_format" == "csv" ]]; then
     echo "ID,Device,Friendly Name,Project,Version,Hash"
     while IFS='|' read -r hostname friendly project version hash; do
-      # Filter by role if specified (match role name in project field)
-      if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
-        continue
+      # Filter by role if specified
+      if [[ -n "$filter_role" ]]; then
+        if [[ "$filter_role" == "other" ]]; then
+          # Match devices that don't match any defined role
+          local matches_role=false
+          for role in "${!DEVICE_MAP[@]}"; do
+            if [[ "$project" == *"$role"* ]]; then
+              matches_role=true
+              break
+            fi
+          done
+          [[ "$matches_role" == true ]] && continue
+        else
+          # Match role name in project field
+          if [[ "$project" != *"$filter_role"* ]]; then
+            continue
+          fi
+        fi
       fi
       id="${hostname##*-}"
       echo "$id,$hostname,$friendly,$project,$version,$hash"
@@ -353,9 +410,24 @@ list_devices() {
       echo "["
       first=true
       while IFS='|' read -r hostname friendly project version hash; do
-        # Filter by role if specified (match role name in project field)
-        if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
-          continue
+        # Filter by role if specified
+        if [[ -n "$filter_role" ]]; then
+          if [[ "$filter_role" == "other" ]]; then
+            # Match devices that don't match any defined role
+            local matches_role=false
+            for role in "${!DEVICE_MAP[@]}"; do
+              if [[ "$project" == *"$role"* ]]; then
+                matches_role=true
+                break
+              fi
+            done
+            [[ "$matches_role" == true ]] && continue
+          else
+            # Match role name in project field
+            if [[ "$project" != *"$filter_role"* ]]; then
+              continue
+            fi
+          fi
         fi
         id="${hostname##*-}"
         [[ "$first" != true ]] && echo ","
@@ -414,9 +486,24 @@ list_devices() {
     # Print data rows with calculated widths
     local found=0
     while IFS='|' read -r hostname friendly project version hash; do
-      # Filter by role if specified (match role name in project field)
-      if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
-        continue
+      # Filter by role if specified
+      if [[ -n "$filter_role" ]]; then
+        if [[ "$filter_role" == "other" ]]; then
+          # Match devices that don't match any defined role
+          local matches_role=false
+          for role in "${!DEVICE_MAP[@]}"; do
+            if [[ "$project" == *"$role"* ]]; then
+              matches_role=true
+              break
+            fi
+          done
+          [[ "$matches_role" == true ]] && continue
+        else
+          # Match role name in project field
+          if [[ "$project" != *"$filter_role"* ]]; then
+            continue
+          fi
+        fi
       fi
       id="${hostname##*-}"
       printf "  ${GRN}%-${w_id}s${RST} %-${w_device}s %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_hash}s\n" \
