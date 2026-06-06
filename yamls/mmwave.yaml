@@ -97,6 +97,7 @@ uart:
   stop_bits: 1
 
 i2c:
+  id: bus_a
   sda: GPIO22
   scl: GPIO23
   scan: true
