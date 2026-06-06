@@ -208,7 +208,7 @@ fi
 PASS_DIR="${IOTSTACK_HOME}/.pass"
 
 # Initialize pass repository
-if [[ -d "${PASS_DIR}/.git" ]]; then
+if [[ -f "${PASS_DIR}/.gpg-id" ]]; then
   dim "pass repository already initialized at $PASS_DIR"
 else
   echo "Initializing pass repository at $PASS_DIR with GPG key $gpg_key..."
@@ -217,10 +217,10 @@ else
   export PASSWORD_STORE_DIR="$PASS_DIR"
   pass init "$gpg_key" || err "pass init failed"
 
-  if [[ -d "${PASS_DIR}/.git" ]]; then
+  if [[ -f "${PASS_DIR}/.gpg-id" ]]; then
     ok "Initialized pass repository with GPG key: $gpg_key"
   else
-    err "pass init succeeded but .git directory not created"
+    err "pass init failed - no .gpg-id file created"
   fi
 fi
 
