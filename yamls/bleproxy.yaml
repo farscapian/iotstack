@@ -59,7 +59,7 @@ sensor:
   - platform: uptime
     name: "Uptime"
   - platform: wifi_signal
-    name: "WiFi Signal (dBm)"
+    name: "WiFi RSSI (dBm)"
     update_interval: 60s
     entity_category: diagnostic
 

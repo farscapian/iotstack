@@ -68,7 +68,7 @@ api:
               green: 50%
               blue: 0%
               brightness: 60%
-              effect: "API Disconnected"
+              effect: "Home Assistant API Disconnected"
 
 ota:
   - platform: esphome
@@ -235,7 +235,7 @@ sensor:
     entity_category: diagnostic
 
   - platform: wifi_signal
-    name: "WiFi Signal"
+    name: "WiFi RSSI (dBm)"
     update_interval: 60s
     entity_category: diagnostic
 
