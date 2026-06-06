@@ -161,26 +161,13 @@ Options:
   -v, --verbose          Show compilation output
 
 Examples:
-  # Update single device (WiFi default)
-  iotstack update bleproxy
-
-  # Update Thread variant
-  iotstack update router --thread
-
-  # Update all devices
-  iotstack update all
-
-  # Preview without flashing
-  iotstack update --dry-run mmwave
-
-  # Verify entire fleet
-  iotstack verify all
-
-  # Reassign devices
-  iotstack reassign 8dfcac 0f4df4 bleproxy
-
-  # Show available roles
-  iotstack list roles
+  iotstack update bleproxy                   # Update WiFi device
+  iotstack update router --thread            # Update Thread device
+  iotstack update all                        # Update all devices
+  iotstack update --dry-run mmwave           # Preview without flashing
+  iotstack verify all                        # Verify entire fleet
+  iotstack reassign 8dfcac 0f4df4 bleproxy   # Reassign devices
+  iotstack list roles                        # Show available roles
 
 EOF
 }
@@ -205,23 +192,12 @@ Options:
   -v, --verbose          Show full compilation output
 
 Examples:
-  # Update a single device by name (WiFi default)
-  iotstack update bleproxy
-
-  # Update Thread variant
-  iotstack update threadrouter --thread
-
-  # Update everything
-  iotstack update all
-
-  # Preview without flashing
-  iotstack update --dry-run mmwave
-
-  # Force flash all devices
-  iotstack update --force-reflash bleproxy
-
-  # Update 8 devices in parallel
-  iotstack update --jobs 8 bleproxy
+  iotstack update bleproxy                   # Update WiFi device
+  iotstack update threadrouter --thread      # Update Thread device
+  iotstack update all                        # Update all devices
+  iotstack update --dry-run mmwave           # Preview without flashing
+  iotstack update --force-reflash bleproxy   # Force flash all devices
+  iotstack update --jobs 8 bleproxy          # Update 8 devices in parallel
 
 EOF
 }
@@ -238,11 +214,8 @@ Arguments:
   all        Verify all device configs
 
 Examples:
-  # Check if all BLE proxies are up-to-date
-  iotstack verify wifi/esp32c6-wifi-bleproxy.yaml
-
-  # Check entire fleet
-  iotstack verify all
+  iotstack verify bleproxy                   # Check if devices are up-to-date
+  iotstack verify all                        # Check entire fleet
 
 EOF
 }
@@ -259,11 +232,8 @@ Subcommands:
   roles     Show available device roles with their configurations
 
 Examples:
-  # Show discovered devices on network
-  iotstack list devices
-
-  # Show available device roles
-  iotstack list roles
+  iotstack list devices                      # Show discovered devices on network
+  iotstack list roles                        # Show available device roles
 
 EOF
 }
