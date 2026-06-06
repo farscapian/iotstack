@@ -1025,12 +1025,6 @@ PYEOF
   fi
 }
 
-ROLE_NAME=$(extract_role_name_from_yaml "$YAML_FILE")
-if [[ -n "$ROLE_NAME" ]]; then
-  ROLE_ID=$(compute_role_id "$ROLE_NAME")
-  ensure_role_id_in_yaml "$YAML_FILE" "$ROLE_ID"
-fi
-
 if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
   if [[ -n "$CACHED_CONFIG_HASH" \
      && "$CACHED_YAML_SHA256" == "$YAML_SHA256" \
@@ -1090,7 +1084,7 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
   fi
 fi
 
-# ── Two-step reassign/rename (if requested) ─────────────────────────────────
+# ── Reassign mode: filter to specified MACs, then proceed normally ──────────────
 if [[ "$REASSIGN_MODE" == true ]]; then
   if [[ -z "$HOSTNAMES" ]]; then
     err "No devices found to reassign."
@@ -1101,147 +1095,6 @@ if [[ "$REASSIGN_MODE" == true ]]; then
   echo "════════════════════════════════════════════════════════"
   ok "Reassigning devices"
   echo "════════════════════════════════════════════════════════"
-
-  # Extract new role_name from target YAML
-  NEW_ROLE_NAME=$(extract_role_name_from_yaml "$YAML_FILE")
-  if [[ -z "$NEW_ROLE_NAME" ]]; then
-    err "Could not extract role_name from $YAML_FILE"
-    exit 1
-  fi
-
-  ARTIFACTS_DIR=".esphome/artifacts"
-  mkdir -p "$ARTIFACTS_DIR"
-
-  # Copy secrets.yaml so ESPHome can find it from artifacts directory
-  if [[ -f "secrets.yaml" ]]; then
-    rm -f "$ARTIFACTS_DIR/secrets.yaml"
-    cp "secrets.yaml" "$ARTIFACTS_DIR/secrets.yaml"
-  fi
-
-  TEMP_YAML="${ARTIFACTS_DIR}/.temp-reassign-$$.yaml"
-  trap 'rm -f "$TEMP_YAML"' EXIT
-
-  # Step 1: Create temp YAML with device_new_name and flash
-  echo
-  warn "Step 1 of 2: Introduce device_new_name (${NEW_ROLE_NAME})..."
-  create_temp_yaml_with_device_id "$YAML_FILE" "$NEW_ROLE_NAME" "$TEMP_YAML"
-
-  printf "  ⚙ Compiling step 1..." >&2
-  TEMP_COMPILE_LOG=$(mktemp)
-  trap 'rm -f "$TEMP_COMPILE_LOG"' EXIT
-
-  if "$ESPHOME_BIN" compile "$TEMP_YAML" >> "$TEMP_COMPILE_LOG" 2>&1; then
-    printf " ${GRN}✓${RST}\n" >&2
-    ok "Compiled successfully for step 1."
-  else
-    printf " ${RED}✗${RST}\n" >&2
-    err "Step 1 compilation failed."
-    cat "$TEMP_COMPILE_LOG"
-    exit 1
-  fi
-
-  STEP1_FAIL_LIST=()
-  STEP1_OK_LIST=()
-  WORK_DIR=$(mktemp -d)
-  trap 'rm -rf "$WORK_DIR"' EXIT
-
-  for HOSTNAME in $HOSTNAMES; do
-    FQDN="${HOSTNAME}.local"
-    dim "  step1: ${HOSTNAME}"
-    (
-      if "$ESPHOME_BIN" run "$TEMP_YAML" --device "$FQDN" --no-logs 2>&1 >/dev/null; then
-        echo ok > "$WORK_DIR/${HOSTNAME}.step1.result"
-      else
-        echo fail > "$WORK_DIR/${HOSTNAME}.step1.result"
-      fi
-    ) > "$WORK_DIR/${HOSTNAME}.step1.log" 2>&1 &
-  done
-
-  wait 2>/dev/null || true
-
-  for HOSTNAME in $HOSTNAMES; do
-    if [[ "$(cat "$WORK_DIR/${HOSTNAME}.step1.result" 2>/dev/null)" == ok ]]; then
-      ok "${HOSTNAME}: step 1 successful."
-      STEP1_OK_LIST+=("$HOSTNAME")
-    else
-      err "${HOSTNAME}: step 1 FAILED."
-      STEP1_FAIL_LIST+=("$HOSTNAME")
-    fi
-  done
-
-  if [[ ${#STEP1_FAIL_LIST[@]} -gt 0 ]]; then
-    err "Step 1 failed for ${#STEP1_FAIL_LIST[@]} device(s): ${STEP1_FAIL_LIST[*]}"
-    exit 1
-  fi
-
-  echo
-  warn "Step 2 of 2: Apply new role (update device_name in YAML)..."
-
-  # For renaming within same YAML, we update device_name in-place
-  # For reassigning to different YAML, device_name should already be set correctly in target YAML
-  # We still flash all devices to ensure they get the final state
-  ok "Flashing step 2 with finalized config..."
-
-  printf "  ⚙ Compiling step 2..." >&2
-  STEP2_COMPILE_LOG=$(mktemp)
-  trap 'rm -f "$STEP2_COMPILE_LOG"' EXIT
-
-  if "$ESPHOME_BIN" compile "$YAML_FILE" >> "$STEP2_COMPILE_LOG" 2>&1; then
-    printf " ${GRN}✓${RST}\n" >&2
-    ok "Compiled successfully for step 2."
-  else
-    printf " ${RED}✗${RST}\n" >&2
-    err "Step 2 compilation failed."
-    cat "$STEP2_COMPILE_LOG"
-    exit 1
-  fi
-
-  STEP2_FAIL_LIST=()
-  STEP2_OK_LIST=()
-
-  for HOSTNAME in $HOSTNAMES; do
-    FQDN="${HOSTNAME}.local"
-    dim "  step2: ${HOSTNAME}"
-    (
-      if "$ESPHOME_BIN" run "$YAML_FILE" --device "$FQDN" --no-logs 2>&1 >/dev/null; then
-        echo ok > "$WORK_DIR/${HOSTNAME}.step2.result"
-      else
-        echo fail > "$WORK_DIR/${HOSTNAME}.step2.result"
-      fi
-    ) > "$WORK_DIR/${HOSTNAME}.step2.log" 2>&1 &
-  done
-
-  wait 2>/dev/null || true
-
-  for HOSTNAME in $HOSTNAMES; do
-    if [[ "$(cat "$WORK_DIR/${HOSTNAME}.step2.result" 2>/dev/null)" == ok ]]; then
-      ok "${HOSTNAME}: step 2 successful."
-      STEP2_OK_LIST+=("$HOSTNAME")
-    else
-      err "${HOSTNAME}: step 2 FAILED."
-      STEP2_FAIL_LIST+=("$HOSTNAME")
-    fi
-  done
-
-  if [[ ${#STEP2_FAIL_LIST[@]} -gt 0 ]]; then
-    err "Step 2 failed for ${#STEP2_FAIL_LIST[@]} device(s): ${STEP2_FAIL_LIST[*]}"
-    exit 1
-  fi
-
-  echo
-  ok "Two-step reassignment completed successfully!"
-  ok "Devices will now advertise with new role: ${NEW_ROLE_NAME}-*"
-  echo
-
-  # Update entity IDs for the reassigned devices
-  if [[ -n "$HA_URL" && -n "$HA_TOKEN" ]]; then
-    echo
-    echo "════════════════════════════════════════════════════════"
-    recreate_entity_ids "$HA_URL" "$HA_TOKEN" "$HOSTNAMES"
-    echo "════════════════════════════════════════════════════════"
-  fi
-
-  exit 0
 fi
 
 # ── Per-device triage ────────────────────────────────────────────────────────
