@@ -17,7 +17,8 @@ ok()   { echo -e "${GRN}[OK]${RST} $*"; }
 warn() { echo -e "${YLW}[WARN]${RST} $*"; }
 info() { echo -e "${BLU}[INFO]${RST} $*"; }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 UPDATE_SCRIPT="${SCRIPT_DIR}/update_devices.sh"
 DEVICES_CONF="${SCRIPT_DIR}/iotstack-roles.conf"
 
@@ -465,7 +466,7 @@ cmd_reassign() {
   echo
 
   # Build and invoke update_devices.sh with reassign flags
-  "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" --rename-from "$rename_from_role" "${update_args[@]}" "$yaml_file"
+  "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" "${update_args[@]}"
   return $?
 }
 
