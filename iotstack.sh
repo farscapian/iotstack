@@ -965,6 +965,10 @@ cmd_secret() {
   local secret_type="$3"
   local value="${4:-}"
 
+  # Export GPG and pass environment for iotstack-secrets
+  export GNUPGHOME="${HOME}/.gnupg"
+  export PASSWORD_STORE_DIR="${HOME}/.iotstack/.pass"
+
   case "$command" in
     get)
       if [[ -z "$role" || -z "$secret_type" ]]; then
