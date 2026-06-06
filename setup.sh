@@ -252,14 +252,14 @@ if [[ -f "$SECRETS_YAML" ]]; then
   export GNUPGHOME="${IOTSTACK_HOME}/.gnupg"
   export PASSWORD_STORE_DIR="$PASS_DIR"
 
-  # Config items that should exist but can be empty
+  # Config items that should exist but can be empty (seeded with placeholder)
   declare -a config_items=("wifi_ssid" "wifi_password" "thread_tlv" "ha_url" "ha_token")
 
-  # Seed config items with empty values
+  # Seed config items with placeholder (user can update via: pass edit iotstack/wifi_ssid)
   for config_key in "${config_items[@]}"; do
     pass_path="iotstack/${config_key}"
     if ! pass show "$pass_path" >/dev/null 2>&1; then
-      echo "" | pass insert -f "$pass_path" >/dev/null 2>&1
+      echo "CONFIGURE_ME" | pass insert -f "$pass_path" >/dev/null 2>&1
     fi
   done
 
