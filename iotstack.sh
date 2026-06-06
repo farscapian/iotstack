@@ -154,7 +154,7 @@ Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
-  iotstack flash <device|yaml> <tty-device>
+  iotstack flash <device|yaml> [tty-device]
   iotstack list [devices|roles]
   iotstack secret get <role> <ota|api> [version]
   iotstack secret set <role> <ota|api> <value>
@@ -189,13 +189,15 @@ Commands:
       iotstack verify all
       iotstack verify thread_router --thread
 
-  flash <device|yaml> <tty-device>
+  flash <device|yaml> [tty-device]
     Flash device via serial/USB (for bricked devices).
     Use when OTA is not available.
+    Auto-detects USB device if only one is connected.
     Examples:
-      iotstack flash bleproxy /dev/ttyACM0
+      iotstack flash bleproxy                 # auto-detect device
+      iotstack flash bleproxy /dev/ttyACM0    # specify device
       iotstack flash mmwave /dev/ttyUSB0
-      iotstack flash yamls/custom.yaml /dev/ttyUSB1
+      iotstack flash yamls/custom.yaml
 
   list [devices|roles]
     Show devices and roles.
@@ -1252,13 +1254,37 @@ list_roles() {
 # ── Flash command: serial/USB flashing ─────────────────────────────────────
 cmd_flash() {
   local device="$1"
-  local tty_device="$2"
+  local tty_device="${2:-}"
 
-  if [[ -z "$device" || -z "$tty_device" ]]; then
-    err "Usage: iotstack flash <role|yaml> <tty-device>
+  if [[ -z "$device" ]]; then
+    err "Usage: iotstack flash <role|yaml> [tty-device]
 Examples:
-  iotstack flash bleproxy /dev/ttyACM0
+  iotstack flash bleproxy                    # auto-detect if only one device
+  iotstack flash bleproxy /dev/ttyACM0       # specify device
   iotstack flash yamls/mmwave.yaml /dev/ttyUSB0"
+  fi
+
+  # If no device specified, auto-detect
+  if [[ -z "$tty_device" ]]; then
+    # Find all USB serial devices
+    local tty_devices=()
+    for dev in /dev/ttyACM* /dev/ttyUSB* 2>/dev/null; do
+      if [[ -e "$dev" ]]; then
+        tty_devices+=("$dev")
+      fi
+    done
+
+    if [[ ${#tty_devices[@]} -eq 0 ]]; then
+      err "No USB serial devices found. Plug in the device and try again, or specify manually:
+  iotstack flash $device /dev/ttyACM0"
+    elif [[ ${#tty_devices[@]} -gt 1 ]]; then
+      err "Multiple USB serial devices found:
+$(printf '  %s\n' "${tty_devices[@]}")
+Please specify which one:
+  iotstack flash $device ${tty_devices[0]}"
+    else
+      tty_device="${tty_devices[0]}"
+    fi
   fi
 
   # Resolve device role to YAML path
