@@ -45,7 +45,6 @@ bluetooth_proxy:
 
 ota:
   - platform: esphome
-    id: my_ota
     password: !secret bleproxy_ota_password
 
 safe_mode:

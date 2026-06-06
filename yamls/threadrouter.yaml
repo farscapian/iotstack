@@ -1,15 +1,16 @@
 # ESP32-C6 Thread Router
 
 substitutions:
+  device_role: "threadrouter"
   friendly_name: "Thread Router"
 
 esphome:
-  name: thread-router
+  name: ${device_role}
   friendly_name: ${friendly_name}
-  project:
-    name: iotstack.thread-router
-    version: 1.0.3
   name_add_mac_suffix: true
+  project:
+    name: "iotstack.${device_role}"
+    version: 1.5.0
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -30,12 +31,12 @@ network:
 # 4. API — native ESPHome over IPv6/Thread; OTA rides this connection
 api:
   encryption:
-    key: !secret thread_router_api_encryption_key
+    key: !secret threadrouter_api_encryption_key
 
 # 5. OTA
 ota:
   - platform: esphome
-    password: !secret ota_password
+    password: !secret threadrouter_ota_password
     allow_partition_access: true
 
 # 6. Safe mode — Thread-only node; safe mode OTA recovery requires USB serial

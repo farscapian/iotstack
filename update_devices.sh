@@ -10,7 +10,7 @@
 # Options:
 #   --upgrade-delta        Only flash devices whose config_hash differs from the
 #                          current build (default: on)
-#   --no-upgrade-delta     Flash all devices regardless of running firmware
+#   --flash-anyway     Flash all devices regardless of running firmware
 #   --verify               Compile, then check each device's config_hash; report
 #                          pass/fail and exit (no flashing, no changes to HA)
 #   --force-update-entities Recreate entity IDs for all devices, even if no
@@ -606,7 +606,7 @@ usage() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --upgrade-delta)         UPGRADE_DELTA=true;  shift ;;
-    --no-upgrade-delta)      UPGRADE_DELTA=false; shift ;;
+    --flash-anyway)      UPGRADE_DELTA=false; shift ;;
     --verify)                VERIFY=true;         shift ;;
     --force-update-entities) FORCE_UPDATE_ENTITIES=true; shift ;;
     --dry-run)               DRY_RUN=true;        shift ;;
@@ -644,7 +644,7 @@ if [[ "$REASSIGN_MODE" == true ]]; then
 else
   if [[ -z "$YAML_FILE" ]]; then
     err "No yaml file specified."
-    echo "Usage: $0 [--upgrade-delta] [--no-upgrade-delta] [--verify] [--dry-run] [--jobs N] <yaml-file>"
+    echo "Usage: $0 [--upgrade-delta] [--flash-anyway] [--verify] [--dry-run] [--jobs N] <yaml-file>"
     exit 1
   fi
 fi

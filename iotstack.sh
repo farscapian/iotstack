@@ -224,7 +224,7 @@ Commands:
 Options:
   --thread               Use Thread variant instead of WiFi (for devices with both)
   --dry-run              Compile and show what would be flashed (no flashing)
-  --no-upgrade-delta     Flash all devices regardless of version
+  --flash-anyway     Flash all devices regardless of version
   --jobs N               Max concurrent flash jobs (default: 4)
   -v, --verbose          Show compilation output
 
@@ -679,7 +679,7 @@ cmd_update() {
         use_thread="--thread"
         shift
         ;;
-      --dry-run|--no-upgrade-delta|--verbose|-v|--jobs)
+      --dry-run|--flash-anyway|--verbose|-v|--jobs)
         update_args+=("$1")
         if [[ "$1" == "--jobs" ]]; then
           shift
