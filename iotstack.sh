@@ -124,7 +124,7 @@ Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml>
-  iotstack list [devices|configs|roles]
+  iotstack list [devices|roles]
   iotstack help [command]
 
 Commands:
@@ -152,12 +152,11 @@ Commands:
       iotstack verify all
       iotstack verify thread_router --thread
 
-  list [devices|configs|roles]
-    Show devices, configurations, and roles.
+  list [devices|roles]
+    Show devices and roles.
     Subcommands:
       devices   Show discovered ESPHome devices on network (default)
-      configs   Show available YAML device configurations
-      roles Show available device roles for quick access
+      roles     Show available device roles with their configurations
 
   help [command]
     Show help for a specific command.
@@ -188,7 +187,7 @@ Examples:
   # Reassign devices
   iotstack reassign 8dfcac 0f4df4 bleproxy
 
-  # Show device roles
+  # Show available roles
   iotstack list roles
 
 EOF
@@ -258,25 +257,21 @@ EOF
 
 help_list() {
   cat << 'EOF'
-iotstack list — Show devices, configurations, and roles
+iotstack list — Show devices and roles
 
 Usage:
-  iotstack list [devices|configs|roles]
+  iotstack list [devices|roles]
 
 Subcommands:
-  devices    Show discovered ESPHome devices on network (default)
-  configs    Show available YAML device configurations
-  roles      Show available device roles for quick access
+  devices   Show discovered ESPHome devices on network (default)
+  roles     Show available device roles with their configurations
 
 Examples:
   # Show discovered devices on network (default)
   iotstack list
   iotstack list devices
 
-  # Show available YAML configurations
-  iotstack list configs
-
-  # Show device roles
+  # Show available device roles
   iotstack list roles
 
 EOF
@@ -614,9 +609,6 @@ cmd_list() {
     devices)
       list_devices
       ;;
-    configs)
-      list_yaml_configs
-      ;;
     roles)
       info "Available device roles:"
       echo
@@ -638,7 +630,7 @@ cmd_list() {
       ok "Use 'iotstack help' for more information"
       ;;
     *)
-      err "Unknown subcommand: $subcommand. Try 'iotstack list devices', 'iotstack list configs', or 'iotstack list roles'"
+      err "Unknown subcommand: $subcommand. Try 'iotstack list devices' or 'iotstack list roles'"
       ;;
   esac
 }
