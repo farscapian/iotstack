@@ -296,8 +296,6 @@ light:
     chipset: WS2812
     restore_mode: ALWAYS_OFF
     effects:
-      - none:
-          name: "Presence Not Detected"
       - lambda:
           name: "Pulse Heart Rate"
           update_interval: 100ms
@@ -447,6 +445,5 @@ script:
                 id: rgb_led
                 effect: "Pulse Heart Rate"
           else:
-            - light.turn_on:
+            - light.turn_off:
                 id: rgb_led
-                effect: "Presence Not Detected"
