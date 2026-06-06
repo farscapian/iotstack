@@ -645,16 +645,17 @@ if [[ ! -f "$YAML_FILE" ]]; then
 fi
 
 # ── Handle custom OTA password for authentication ─────────────────────────
-# If user provided a custom OTA password/API key, create a temporary YAML with it
+# If user provided a custom OTA password, create a temporary YAML with it
+# The OTA password is used to authenticate the OTA upload from the current device
 if [[ -n "$API_KEY" ]]; then
   # Create temp YAML in same directory as original so it can find secrets.yaml
   YAML_DIR="$(dirname "$YAML_FILE")"
   YAML_BASENAME="$(basename "$YAML_FILE")"
   TEMP_YAML="${YAML_DIR}/.temp-api-key-$$.${YAML_BASENAME}"
 
-  # The API_KEY can be either OTA password or API encryption key
-  # Replace both password: !secret ... and key: !secret ... with the provided value
-  sed 's|password: !secret [^ ]*|password: '"$API_KEY"'|g; s|key: !secret [^ ]*|key: '"$API_KEY"'|g' "$YAML_FILE" > "$TEMP_YAML"
+  # Replace OTA password (for authentication of current device during upload)
+  # The API encryption key stays as-is (uses target device's key)
+  sed 's|password: !secret [^ ]*|password: '"$API_KEY"'|g' "$YAML_FILE" > "$TEMP_YAML"
 
   # Use temp YAML for compilation and OTA
   YAML_FILE="$TEMP_YAML"
