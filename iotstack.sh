@@ -36,27 +36,30 @@ fi
 verify_secrets_mounted() {
   local secrets_mount="${HOME}/.iotstack/secrets"
 
-  # Check if gocryptfs mount exists
-  if mount | grep -q "gocryptfs.*${secrets_mount}"; then
+  # Check if tmpfs mount exists
+  if mount | grep -q "tmpfs.*${secrets_mount}"; then
     return 0
   fi
 
-  # Not mounted - auto-mount (no sudo needed for gocryptfs)
-  echo "[INFO] Mounting encrypted secrets..."
-  if ! "$SCRIPT_DIR/scripts/mount-secrets"; then
-    # mount-secrets already printed the error, just exit
-    exit 1
-  fi
+  # Not mounted - guide user to mount it (requires sudo)
+  err "Secrets tmpfs not mounted at ${secrets_mount}
 
-  ok "Encrypted secrets mounted"
+SECURITY REQUIREMENT: All secrets must exist only in RAM.
+
+To mount secrets into RAM:
+  ./scripts/mount-secrets
+
+This will prompt for sudo (needed for tmpfs mount).
+Secrets are decrypted from pass into RAM memory only.
+They will be automatically erased on reboot or unmount."
 }
 
 # Set up cleanup on shell exit
 cleanup_secrets_on_exit() {
   local secrets_mount="${HOME}/.iotstack/secrets"
-  if mount | grep -q "gocryptfs.*${secrets_mount}"; then
+  if mount | grep -q "tmpfs.*${secrets_mount}"; then
     echo "[INFO] Unmounting secrets on logout..."
-    fusermount -u "$secrets_mount" 2>/dev/null || true
+    sudo umount "$secrets_mount" 2>/dev/null || true
   fi
 }
 
