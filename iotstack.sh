@@ -385,24 +385,61 @@ list_devices() {
 }
 
 list_yaml_configs() {
-  info "Available device configurations:"
-  echo
-  printf "  ${GRN}%-20s %-10s %-10s %-40s${RST}\n" "Device" "Type" "Network" "Config File"
-  printf "  ${DIM}%-20s %-10s %-10s %-40s${RST}\n" "─────────────────" "─────────" "─────────" "───────────────────────────────────────"
+  local margin=2
+  local header_device="Device"
+  local header_type="Type"
+  local header_network="Network"
+  local header_config="Config File"
 
-  found=0
+  local w_device=$(( ${#header_device} + margin ))
+  local w_type=$(( ${#header_type} + margin ))
+  local w_network=$(( ${#header_network} + margin ))
+  local w_config=$(( ${#header_config} + margin ))
+
+  # Scan YAML files to calculate widths
   while IFS= read -r yaml_file; do
     if grep -q '^esphome:' "$yaml_file" 2>/dev/null; then
-      # Extract device info
+      friendly_name=$(grep -E "^\s*friendly_name:\s*" "$yaml_file" | head -1 | sed 's/.*friendly_name:\s*"\?\([^"]*\)"\?.*/\1/')
+      [[ -z "$friendly_name" ]] && friendly_name=$(basename "$yaml_file" .yaml)
+
       device_info=$(get_yaml_device_info "$yaml_file")
       device_type="${device_info%%|*}"
       network_type="${device_info##*|}"
 
-      # Extract friendly_name for display
+      (( ${#friendly_name} + margin > w_device )) && w_device=$(( ${#friendly_name} + margin ))
+      (( ${#device_type} + margin > w_type )) && w_type=$(( ${#device_type} + margin ))
+      (( ${#network_type} + margin > w_network )) && w_network=$(( ${#network_type} + margin ))
+      (( ${#yaml_file} + margin > w_config )) && w_config=$(( ${#yaml_file} + margin ))
+    fi
+  done < <(find "${SCRIPT_DIR}/yamls" -maxdepth 1 -name "*.yaml" -type f ! -name "secrets.yaml" | sort)
+
+  info "Available device configurations:"
+  echo
+
+  # Print headers
+  printf "  ${GRN}%-${w_device}s %-${w_type}s %-${w_network}s %-${w_config}s${RST}\n" \
+    "$header_device" "$header_type" "$header_network" "$header_config"
+
+  # Print separator
+  printf "  ${DIM}"
+  printf "%-${w_device}s " "$(printf '─%.0s' $(seq 1 $((w_device-1))))"
+  printf "%-${w_type}s " "$(printf '─%.0s' $(seq 1 $((w_type-1))))"
+  printf "%-${w_network}s " "$(printf '─%.0s' $(seq 1 $((w_network-1))))"
+  printf "%-${w_config}s" "$(printf '─%.0s' $(seq 1 $((w_config-1))))"
+  printf "${RST}\n"
+
+  # Print data rows
+  local found=0
+  while IFS= read -r yaml_file; do
+    if grep -q '^esphome:' "$yaml_file" 2>/dev/null; then
       friendly_name=$(grep -E "^\s*friendly_name:\s*" "$yaml_file" | head -1 | sed 's/.*friendly_name:\s*"\?\([^"]*\)"\?.*/\1/')
       [[ -z "$friendly_name" ]] && friendly_name=$(basename "$yaml_file" .yaml)
 
-      printf "  ${GRN}%-20s${RST} %-10s %-10s %s\n" \
+      device_info=$(get_yaml_device_info "$yaml_file")
+      device_type="${device_info%%|*}"
+      network_type="${device_info##*|}"
+
+      printf "  ${GRN}%-${w_device}s${RST} %-${w_type}s %-${w_network}s %-${w_config}s\n" \
         "$friendly_name" "$device_type" "$network_type" "$yaml_file"
       found=$((found + 1))
     fi
@@ -756,12 +793,69 @@ list_roles() {
     echo
     echo "]"
   else
-    # Text format (default)
+    # Text format - calculate column widths
+    local margin=2
+    local header_role="Role"
+    local header_type="Type"
+    local header_network="Network"
+    local header_config="Config"
+
+    local w_role=$(( ${#header_role} + margin ))
+    local w_type=$(( ${#header_type} + margin ))
+    local w_network=$(( ${#header_network} + margin ))
+    local w_config=$(( ${#header_config} + margin ))
+
+    # Scan data to find max widths
+    list_device_names | while read -r device; do
+      mapping="${DEVICE_MAP[$device]}"
+      wifi_yaml="${mapping%%:*}"
+      thread_yaml="${mapping##*:}"
+
+      config_display=""
+      if [[ -n "$wifi_yaml" && -n "$thread_yaml" ]]; then
+        config_display="${wifi_yaml##*/} / ${thread_yaml##*/}"
+      elif [[ -n "$wifi_yaml" ]]; then
+        config_display="${wifi_yaml##*/}"
+      elif [[ -n "$thread_yaml" ]]; then
+        config_display="${thread_yaml##*/}"
+      fi
+
+      device_type=""
+      network_type=""
+      if [[ -n "$wifi_yaml" && -f "$wifi_yaml" ]]; then
+        device_info=$(get_yaml_device_info "$wifi_yaml")
+        device_type="${device_info%%|*}"
+        network_type="${device_info##*|}"
+      elif [[ -n "$thread_yaml" && -f "$thread_yaml" ]]; then
+        device_info=$(get_yaml_device_info "$thread_yaml")
+        device_type="${device_info%%|*}"
+        network_type="${device_info##*|}"
+      fi
+
+      echo "$device|$device_type|$network_type|$config_display"
+    done | while IFS='|' read -r device device_type network_type config_display; do
+      (( ${#device} + margin > w_role )) && w_role=$(( ${#device} + margin ))
+      (( ${#device_type} + margin > w_type )) && w_type=$(( ${#device_type} + margin ))
+      (( ${#network_type} + margin > w_network )) && w_network=$(( ${#network_type} + margin ))
+      (( ${#config_display} + margin > w_config )) && w_config=$(( ${#config_display} + margin ))
+    done
+
     info "Available device roles:"
     echo
-    printf "  ${GRN}%-15s %-10s %-10s %-40s${RST}\n" "Role" "Type" "Network" "Config"
-    printf "  ${DIM}%-15s %-10s %-10s %-40s${RST}\n" "───────────────" "──────────" "──────────" "────────────────────────────────────────"
 
+    # Print headers with calculated widths
+    printf "  ${GRN}%-${w_role}s %-${w_type}s %-${w_network}s %-${w_config}s${RST}\n" \
+      "$header_role" "$header_type" "$header_network" "$header_config"
+
+    # Print separator
+    printf "  ${DIM}"
+    printf "%-${w_role}s " "$(printf '─%.0s' $(seq 1 $((w_role-1))))"
+    printf "%-${w_type}s " "$(printf '─%.0s' $(seq 1 $((w_type-1))))"
+    printf "%-${w_network}s " "$(printf '─%.0s' $(seq 1 $((w_network-1))))"
+    printf "%-${w_config}s" "$(printf '─%.0s' $(seq 1 $((w_config-1))))"
+    printf "${RST}\n"
+
+    # Print data rows with calculated widths
     list_device_names | while read -r device; do
       mapping="${DEVICE_MAP[$device]}"
       wifi_yaml="${mapping%%:*}"
@@ -788,7 +882,7 @@ list_roles() {
         config_display="${thread_yaml##*/}"
       fi
 
-      printf "  ${GRN}%-15s${RST} %-10s %-10s %-40s\n" \
+      printf "  ${GRN}%-${w_role}s${RST} %-${w_type}s %-${w_network}s %-${w_config}s\n" \
         "$device" "$device_type" "$network_type" "$config_display"
     done
     echo
