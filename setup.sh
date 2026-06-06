@@ -122,14 +122,19 @@ parent_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep -m1 
 
 if [[ -n "$parent_key" ]]; then
   echo "Found existing GPG key in ~/.gnupg: $parent_key"
-  echo "Creating iotstack subkey signed by parent..."
+  echo "Importing parent key to iotstack GPG home..."
 
-  # Export parent key to iotstack's GNUPGHOME
+  # Export parent key from default GNUPGHOME and import to iotstack's GNUPGHOME
   mkdir -p "$GNUPGHOME"
-  gpg --export-secret-keys "$parent_key" | GNUPGHOME="$GNUPGHOME" gpg --import 2>/dev/null
+  export_file=$(mktemp)
+  gpg --export-secret-keys "$parent_key" > "$export_file"
+
+  # Import to isolated GNUPGHOME
+  GNUPGHOME="$GNUPGHOME" gpg --import "$export_file" 2>&1 | grep -v "^gpg:" || true
+  rm -f "$export_file"
 
   gpg_key="$parent_key"
-  ok "Using parent GPG key (with subkey for iotstack): $gpg_key"
+  ok "Using parent GPG key: $gpg_key"
 else
   echo "No existing GPG key found. Generating new key for iotstack..."
 
