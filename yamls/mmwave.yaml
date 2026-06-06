@@ -2,7 +2,7 @@
 
 substitutions:
   device_role: "mmwave"
-  friendly_name: "mmWave Human Presence Sensor"
+  friendly_name: "mmWave Presense Detector"
 
 esphome:
   name: ${device_role}
@@ -31,7 +31,7 @@ esp32:
 # 1. Core services
 logger:
   hardware_uart: USB_SERIAL_JTAG
-  level: DEBUG
+  level: INFO
 
 api:
   encryption:
@@ -112,9 +112,10 @@ binary_sensor:
   # Template driven from num_targets (drops to 0 immediately on no detection)
   # rather than has_target (which has a multi-minute hardware absence delay).
   # delayed_off: 20s provides a clean hold before clearing.
+  # Internal: used only for LED automation, not shown in HA (see text_sensor below)
   - platform: template
-    name: "Presence"
     id: presence
+    internal: true
     lambda: |-
       return id(target_count).has_state() && id(target_count).state > 0;
     filters:
@@ -162,7 +163,7 @@ binary_sensor:
 
 text_sensor:
   - platform: template
-    name: "Presence Status"
+    name: "Presence"
     lambda: |-
       return id(presence).state ? std::string("Detected") : std::string("Not Detected");
     update_interval: 1s
@@ -172,7 +173,7 @@ sensor:
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     breath_rate:
-      name: "${friendly_name} Respiratory Rate"
+      name: "Respiratory Rate"
       device_class: ""
       unit_of_measurement: "brpm"
       state_class: measurement
@@ -184,7 +185,7 @@ sensor:
     mr60bha2_id: my_mr60bha2
     heart_rate:
       id: heart_rate_sensor
-      name: "${friendly_name} Heart Rate"
+      name: "Heart Rate"
       device_class: ""
       unit_of_measurement: "bpm"
       state_class: measurement
@@ -195,7 +196,7 @@ sensor:
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     distance:
-      name: "${friendly_name} Detection Distance"
+      name: "Detection Distance"
       unit_of_measurement: "ft"
       state_class: measurement
       accuracy_decimals: 2
@@ -220,7 +221,7 @@ sensor:
   #   address: 0x23 (ADDR tied to GND on this carrier board)
   #   update_interval: 10s is a reasonable default; lower if you need faster response
   - platform: bh1750
-    name: "${friendly_name} Illuminance"
+    name: "Illuminance"
     address: 0x23
     i2c_id: bus_a
     update_interval: 10s
