@@ -1453,7 +1453,7 @@ fi
 
 # Recreate entity IDs for flashed devices, force-update if requested, or all devices in reassign mode
 # In dry-run mode, skip recreation but still verify consistency below
-if [[ "$DRY_RUN" == false ]] && ([[ ${#OK_LIST[@]} -gt 0 ]] || [[ "$FORCE_UPDATE_ENTITIES" == true ]] || [[ "$REASSIGN_MODE" == true ]]); then
+if [[ "$DRY_RUN" == false ]] && { [[ ${#OK_LIST[@]} -gt 0 ]] || [[ "$FORCE_UPDATE_ENTITIES" == true ]] || [[ "$REASSIGN_MODE" == true ]]; }; then
   ENTITIES_TO_UPDATE=""
   if [[ "$FORCE_UPDATE_ENTITIES" == true ]] || [[ "$REASSIGN_MODE" == true ]]; then
     ENTITIES_TO_UPDATE="$HOSTNAMES"
