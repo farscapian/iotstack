@@ -47,7 +47,7 @@ api:
               green: 0%
               blue: 0%
               brightness: 60%
-              effect: "Pulse Red"
+              effect: "Pulse Heart Rate"
         else:
           - light.turn_on:
               id: rgb_led
@@ -68,7 +68,7 @@ api:
               green: 50%
               blue: 0%
               brightness: 60%
-              effect: "Pulse Yellow Red"
+              effect: "Strobe Red Yellow"
 
 ota:
   - platform: esphome
@@ -131,7 +131,7 @@ binary_sensor:
                 green: 0%
                 blue: 0%
                 brightness: 20%
-                effect: "Pulse Red"
+                effect: "Pulse Heart Rate"
           else:
             - light.turn_on:
                 id: rgb_led
@@ -139,7 +139,7 @@ binary_sensor:
                 green: 50%
                 blue: 0%
                 brightness: 20%
-                effect: "Pulse Yellow Red"
+                effect: "Strobe Red Yellow"
     on_release:
       - if:
           condition:
@@ -159,7 +159,7 @@ binary_sensor:
                 green: 50%
                 blue: 0%
                 brightness: 20%
-                effect: "Pulse Yellow Red"
+                effect: "Strobe Red Yellow"
 
   # Physical button (GPIO9 - boot button on Seeed XIAO)
   - platform: gpio
@@ -404,6 +404,21 @@ light:
               call.set_red(0.0); call.set_green(1.0); call.set_blue(0.0);
               call.perform();
             }
+      - lambda:
+          name: "Strobe Red Yellow"
+          update_interval: 250ms
+          lambda: |-
+            static bool is_red = true;
+            auto call = id(rgb_led).make_call();
+            call.set_brightness(1.0);
+            if (is_red) {
+              call.set_red(1.0); call.set_green(0.0); call.set_blue(0.0);
+            } else {
+              call.set_red(1.0); call.set_green(1.0); call.set_blue(0.0);
+            }
+            call.set_transition_length(0);
+            call.perform();
+            is_red = !is_red;
 
 # 8. Scripts
 script:
