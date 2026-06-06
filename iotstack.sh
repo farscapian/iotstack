@@ -1027,8 +1027,8 @@ cmd_rotate_secrets() {
   local current_password
   echo "[INFO] Retrieving current OTA password from version history..."
   current_password=$(cmd_secret get "$role" ota 2>/dev/null) || {
-    # Not in pass yet - extract from YAML's secret reference
-    echo "[INFO] Not in version history yet - extracting from YAML..."
+    # Not in pass yet - extract from YAML's secret reference and set it as v00
+    echo "[INFO] Not in version history yet - extracting from YAML and setting as v00..."
 
     # Extract the secret name from YAML (e.g., !secret mmwave_ota_password)
     local secret_name
@@ -1042,7 +1042,10 @@ cmd_rotate_secrets() {
         err "Could not find secret '${secret_name}' in secrets.yaml"
       fi
 
-      echo "[OK] Found current password from YAML secret reference"
+      # Set it in pass as v00 so future rotations have it versioned
+      echo "[INFO] Storing current password in pass as v00..."
+      cmd_secret set "$role" ota "$current_password"
+      echo "[OK] Current password extracted and stored in pass"
     else
       err "Could not find OTA password secret in ${role}.yaml"
     fi
@@ -1156,6 +1159,29 @@ cmd_rotate_secrets() {
 
     # Only rotate API key if HA is configured
     if [[ "$ha_configured" == true ]]; then
+      # Check if API key is already versioned in pass
+      local current_api_key
+      current_api_key=$(cmd_secret get "$role" api 2>/dev/null) || {
+        # Not versioned yet - extract from YAML and set as v00
+        echo "[INFO] API key not in version history - extracting from YAML..."
+
+        # Extract the secret name from YAML (e.g., !secret mmwave_api_encryption_key)
+        local api_secret_name
+        api_secret_name=$(grep -oP '!secret\s+\K\S+(?=\s*$)' "${YAMLS_DIR}/${role}.yaml" | grep api_encryption_key | head -1)
+
+        if [[ -n "$api_secret_name" ]]; then
+          # Look up the value in tmpfs secrets.yaml
+          current_api_key=$(grep "^${api_secret_name}:" "$secrets_yaml" | sed "s/${api_secret_name}:[[:space:]]*['\"]//; s/['\"][[:space:]]*$//" || true)
+
+          if [[ -n "$current_api_key" ]]; then
+            echo "[INFO] Storing current API key in pass as v00..."
+            cmd_secret set "$role" api "$current_api_key"
+            echo "[OK] Current API key stored in pass"
+          fi
+        fi
+      }
+
+      # Generate and set new API key
       local new_api_key
       echo "[INFO] Generating new API encryption key..."
       new_api_key=$(openssl rand -base64 32)
