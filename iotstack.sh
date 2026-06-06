@@ -149,7 +149,7 @@ Usage:
   iotstack list [devices|roles]
   iotstack secret get <role> <ota|api> [version]
   iotstack secret set <role> <ota|api> <value>
-  iotstack rotate-password <role> [new-password]
+  iotstack rotate-secrets <role> [new-password]
   iotstack help [command]
 
 Commands:
@@ -209,13 +209,15 @@ Commands:
       iotstack secret set bleproxy ota "newPassword"
       iotstack secret set mmwave api "newApiKey"
 
-  rotate-password <role> [new-password]
-    Rotate OTA password for all devices in a role.
-    Keeps historical passwords for recovery and audit trails.
-    If password not provided, generates a cryptographically secure one.
+  rotate-secrets <role> [new-secret]
+    Rotate secrets (OTA password and API encryption key) for all devices in a role.
+    - OTA password: Always rotated (required for device updates)
+    - API key: Only rotated if Home Assistant credentials are configured
+    - Keeps historical passwords for recovery and audit trails
+    - If secret not provided, generates a cryptographically secure one
     Examples:
-      iotstack rotate-password bleproxy                    # Generate strong password
-      iotstack rotate-password bleproxy "newPassword123"   # Use specific password
+      iotstack rotate-secrets bleproxy                    # Generate strong secrets
+      iotstack rotate-secrets bleproxy "newSecret123"     # Use specific secret
 
   help [command]
     Show help for a specific command.
@@ -982,14 +984,14 @@ cmd_secret() {
   esac
 }
 
-cmd_rotate_password() {
+cmd_rotate_secrets() {
   verify_secrets_mounted
 
   local role="$1"
   local new_password="${2:-}"
 
   if [[ -z "$role" ]]; then
-    err "Usage: iotstack rotate-password <role> [new-password]"
+    err "Usage: iotstack rotate-secrets <role> [new-secret]"
   fi
 
   # Verify role exists (check if YAML file exists)
@@ -997,7 +999,19 @@ cmd_rotate_password() {
     err "Unknown role: $role (expected: ${YAMLS_DIR}/${role}.yaml)"
   fi
 
-  info "Rotating OTA password for role: $role"
+  # Check if HA credentials are configured
+  local ha_configured=false
+  if [[ -n "$HA_URL" && -n "$HA_TOKEN" ]]; then
+    ha_configured=true
+  fi
+
+  info "Rotating secrets for role: $role"
+  echo "[INFO] - OTA password: Always rotated (required)"
+  if [[ "$ha_configured" == true ]]; then
+    echo "[INFO] - API encryption key: Will be rotated (HA configured)"
+  else
+    echo "[INFO] - API encryption key: Skipped (HA not configured)"
+  fi
   echo
 
   # Get current OTA password from password manager or prompt
@@ -1050,10 +1064,10 @@ cmd_rotate_password() {
   echo
 
   # Confirm before proceeding
-  read -p "Proceed with password rotation for ${#mac_suffixes[@]} device(s)? (y/N) " -n 1 -r
+  read -p "Proceed with secret rotation for ${#mac_suffixes[@]} device(s)? (y/N) " -n 1 -r
   echo
   if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    info "Password rotation cancelled"
+    info "Secret rotation cancelled"
     return 0
   fi
 
@@ -1090,7 +1104,7 @@ cmd_rotate_password() {
 
   echo
   echo "════════════════════════════════════════════════════════"
-  echo "[INFO] Rotation Summary"
+  echo "[INFO] Secret Rotation Summary"
   echo "════════════════════════════════════════════════════════"
   echo "  Role: $role"
   echo "  Total: ${#mac_suffixes[@]}"
@@ -1112,13 +1126,22 @@ cmd_rotate_password() {
     echo "[INFO] All devices flashed successfully"
     echo
 
-    echo "[INFO] Updating password manager with versioned password..."
+    echo "[INFO] Updating password manager with versioned secrets..."
     cmd_secret set "$role" ota "$new_password"
 
+    # Only rotate API key if HA is configured
+    if [[ "$ha_configured" == true ]]; then
+      local new_api_key
+      echo "[INFO] Generating new API encryption key..."
+      new_api_key=$(openssl rand -base64 32)
+      cmd_secret set "$role" api "$new_api_key"
+      echo "[OK] API encryption key rotated"
+    fi
+
     echo
-    ok "Password rotation complete!"
+    ok "Secret rotation complete!"
   else
-    warn "Password rotation incomplete due to failures"
+    warn "Secret rotation incomplete due to failures"
     warn "Do not update password manager yet - some devices may not have new password"
     return 1
   fi
@@ -1316,9 +1339,9 @@ main() {
       shift
       cmd_secret "$@"
       ;;
-    rotate-password)
+    rotate-secrets)
       shift
-      cmd_rotate_password "$@"
+      cmd_rotate_secrets "$@"
       ;;
     flash)
       shift
