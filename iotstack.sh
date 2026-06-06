@@ -124,8 +124,7 @@ Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml>
-  iotstack list
-  iotstack devices
+  iotstack list [devices|shortcuts]
   iotstack help [command]
 
 Commands:
@@ -153,11 +152,11 @@ Commands:
       iotstack verify all
       iotstack verify thread_router --thread
 
-  list
-    Show all available device configurations (full paths).
-
-  devices
-    Show all available device shortcuts (friendly names).
+  list [devices|shortcuts]
+    Show available device configurations and shortcuts.
+    Subcommands:
+      devices   Show device configs with type and network info (default)
+      shortcuts Show device role shortcuts for quick access
 
   help [command]
     Show help for a specific command.
@@ -188,8 +187,8 @@ Examples:
   # Reassign devices
   iotstack reassign 8dfcac 0f4df4 bleproxy
 
-  # Show available device names
-  iotstack devices
+  # Show device shortcuts
+  iotstack list shortcuts
 
 EOF
 }
@@ -258,12 +257,22 @@ EOF
 
 help_list() {
   cat << 'EOF'
-iotstack list — Show available device configurations
+iotstack list — Show available device configurations and shortcuts
 
 Usage:
-  iotstack list
+  iotstack list [devices|shortcuts]
 
-Shows all YAML files in the project with device information.
+Subcommands:
+  devices   Show device configs with type and network info (default)
+  shortcuts Show device role shortcuts for quick access
+
+Examples:
+  # Show device configurations (default)
+  iotstack list
+  iotstack list devices
+
+  # Show device shortcuts
+  iotstack list shortcuts
 
 EOF
 }
@@ -526,25 +535,37 @@ cmd_verify() {
   fi
 }
 
-cmd_devices() {
-  info "Available device shortcuts:"
-  echo
-  list_device_names | while read -r device; do
-    mapping="${DEVICE_MAP[$device]}"
-    wifi_yaml="${mapping%%:*}"
-    thread_yaml="${mapping##*:}"
+cmd_list() {
+  local subcommand="${1:-devices}"
 
-    printf "  ${GRN}%-15s${RST}" "$device"
-    if [[ -n "$wifi_yaml" ]]; then
-      printf " (wifi: %s)" "$wifi_yaml"
-    fi
-    if [[ -n "$thread_yaml" ]]; then
-      printf " (thread: %s)" "$thread_yaml"
-    fi
-    echo
-  done
-  echo
-  ok "Use 'iotstack help' for more information"
+  case "$subcommand" in
+    devices)
+      list_devices
+      ;;
+    shortcuts)
+      info "Available device shortcuts:"
+      echo
+      list_device_names | while read -r device; do
+        mapping="${DEVICE_MAP[$device]}"
+        wifi_yaml="${mapping%%:*}"
+        thread_yaml="${mapping##*:}"
+
+        printf "  ${GRN}%-15s${RST}" "$device"
+        if [[ -n "$wifi_yaml" ]]; then
+          printf " (wifi: %s)" "$wifi_yaml"
+        fi
+        if [[ -n "$thread_yaml" ]]; then
+          printf " (thread: %s)" "$thread_yaml"
+        fi
+        echo
+      done
+      echo
+      ok "Use 'iotstack help' for more information"
+      ;;
+    *)
+      err "Unknown subcommand: $subcommand. Try 'iotstack list devices' or 'iotstack list shortcuts'"
+      ;;
+  esac
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
@@ -566,10 +587,8 @@ main() {
       cmd_reassign "$@"
       ;;
     list)
-      list_devices
-      ;;
-    devices)
-      cmd_devices
+      shift
+      cmd_list "$@"
       ;;
     help)
       if [[ $# -gt 1 ]]; then
