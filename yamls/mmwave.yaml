@@ -317,6 +317,13 @@ light:
     restore_mode: ALWAYS_OFF
     effects:
       - lambda:
+          name: "None"
+          update_interval: 1000ms
+          lambda: |-
+            auto call = id(rgb_led).make_call();
+            call.set_state(false);
+            call.perform();
+      - lambda:
           name: "Pulse Heart Rate"
           update_interval: 100ms
           lambda: |-
@@ -452,11 +459,13 @@ script:
     then:
       - lambda: |-
           int current = id(current_effect);
-          current = (current + 1) % 2;  // Toggle between 0 and 1
+          current = (current + 1) % 3;  // Cycle through 0, 1, 2
           id(current_effect) = current;
 
           auto call = id(rgb_led).make_call();
           if (current == 0) {
+            call.set_effect("None");
+          } else if (current == 1) {
             call.set_effect("Pulse Heart Rate");
           } else {
             call.set_effect("Pulse Breath Rate");
