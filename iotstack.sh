@@ -225,20 +225,20 @@ help_list() {
 iotstack list — Show devices and roles
 
 Usage:
-  iotstack list [devices [role] [--suffix]|roles]
+  iotstack list [devices [role] [--id]|roles]
 
 Subcommands:
   devices [role]   Show discovered devices (optionally filtered by role)
   roles            Show available device roles with their configurations
 
 Options:
-  --suffix         For devices: output only MAC suffix values (space-separated)
+  --id             For devices: output only device IDs (space-separated)
 
 Examples:
   iotstack list devices                      # Show all discovered devices
   iotstack list devices bleproxy             # Show only bleproxy devices
-  iotstack list devices --suffix             # Output all device MAC suffixes
-  iotstack list devices bleproxy --suffix    # Output bleproxy device MAC suffixes
+  iotstack list devices --id                 # Output all device IDs
+  iotstack list devices bleproxy --id        # Output bleproxy device IDs
   iotstack list roles                        # Show available device roles
 
 EOF
@@ -719,7 +719,7 @@ cmd_list() {
         output_format="json"
         shift
         ;;
-      --suffix)
+      --id)
         suffix_only=true
         shift
         ;;
