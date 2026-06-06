@@ -41,22 +41,19 @@ verify_secrets_mounted() {
     return 0
   fi
 
-  # Not mounted - auto-mount
-  echo "[INFO] Secrets tmpfs not mounted. Auto-mounting..."
-  if ! "$SCRIPT_DIR/scripts/mount-secrets" >/dev/null 2>&1; then
-    err "Failed to auto-mount secrets tmpfs at ${secrets_mount}
+  # Not mounted - guide user to mount it
+  err "Secrets tmpfs not mounted
 
 SECURITY REQUIREMENT: All secrets must exist only in RAM.
 
-To debug, run manually:
+To mount secrets from encrypted pass store to RAM:
   ./scripts/mount-secrets
 
-This decrypts secrets from pass and places them only in memory.
+This will prompt for your sudo password (to create tmpfs mount).
+Secrets are decrypted from pass into RAM memory only.
 They will be automatically erased on reboot or unmount.
-"
-  fi
 
-  ok "Secrets mounted to RAM"
+After mounting, retry your command."
 }
 
 # ── Dynamic Role Discovery ──────────────────────────────────────────────────
