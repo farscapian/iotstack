@@ -793,32 +793,16 @@ list_roles() {
     echo
     echo "]"
   else
-    # Text format - calculate column widths
+    # Text format - gather data first
     local margin=2
-    local header_role="Role"
-    local header_type="Type"
-    local header_network="Network"
-    local header_config="Config"
+    local temp_data=$(mktemp)
+    trap "rm -f $temp_data" RETURN
 
-    local w_role=$(( ${#header_role} + margin ))
-    local w_type=$(( ${#header_type} + margin ))
-    local w_network=$(( ${#header_network} + margin ))
-    local w_config=$(( ${#header_config} + margin ))
-
-    # Scan data to find max widths
+    # Gather role data into temp file
     list_device_names | while read -r device; do
       mapping="${DEVICE_MAP[$device]}"
       wifi_yaml="${mapping%%:*}"
       thread_yaml="${mapping##*:}"
-
-      config_display=""
-      if [[ -n "$wifi_yaml" && -n "$thread_yaml" ]]; then
-        config_display="${wifi_yaml##*/} / ${thread_yaml##*/}"
-      elif [[ -n "$wifi_yaml" ]]; then
-        config_display="${wifi_yaml##*/}"
-      elif [[ -n "$thread_yaml" ]]; then
-        config_display="${thread_yaml##*/}"
-      fi
 
       device_type=""
       network_type=""
@@ -832,18 +816,40 @@ list_roles() {
         network_type="${device_info##*|}"
       fi
 
-      echo "$device|$device_type|$network_type|$config_display"
-    done | while IFS='|' read -r device device_type network_type config_display; do
+      config_display=""
+      if [[ -n "$wifi_yaml" && -n "$thread_yaml" ]]; then
+        config_display="${wifi_yaml##*/} / ${thread_yaml##*/}"
+      elif [[ -n "$wifi_yaml" ]]; then
+        config_display="${wifi_yaml##*/}"
+      elif [[ -n "$thread_yaml" ]]; then
+        config_display="${thread_yaml##*/}"
+      fi
+
+      echo "$device|$device_type|$network_type|$config_display" >> "$temp_data"
+    done
+
+    # Calculate column widths
+    local header_role="Role"
+    local header_type="Type"
+    local header_network="Network"
+    local header_config="Config"
+
+    local w_role=$(( ${#header_role} + margin ))
+    local w_type=$(( ${#header_type} + margin ))
+    local w_network=$(( ${#header_network} + margin ))
+    local w_config=$(( ${#header_config} + margin ))
+
+    while IFS='|' read -r device device_type network_type config_display; do
       (( ${#device} + margin > w_role )) && w_role=$(( ${#device} + margin ))
       (( ${#device_type} + margin > w_type )) && w_type=$(( ${#device_type} + margin ))
       (( ${#network_type} + margin > w_network )) && w_network=$(( ${#network_type} + margin ))
       (( ${#config_display} + margin > w_config )) && w_config=$(( ${#config_display} + margin ))
-    done
+    done < "$temp_data"
 
     info "Available device roles:"
     echo
 
-    # Print headers with calculated widths
+    # Print headers
     printf "  ${GRN}%-${w_role}s %-${w_type}s %-${w_network}s %-${w_config}s${RST}\n" \
       "$header_role" "$header_type" "$header_network" "$header_config"
 
@@ -855,36 +861,12 @@ list_roles() {
     printf "%-${w_config}s" "$(printf '─%.0s' $(seq 1 $((w_config-1))))"
     printf "${RST}\n"
 
-    # Print data rows with calculated widths
-    list_device_names | while read -r device; do
-      mapping="${DEVICE_MAP[$device]}"
-      wifi_yaml="${mapping%%:*}"
-      thread_yaml="${mapping##*:}"
-
-      device_type=""
-      network_type=""
-      if [[ -n "$wifi_yaml" && -f "$wifi_yaml" ]]; then
-        device_info=$(get_yaml_device_info "$wifi_yaml")
-        device_type="${device_info%%|*}"
-        network_type="${device_info##*|}"
-      elif [[ -n "$thread_yaml" && -f "$thread_yaml" ]]; then
-        device_info=$(get_yaml_device_info "$thread_yaml")
-        device_type="${device_info%%|*}"
-        network_type="${device_info##*|}"
-      fi
-
-      config_display=""
-      if [[ -n "$wifi_yaml" && -n "$thread_yaml" ]]; then
-        config_display="${wifi_yaml##*/} / ${thread_yaml##*/}"
-      elif [[ -n "$wifi_yaml" ]]; then
-        config_display="${wifi_yaml##*/}"
-      elif [[ -n "$thread_yaml" ]]; then
-        config_display="${thread_yaml##*/}"
-      fi
-
+    # Print data rows
+    while IFS='|' read -r device device_type network_type config_display; do
       printf "  ${GRN}%-${w_role}s${RST} %-${w_type}s %-${w_network}s %-${w_config}s\n" \
         "$device" "$device_type" "$network_type" "$config_display"
-    done
+    done < "$temp_data"
+
     echo
     ok "Use 'iotstack help' for more information"
   fi
