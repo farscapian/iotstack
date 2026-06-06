@@ -131,6 +131,28 @@ fi
 
 ok "pass is installed"
 
+# ── Install gocryptfs (user-land encrypted FUSE filesystem) ──────────────────
+echo
+if ! command -v gocryptfs &>/dev/null; then
+  echo "Installing gocryptfs (user-land encrypted filesystem)..."
+  if command -v apt &>/dev/null; then
+    sudo apt update && sudo apt install -y gocryptfs
+  elif command -v brew &>/dev/null; then
+    brew install gocryptfs
+  else
+    warn "Could not install gocryptfs automatically. Please install manually:"
+    echo "  Ubuntu/Debian: sudo apt install gocryptfs"
+    echo "  macOS: brew install gocryptfs"
+    echo "  Or: https://github.com/rfjakob/gocryptfs/releases"
+  fi
+fi
+
+if command -v gocryptfs &>/dev/null; then
+  ok "gocryptfs is installed"
+else
+  warn "gocryptfs not found. iotstack will not work without it."
+fi
+
 # Create pass repository in ~/.iotstack/.pass
 PASS_DIR="${IOTSTACK_HOME}/.pass"
 mkdir -p "$PASS_DIR"
