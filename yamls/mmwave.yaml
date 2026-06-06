@@ -1,15 +1,16 @@
 # ESP32-C6 WiFi mmWave Sensor
 
 substitutions:
-  friendly_name: "mmWave Sensor"
+  device_role: "mmwave"
+  friendly_name: "mmWave Human Presence Sensor"
 
 esphome:
-  name: "mmwave"
-  friendly_name: "${friendly_name}"
+  name: ${device_role}
+  friendly_name: ${friendly_name}
   name_add_mac_suffix: true
   project:
-    name: "iotstack.mmwave"
-    version: "1.0.11"
+    name: "iotstack.${device_role}"
+    version: "1.4.2"
   on_boot:
     priority: -100
     then:
@@ -34,7 +35,7 @@ logger:
 
 api:
   encryption:
-    key: !secret wifi_mmwave_api_encryption_key
+    key: !secret mmwave_api_encryption_key
   on_client_connected:
     - if:
         condition:
@@ -71,7 +72,7 @@ api:
 
 ota:
   - platform: esphome
-    password: !secret ota_password_01
+    password: !secret mmwave_ota_password
 
 safe_mode:
   num_attempts: 5
@@ -183,7 +184,10 @@ sensor:
       unit_of_measurement: "in"
       accuracy_decimals: 1
       filters:
-        - multiply: 39.3701  # m to inches
+        - multiply: 0.393701  # cm to inches (sensor outputs in centimeters)
+        - clamp:
+            min_value: 0
+            max_value: 400  # max ~10 meters / 33 feet
     num_targets:
       name: "Target Count"
       id: target_count
