@@ -612,8 +612,8 @@ cmd_list() {
     roles)
       info "Available device roles:"
       echo
-      printf "  ${GRN}%-15s %-10s %-10s %-30s %-30s${RST}\n" "Role" "Type" "Network" "WiFi Config" "Thread Config"
-      printf "  ${DIM}%-15s %-10s %-10s %-30s %-30s${RST}\n" "───────────────" "──────────" "──────────" "──────────────────────────" "──────────────────────────"
+      printf "  ${GRN}%-15s %-10s %-10s %-40s${RST}\n" "Role" "Type" "Network" "Config"
+      printf "  ${DIM}%-15s %-10s %-10s %-40s${RST}\n" "───────────────" "──────────" "──────────" "────────────────────────────────────────"
 
       list_device_names | while read -r device; do
         mapping="${DEVICE_MAP[$device]}"
@@ -633,12 +633,18 @@ cmd_list() {
           network_type="${device_info##*|}"
         fi
 
-        # Truncate YAML paths for display
-        wifi_display="${wifi_yaml##*/}"
-        thread_display="${thread_yaml##*/}"
+        # Build config display
+        config_display=""
+        if [[ -n "$wifi_yaml" && -n "$thread_yaml" ]]; then
+          config_display="${wifi_yaml##*/} / ${thread_yaml##*/}"
+        elif [[ -n "$wifi_yaml" ]]; then
+          config_display="${wifi_yaml##*/}"
+        elif [[ -n "$thread_yaml" ]]; then
+          config_display="${thread_yaml##*/}"
+        fi
 
-        printf "  ${GRN}%-15s${RST} %-10s %-10s %-30s %-30s\n" \
-          "$device" "$device_type" "$network_type" "$wifi_display" "$thread_display"
+        printf "  ${GRN}%-15s${RST} %-10s %-10s %-40s\n" \
+          "$device" "$device_type" "$network_type" "$config_display"
       done
       echo
       ok "Use 'iotstack help' for more information"
