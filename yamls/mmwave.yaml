@@ -317,7 +317,7 @@ light:
     restore_mode: ALWAYS_OFF
     effects:
       - lambda:
-          name: "None"
+          name: "Off"
           update_interval: 1000ms
           lambda: |-
             auto call = id(rgb_led).make_call();
