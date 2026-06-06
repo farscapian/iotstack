@@ -183,6 +183,7 @@ else
 
   # Create a GPG key if none exists
   gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+  echo "[DEBUG] Initial gpg_key check: '$gpg_key'"
 
   if [[ -z "$gpg_key" ]]; then
     echo "No GPG keys found. Generating one for pass..."
@@ -196,15 +197,19 @@ Expire-Date: 0
 %no-protection
 %commit
 EOF
+    echo "[DEBUG] GPG key generation completed, waiting..."
     # Wait for GPG to finish processing the key
     sleep 2
 
     # Get the newly created key
     gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
+    echo "[DEBUG] After generation, gpg_key: '$gpg_key'"
     if [[ -z "$gpg_key" ]]; then
       err "Failed to generate GPG key"
     fi
     ok "Generated GPG key: $gpg_key"
+  else
+    echo "[DEBUG] Found existing GPG key: $gpg_key"
   fi
 
   # Initialize pass with the GPG key
