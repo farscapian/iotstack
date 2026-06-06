@@ -224,7 +224,7 @@ Commands:
 Options:
   --thread               Use Thread variant instead of WiFi (for devices with both)
   --dry-run              Compile and show what would be flashed (no flashing)
-  --flash-anyway     Flash all devices regardless of version
+  --flash-anyway         Flash all devices regardless of version
   --jobs N               Max concurrent flash jobs (default: 4)
   -v, --verbose          Show compilation output
 
@@ -329,7 +329,7 @@ list_devices() {
   # Gather device data into temp buffer
   local device_data
   device_data=$(mktemp)
-  trap 'rm -f "$device_data"' RETURN
+  trap "rm -f $device_data" RETURN
 
   # Query mDNS and extract device data
   while IFS= read -r line; do
