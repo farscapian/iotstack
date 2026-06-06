@@ -255,12 +255,11 @@ Usage:
   iotstack list [devices|roles]
 
 Subcommands:
-  devices   Show discovered ESPHome devices on network (default)
+  devices   Show discovered ESPHome devices on network
   roles     Show available device roles with their configurations
 
 Examples:
-  # Show discovered devices on network (default)
-  iotstack list
+  # Show discovered devices on network
   iotstack list devices
 
   # Show available device roles
