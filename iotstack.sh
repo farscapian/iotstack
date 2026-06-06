@@ -31,7 +31,7 @@ if [[ ! -d "$YAMLS_DIR" ]]; then
   err "yamls directory not found at $YAMLS_DIR"
 fi
 
-# ── Security: Verify encrypted secrets are mounted ─────────────────────────
+# ── Security: Auto-mount encrypted secrets if needed ──────────────────────
 # Secrets must be in user-land encrypted FUSE mount (gocryptfs)
 verify_secrets_mounted() {
   local secrets_mount="${HOME}/.iotstack/secrets"
@@ -41,20 +41,34 @@ verify_secrets_mounted() {
     return 0
   fi
 
-  # Not mounted - guide user to mount it
-  err "Encrypted secrets not mounted
+  # Not mounted - auto-mount (no sudo needed for gocryptfs)
+  echo "[INFO] Mounting encrypted secrets..."
+  if ! "$SCRIPT_DIR/scripts/mount-secrets" 2>/dev/null; then
+    err "Failed to mount encrypted secrets
 
 SECURITY REQUIREMENT: Secrets must be in encrypted FUSE mount (gocryptfs).
 
-To mount user-land encrypted secrets (no sudo needed):
-  ./scripts/mount-secrets
+Check that gocryptfs is installed:
+  Ubuntu/Debian: sudo apt install gocryptfs
+  macOS: brew install gocryptfs
 
-This uses gocryptfs to create an encrypted FUSE filesystem.
-Secrets are encrypted at rest, decrypted only in user-space.
-Your user is the only one who can access them.
+Then iotstack will auto-mount on next command."
+  fi
 
-After mounting, retry your command."
+  ok "Encrypted secrets mounted"
 }
+
+# Set up cleanup on shell exit
+cleanup_secrets_on_exit() {
+  local secrets_mount="${HOME}/.iotstack/secrets"
+  if mount | grep -q "gocryptfs.*${secrets_mount}"; then
+    echo "[INFO] Unmounting secrets on logout..."
+    fusermount -u "$secrets_mount" 2>/dev/null || true
+  fi
+}
+
+# Register cleanup trap
+trap cleanup_secrets_on_exit EXIT
 
 # ── Dynamic Role Discovery ──────────────────────────────────────────────────
 # Roles are discovered from YAML filenames in yamls/ directory
