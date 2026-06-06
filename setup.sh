@@ -323,6 +323,15 @@ else
   warn "secrets.yaml not found, skipping seeding"
 fi
 
+# Mount secrets tmpfs so secrets are available immediately
+echo
+echo "Mounting secrets tmpfs..."
+if "$SCRIPT_DIR/scripts/mount-secrets"; then
+  ok "Secrets mounted to RAM"
+else
+  warn "Failed to mount secrets. Run manually: ./scripts/mount-secrets"
+fi
+
 echo
 echo "════════════════════════════════════════════════════════"
 echo "Setup Complete!"
