@@ -225,15 +225,20 @@ help_list() {
 iotstack list — Show devices and roles
 
 Usage:
-  iotstack list [devices [role]|roles]
+  iotstack list [devices [role] [--suffix]|roles]
 
 Subcommands:
   devices [role]   Show discovered devices (optionally filtered by role)
   roles            Show available device roles with their configurations
 
+Options:
+  --suffix         For devices: output only MAC suffix values (space-separated)
+
 Examples:
   iotstack list devices                      # Show all discovered devices
   iotstack list devices bleproxy             # Show only bleproxy devices
+  iotstack list devices --suffix             # Output all device MAC suffixes
+  iotstack list devices bleproxy --suffix    # Output bleproxy device MAC suffixes
   iotstack list roles                        # Show available device roles
 
 EOF
@@ -242,6 +247,7 @@ EOF
 list_devices() {
   local output_format="${1:-text}"
   local filter_role="${2:-}"
+  local suffix_only="${3:-false}"
   local current_hostname=""
   local current_friendly=""
   local current_project=""
@@ -280,6 +286,31 @@ list_devices() {
 
   # Sort and deduplicate
   sort -u "$device_data" > "${device_data}.sorted"
+
+  # If suffix-only mode, just output MAC suffixes
+  if [[ "$suffix_only" == "true" ]]; then
+    local suffixes=()
+    while IFS='|' read -r hostname friendly project version hash; do
+      # Filter by role if specified
+      if [[ -n "$filter_role" && "$project" != *"$filter_role"* ]]; then
+        continue
+      fi
+      # Extract MAC suffix (last 6 hex chars after last hyphen)
+      suffix="${hostname##*-}"
+      suffixes+=("$suffix")
+    done < "${device_data}.sorted"
+
+    if [[ ${#suffixes[@]} -eq 0 ]]; then
+      if [[ -n "$filter_role" ]]; then
+        warn "No devices found for role: $filter_role"
+      else
+        warn "No ESPHome devices found on network"
+      fi
+    else
+      echo "${suffixes[@]}"
+    fi
+    return
+  fi
 
   if [[ "$output_format" == "csv" ]]; then
     echo "Device,Friendly Name,Project,Version,Hash"
@@ -669,6 +700,7 @@ cmd_list() {
   local output_format="text"
   local subcommand=""
   local filter_role=""
+  local suffix_only=false
 
   # Parse flags
   while [[ $# -gt 0 ]]; do
@@ -685,6 +717,10 @@ cmd_list() {
           err "Only one output format allowed (--csv or --json)"
         fi
         output_format="json"
+        shift
+        ;;
+      --suffix)
+        suffix_only=true
         shift
         ;;
       devices|roles)
@@ -710,7 +746,7 @@ cmd_list() {
 
   case "$subcommand" in
     devices)
-      list_devices "$output_format" "$filter_role"
+      list_devices "$output_format" "$filter_role" "$suffix_only"
       ;;
     roles)
       list_roles "$output_format"
