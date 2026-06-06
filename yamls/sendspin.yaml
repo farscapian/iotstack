@@ -1,27 +1,12 @@
-# wifi-sendspin.yaml
-# Multi-room synchronized audio via the Sendspin protocol (ESPHome 2026.5+).
-# Pairs with Music Assistant (or any Sendspin-compatible server).
-#
-# ⚠ Sendspin is experimental — breaking changes may occur between releases.
-#
-# Hardware: Seeed XIAO ESP32-C6 + I2S amplifier board
-#   Common options: MAX98357A (mono, simple), UDA1334A / PCM5102A (stereo)
-#   Adjust i2s_audio pin assignments below to match your wiring.
-#
-# Network: TCP port 8928 must be reachable from the Sendspin server.
-#   ESP32-C6 has no PSRAM; buffer_size is capped accordingly.
-
 substitutions:
-  device_id: "wifi-sendspin"          # Legacy name for mDNS transition
-  device_name: "c6-wifi-sendspin"     # New esphome.name
   friendly_name: "Sendspin Speaker"
 
 esphome:
-  name: "${device_name}"
+  name: "sendspin"
   friendly_name: "${friendly_name}"
   name_add_mac_suffix: true
   project:
-    name: "farscapian.${device_id}"
+    name: "iotstack.sendspin"
     version: "1.0.0"
 
 esp32:

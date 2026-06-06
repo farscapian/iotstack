@@ -13,6 +13,24 @@ Think of these devices as **small computers** that run custom firmware and commu
 
 ## Getting Started
 
+### Initial Setup
+
+To set up the `iotstack` command so you can run it from anywhere:
+
+```bash
+./setup.sh
+source ~/.bashrc
+```
+
+This creates a symlink in `~/.local/bin/` and updates your PATH. Now you can use `iotstack` from anywhere:
+
+```bash
+which iotstack        # Shows: /home/user/.local/bin/iotstack
+iotstack help         # Works from any directory
+```
+
+### Device Configuration
+
 All device configurations are in YAML files organized by network type:
 
 ```
@@ -176,27 +194,47 @@ This is an experimental controller for WS2812B addressable LED light strips (com
 
 ## Updating Your Devices (Over-the-Air)
 
-### Quick Start
+### Quick Start with iotstack CLI
 
-**Update all BLE proxy devices:**
+The easiest way to manage your devices is with the `iotstack` command:
+
 ```bash
-./update_devices.sh wifi/esp32c6-wifi-bleproxy.yaml
+# See available device roles
+iotstack list shortcuts
+
+# Update a device by name (WiFi by default)
+iotstack update bleproxy
+
+# Update a device's Thread variant
+iotstack update threadrouter
+
+# Update all devices
+iotstack update all
+
+# See what would be updated without actually updating
+iotstack update --dry-run mmwave
+
+# Reassign devices to a different config
+iotstack reassign 8dfcac 0f4df4 to mmwave
+
+# Get help anytime
+iotstack help
+iotstack help reassign
 ```
 
-The script:
-1. Finds all BLE proxy devices on your network (automatically)
-2. Builds the firmware from the YAML config
-3. Sends the firmware to each device wirelessly
-4. Only devices that need the update get flashed (saves time)
+### Using Direct YAML Paths
 
-### More Options
+If you prefer to specify the YAML file directly:
 
 ```bash
+# Update a specific config
+./update_devices.sh wifi/esp32c6-wifi-bleproxy.yaml
+
 # See what WOULD be updated without actually updating
 ./update_devices.sh --dry-run wifi/esp32c6-wifi-bleproxy.yaml
 
 # Force update everything, even if it's already up-to-date
-./update_devices.sh --no-upgrade-delta wifi/esp32c6-wifi-bleproxy.yaml
+./update_devices.sh --force-reflash wifi/esp32c6-wifi-bleproxy.yaml
 
 # Update 8 devices at the same time (default is 4)
 ./update_devices.sh --jobs 8 wifi/esp32c6-wifi-bleproxy.yaml
@@ -208,14 +246,18 @@ The script:
 ### Update ALL Device Types at Once
 
 ```bash
+# Using iotstack
+iotstack update all
+
+# Or using the script directly
 ./update_all.sh
 ```
 
-This runs the update for every YAML config at the same time.
+Both run the update for every YAML config at the same time.
 
 ### How It Works Behind the Scenes
 
-The script finds your devices on your network using a feature called "mDNS" (a way devices announce themselves). It automatically detects which devices need updates and sends them the new firmware wirelessly. It also caches the build, so if you run it twice with the same config, it skips recompiling and goes straight to flashing.
+The script finds your devices on your network using a feature called "mDNS" (a way devices announce themselves). It automatically detects which devices need updates and sends them the new firmware wirelessly (OTA flashing). It also caches the build, so if you run it twice with the same config, it skips recompiling and goes straight to flashing. Detailed logs of each update are stored in `~/.iotstack/logs/` for troubleshooting.
 
 ### What You Need Installed
 
@@ -232,7 +274,7 @@ Don't worry if you're missing something — the script will tell you.
 
 If you connect this script to Home Assistant, it can:
 - Check if all your devices are reachable on the network
-- Automatically update entity names in Home Assistant when you rename devices
+- Automatically update entity names in Home Assistant after device reassignment
 - Preserve all your automations and settings during updates
 
 To enable this, add your Home Assistant URL and login token to `secrets.yaml`:
@@ -249,14 +291,34 @@ To get your Home Assistant token:
 
 ### Logs (If Something Goes Wrong)
 
-When the script runs, it keeps detailed logs of what happened. These are stored in `~/.iotstack/logs/` organized by device type.
+When the script runs, it keeps detailed logs of what happened. These are stored in `~/.iotstack/logs/` organized by device type and timestamp.
 
 If an update fails, look here for error messages. The logs show:
 - Build errors (if the config has a problem)
 - Flash errors (if the wireless update failed)
-- Each device's individual update log
+- Each device's individual update log with details
 
-You don't need to worry about these unless something breaks — the script will tell you where to look.
+You don't need to worry about these unless something breaks — the script will tell you where to look. Most updates are silent and just work.
+
+---
+
+## Device Shortcuts (iotstack-roles.conf)
+
+The `iotstack-roles.conf` file defines friendly names for your devices. This lets you use shortcuts like `iotstack update bleproxy` instead of typing the full path.
+
+Example:
+```
+bleproxy=wifi/esp32c6-wifi-bleproxy.yaml:thread/c6-thread-router.yaml
+mmwave=wifi/esp32c6-wifi-mmwave.yaml
+threadrouter=:thread/c6-thread-router.yaml
+ledstrip=wifi/esp32s3-wifi-led-strip.yaml:
+```
+
+Format: `<shortcut>=<wifi-yaml>:<thread-yaml>`
+- Left of the colon: WiFi variant (or the only variant if no Thread version)
+- Right of the colon: Thread variant (optional)
+
+Use `iotstack list shortcuts` to see all available shortcuts.
 
 ---
 

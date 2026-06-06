@@ -1,21 +1,15 @@
-# esp32-c6-thread-router.yaml
-# Uses stable role UUID for device name (not changed by reassignment)
-# MAC suffix appended to make device-specific identifier
-
-# Note: role_id is computed from role_name by the update script at runtime
+# ESP32-C6 Thread Router
 
 substitutions:
-  role_name: "c6-thread-router"       # Used to compute stable role_id
-  role_id: "6b671191303c9a2979"
-  friendly_name: "Thread Router"       # Display name, can change without breaking entities
+  friendly_name: "Thread Router"
 
 esphome:
-  name: ${role_id}
+  name: thread-router
   friendly_name: ${friendly_name}
   project:
-    name: farscapian.${friendly_name}
+    name: iotstack.thread-router
     version: 1.0.3
-  name_add_mac_suffix: true  # Results in: role_id<MAC> (32 chars total)
+  name_add_mac_suffix: true
 
 esp32:
   board: seeed_xiao_esp32c6

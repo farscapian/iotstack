@@ -1,20 +1,14 @@
-# wifi-mmwave.yaml
-# Uses stable role UUID for device name (not changed by reassignment)
-# MAC suffix appended to make device-specific identifier
-
-# Note: role_id is computed from role_name by the update script at runtime
+# ESP32-C6 WiFi mmWave Sensor
 
 substitutions:
-  role_name: "esp32c6-wifi-mmwave"    # Used to compute stable role_id
-  role_id: "a44bb2f755825e3280"
-  friendly_name: "WiFi mmWave"         # Display name, can change without breaking entities
+  friendly_name: "mmWave Sensor"
 
 esphome:
-  name: "${role_id}"
+  name: "mmwave"
   friendly_name: "${friendly_name}"
-  name_add_mac_suffix: true  # Results in: role_id<MAC> (32 chars total)
+  name_add_mac_suffix: true
   project:
-    name: "farscapian.${friendly_name}"
+    name: "iotstack.mmwave"
     version: "1.0.11"
   on_boot:
     priority: -100

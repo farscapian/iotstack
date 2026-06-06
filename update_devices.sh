@@ -48,7 +48,6 @@ YAML_FILE=""
 REASSIGN_MODE=false
 declare -a REASSIGN_MACS=()
 REASSIGN_YAML=""
-RENAME_FROM_ROLE=""
 
 # ── Colours ─────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -373,7 +372,6 @@ recreate_entity_ids() {
   local hostnames="$3"  # space-separated list of device hostnames
 
   if [[ -z "$ha_url" || -z "$ha_token" || -z "$hostnames" ]]; then
-    warn "HA credentials or device list not configured, skipping entity ID recreation"
     return 0
   fi
 
@@ -607,28 +605,17 @@ while [[ $# -gt 0 ]]; do
     --reassign)
       REASSIGN_MODE=true
       shift
-      # Collect MAC suffixes until we hit a flag or path
-      while [[ $# -gt 0 ]] && [[ "$1" != --* ]] && [[ "$1" != */* ]]; do
-        REASSIGN_MACS+=("$1")
+      # Collect MAC suffixes and target YAML until we hit a flag
+      while [[ $# -gt 0 ]] && [[ "$1" != --* ]]; do
+        if [[ "$1" == */* ]]; then
+          # This is a YAML path
+          REASSIGN_YAML="$1"
+        else
+          # This is a MAC suffix
+          REASSIGN_MACS+=("$1")
+        fi
         shift
       done
-      # Check for --rename-from flag
-      if [[ $# -gt 0 ]] && [[ "$1" == "--rename-from" ]]; then
-        shift
-        if [[ $# -eq 0 ]]; then
-          err "--rename-from requires a role name"
-          exit 1
-        fi
-        RENAME_FROM_ROLE="$1"
-        shift
-      fi
-      # Next argument should be target YAML file (contains /)
-      if [[ $# -eq 0 ]] || [[ "$1" != */* ]]; then
-        err "--reassign requires: <MAC1> [MAC2 ...] [--rename-from <old_role>] <target-yaml>"
-        exit 1
-      fi
-      REASSIGN_YAML="$1"
-      shift
       ;;
     -v|--verbose)            VERBOSE=true;        shift ;;
     --help|-h)               usage ;;
@@ -640,11 +627,7 @@ done
 # ── Validate inputs ─────────────────────────────────────────────────────────
 if [[ "$REASSIGN_MODE" == true ]]; then
   if [[ -z "$REASSIGN_YAML" ]] || [[ ${#REASSIGN_MACS[@]} -eq 0 ]]; then
-    err "--reassign requires: <MAC1> [MAC2 ...] [--rename-from <old_role>] <yaml-file>"
-    exit 1
-  fi
-  if [[ -z "$RENAME_FROM_ROLE" ]]; then
-    err "--reassign requires --rename-from flag to specify current role name"
+    err "--reassign requires: <MAC1> [MAC2 ...] <yaml-file>"
     exit 1
   fi
   YAML_FILE="$REASSIGN_YAML"
@@ -1363,8 +1346,6 @@ if [[ ${#FLASH_LIST[@]} -eq 0 ]]; then
       else
         ok "Entity ID consistency: All entity IDs match device names"
       fi
-    else
-      dim "(Entity ID consistency check skipped — websocket-client not installed)"
     fi
     echo "════════════════════════════════════════════════════════"
 
@@ -1391,8 +1372,6 @@ else
         else
           ok "Entity ID consistency: All entity IDs match device names"
         fi
-      else
-        dim "(Entity ID consistency check skipped — websocket-client not installed)"
       fi
       echo "════════════════════════════════════════════════════════"
     fi
@@ -1543,7 +1522,10 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   dim "── ${HOSTNAME} ──────────────────────────────────────"
   cat "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null || true
   if [[ "$(cat "$WORK_DIR/${HOSTNAME}.result" 2>/dev/null)" == ok ]]; then
-    ok "${HOSTNAME}: flash successful."
+    # Show device identifier and image hash
+    hash="${DEVICE_HASHES[$HOSTNAME]:-unknown}"
+    hash_short="${hash:0:8}"
+    ok "${HOSTNAME}: flash successful. (hash: ${hash_short})"
     OK_LIST+=("$HOSTNAME")
   else
     err "${HOSTNAME}: flash FAILED."
@@ -1628,8 +1610,6 @@ if [[ -n "$CONSISTENCY_OUTPUT" ]]; then
   else
     ok "Entity ID consistency: All entity IDs match device names"
   fi
-else
-  dim "(Entity ID consistency check skipped — websocket-client not installed)"
 fi
 echo "════════════════════════════════════════════════════════"
 

@@ -3,7 +3,7 @@ substitutions:
   friendly_name: "LED Strip 01"
 
 esphome:
-  name: ${device_name}
+  name: ledstrip
   friendly_name: ${friendly_name}
   project:
     name: farscapian.sk6812-led-strip

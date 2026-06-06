@@ -1,23 +1,17 @@
 # BLE Proxy - WiFi Only (C6 Device)
 # ESPHome 2026.5.x compatible
-# Uses stable role UUID for device name (not changed by reassignment)
-# MAC suffix appended to make device-specific identifier
-
-# Note: role_id is computed from role_name by the update script at runtime
 
 substitutions:
-  device_name: "8dfcac"
-  role_name: "esp32c6-wifi-bleproxy"  # Used to compute stable role_id
-  role_id: "f9ae844f309077c78b"
-  friendly_name: "WiFi BLEProxy"       # Display name, can change without breaking entities
+  device_role: "bleproxy"
+  friendly_name: "Bluetooth Proxy"
 
 esphome:
-  name: ${role_id}
+  name: ${device_role}
   friendly_name: ${friendly_name}
-  name_add_mac_suffix: true  # Results in: role_id<MAC> (32 chars total)
+  name_add_mac_suffix: true
   project:
-    name: "farscapian.${role_name}"
-    version: "1.3.0"
+    name: "iotstack.${device_role}"
+    version: "1.4.2"
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -49,12 +43,10 @@ bluetooth_proxy:
   active: true
   connection_slots: 4
 
-#signed_ota_verification:
-#  signing_key: !secret ota_signing_key
 ota:
   - platform: esphome
     id: my_ota
-    password: !secret ota_password_01
+    password: !secret bleproxy_ota_password
 
 safe_mode:
   num_attempts: 5

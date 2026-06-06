@@ -1,7 +1,8 @@
 secrets.yaml
 *secret*
-.esphome
 archive/
 wifi/secrets.yaml
-thread/secrets.yaml
 **/.temp-rename-*.yaml
+.esphome/
+yamls/.esphome/
+.iotstack/
