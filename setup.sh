@@ -230,11 +230,13 @@ if [[ -f "${PASS_DIR}/.gpg-id" ]]; then
   dim "pass repository already initialized at $PASS_DIR"
 else
   echo "Initializing pass repository at $PASS_DIR with GPG key $gpg_key..."
+  rm -rf "$PASS_DIR"
   mkdir -p "$PASS_DIR"
 
   export GNUPGHOME="$GNUPGHOME"
   export PASSWORD_STORE_DIR="$PASS_DIR"
-  pass init "$gpg_key" || err "pass init failed"
+  pass init "$gpg_key" 2>&1 | grep -v "^mkdir:" || err "pass init failed"
+  sleep 1
 
   if [[ -f "${PASS_DIR}/.gpg-id" ]]; then
     ok "Initialized pass repository with GPG key: $gpg_key"
@@ -259,7 +261,7 @@ if [[ -f "$SECRETS_YAML" ]]; then
   for config_key in "${config_items[@]}"; do
     pass_path="iotstack/${config_key}"
     if ! pass show "$pass_path" >/dev/null 2>&1; then
-      echo "CONFIGURE_ME" | pass insert -f "$pass_path" >/dev/null 2>&1
+      echo "CONFIGURE_ME" | pass insert -f "$pass_path" 2>/dev/null
     fi
   done
 
