@@ -251,21 +251,60 @@ light:
     effects:
       - pulse:
           name: "Pulse"
-          transition_length: 600ms
-          update_interval: 600ms
+          transition_length: 500ms
+          update_interval: 1000ms
       - pulse:
           name: "Pulse Red"
-          transition_length: 1500ms
-          update_interval: 1800ms
+          transition_length: 500ms
+          update_interval: 1000ms
           min_brightness: 20%
-          max_brightness: 30%
+          max_brightness: 60%
+      - lambda:
+          name: "Pulse Heart Rate"
+          update_interval: 100ms
+          lambda: |-
+            static uint32_t last_pulse_time = 0;
+            static bool is_pulsing = false;
+
+            // Get current heart rate (default to 60 BPM if not available)
+            float heart_rate = 60.0f;
+            if (id(heart_rate_sensor).has_state()) {
+              heart_rate = id(heart_rate_sensor).state;
+            }
+
+            // Calculate pulse interval in milliseconds (60000 / BPM)
+            uint32_t pulse_interval = (uint32_t)(60000.0f / heart_rate);
+            uint32_t transition_time = pulse_interval / 2;
+
+            uint32_t now = millis();
+
+            if (!is_pulsing && (now - last_pulse_time) >= pulse_interval) {
+              // Start pulse
+              is_pulsing = true;
+              last_pulse_time = now;
+
+              auto call = id(rgb_led).make_call();
+              call.set_transition_length(transition_time);
+              call.set_brightness(0.8);
+              call.set_red(1.0); call.set_green(0.0); call.set_blue(0.0);
+              call.perform();
+            } else if (is_pulsing && (now - last_pulse_time) >= transition_time) {
+              // End pulse
+              is_pulsing = false;
+
+              auto call = id(rgb_led).make_call();
+              call.set_transition_length(transition_time);
+              call.set_brightness(0.2);
+              call.set_red(1.0); call.set_green(0.0); call.set_blue(0.0);
+              call.perform();
+            }
       - lambda:
           name: "Pulse Yellow Red"
           update_interval: 1000ms
           lambda: |-
             static bool phase = false;
             auto call = id(rgb_led).make_call();
-            call.set_transition_length(900);
+            call.set_transition_length(500);
             call.set_brightness(0.2);
             if (phase) {
               call.set_red(1.0); call.set_green(0.5); call.set_blue(0.0);
