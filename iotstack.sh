@@ -41,17 +41,11 @@ verify_secrets_mounted() {
     return 0
   fi
 
-  # Not mounted - guide user to mount it (requires sudo)
-  err "Secrets tmpfs not mounted at ${secrets_mount}
-
-SECURITY REQUIREMENT: All secrets must exist only in RAM.
-
-To mount secrets into RAM:
-  ./scripts/mount-secrets
-
-This will prompt for sudo (needed for tmpfs mount).
-Secrets are decrypted from pass into RAM memory only.
-They will be automatically erased on reboot or unmount."
+  # Not mounted - auto-mount (will prompt for sudo)
+  echo "[INFO] Mounting secrets tmpfs (requires sudo)..."
+  if ! "$SCRIPT_DIR/scripts/mount-secrets"; then
+    err "Failed to mount secrets tmpfs"
+  fi
 }
 
 # Set up cleanup on shell exit
