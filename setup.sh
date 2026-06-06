@@ -119,6 +119,10 @@ echo "Setting up GPG key (required for pass)"
 echo "════════════════════════════════════════════════════════"
 echo
 
+# Define GNUPGHOME early (needed for both import and generation paths)
+GNUPGHOME="${IOTSTACK_HOME}/.gnupg"
+export GNUPGHOME
+
 # Check if user has existing GPG key in ~/.gnupg (use LONG format for pass compatibility)
 parent_key=$(gpg --list-secret-keys --keyid-format LONG 2>/dev/null | grep -m1 "^sec" | awk '{print $2}' | cut -d'/' -f2 || echo "")
 
@@ -132,7 +136,7 @@ if [[ -n "$parent_key" ]]; then
   gpg --export-secret-keys "$parent_key" > "$export_file"
 
   # Import to isolated GNUPGHOME
-  GNUPGHOME="$GNUPGHOME" gpg --import "$export_file" 2>&1 | grep -v "^gpg:" || true
+  gpg --import "$export_file" 2>&1 | grep -v "^gpg:" || true
   rm -f "$export_file"
 
   gpg_key="$parent_key"
@@ -140,8 +144,7 @@ if [[ -n "$parent_key" ]]; then
 else
   echo "No existing GPG key found. Generating new key for iotstack..."
 
-  # Set GNUPGHOME for new key generation
-  export GNUPGHOME="$GNUPGHOME"
+  # Create GNUPGHOME directory
   mkdir -p "$GNUPGHOME"
 
   gpg --batch --generate-key <<'EOF'
