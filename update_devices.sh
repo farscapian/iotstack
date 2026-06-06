@@ -1319,9 +1319,13 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
 
   FQDN="${HOSTNAME}.local"
   dim "  started → ${HOSTNAME}"
+
+  # Find the compiled firmware binary
+  FIRMWARE_BIN=$(find .esphome/build -name "firmware.bin" -o -name "*.bin" | head -1)
+
   (
     # Run upload with 30-second timeout (fail fast if auth fails)
-    if timeout 30 "$ESPHOME_BIN" upload "$YAML_FILE" --device "$FQDN" --no-logs; then
+    if timeout 30 "$ESPHOME_BIN" upload "$YAML_FILE" --device "$FQDN" --file "$FIRMWARE_BIN"; then
       echo ok > "$WORK_DIR/${HOSTNAME}.result"
     else
       echo fail > "$WORK_DIR/${HOSTNAME}.result"
