@@ -196,6 +196,9 @@ Expire-Date: 0
 %no-protection
 %commit
 EOF
+    # Wait for GPG to finish processing the key
+    sleep 2
+
     # Get the newly created key
     gpg_key=$(gpg --list-secret-keys --keyid-format SHORT 2>/dev/null | grep "^sec" | head -1 | awk '{print $2}' | cut -d'/' -f2)
     if [[ -z "$gpg_key" ]]; then
