@@ -31,6 +31,24 @@ if [[ ! -d "$YAMLS_DIR" ]]; then
   err "yamls directory not found at $YAMLS_DIR"
 fi
 
+# ── Security: Verify secrets tmpfs is mounted ────────────────────────────────
+# All secrets must be in RAM only, never on unencrypted disk
+verify_secrets_mounted() {
+  local secrets_mount="${HOME}/.iotstack/secrets"
+  if ! mount | grep -q "tmpfs.*${secrets_mount}"; then
+    err "Secrets tmpfs not mounted at ${secrets_mount}
+
+SECURITY REQUIREMENT: All secrets must exist only in RAM.
+
+To mount secrets into RAM:
+  ./scripts/mount-secrets
+
+This decrypts secrets from pass and places them only in memory.
+They will be automatically erased on reboot or unmount.
+"
+  fi
+}
+
 # ── Dynamic Role Discovery ──────────────────────────────────────────────────
 # Roles are discovered from YAML filenames in yamls/ directory
 # File: yamls/bleproxy.yaml → Role: bleproxy
@@ -633,6 +651,8 @@ list_yaml_configs() {
 # ── Command Handlers ─────────────────────────────────────────────────────────
 
 cmd_update() {
+  verify_secrets_mounted
+
   local device_or_yaml=""
   local use_thread=""
   declare -a update_args=()
@@ -722,6 +742,8 @@ cmd_update() {
 }
 
 cmd_reassign() {
+  verify_secrets_mounted
+
   local use_thread=""
   local api_key=""
   declare -a update_args=()
@@ -953,6 +975,8 @@ cmd_secret() {
 }
 
 cmd_rotate_password() {
+  verify_secrets_mounted
+
   local role="$1"
   local new_password="${2:-}"
 
