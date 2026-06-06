@@ -48,17 +48,8 @@ verify_secrets_mounted() {
   fi
 }
 
-# Set up cleanup on shell exit
-cleanup_secrets_on_exit() {
-  local secrets_mount="${HOME}/.iotstack/secrets"
-  if mount | grep -q "tmpfs.*${secrets_mount}"; then
-    echo "[INFO] Unmounting secrets on logout..."
-    sudo umount "$secrets_mount" 2>/dev/null || true
-  fi
-}
-
-# Register cleanup trap
-trap cleanup_secrets_on_exit EXIT
+# Note: tmpfs persists for the entire session until manual unmount or reboot
+# Users can unmount manually: sudo umount ~/.iotstack/secrets
 
 # ── Dynamic Role Discovery ──────────────────────────────────────────────────
 # Roles are discovered from YAML filenames in yamls/ directory
