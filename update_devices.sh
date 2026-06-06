@@ -27,11 +27,14 @@ set -euo pipefail
 
 # ── Cleanup on exit ──────────────────────────────────────────────────────────
 cleanup() {
+  # Kill all background jobs (OTA uploads)
+  jobs -p | xargs -r kill 2>/dev/null || true
   rm -f .esphome/secrets.yaml 2>/dev/null
   printf "\n" 2>/dev/null
   exit
 }
 trap cleanup EXIT
+trap cleanup INT  # Handle Ctrl+C
 
 # ── Defaults ────────────────────────────────────────────────────────────────
 UPGRADE_DELTA=true
