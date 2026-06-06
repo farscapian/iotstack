@@ -176,6 +176,7 @@ sensor:
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     heart_rate:
+      id: heart_rate_sensor
       name: "${friendly_name} Heart Rate"
       device_class: ""
       unit_of_measurement: "bpm"
