@@ -182,14 +182,6 @@ binary_sensor:
       max_length: 350ms
       then:
         - button.press: restart_btn
-    on_multi_click:
-      - min_length: 50ms
-        max_length: 350ms
-        on_multi_click:
-          - min_clicks: 3
-            max_clicks: 3
-            then:
-              - button.press: safe_mode_btn
 
 text_sensor:
   - platform: template
