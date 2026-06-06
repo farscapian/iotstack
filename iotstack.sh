@@ -124,7 +124,7 @@ Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml>
-  iotstack list [devices|shortcuts]
+  iotstack list [devices|configs|shortcuts]
   iotstack help [command]
 
 Commands:
@@ -152,10 +152,11 @@ Commands:
       iotstack verify all
       iotstack verify thread_router --thread
 
-  list [devices|shortcuts]
-    Show available device configurations and shortcuts.
+  list [devices|configs|shortcuts]
+    Show devices, configurations, and shortcuts.
     Subcommands:
-      devices   Show device configs with type and network info (default)
+      devices   Show discovered ESPHome devices on network (default)
+      configs   Show available YAML device configurations
       shortcuts Show device role shortcuts for quick access
 
   help [command]
@@ -257,19 +258,23 @@ EOF
 
 help_list() {
   cat << 'EOF'
-iotstack list — Show available device configurations and shortcuts
+iotstack list — Show devices, configurations, and shortcuts
 
 Usage:
-  iotstack list [devices|shortcuts]
+  iotstack list [devices|configs|shortcuts]
 
 Subcommands:
-  devices   Show device configs with type and network info (default)
-  shortcuts Show device role shortcuts for quick access
+  devices    Show discovered ESPHome devices on network (default)
+  configs    Show available YAML device configurations
+  shortcuts  Show device role shortcuts for quick access
 
 Examples:
-  # Show device configurations (default)
+  # Show discovered devices on network (default)
   iotstack list
   iotstack list devices
+
+  # Show available YAML configurations
+  iotstack list configs
 
   # Show device shortcuts
   iotstack list shortcuts
@@ -278,6 +283,73 @@ EOF
 }
 
 list_devices() {
+  info "Discovered ESPHome devices on network:"
+  echo
+  printf "  ${GRN}%-25s %-20s %-20s %-15s %-12s${RST}\n" "Device" "Friendly Name" "Project" "Version" "Hash"
+  printf "  ${DIM}%-25s %-20s %-20s %-15s %-12s${RST}\n" "─────────────────────────" "────────────────────" "────────────────────" "───────────────" "────────────"
+
+  local found=0
+  local current_hostname=""
+  local current_friendly=""
+  local current_project=""
+  local current_version=""
+  local current_hash=""
+  local last_hostname=""
+
+  # Query mDNS for ESPHome devices and parse output
+  while IFS= read -r line; do
+    # Parse hostname line
+    if [[ $line =~ hostname\ =\ \[([^\]]+)\] ]]; then
+      current_hostname="${BASH_REMATCH[1]%.local}"
+    fi
+
+    # Parse TXT record line with all the metadata
+    if [[ $line =~ txt\ = ]]; then
+      # Extract friendly_name
+      if [[ $line =~ friendly_name=([^ \"]+) ]]; then
+        current_friendly="${BASH_REMATCH[1]}"
+      fi
+      # Extract project_name
+      if [[ $line =~ project_name=([^ \"]+) ]]; then
+        current_project="${BASH_REMATCH[1]}"
+      fi
+      # Extract project_version
+      if [[ $line =~ project_version=([^ \"]+) ]]; then
+        current_version="${BASH_REMATCH[1]}"
+      fi
+      # Extract config_hash
+      if [[ $line =~ config_hash=([^ \"]+) ]]; then
+        current_hash="${BASH_REMATCH[1]}"
+      fi
+
+      # Buffer the output and deduplicate later
+      if [[ -n "$current_hostname" ]]; then
+        printf "%s|%s|%s|%s|%s\n" \
+          "$current_hostname" "$current_friendly" "$current_project" "$current_version" "$current_hash"
+        current_hostname=""
+        current_friendly=""
+        current_project=""
+        current_version=""
+        current_hash=""
+      fi
+    fi
+  done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null) | sort -u | while IFS='|' read -r hostname friendly project version hash; do
+    printf "  ${GRN}%-25s${RST} %-20s %-20s %-15s %-12s\n" \
+      "$hostname" "$friendly" "$project" "$version" "$hash"
+    found=$((found + 1))
+  done
+  found=$(echo "counted later")
+
+  echo
+  devices_count=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep "^= " | grep "hostname" | wc -l | tr -d ' ')
+  if [[ $devices_count -eq 0 ]]; then
+    warn "No ESPHome devices found on network"
+  else
+    ok "Found $devices_count device(s) on network"
+  fi
+}
+
+list_yaml_configs() {
   info "Available device configurations:"
   echo
   printf "  ${GRN}%-20s %-10s %-10s %-40s${RST}\n" "Device" "Type" "Network" "Config File"
@@ -542,6 +614,9 @@ cmd_list() {
     devices)
       list_devices
       ;;
+    configs)
+      list_yaml_configs
+      ;;
     shortcuts)
       info "Available device shortcuts:"
       echo
@@ -563,7 +638,7 @@ cmd_list() {
       ok "Use 'iotstack help' for more information"
       ;;
     *)
-      err "Unknown subcommand: $subcommand. Try 'iotstack list devices' or 'iotstack list shortcuts'"
+      err "Unknown subcommand: $subcommand. Try 'iotstack list devices', 'iotstack list configs', or 'iotstack list shortcuts'"
       ;;
   esac
 }
