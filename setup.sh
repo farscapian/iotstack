@@ -230,6 +230,7 @@ echo "Seeding pass repository with API keys and OTA passwords..."
 SECRETS_YAML="${SCRIPT_DIR}/yamls/secrets.yaml"
 
 if [[ -f "$SECRETS_YAML" ]]; then
+  export GNUPGHOME="${HOME}/.gnupg"
   export PASSWORD_STORE_DIR="$PASS_DIR"
 
   # Extract all secrets and add them to pass
@@ -250,8 +251,11 @@ if [[ -f "$SECRETS_YAML" ]]; then
 
         # Add to pass if not already present
         if ! pass show "$pass_path" >/dev/null 2>&1; then
-          echo "$value" | pass insert -f "$pass_path" >/dev/null 2>&1
-          ok "Added: $pass_path"
+          if echo "$value" | pass insert -f "$pass_path" 2>&1; then
+            ok "Added: $pass_path"
+          else
+            warn "Failed to add: $pass_path"
+          fi
         fi
       fi
     fi
