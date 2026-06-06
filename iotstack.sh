@@ -278,49 +278,30 @@ EOF
 }
 
 list_devices() {
-  info "Discovered ESPHome devices on network:"
-  echo
-  printf "  ${GRN}%-25s %-20s %-20s %-15s %-12s${RST}\n" "Device" "Friendly Name" "Project" "Version" "Hash"
-  printf "  ${DIM}%-25s %-20s %-20s %-15s %-12s${RST}\n" "─────────────────────────" "────────────────────" "────────────────────" "───────────────" "────────────"
-
-  local found=0
+  local output_format="${1:-text}"
   local current_hostname=""
   local current_friendly=""
   local current_project=""
   local current_version=""
   local current_hash=""
-  local last_hostname=""
 
-  # Query mDNS for ESPHome devices and parse output
+  # Gather device data into temp buffer
+  local device_data=$(mktemp)
+  trap "rm -f $device_data" RETURN
+
+  # Query mDNS and extract device data
   while IFS= read -r line; do
-    # Parse hostname line
     if [[ $line =~ hostname\ =\ \[([^\]]+)\] ]]; then
       current_hostname="${BASH_REMATCH[1]%.local}"
     fi
-
-    # Parse TXT record line with all the metadata
     if [[ $line =~ txt\ = ]]; then
-      # Extract friendly_name
-      if [[ $line =~ friendly_name=([^ \"]+) ]]; then
-        current_friendly="${BASH_REMATCH[1]}"
-      fi
-      # Extract project_name
-      if [[ $line =~ project_name=([^ \"]+) ]]; then
-        current_project="${BASH_REMATCH[1]}"
-      fi
-      # Extract project_version
-      if [[ $line =~ project_version=([^ \"]+) ]]; then
-        current_version="${BASH_REMATCH[1]}"
-      fi
-      # Extract config_hash
-      if [[ $line =~ config_hash=([^ \"]+) ]]; then
-        current_hash="${BASH_REMATCH[1]}"
-      fi
+      [[ $line =~ friendly_name=([^ \"]+) ]] && current_friendly="${BASH_REMATCH[1]}"
+      [[ $line =~ project_name=([^ \"]+) ]] && current_project="${BASH_REMATCH[1]}"
+      [[ $line =~ project_version=([^ \"]+) ]] && current_version="${BASH_REMATCH[1]}"
+      [[ $line =~ config_hash=([^ \"]+) ]] && current_hash="${BASH_REMATCH[1]}"
 
-      # Buffer the output and deduplicate later
       if [[ -n "$current_hostname" ]]; then
-        printf "%s|%s|%s|%s|%s\n" \
-          "$current_hostname" "$current_friendly" "$current_project" "$current_version" "$current_hash"
+        echo "$current_hostname|$current_friendly|$current_project|$current_version|$current_hash" >> "$device_data"
         current_hostname=""
         current_friendly=""
         current_project=""
@@ -328,19 +309,48 @@ list_devices() {
         current_hash=""
       fi
     fi
-  done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null) | sort -u | while IFS='|' read -r hostname friendly project version hash; do
-    printf "  ${GRN}%-25s${RST} %-20s %-20s %-15s %-12s\n" \
-      "$hostname" "$friendly" "$project" "$version" "$hash"
-    found=$((found + 1))
-  done
-  found=$(echo "counted later")
+  done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
 
-  echo
-  devices_count=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep "^= " | grep "hostname" | wc -l | tr -d ' ')
-  if [[ $devices_count -eq 0 ]]; then
-    warn "No ESPHome devices found on network"
+  # Sort and deduplicate
+  sort -u "$device_data" > "${device_data}.sorted"
+
+  if [[ "$output_format" == "csv" ]]; then
+    echo "Device,Friendly Name,Project,Version,Hash"
+    while IFS='|' read -r hostname friendly project version hash; do
+      echo "$hostname,$friendly,$project,$version,$hash"
+    done < "${device_data}.sorted"
+  elif [[ "$output_format" == "json" ]]; then
+    echo "["
+    first=true
+    while IFS='|' read -r hostname friendly project version hash; do
+      [[ "$first" != true ]] && echo ","
+      printf '  {"device": "%s", "friendly_name": "%s", "project": "%s", "version": "%s", "hash": "%s"}' \
+        "$hostname" "$friendly" "$project" "$version" "$hash"
+      first=false
+    done < "${device_data}.sorted"
+    echo
+    echo "]"
   else
-    ok "Found $devices_count device(s) on network"
+    # Text format
+    info "Discovered ESPHome devices on network:"
+    echo
+    printf "  ${GRN}%-25s %-20s %-20s %-15s %-12s${RST}\n" "Device" "Friendly Name" "Project" "Version" "Hash"
+    printf "  ${DIM}%-25s %-20s %-20s %-15s %-12s${RST}\n" "─────────────────────────" "────────────────────" "────────────────────" "───────────────" "────────────"
+
+    local found=0
+    while IFS='|' read -r hostname friendly project version hash; do
+      printf "  ${GRN}%-25s${RST} %-20s %-20s %-15s %-12s\n" \
+        "$hostname" "$friendly" "$project" "$version" "$hash"
+      found=$((found + 1))
+    done < "${device_data}.sorted"
+
+    echo
+    local devices_count=$(wc -l < "${device_data}.sorted")
+    if [[ $devices_count -eq 0 ]]; then
+      warn "No ESPHome devices found on network"
+    else
+      ok "Found $devices_count device(s) on network"
+    fi
   fi
 }
 
@@ -603,56 +613,151 @@ cmd_verify() {
 }
 
 cmd_list() {
-  local subcommand="${1:-devices}"
+  local output_format="text"
+  local subcommand="devices"
+
+  # Parse flags
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --csv)
+        output_format="csv"
+        shift
+        ;;
+      --json)
+        output_format="json"
+        shift
+        ;;
+      devices|roles)
+        subcommand="$1"
+        shift
+        ;;
+      *)
+        err "Unknown argument: $1"
+        ;;
+    esac
+  done
 
   case "$subcommand" in
     devices)
-      list_devices
+      list_devices "$output_format"
       ;;
     roles)
-      info "Available device roles:"
-      echo
-      printf "  ${GRN}%-15s %-10s %-10s %-40s${RST}\n" "Role" "Type" "Network" "Config"
-      printf "  ${DIM}%-15s %-10s %-10s %-40s${RST}\n" "───────────────" "──────────" "──────────" "────────────────────────────────────────"
-
-      list_device_names | while read -r device; do
-        mapping="${DEVICE_MAP[$device]}"
-        wifi_yaml="${mapping%%:*}"
-        thread_yaml="${mapping##*:}"
-
-        # Extract device info from WiFi YAML if present
-        device_type=""
-        network_type=""
-        if [[ -n "$wifi_yaml" && -f "$wifi_yaml" ]]; then
-          device_info=$(get_yaml_device_info "$wifi_yaml")
-          device_type="${device_info%%|*}"
-          network_type="${device_info##*|}"
-        elif [[ -n "$thread_yaml" && -f "$thread_yaml" ]]; then
-          device_info=$(get_yaml_device_info "$thread_yaml")
-          device_type="${device_info%%|*}"
-          network_type="${device_info##*|}"
-        fi
-
-        # Build config display
-        config_display=""
-        if [[ -n "$wifi_yaml" && -n "$thread_yaml" ]]; then
-          config_display="${wifi_yaml##*/} / ${thread_yaml##*/}"
-        elif [[ -n "$wifi_yaml" ]]; then
-          config_display="${wifi_yaml##*/}"
-        elif [[ -n "$thread_yaml" ]]; then
-          config_display="${thread_yaml##*/}"
-        fi
-
-        printf "  ${GRN}%-15s${RST} %-10s %-10s %-40s\n" \
-          "$device" "$device_type" "$network_type" "$config_display"
-      done
-      echo
-      ok "Use 'iotstack help' for more information"
+      list_roles "$output_format"
       ;;
     *)
       err "Unknown subcommand: $subcommand. Try 'iotstack list devices' or 'iotstack list roles'"
       ;;
   esac
+}
+
+list_roles() {
+  local output_format="${1:-text}"
+
+  if [[ "$output_format" == "csv" ]]; then
+    echo "Role,Type,Network,Config"
+    list_device_names | while read -r device; do
+      mapping="${DEVICE_MAP[$device]}"
+      wifi_yaml="${mapping%%:*}"
+      thread_yaml="${mapping##*:}"
+
+      device_type=""
+      network_type=""
+      if [[ -n "$wifi_yaml" && -f "$wifi_yaml" ]]; then
+        device_info=$(get_yaml_device_info "$wifi_yaml")
+        device_type="${device_info%%|*}"
+        network_type="${device_info##*|}"
+      elif [[ -n "$thread_yaml" && -f "$thread_yaml" ]]; then
+        device_info=$(get_yaml_device_info "$thread_yaml")
+        device_type="${device_info%%|*}"
+        network_type="${device_info##*|}"
+      fi
+
+      config_display=""
+      if [[ -n "$wifi_yaml" && -n "$thread_yaml" ]]; then
+        config_display="${wifi_yaml##*/} / ${thread_yaml##*/}"
+      elif [[ -n "$wifi_yaml" ]]; then
+        config_display="${wifi_yaml##*/}"
+      elif [[ -n "$thread_yaml" ]]; then
+        config_display="${thread_yaml##*/}"
+      fi
+
+      echo "$device,$device_type,$network_type,$config_display"
+    done
+  elif [[ "$output_format" == "json" ]]; then
+    echo "["
+    first=true
+    list_device_names | while read -r device; do
+      mapping="${DEVICE_MAP[$device]}"
+      wifi_yaml="${mapping%%:*}"
+      thread_yaml="${mapping##*:}"
+
+      device_type=""
+      network_type=""
+      if [[ -n "$wifi_yaml" && -f "$wifi_yaml" ]]; then
+        device_info=$(get_yaml_device_info "$wifi_yaml")
+        device_type="${device_info%%|*}"
+        network_type="${device_info##*|}"
+      elif [[ -n "$thread_yaml" && -f "$thread_yaml" ]]; then
+        device_info=$(get_yaml_device_info "$thread_yaml")
+        device_type="${device_info%%|*}"
+        network_type="${device_info##*|}"
+      fi
+
+      config_display=""
+      if [[ -n "$wifi_yaml" && -n "$thread_yaml" ]]; then
+        config_display="${wifi_yaml##*/} / ${thread_yaml##*/}"
+      elif [[ -n "$wifi_yaml" ]]; then
+        config_display="${wifi_yaml##*/}"
+      elif [[ -n "$thread_yaml" ]]; then
+        config_display="${thread_yaml##*/}"
+      fi
+
+      [[ "$first" != true ]] && echo ","
+      printf '  {"role": "%s", "type": "%s", "network": "%s", "config": "%s"}' \
+        "$device" "$device_type" "$network_type" "$config_display"
+      first=false
+    done
+    echo
+    echo "]"
+  else
+    # Text format (default)
+    info "Available device roles:"
+    echo
+    printf "  ${GRN}%-15s %-10s %-10s %-40s${RST}\n" "Role" "Type" "Network" "Config"
+    printf "  ${DIM}%-15s %-10s %-10s %-40s${RST}\n" "───────────────" "──────────" "──────────" "────────────────────────────────────────"
+
+    list_device_names | while read -r device; do
+      mapping="${DEVICE_MAP[$device]}"
+      wifi_yaml="${mapping%%:*}"
+      thread_yaml="${mapping##*:}"
+
+      device_type=""
+      network_type=""
+      if [[ -n "$wifi_yaml" && -f "$wifi_yaml" ]]; then
+        device_info=$(get_yaml_device_info "$wifi_yaml")
+        device_type="${device_info%%|*}"
+        network_type="${device_info##*|}"
+      elif [[ -n "$thread_yaml" && -f "$thread_yaml" ]]; then
+        device_info=$(get_yaml_device_info "$thread_yaml")
+        device_type="${device_info%%|*}"
+        network_type="${device_info##*|}"
+      fi
+
+      config_display=""
+      if [[ -n "$wifi_yaml" && -n "$thread_yaml" ]]; then
+        config_display="${wifi_yaml##*/} / ${thread_yaml##*/}"
+      elif [[ -n "$wifi_yaml" ]]; then
+        config_display="${wifi_yaml##*/}"
+      elif [[ -n "$thread_yaml" ]]; then
+        config_display="${thread_yaml##*/}"
+      fi
+
+      printf "  ${GRN}%-15s${RST} %-10s %-10s %-40s\n" \
+        "$device" "$device_type" "$network_type" "$config_display"
+    done
+    echo
+    ok "Use 'iotstack help' for more information"
+  fi
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
