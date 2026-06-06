@@ -117,6 +117,8 @@ Usage:
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
   iotstack list [devices|roles]
+  iotstack secret get <role> <ota|api> [version]
+  iotstack secret set <role> <ota|api> <value>
   iotstack rotate-password <role> [new-password]
   iotstack help [command]
 
@@ -153,6 +155,19 @@ Commands:
     Subcommands:
       devices   Show discovered ESPHome devices on network (default)
       roles     Show available device roles with their configurations
+
+  secret get <role> <ota|api> [version]
+    Retrieve a secret from encrypted pass store.
+    Examples:
+      iotstack secret get bleproxy ota              # Current OTA password
+      iotstack secret get bleproxy api              # Current API key
+      iotstack secret get bleproxy ota 0            # Archived version (v0)
+
+  secret set <role> <ota|api> <value>
+    Set a secret (auto-versions old value).
+    Examples:
+      iotstack secret set bleproxy ota "newPassword"
+      iotstack secret set mmwave api "newApiKey"
 
   rotate-password <role> [new-password]
     Rotate OTA password for all devices in a role.
@@ -902,6 +917,31 @@ cmd_list() {
   esac
 }
 
+cmd_secret() {
+  local command="$1"
+  local role="$2"
+  local secret_type="$3"
+  local value="${4:-}"
+
+  case "$command" in
+    get)
+      if [[ -z "$role" || -z "$secret_type" ]]; then
+        err "Usage: iotstack secret get <role> <ota|api> [version]"
+      fi
+      "$SCRIPT_DIR/iotstack-secrets" get "$role" "$secret_type" "$value"
+      ;;
+    set)
+      if [[ -z "$role" || -z "$secret_type" || -z "$value" ]]; then
+        err "Usage: iotstack secret set <role> <ota|api> <value>"
+      fi
+      "$SCRIPT_DIR/iotstack-secrets" set "$role" "$secret_type" "$value"
+      ;;
+    *)
+      err "Unknown secret command: $command. Use 'get' or 'set'"
+      ;;
+  esac
+}
+
 cmd_rotate_password() {
   local role="$1"
   local new_password="${2:-}"
@@ -1014,40 +1054,8 @@ cmd_rotate_password() {
     echo "[INFO] All devices flashed successfully"
     echo
 
-    # Create versioned password entry
-    local secrets_file="$(dirname "$(resolve_device "$role")")/secrets.yaml"
-    if [[ -f "$secrets_file" ]]; then
-      # Find next version number
-      local next_version=0
-      if grep -q "${role}_ota_password_v" "$secrets_file"; then
-        next_version=$(grep "${role}_ota_password_v" "$secrets_file" | sed "s/.*_v//" | sed 's/:.*//' | sort -n | tail -1)
-        next_version=$((next_version + 1))
-      fi
-
-      echo "[INFO] Updating secrets.yaml with versioned password..."
-
-      # Add versioned entry for old password
-      if ! grep -q "${role}_ota_password_v${next_version}" "$secrets_file"; then
-        echo "${role}_ota_password_v${next_version}: \"$current_password\"" >> "$secrets_file"
-      fi
-
-      # Update current password
-      if grep -q "^${role}_ota_password:" "$secrets_file"; then
-        sed -i.bak "s/^${role}_ota_password:.*/${role}_ota_password: \"$new_password\"/" "$secrets_file"
-        rm -f "$secrets_file.bak"
-      else
-        echo "${role}_ota_password: \"$new_password\"" >> "$secrets_file"
-      fi
-
-      ok "Password updated in secrets.yaml"
-      echo "  Old password kept as: ${role}_ota_password_v${next_version}"
-      echo "  Current password: ${role}_ota_password"
-    else
-      warn "Could not find secrets.yaml"
-      warn "Manually update password in password manager and secrets.yaml:"
-      echo "  Create entry: ${role}_ota_password_v<N> = $current_password"
-      echo "  Update entry: ${role}_ota_password = $new_password"
-    fi
+    echo "[INFO] Updating password manager with versioned password..."
+    cmd_secret set "$role" ota "$new_password"
 
     echo
     ok "Password rotation complete!"
@@ -1228,6 +1236,10 @@ main() {
     list)
       shift
       cmd_list "$@"
+      ;;
+    secret)
+      shift
+      cmd_secret "$@"
       ;;
     rotate-password)
       shift
