@@ -271,9 +271,18 @@ if [[ -f "$SECRETS_YAML" ]]; then
     [[ "$line" =~ ^#.*$ ]] && continue  # Skip comments
     [[ -z "$line" ]] && continue         # Skip empty lines
 
-    if [[ "$line" =~ ^([a-z_]+):[[:space:]]+\"?([^\"]+)\"?$ ]]; then
+    # Handle both quoted and unquoted values
+    if [[ "$line" =~ ^([a-z_]+):[[:space:]]+\"(.*)\"$ ]]; then
+      # Quoted value
       key="${BASH_REMATCH[1]}"
       value="${BASH_REMATCH[2]}"
+    elif [[ "$line" =~ ^([a-z_]+):[[:space:]]+([^[:space:]].*[^[:space:]])$ ]]; then
+      # Unquoted value
+      key="${BASH_REMATCH[1]}"
+      value="${BASH_REMATCH[2]}"
+    else
+      continue
+    fi
 
       # Handle device secrets: bleproxy_api_encryption_key -> iotstack/bleproxy/api_encryption_key
       if [[ "$key" =~ ^([a-z_]+)_(api_encryption_key|ota_password)$ ]]; then
