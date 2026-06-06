@@ -103,9 +103,11 @@ ok "Created symlink: $IOTSTACK_LINK"
 # Check if ~/.local/bin is in PATH
 if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
   if ! grep -q "export PATH=.*\.local/bin" "$BASHRC" 2>/dev/null; then
-    echo "" >> "$BASHRC"
-    echo "# Add ~/.local/bin to PATH for iotstack command" >> "$BASHRC"
-    echo "export PATH=\"\$HOME/.local/bin:\$PATH\"" >> "$BASHRC"
+    {
+      echo ""
+      echo "# Add ~/.local/bin to PATH for iotstack command"
+      echo "export PATH=\"\$HOME/.local/bin:\$PATH\""
+    } >> "$BASHRC"
     ok "Added ~/.local/bin to PATH in $BASHRC"
   fi
 fi
@@ -298,8 +300,7 @@ if [[ -f "$SECRETS_YAML" ]]; then
 
       # Add to pass if not already present
       if ! pass show "$pass_path" >/dev/null 2>&1; then
-        insert_output=$(echo "$value" | pass insert -f "$pass_path" 2>&1)
-        if [[ $? -eq 0 ]]; then
+        if insert_output=$(echo "$value" | pass insert -f "$pass_path" 2>&1); then
           ok "Added: $pass_path"
         else
           warn "Failed to add: $pass_path"
