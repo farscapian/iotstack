@@ -166,6 +166,31 @@ binary_sensor:
     id: api_connected
     internal: true
 
+  # Physical button (GPIO9 - boot button on Seeed XIAO)
+  - platform: gpio
+    pin:
+      number: GPIO9
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+    name: "Device Button"
+    internal: true
+    on_click:
+      min_length: 50ms
+      max_length: 350ms
+      then:
+        - script.execute: cycle_effect
+    on_double_click:
+      min_length: 50ms
+      max_length: 350ms
+      then:
+        - button.press: restart_btn
+    on_press:
+      min_length: 1500ms
+      then:
+        - button.press: safe_mode_btn
+
 text_sensor:
   - platform: template
     name: "Presence"
@@ -243,32 +268,6 @@ globals:
     type: int
     initial_value: '0'
     restore_value: no
-
-# 7. Physical button (GPIO9 - boot button on Seeed XIAO)
-binary_sensor:
-  - platform: gpio
-    pin:
-      number: GPIO9
-      inverted: true
-      mode:
-        input: true
-        pullup: true
-    name: "Device Button"
-    internal: true
-    on_click:
-      min_length: 50ms
-      max_length: 350ms
-      then:
-        - script.execute: cycle_effect
-    on_double_click:
-      min_length: 50ms
-      max_length: 350ms
-      then:
-        - button.press: restart_btn
-    on_press:
-      min_length: 1500ms
-      then:
-        - button.press: safe_mode_btn
 
 # 7. Buttons
 button:
