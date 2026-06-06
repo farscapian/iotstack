@@ -1,6 +1,23 @@
 #!/bin/bash
 # setup.sh — Add iotstack command to PATH
 # This script sets up the iotstack CLI tool so you can run 'iotstack' from anywhere
+#
+# Can be executed or sourced:
+#   ./setup.sh                  # Run setup
+#   source setup.sh             # Just set environment variables
+
+# Detect if being sourced or executed
+_sourced=0
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+  _sourced=1
+fi
+
+# Early exit if sourced - just set environment variables
+if [[ $_sourced -eq 1 ]]; then
+  export GNUPGHOME="${HOME}/.iotstack/.gnupg"
+  export PASSWORD_STORE_DIR="${HOME}/.iotstack/.pass"
+  return 0
+fi
 
 set -euo pipefail
 
@@ -363,3 +380,10 @@ echo "For more information:"
 echo -e "  ${GRN}docs/RAMDISK-SECRETS.md${RST}  (RAM-only secrets)"
 echo -e "  ${GRN}docs/QUICK-START-SECRETS.md${RST}  (Password manager setup)"
 echo -e "  ${GRN}iotstack help${RST}  (CLI commands)"
+
+echo
+echo "Environment variables:"
+export GNUPGHOME="${IOTSTACK_HOME}/.gnupg"
+export PASSWORD_STORE_DIR="${IOTSTACK_HOME}/.pass"
+echo -e "  ${GRN}GNUPGHOME${RST}=${GNUPGHOME}"
+echo -e "  ${GRN}PASSWORD_STORE_DIR${RST}=${PASSWORD_STORE_DIR}"
