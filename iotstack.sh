@@ -1268,11 +1268,11 @@ Examples:
   if [[ -z "$tty_device" ]]; then
     # Find all USB serial devices
     local tty_devices=()
-    for dev in /dev/ttyACM* /dev/ttyUSB* 2>/dev/null; do
+    for dev in /dev/ttyACM* /dev/ttyUSB*; do
       if [[ -e "$dev" ]]; then
         tty_devices+=("$dev")
       fi
-    done
+    done 2>/dev/null
 
     if [[ ${#tty_devices[@]} -eq 0 ]]; then
       err "No USB serial devices found. Plug in the device and try again, or specify manually:
