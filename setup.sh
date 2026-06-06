@@ -260,22 +260,6 @@ else
   warn "secrets.yaml not found, skipping seeding"
 fi
 
-# Create config file pointing to pass repository
-echo
-echo "Creating configuration..."
-cat > "${IOTSTACK_HOME}/config" << 'EOF'
-# iotstack password manager configuration
-# Uses pass repository at ~/.iotstack/.pass
-
-[password-manager]
-provider = pass
-
-[pass]
-store_dir = ~/.iotstack/.pass
-EOF
-
-ok "Created configuration at ${IOTSTACK_HOME}/config"
-
 echo
 echo "════════════════════════════════════════════════════════"
 echo "Setup Complete!"
