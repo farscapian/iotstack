@@ -31,27 +31,27 @@ if [[ ! -d "$YAMLS_DIR" ]]; then
   err "yamls directory not found at $YAMLS_DIR"
 fi
 
-# ── Security: Verify/ensure secrets tmpfs is mounted ────────────────────────
-# All secrets must be in RAM only, never on unencrypted disk
+# ── Security: Verify encrypted secrets are mounted ─────────────────────────
+# Secrets must be in user-land encrypted FUSE mount (gocryptfs)
 verify_secrets_mounted() {
   local secrets_mount="${HOME}/.iotstack/secrets"
 
-  # Check if already mounted
-  if mount | grep -q "tmpfs.*${secrets_mount}"; then
+  # Check if gocryptfs mount exists
+  if mount | grep -q "gocryptfs.*${secrets_mount}"; then
     return 0
   fi
 
   # Not mounted - guide user to mount it
-  err "Secrets tmpfs not mounted
+  err "Encrypted secrets not mounted
 
-SECURITY REQUIREMENT: All secrets must exist only in RAM.
+SECURITY REQUIREMENT: Secrets must be in encrypted FUSE mount (gocryptfs).
 
-To mount secrets from encrypted pass store to RAM:
+To mount user-land encrypted secrets (no sudo needed):
   ./scripts/mount-secrets
 
-This will prompt for your sudo password (to create tmpfs mount).
-Secrets are decrypted from pass into RAM memory only.
-They will be automatically erased on reboot or unmount.
+This uses gocryptfs to create an encrypted FUSE filesystem.
+Secrets are encrypted at rest, decrypted only in user-space.
+Your user is the only one who can access them.
 
 After mounting, retry your command."
 }
