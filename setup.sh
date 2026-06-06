@@ -209,11 +209,18 @@ EOF
 
   # Initialize pass with the GPG key
   export PASSWORD_STORE_DIR="$PASS_DIR"
-  pass init "$gpg_key" 2>&1 | grep -v "^Password store initialized" || true
+  mkdir -p "$PASS_DIR"
 
-  if [[ -d "${PASS_DIR}/.git" ]]; then
+  init_output=$(pass init "$gpg_key" 2>&1)
+  init_status=$?
+
+  if [[ $init_status -eq 0 ]] && [[ -d "${PASS_DIR}/.git" ]]; then
     ok "Initialized pass repository with GPG key: $gpg_key"
   else
+    echo "[DEBUG] pass init output: $init_output"
+    echo "[DEBUG] pass init status: $init_status"
+    echo "[DEBUG] Pass dir: $PASS_DIR"
+    echo "[DEBUG] .git exists: $([[ -d "${PASS_DIR}/.git" ]] && echo yes || echo no)"
     err "pass init failed. Try manually:
   export PASSWORD_STORE_DIR=${PASS_DIR}
   pass init $gpg_key"
