@@ -681,7 +681,7 @@ cmd_verify() {
 
 cmd_list() {
   local output_format="text"
-  local subcommand="devices"
+  local subcommand=""
 
   # Parse flags
   while [[ $# -gt 0 ]]; do
@@ -709,6 +709,12 @@ cmd_list() {
         ;;
     esac
   done
+
+  # Show help if no subcommand provided
+  if [[ -z "$subcommand" ]]; then
+    help_list
+    return
+  fi
 
   case "$subcommand" in
     devices)
