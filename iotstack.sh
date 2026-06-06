@@ -115,7 +115,7 @@ iotstack — Manage IoT Stack ESPHome Devices
 Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
   iotstack verify [<device>|<yaml>|all] [--thread]
-  iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--api-key KEY]
+  iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
   iotstack list [devices|roles]
   iotstack rotate-password <role> [new-password]
   iotstack help [command]
@@ -135,10 +135,10 @@ Commands:
   reassign <MAC1> [MAC2 ...] <device|yaml>
     Flash specific devices to a different configuration.
     Options:
-      --api-key <key>    Use specific OTA password or API key for device authentication
+      --ota-password <password>    Use specific OTA password for device authentication
     Examples:
       iotstack reassign 8dfcac 0f4df4 bleproxy
-      iotstack reassign 11cdc4 threadrouter --api-key "kOKuNAPXcbSdYch5AJFtrcoZPr3RyljAkN5Yu9n9oA"
+      iotstack reassign 11cdc4 threadrouter --ota-password "kOKuNAPXcbSdYch5AJFtrcoZPr3RyljAkN5Yu9n9oA"
       iotstack reassign 8dfcac yamls/mmwave.yaml
 
   verify [<device>|<yaml>|all]
@@ -178,7 +178,7 @@ Examples:
   iotstack update --dry-run mmwave           # Preview without flashing
   iotstack verify all                        # Verify entire fleet
   iotstack reassign 8dfcac 0f4df4 bleproxy                         # Reassign devices
-  iotstack reassign 11cdc4 bleproxy --api-key "ZAD818dH7t..."     # With API key
+  iotstack reassign 11cdc4 bleproxy --ota-password "ZAD818dH7t..."     # With OTA password
   iotstack list roles                        # Show available roles
 
 EOF
@@ -709,7 +709,7 @@ cmd_reassign() {
         use_thread="--thread"
         shift
         ;;
-      --api-key)
+      --ota-password)
         api_key="$2"
         shift 2
         ;;
@@ -754,12 +754,12 @@ cmd_reassign() {
 
   info "Reassigning devices..."
   echo "  MACs: ${reassign_macs[*]}"
-  [[ -n "$api_key" ]] && echo "  API Key: $api_key"
+  [[ -n "$api_key" ]] && echo "  OTA Password: $api_key"
   echo
 
   # Build and invoke update_devices.sh with reassign flags
   if [[ -n "$api_key" ]]; then
-    "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" --api-key "$api_key" "${update_args[@]}"
+    "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" --ota-password "$api_key" "${update_args[@]}"
   else
     "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" "${update_args[@]}"
   fi
@@ -980,7 +980,7 @@ cmd_rotate_password() {
 
   for mac in "${mac_suffixes[@]}"; do
     echo "[INFO] Flashing $mac..."
-    if "$UPDATE_SCRIPT" --reassign "$mac" "$(resolve_device "$role")" --api-key "$current_password" >/dev/null 2>&1; then
+    if "$UPDATE_SCRIPT" --reassign "$mac" "$(resolve_device "$role")" --ota-password "$current_password" >/dev/null 2>&1; then
       echo "[OK] $mac flashed successfully"
       success_count=$((success_count + 1))
     else
@@ -1003,7 +1003,7 @@ cmd_rotate_password() {
     echo "  Failed MACs: ${failed_macs[*]}"
     echo
     warn "Some devices failed. Retry with:"
-    echo "  iotstack reassign ${failed_macs[*]} $role --api-key \"<password>\""
+    echo "  iotstack reassign ${failed_macs[*]} $role --ota-password \"<password>\""
     echo
     warn "Using new password (if those devices were flashed):"
     echo "  iotstack reassign ${failed_macs[*]} $role"

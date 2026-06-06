@@ -601,7 +601,7 @@ while [[ $# -gt 0 ]]; do
     --force-update-entities) FORCE_UPDATE_ENTITIES=true; shift ;;
     --dry-run)               DRY_RUN=true;        shift ;;
     --jobs)                  MAX_JOBS="$2"; JOBS_EXPLICIT=true; shift 2 ;;
-    --api-key)               API_KEY="$2";        shift 2 ;;
+    --ota-password)          API_KEY="$2";        shift 2 ;;
     --reassign)
       REASSIGN_MODE=true
       shift
@@ -1408,11 +1408,11 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
       echo "  ⚠️  OTA Authentication Failed"
       echo "  The device's OTA password or API encryption key doesn't match the target."
       echo
-      echo "  Solution: Provide the device's current OTA password or API key:"
+      echo "  Solution: Provide the device's current OTA password:"
       mac_suffix="${HOSTNAME##*-}"
-      echo "    iotstack reassign $mac_suffix <target-role> --api-key \"<current-password>\""
+      echo "    iotstack reassign $mac_suffix <target-role> --ota-password \"<current-password>\""
       echo
-      echo "  Where <current-password> is the OTA password or API key the device is currently using."
+      echo "  Where <current-password> is the OTA password the device is currently using."
       echo
     fi
   fi
