@@ -915,46 +915,147 @@ cmd_rotate_password() {
     err "Unknown role: $role"
   fi
 
-  # If no password provided, prompt for it
-  if [[ -z "$new_password" ]]; then
-    read -p "Enter new OTA password for '$role': " -r new_password
-    if [[ -z "$new_password" ]]; then
-      err "Password cannot be empty"
-    fi
-  fi
-
   info "Rotating OTA password for role: $role"
   echo
 
-  # Discover all devices with this role
-  local devices=()
-  echo "[INFO] Discovering devices with role '$role'..."
-  while IFS='|' read -r hostname friendly project version hash; do
-    if [[ "$project" == *"$role"* ]]; then
-      devices+=("$hostname")
-    fi
-  done < <(iotstack list devices "$role" --id 2>/dev/null | tail -1 | tr ' ' '\n' | while read -r id; do
-    # This is a simplified approach - in production would use full discovery
-    echo "device-$id|unknown|iotstack.$role|unknown|unknown"
-  done)
+  # Get current OTA password from password manager or prompt
+  local current_password
+  if command -v ./iotstack-secrets &>/dev/null; then
+    echo "[INFO] Retrieving current OTA password from password manager..."
+    current_password=$(./iotstack-secrets get "$role" ota_password 2>/dev/null) || {
+      warn "Could not retrieve password from password manager"
+      read -p "Enter current OTA password for '$role': " -rs current_password
+      echo
+    }
+  else
+    read -p "Enter current OTA password for '$role': " -rs current_password
+    echo
+  fi
 
-  if [[ ${#devices[@]} -eq 0 ]]; then
+  if [[ -z "$current_password" ]]; then
+    err "Current password is required"
+  fi
+
+  # If no new password provided, prompt for it
+  if [[ -z "$new_password" ]]; then
+    read -p "Enter new OTA password for '$role': " -rs new_password
+    echo
+    if [[ -z "$new_password" ]]; then
+      err "New password cannot be empty"
+    fi
+  fi
+
+  # Discover all devices with this role
+  echo "[INFO] Discovering devices with role '$role'..."
+  local devices=()
+  local mac_suffixes=()
+
+  while IFS=' ' read -r mac; do
+    [[ -n "$mac" ]] && mac_suffixes+=("$mac")
+  done < <(iotstack list devices "$role" --id 2>/dev/null)
+
+  if [[ ${#mac_suffixes[@]} -eq 0 ]]; then
     warn "No devices found for role: $role"
     return 1
   fi
 
-  echo "[INFO] Found ${#devices[@]} device(s) for role '$role'"
+  echo "[OK] Found ${#mac_suffixes[@]} device(s) for role '$role': ${mac_suffixes[*]}"
   echo
 
-  # TODO: For each device, get current password and flash with new password
-  # This requires integrating with update_devices.sh reassign functionality
+  # Confirm before proceeding
+  read -p "Proceed with password rotation for ${#mac_suffixes[@]} device(s)? (y/N) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    info "Password rotation cancelled"
+    return 0
+  fi
 
-  warn "rotate-password command implementation in progress"
-  warn "Manual steps for now:"
-  echo "  1. Get current OTA password for '$role' from password manager"
-  echo "  2. For each device, run:"
-  echo "    iotstack reassign <mac-suffix> $role --api-key \"<current-password>\""
-  echo "  3. Update secrets.yaml with new password once all devices are updated"
+  # Flash all devices with new password using old password for authentication
+  echo "[INFO] Flashing devices with new password (authenticating with old password)..."
+  echo
+
+  local success_count=0
+  local fail_count=0
+  declare -a failed_macs=()
+
+  for mac in "${mac_suffixes[@]}"; do
+    echo "[INFO] Flashing $mac..."
+    if "$UPDATE_SCRIPT" --reassign "$mac" "$(resolve_device "$role")" --api-key "$current_password" >/dev/null 2>&1; then
+      echo "[OK] $mac flashed successfully"
+      success_count=$((success_count + 1))
+    else
+      echo "[ERR] $mac flash failed"
+      fail_count=$((fail_count + 1))
+      failed_macs+=("$mac")
+    fi
+  done
+
+  echo
+  echo "════════════════════════════════════════════════════════"
+  echo "[INFO] Rotation Summary"
+  echo "════════════════════════════════════════════════════════"
+  echo "  Role: $role"
+  echo "  Total: ${#mac_suffixes[@]}"
+  echo "  Success: $success_count"
+  echo "  Failed: $fail_count"
+
+  if [[ $fail_count -gt 0 ]]; then
+    echo "  Failed MACs: ${failed_macs[*]}"
+    echo
+    warn "Some devices failed. Retry with:"
+    echo "  iotstack reassign ${failed_macs[*]} $role --api-key \"<password>\""
+    echo
+    warn "Using new password (if those devices were flashed):"
+    echo "  iotstack reassign ${failed_macs[*]} $role"
+  fi
+
+  # Only update password manager if all succeeded
+  if [[ $fail_count -eq 0 ]]; then
+    echo "[INFO] All devices flashed successfully"
+    echo
+
+    # Create versioned password entry
+    local secrets_file="$(dirname "$(resolve_device "$role")")/secrets.yaml"
+    if [[ -f "$secrets_file" ]]; then
+      # Find next version number
+      local next_version=0
+      if grep -q "${role}_ota_password_v" "$secrets_file"; then
+        next_version=$(grep "${role}_ota_password_v" "$secrets_file" | sed "s/.*_v//" | sed 's/:.*//' | sort -n | tail -1)
+        next_version=$((next_version + 1))
+      fi
+
+      echo "[INFO] Updating secrets.yaml with versioned password..."
+
+      # Add versioned entry for old password
+      if ! grep -q "${role}_ota_password_v${next_version}" "$secrets_file"; then
+        echo "${role}_ota_password_v${next_version}: \"$current_password\"" >> "$secrets_file"
+      fi
+
+      # Update current password
+      if grep -q "^${role}_ota_password:" "$secrets_file"; then
+        sed -i.bak "s/^${role}_ota_password:.*/${role}_ota_password: \"$new_password\"/" "$secrets_file"
+        rm -f "$secrets_file.bak"
+      else
+        echo "${role}_ota_password: \"$new_password\"" >> "$secrets_file"
+      fi
+
+      ok "Password updated in secrets.yaml"
+      echo "  Old password kept as: ${role}_ota_password_v${next_version}"
+      echo "  Current password: ${role}_ota_password"
+    else
+      warn "Could not find secrets.yaml"
+      warn "Manually update password in password manager and secrets.yaml:"
+      echo "  Create entry: ${role}_ota_password_v<N> = $current_password"
+      echo "  Update entry: ${role}_ota_password = $new_password"
+    fi
+
+    echo
+    ok "Password rotation complete!"
+  else
+    warn "Password rotation incomplete due to failures"
+    warn "Do not update password manager yet - some devices may not have new password"
+    return 1
+  fi
 }
 
 list_roles() {
