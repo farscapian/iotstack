@@ -19,7 +19,7 @@ info() { echo -e "${BLU}[INFO]${RST} $*"; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 UPDATE_SCRIPT="${SCRIPT_DIR}/update_devices.sh"
-DEVICES_CONF="${SCRIPT_DIR}/iotstack-devices.conf"
+DEVICES_CONF="${SCRIPT_DIR}/iotstack-roles.conf"
 
 # Check if update_devices.sh exists
 if [[ ! -f "$UPDATE_SCRIPT" ]]; then
@@ -27,12 +27,12 @@ if [[ ! -f "$UPDATE_SCRIPT" ]]; then
 fi
 
 # ── Device Mapping ─────────────────────────────────────────────────────────────
-# Load device mappings from iotstack-devices.conf
+# Load device mappings from iotstack-roles.conf
 declare -A DEVICE_MAP
 
 load_device_mappings() {
   if [[ ! -f "$DEVICES_CONF" ]]; then
-    err "iotstack-devices.conf not found at $DEVICES_CONF"
+    err "iotstack-roles.conf not found at $DEVICES_CONF"
   fi
 
   while IFS='=' read -r device mapping; do
@@ -74,6 +74,28 @@ resolve_device() {
     fi
     echo "$wifi_yaml"
   fi
+}
+
+# Extract device_type and network_type from YAML file
+# Returns: "device_type|network_type" (e.g., "esp32c6|wifi")
+get_yaml_device_info() {
+  local yaml_file="$1"
+  local device_type=""
+  local network_type=""
+
+  if [[ -f "$yaml_file" ]]; then
+    # Extract device_type from variant field
+    device_type=$(grep -E "^\s*variant:\s*" "$yaml_file" | head -1 | sed 's/.*variant:\s*//; s/\s*$//')
+
+    # Determine network_type from presence of wifi or openthread sections
+    if grep -q "^wifi:" "$yaml_file" 2>/dev/null; then
+      network_type="wifi"
+    elif grep -q "^openthread:" "$yaml_file" 2>/dev/null; then
+      network_type="thread"
+    fi
+  fi
+
+  echo "${device_type}|${network_type}"
 }
 
 # List available device names
