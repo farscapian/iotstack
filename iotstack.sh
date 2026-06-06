@@ -276,18 +276,26 @@ EOF
 list_devices() {
   info "Available device configurations:"
   echo
+  printf "  ${GRN}%-20s %-10s %-10s %-40s${RST}\n" "Device" "Type" "Network" "Config File"
+  printf "  ${DIM}%-20s %-10s %-10s %-40s${RST}\n" "─────────────────" "─────────" "─────────" "───────────────────────────────────────"
 
   found=0
   while IFS= read -r yaml_file; do
     if grep -q '^esphome:' "$yaml_file" 2>/dev/null; then
-      role_name=$(grep -A 2 '^substitutions:' "$yaml_file" 2>/dev/null | grep 'role_name:' | sed 's/.*role_name:[[:space:]]*//; s/[[:space:]]*#.*//' | tr -d '"'"'" || echo "unknown")
-      role_id=$(grep -A 3 '^substitutions:' "$yaml_file" 2>/dev/null | grep 'role_id:' | sed 's/.*role_id:[[:space:]]*//; s/[[:space:]]*#.*//' | tr -d '"'"'" || echo "unknown")
+      # Extract device info
+      device_info=$(get_yaml_device_info "$yaml_file")
+      device_type="${device_info%%|*}"
+      network_type="${device_info##*|}"
 
-      printf "  ${GRN}%-40s${RST} role_name: ${DIM}%-30s${RST} id: ${DIM}%s${RST}\n" \
-        "$yaml_file" "$role_name" "$role_id"
+      # Extract friendly_name for display
+      friendly_name=$(grep -E "^\s*friendly_name:\s*" "$yaml_file" | head -1 | sed 's/.*friendly_name:\s*"\?\([^"]*\)"\?.*/\1/')
+      [[ -z "$friendly_name" ]] && friendly_name=$(basename "$yaml_file" .yaml)
+
+      printf "  ${GRN}%-20s${RST} %-10s %-10s %s\n" \
+        "$friendly_name" "$device_type" "$network_type" "$yaml_file"
       found=$((found + 1))
     fi
-  done < <(find . -maxdepth 3 -name "*.yaml" -type f | sort)
+  done < <(find "${SCRIPT_DIR}/yamls" -maxdepth 1 -name "*.yaml" -type f ! -name "secrets.yaml" | sort)
 
   if [[ $found -eq 0 ]]; then
     warn "No device configurations found"
