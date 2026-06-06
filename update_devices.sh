@@ -1320,8 +1320,11 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   FQDN="${HOSTNAME}.local"
   dim "  started → ${HOSTNAME}"
 
-  # Find the compiled firmware binary
-  FIRMWARE_BIN=$(find .esphome/build -name "firmware.bin" -o -name "*.bin" | head -1)
+  # Extract device name from YAML filename (e.g., mmwave.yaml → mmwave)
+  DEVICE_NAME=$(basename "$YAML_FILE" .yaml)
+
+  # OTA firmware is in yamls/.esphome/build/<device>/.pioenvs/<device>/firmware.ota.bin
+  FIRMWARE_BIN="yamls/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"
 
   (
     # Run upload with 30-second timeout (fail fast if auth fails)
