@@ -43,16 +43,9 @@ verify_secrets_mounted() {
 
   # Not mounted - auto-mount (no sudo needed for gocryptfs)
   echo "[INFO] Mounting encrypted secrets..."
-  if ! "$SCRIPT_DIR/scripts/mount-secrets" 2>/dev/null; then
-    err "Failed to mount encrypted secrets
-
-SECURITY REQUIREMENT: Secrets must be in encrypted FUSE mount (gocryptfs).
-
-Check that gocryptfs is installed:
-  Ubuntu/Debian: sudo apt install gocryptfs
-  macOS: brew install gocryptfs
-
-Then iotstack will auto-mount on next command."
+  if ! "$SCRIPT_DIR/scripts/mount-secrets"; then
+    # mount-secrets already printed the error, just exit
+    exit 1
   fi
 
   ok "Encrypted secrets mounted"
