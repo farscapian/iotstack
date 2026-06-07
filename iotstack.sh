@@ -1705,7 +1705,39 @@ $(printf '  /tmp/iotstack-flash-%s.log\n' "$(basename ${tty_devices[0]})")"
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+sync_common_secrets() {
+  # Silently sync common secrets from secrets.yaml to pass (no console output)
+  local secrets_yaml="$YAMLS_DIR/secrets.yaml"
+
+  [[ ! -f "$secrets_yaml" ]] && return 0
+
+  # Setup pass environment
+  export GNUPGHOME="${HOME}/.iotstack/.gnupg"
+  export PASSWORD_STORE_DIR="${HOME}/.iotstack/.pass"
+
+  # Sync HA token if present
+  local ha_token=$(grep "^ha_token:" "$secrets_yaml" 2>/dev/null | cut -d'"' -f2 | xargs || echo "")
+  if [[ -n "$ha_token" ]]; then
+    local pass_token=$(pass show "iotstack/common/ha_token" 2>/dev/null | xargs || echo "")
+    if [[ "$pass_token" != "$ha_token" ]]; then
+      { echo "$ha_token"; echo "$ha_token"; } | pass insert -f "iotstack/common/ha_token" 2>&1 >/dev/null || true
+    fi
+  fi
+
+  # Sync HA URL if present
+  local ha_url=$(grep "^ha_url:" "$secrets_yaml" 2>/dev/null | cut -d'"' -f2 | xargs || echo "")
+  if [[ -n "$ha_url" ]]; then
+    local pass_url=$(pass show "iotstack/common/ha_url" 2>/dev/null | xargs || echo "")
+    if [[ "$pass_url" != "$ha_url" ]]; then
+      { echo "$ha_url"; echo "$ha_url"; } | pass insert -f "iotstack/common/ha_url" 2>&1 >/dev/null || true
+    fi
+  fi
+}
+
 main() {
+  # Sync common secrets silently at startup
+  sync_common_secrets
+
   local command="${1:-help}"
 
   case "$command" in
