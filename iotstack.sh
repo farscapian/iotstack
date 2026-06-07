@@ -384,6 +384,131 @@ Examples:
 EOF
 }
 
+help_reassign() {
+  cat << 'EOF'
+iotstack reassign — Flash specific devices to a different configuration
+
+Usage:
+  iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [options]
+
+Arguments:
+  <MAC1> [MAC2 ...]  MAC suffix(es) to reassign (e.g., 19b164 199ef4)
+  <device|yaml>      Target device role or YAML config
+  --ota-password     OTA password for device authentication (if needed)
+
+Examples:
+  iotstack reassign 19b164 bleproxy                           # Reassign to bleproxy role
+  iotstack reassign 8dfcac 0f4df4 mmwave                      # Reassign multiple to mmwave
+  iotstack reassign 11cdc4 threadrouter                       # Reassign to thread device
+  iotstack reassign 19b164 yamls/custom.yaml                  # Reassign to custom YAML
+  iotstack reassign 19b164 mmwave --ota-password "mypass"     # With OTA password
+
+EOF
+}
+
+help_flash() {
+  cat << 'EOF'
+iotstack flash — Flash device via serial/USB (for bricked devices)
+
+Usage:
+  iotstack flash <device|yaml> [tty-device]
+
+Arguments:
+  <device|yaml>  Device role or YAML config file
+  [tty-device]   Serial device (e.g., /dev/ttyACM0). Auto-detected if omitted.
+
+Examples:
+  iotstack flash bleproxy                 # Flash all ESP32-C6 devices in parallel
+  iotstack flash bleproxy /dev/ttyACM0    # Flash single device
+  iotstack flash mmwave /dev/ttyUSB0      # Flash to specific serial port
+  iotstack flash yamls/custom.yaml        # Flash custom config
+
+Notes:
+  - Compiles firmware once, uploads to all matching devices in parallel
+  - Each device is uploaded via serial (30-60s per device)
+  - No boot wait - command returns immediately after upload
+
+EOF
+}
+
+help_query() {
+  cat << 'EOF'
+iotstack query — Query Home Assistant device and entity registry
+
+Usage:
+  iotstack query [<device-name>|--list]
+
+Arguments:
+  <device-name>  Device name to query (e.g., "Kitchen RoomRemote")
+  --list, -l     List all devices in Home Assistant
+
+Examples:
+  iotstack query --list                          # List all HA devices
+  iotstack query "Bilresa5 - Secondary RoomRemote"
+  iotstack query "Kitchen RoomRemote"
+
+Notes:
+  - Requires HA_URL and HA_TOKEN in secrets.yaml or pass store
+  - Uses WebSocket API (requires websocat)
+  - Auto-installs websocat if needed
+
+EOF
+}
+
+help_secret() {
+  cat << 'EOF'
+iotstack secret — Manage encrypted secrets in pass store
+
+Usage:
+  iotstack secret get <role> <ota|api> [version]
+  iotstack secret set <role> <ota|api> <value>
+
+Arguments:
+  <role>        Device role (e.g., bleproxy, mmwave)
+  <ota|api>     Secret type (OTA password or API key)
+  [version]     Version number for historical secrets (default: current)
+  <value>       New secret value
+
+Examples:
+  iotstack secret get bleproxy ota              # Get current OTA password
+  iotstack secret get bleproxy api              # Get current API key
+  iotstack secret get bleproxy ota 0            # Get archived OTA password v0
+  iotstack secret set bleproxy ota "newPass123" # Set new OTA password
+  iotstack secret set mmwave api "newKey"       # Set new API key
+
+Notes:
+  - Secrets stored in encrypted pass store
+  - Old secrets are archived with version numbers
+  - OTA password: auto-synced from secrets.yaml if different
+
+EOF
+}
+
+help_rotate_secrets() {
+  cat << 'EOF'
+iotstack rotate-secrets — Rotate OTA passwords and API keys
+
+Usage:
+  iotstack rotate-secrets <role> [new-secret]
+
+Arguments:
+  <role>        Device role to rotate (e.g., bleproxy, mmwave)
+  [new-secret]  Specific secret to use. If omitted, generates cryptographically secure one.
+
+Examples:
+  iotstack rotate-secrets bleproxy                    # Generate and use random secret
+  iotstack rotate-secrets bleproxy "mySecret123"      # Use specific secret
+  iotstack rotate-secrets mmwave                      # Rotate mmwave secrets
+
+Features:
+  - OTA password: Always rotated (required for device updates)
+  - API key: Only rotated if Home Assistant is configured
+  - Old secrets: Kept in pass store history for recovery
+  - Audit trail: All changes tracked with version numbers
+
+EOF
+}
+
 list_devices() {
   local output_format="${1:-text}"
   local filter_role="${2:-}"
@@ -755,6 +880,12 @@ list_yaml_configs() {
 # ── Command Handlers ─────────────────────────────────────────────────────────
 
 cmd_update() {
+  # Handle help request
+  if [[ "$1" == "help" ]]; then
+    help_update
+    return 0
+  fi
+
   verify_secrets_mounted
 
   local device_or_yaml=""
@@ -841,6 +972,12 @@ cmd_update() {
 }
 
 cmd_reassign() {
+  # Handle help request
+  if [[ "$1" == "help" ]]; then
+    help_reassign
+    return 0
+  fi
+
   verify_secrets_mounted
 
   local use_thread=""
@@ -913,6 +1050,12 @@ cmd_reassign() {
 }
 
 cmd_verify() {
+  # Handle help request
+  if [[ "$1" == "help" ]]; then
+    help_verify
+    return 0
+  fi
+
   local device_or_yaml=""
   local use_thread=""
 
@@ -988,6 +1131,12 @@ cmd_verify() {
 }
 
 cmd_query() {
+  # Handle help request
+  if [[ "$1" == "help" ]]; then
+    help_query
+    return 0
+  fi
+
   # Query Home Assistant device/entity registry via WebSocket
   local query_script="${SCRIPT_DIR}/scripts/ha-websocket-query.sh"
 
@@ -1000,6 +1149,12 @@ cmd_query() {
 }
 
 cmd_list() {
+  # Handle help request
+  if [[ "$1" == "help" ]]; then
+    help_list
+    return 0
+  fi
+
   local output_format="text"
   local subcommand=""
   local filter_role=""
@@ -1061,6 +1216,12 @@ cmd_list() {
 }
 
 cmd_secret() {
+  # Handle help request
+  if [[ "$1" == "help" ]]; then
+    help_secret
+    return 0
+  fi
+
   local command="$1"
   local role="$2"
   local secret_type="$3"
@@ -1090,6 +1251,12 @@ cmd_secret() {
 }
 
 cmd_rotate_secrets() {
+  # Handle help request
+  if [[ "$1" == "help" ]]; then
+    help_rotate_secrets
+    return 0
+  fi
+
   verify_secrets_mounted
 
   local role="$1"
@@ -1425,6 +1592,11 @@ list_roles() {
 
 # ── Flash command: serial/USB flashing ─────────────────────────────────────
 cmd_flash() {
+  # Handle help request
+  if [[ "$1" == "help" ]]; then
+    help_flash
+    return 0
+  fi
   local device="$1"
   local tty_device="${2:-}"
 
@@ -1563,11 +1735,15 @@ main() {
     help)
       if [[ $# -gt 1 ]]; then
         case "$2" in
-          update)  help_update ;;
-          verify)  help_verify ;;
-          reassign) help_update ;; # reassign uses same help as update
-          list)    help_list ;;
-          *)       err "Unknown command: $2" ;;
+          update)         help_update ;;
+          verify)         help_verify ;;
+          reassign)       help_reassign ;;
+          list)           help_list ;;
+          flash)          help_flash ;;
+          query)          help_query ;;
+          secret)         help_secret ;;
+          rotate-secrets) help_rotate_secrets ;;
+          *)              err "Unknown command: $2" ;;
         esac
       else
         usage
