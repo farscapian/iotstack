@@ -1568,7 +1568,8 @@ list_roles() {
     local margin=2
     local temp_data
     temp_data=$(mktemp)
-    trap 'rm -f "$temp_data"' RETURN
+    # Capture temp_data in trap by expanding it now (double quotes), not at trap time
+    trap "rm -f '$temp_data'" RETURN
 
     # Gather role data into temp file (using process substitution to avoid subshell)
     while IFS= read -r device; do
