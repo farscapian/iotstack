@@ -63,24 +63,57 @@ HA_URL=$(sync_secret "HA URL" "ha_url" "iotstack/common/ha_url" || pass show "io
 echo "[INFO] Querying entities for device: $DEVICE_NAME" >&2
 echo "[INFO] Using HA_URL: $HA_URL" >&2
 
-# Use curl with WebSocket to query entities
-# We'll use the REST API which is simpler than raw WebSocket
-curl -s -X POST \
+# Step 1: Get device list and find matching device_id
+echo "[DEBUG] Fetching device registry..." >&2
+device_data=$(curl -s -X GET \
+  -H "Authorization: Bearer $HA_TOKEN" \
+  -H "Content-Type: application/json" \
+  "$HA_URL/api/config/device_registry/list")
+
+# Look for device matching name or id containing DEVICE_NAME
+device_id=$(echo "$device_data" | jq -r --arg name "$DEVICE_NAME" '
+  .[] |
+  select(.name | ascii_downcase | contains($name | ascii_downcase)) |
+  .id
+' | head -1)
+
+if [[ -z "$device_id" ]]; then
+  # Try matching by id itself
+  device_id=$(echo "$device_data" | jq -r --arg name "$DEVICE_NAME" '
+    .[] |
+    select(.id | contains($name)) |
+    .id
+  ' | head -1)
+fi
+
+if [[ -z "$device_id" ]]; then
+  warn "Device '$DEVICE_NAME' not found in device registry"
+  echo "[DEBUG] Available devices:" >&2
+  echo "$device_data" | jq -r '.[] | "\(.id): \(.name)"' >&2
+  exit 1
+fi
+
+echo "[DEBUG] Found device_id: $device_id" >&2
+
+# Step 2: Query entity registry for entities belonging to this device
+echo "[DEBUG] Fetching entity registry..." >&2
+curl -s -X GET \
   -H "Authorization: Bearer $HA_TOKEN" \
   -H "Content-Type: application/json" \
   "$HA_URL/api/config/entity_registry/list" | \
-  jq --arg device "$DEVICE_NAME" '
-    .[] |
-    select(.device_id != null) |
-    select(.original_name != null) |
-    select(.original_name | contains($device)) |
-    {
-      entity_id,
-      original_name,
-      device_id,
-      platform,
-      disabled_by
-    }
-  ' | jq -s '.'
+  jq --arg dev_id "$device_id" '
+    [
+      .[] |
+      select(.device_id == $dev_id) |
+      {
+        entity_id,
+        name,
+        original_name,
+        device_id,
+        platform,
+        disabled_by
+      }
+    ] | sort_by(.platform)
+  '
 
 echo "[INFO] Query complete" >&2
