@@ -256,16 +256,16 @@ sensor:
       then:
         - lambda: |-
             // Adaptive brightness based on illuminance
-            // Dark room (0 lux) = 0.2x, bright daylight (10000+ lux) = 1.0x
+            // Dark room (0 lux) = 0.16x, bright daylight (10000+ lux) = 1.0x
             float lux = x;
             float multiplier;
             if (lux < 100) {
-              multiplier = 0.2f;  // Very dark
+              multiplier = 0.16f;  // Very dark (20% reduction from 0.2)
             } else if (lux > 10000) {
               multiplier = 1.0f;  // Very bright
             } else {
-              // Linear interpolation between 100-10000 lux (0.2-1.0 brightness)
-              multiplier = 0.2f + ((lux - 100.0f) / 9900.0f) * 0.8f;
+              // Linear interpolation between 100-10000 lux (0.16-1.0 brightness)
+              multiplier = 0.16f + ((lux - 100.0f) / 9900.0f) * 0.84f;
             }
             id(brightness_multiplier) = multiplier;
 
@@ -418,7 +418,7 @@ light:
 
             auto call = id(rgb_led).make_call();
             call.set_brightness(brightness);
-            call.set_red(0.0); call.set_green(1.0); call.set_blue(0.0);
+            call.set_red(0.0); call.set_green(0.0); call.set_blue(1.0);
             call.set_transition_length(0);  // No transition, smooth via update_interval
             call.perform();
       - lambda:
