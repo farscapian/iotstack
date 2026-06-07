@@ -99,6 +99,59 @@ list_device_names() {
   done | sort
 }
 
+# Query Home Assistant for device areas via WebSocket
+# Returns JSON with device_name -> area_name mapping
+get_ha_device_areas() {
+  local secrets_yaml="$YAMLS_DIR/secrets.yaml"
+
+  # Try to get HA credentials from pass/secrets
+  local ha_token=""
+  local ha_url=""
+
+  if [[ -f "$secrets_yaml" ]]; then
+    ha_token=$(grep "^ha_token:" "$secrets_yaml" | cut -d'"' -f2 | xargs)
+    ha_url=$(grep "^ha_url:" "$secrets_yaml" | cut -d'"' -f2 | xargs)
+  fi
+
+  # Fallback to pass store
+  if [[ -z "$ha_token" ]] || [[ -z "$ha_url" ]]; then
+    ha_token=$(pass show "iotstack/common/ha_token" 2>/dev/null | xargs || echo "")
+    ha_url=$(pass show "iotstack/common/ha_url" 2>/dev/null | xargs || echo "")
+  fi
+
+  # If still no credentials, return empty
+  if [[ -z "$ha_token" ]] || [[ -z "$ha_url" ]]; then
+    return 1
+  fi
+
+  # Convert HTTP/HTTPS to WS/WSS
+  local ws_url="${ha_url//http:/ws:}"
+  ws_url="${ws_url//https:/wss:}"
+  ws_url="${ws_url}/api/websocket"
+
+  # Query device registry and area registry via WebSocket
+  {
+    echo '{"type": "auth", "access_token": "'$ha_token'"}'
+    sleep 0.5
+    echo '{"id": 1, "type": "config/device_registry/list"}'
+    sleep 0.5
+    echo '{"id": 2, "type": "config/area_registry/list"}'
+    sleep 2
+  } | websocat -n "$ws_url" 2>/dev/null | jq -s '
+    # Build area lookup map (area_id -> name)
+    (.[1].result | map({(.id): .name}) | add) as $areas |
+    # Map device_name to area_name (handle MAC suffix variations)
+    .[0].result | map(
+      .name as $name |
+      ($name | sub("-[0-9a-fA-F]{6}$"; "")) as $name_base |
+      {
+        ($name): ($areas[.area_id] // "-"),
+        ($name_base): ($areas[.area_id] // "-")
+      }
+    ) | add
+  '
+}
+
 # ── Parallel Job Queue ────────────────────────────────────────────────────────
 # Helper to run multiple commands in parallel with job limiting
 # Usage: run_parallel_jobs <max_jobs> <"cmd1" "cmd2" ...>
@@ -368,6 +421,12 @@ list_devices() {
   # Sort and deduplicate
   sort -u "$device_data" > "${device_data}.sorted"
 
+  # Try to get Home Assistant area info
+  local ha_areas="{}"
+  if get_ha_device_areas > /tmp/ha_areas.json 2>/dev/null; then
+    ha_areas=$(cat /tmp/ha_areas.json)
+  fi
+
   # If ID-only mode, output device IDs in requested format
   if [[ "$suffix_only" == "true" ]]; then
     if [[ "$output_format" == "csv" ]]; then
@@ -459,7 +518,7 @@ list_devices() {
   fi
 
   if [[ "$output_format" == "csv" ]]; then
-    echo "ID,Device,Friendly Name,Project,Version,Hash"
+    echo "ID,Device,Friendly Name,Area,Project,Version,Hash"
     while IFS='|' read -r hostname friendly project version hash; do
       # Filter by role if specified
       if [[ -n "$filter_role" ]]; then
@@ -481,7 +540,10 @@ list_devices() {
         fi
       fi
       id="${hostname##*-}"
-      echo "$id,$hostname,$friendly,$project,$version,$hash"
+      # Try to get area from HA (match by full hostname or base name)
+      area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
+      [[ -z "$area" ]] && area="-"
+      echo "$id,$hostname,$friendly,$area,$project,$version,$hash"
     done < "${device_data}.sorted"
   elif [[ "$output_format" == "json" ]]; then
     (
@@ -508,20 +570,24 @@ list_devices() {
           fi
         fi
         id="${hostname##*-}"
+        # Try to get area from HA (match by full hostname or base name)
+        area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // null" 2>/dev/null)
+        [[ -z "$area" ]] && area=null
         [[ "$first" != true ]] && echo ","
-        printf '  {"id": "%s", "device": "%s", "friendly_name": "%s", "project": "%s", "version": "%s", "hash": "%s"}' \
-          "$id" "$hostname" "$friendly" "$project" "$version" "$hash"
+        printf '  {"id": "%s", "device": "%s", "friendly_name": "%s", "area": %s, "project": "%s", "version": "%s", "hash": "%s"}' \
+          "$id" "$hostname" "$friendly" "$area" "$project" "$version" "$hash"
         first=false
       done < "${device_data}.sorted"
       echo
       echo "]"
     ) | jq '.'
   else
-    # Text format - calculate column widths
+    # Text format - calculate column widths (all left-aligned)
     local margin=2
     local header_id="ID"
     local header_device="Device"
     local header_friendly="Friendly Name"
+    local header_area="Area"
     local header_project="Project"
     local header_version="Version"
     local header_hash="Hash"
@@ -529,6 +595,7 @@ list_devices() {
     local w_id=$(( ${#header_id} + margin ))
     local w_device=$(( ${#header_device} + margin ))
     local w_friendly=$(( ${#header_friendly} + margin ))
+    local w_area=$(( ${#header_area} + margin ))
     local w_project=$(( ${#header_project} + margin ))
     local w_version=$(( ${#header_version} + margin ))
     local w_hash=$(( ${#header_hash} + margin ))
@@ -536,9 +603,12 @@ list_devices() {
     # Scan data to find max widths
     while IFS='|' read -r hostname friendly project version hash; do
       id="${hostname##*-}"
+      area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
+      [[ -z "$area" ]] && area="-"
       (( ${#id} + margin > w_id )) && w_id=$(( ${#id} + margin ))
       (( ${#hostname} + margin > w_device )) && w_device=$(( ${#hostname} + margin ))
       (( ${#friendly} + margin > w_friendly )) && w_friendly=$(( ${#friendly} + margin ))
+      (( ${#area} + margin > w_area )) && w_area=$(( ${#area} + margin ))
       (( ${#project} + margin > w_project )) && w_project=$(( ${#project} + margin ))
       (( ${#version} + margin > w_version )) && w_version=$(( ${#version} + margin ))
       (( ${#hash} + margin > w_hash )) && w_hash=$(( ${#hash} + margin ))
@@ -547,15 +617,16 @@ list_devices() {
     info "Discovered ESPHome devices on network:"
     echo
 
-    # Print headers with calculated widths
-    printf "  ${GRN}%-${w_id}s %-${w_device}s %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_hash}s${RST}\n" \
-      "ID" "Device" "Friendly Name" "Project" "Version" "Hash"
+    # Print headers with calculated widths (all left-aligned with %)
+    printf "  ${GRN}%-${w_id}s %-${w_device}s %-${w_friendly}s %-${w_area}s %-${w_project}s %-${w_version}s %-${w_hash}s${RST}\n" \
+      "ID" "Device" "Friendly Name" "Area" "Project" "Version" "Hash"
 
     # Print separator
     printf "  ${DIM}"
     printf "%-${w_id}s " "$(printf '─%.0s' $(seq 1 $((w_id-1))))"
     printf "%-${w_device}s " "$(printf '─%.0s' $(seq 1 $((w_device-1))))"
     printf "%-${w_friendly}s " "$(printf '─%.0s' $(seq 1 $((w_friendly-1))))"
+    printf "%-${w_area}s " "$(printf '─%.0s' $(seq 1 $((w_area-1))))"
     printf "%-${w_project}s " "$(printf '─%.0s' $(seq 1 $((w_project-1))))"
     printf "%-${w_version}s " "$(printf '─%.0s' $(seq 1 $((w_version-1))))"
     printf "%-${w_hash}s" "$(printf '─%.0s' $(seq 1 $((w_hash-1))))"
@@ -584,8 +655,11 @@ list_devices() {
         fi
       fi
       id="${hostname##*-}"
-      printf "  ${GRN}%-${w_id}s${RST} %-${w_device}s %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_hash}s\n" \
-        "$id" "$hostname" "$friendly" "$project" "$version" "$hash"
+      # Try to get area from HA (match by full hostname or base name)
+      area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
+      [[ -z "$area" ]] && area="-"
+      printf "  ${GRN}%-${w_id}s${RST} %-${w_device}s %-${w_friendly}s %-${w_area}s %-${w_project}s %-${w_version}s %-${w_hash}s\n" \
+        "$id" "$hostname" "$friendly" "$area" "$project" "$version" "$hash"
       found=$((found + 1))
     done < "${device_data}.sorted"
 
