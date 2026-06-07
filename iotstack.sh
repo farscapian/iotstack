@@ -1379,7 +1379,12 @@ Examples:
     info "Configuration: $yaml_path"
     echo ""
 
-    esphome run "$yaml_path" --device "$tty_device"
+    # Compile first (cached if already done), then upload without waiting for boot
+    info "Compiling..."
+    esphome compile "$yaml_path" >/dev/null 2>&1 || err "Compilation failed"
+    info "Uploading..."
+    esphome upload "$yaml_path" --device "$tty_device" || err "Upload failed"
+    ok "Flash complete on $tty_device"
     return
   fi
 
@@ -1399,11 +1404,17 @@ Examples:
   info "Configuration: $yaml_path"
   echo ""
 
-  # Flash all devices in parallel
+  # Compile once (cached for parallel uploads)
+  info "Compiling firmware..."
+  esphome compile "$yaml_path" >/dev/null 2>&1 || err "Compilation failed"
+  ok "Firmware compiled"
+  echo ""
+
+  # Upload to all devices in parallel (no boot wait)
   local pids=()
   for tty in "${tty_devices[@]}"; do
-    info "Starting flash on $tty..."
-    esphome run "$yaml_path" --device "$tty" > /tmp/iotstack-flash-$(basename "$tty").log 2>&1 &
+    info "Starting upload on $tty..."
+    esphome upload "$yaml_path" --device "$tty" > /tmp/iotstack-flash-$(basename "$tty").log 2>&1 &
     pids+=($!)
   done
 
@@ -1421,10 +1432,12 @@ Examples:
   done
 
   if [[ $failed -gt 0 ]]; then
-    err "Failed to flash $failed device(s). Check logs:
+    err "Failed to upload to $failed device(s). Check logs:
 $(printf '  /tmp/iotstack-flash-%s.log\n' "$(basename ${tty_devices[0]})")"
   else
-    ok "Successfully flashed all ${#tty_devices[@]} device(s)"
+    ok "Successfully uploaded to all ${#tty_devices[@]} device(s)"
+    echo ""
+    echo "Devices will boot with new firmware. Safe mode boot sequence in progress..."
   fi
 }
 
