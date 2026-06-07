@@ -129,29 +129,34 @@ get_ha_device_areas() {
   ws_url="${ws_url//https:/wss:}"
   ws_url="${ws_url}/api/websocket"
 
-  # Query device registry and area registry via WebSocket
-  {
-    echo '{"type": "auth", "access_token": "'$ha_token'"}'
+  # Query device registry and area registry via WebSocket (with timeout)
+  timeout 5 bash -c "{
+    echo '{\"type\": \"auth\", \"access_token\": \"'$ha_token'\"}'
     sleep 0.5
-    echo '{"id": 1, "type": "config/device_registry/list"}'
+    echo '{\"id\": 1, \"type\": \"config/device_registry/list\"}'
     sleep 0.5
-    echo '{"id": 2, "type": "config/area_registry/list"}'
+    echo '{\"id\": 2, \"type\": \"config/area_registry/list\"}'
     sleep 2
-  } | websocat -n "$ws_url" 2>/dev/null | jq -s '
+  } | websocat -n '$ws_url' 2>/dev/null" | jq -s '
+    # Handle case where responses might not be in expected order
+    map(select(.result != null)) |
+    # Find device and area registries
+    (map(select(.id == 1) | .result) | .[0] // []) as $devices |
+    (map(select(.id == 2) | .result) | .[0] // []) as $areas |
     # Build area lookup map (area_id -> name)
-    (.[1].result | map({(.id): .name}) | add) as $areas |
+    ($areas | map({(.id): .name}) | add // {}) as $area_map |
     # Map device names to area (handle multiple formats)
-    .[0].result | map(
+    ($devices | map(
       .name as $name |
       ($name | sub("-[0-9a-fA-F]{6}$"; "")) as $name_base |
-      ($name | scan("[0-9a-fA-F]{6}$") | join("")) as $mac_suffix |
+      ($name | capture("(?<suffix>[0-9a-fA-F]{6})$") | .suffix // "") as $mac_suffix |
       {
-        ($name): ($areas[.area_id] // "-"),
-        ($name_base): ($areas[.area_id] // "-"),
-        ($mac_suffix): ($areas[.area_id] // "-")
-      }
-    ) | add
-  '
+        ($name): ($area_map[.area_id] // "-"),
+        ($name_base): ($area_map[.area_id] // "-")
+      } +
+      if ($mac_suffix != "") then {($mac_suffix): ($area_map[.area_id] // "-")} else {} end
+    ) | add // {})
+  ' 2>/dev/null || echo '{}'
 }
 
 # ── Parallel Job Queue ────────────────────────────────────────────────────────
