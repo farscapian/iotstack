@@ -282,6 +282,38 @@ User updates secrets via `iotstack secret set <role> <ota|api> <value>`, which u
 
 This allows secrets.yaml to be checked into git with safe defaults while protecting actual secrets in encrypted pass store.
 
+## 🚨 CRITICAL: Never Print Passwords or Secrets to Console
+
+**Rule: NEVER echo passwords, API keys, or secrets to stdout/stderr**
+
+Passwords printed to console can be captured in:
+- Shell history (`~/.bash_history`, `~/.zsh_history`)
+- Log files (CI logs, audit logs, syslog)
+- Terminal session recordings
+- Process monitoring tools (`ps`, `top`)
+- Script output redirections
+
+**Correct pattern:** Use environment variables and avoid console output
+
+```bash
+# ✓ CORRECT - password in env var, not printed
+export OTA_PWD="actual_password"
+iotstack update bleproxy --ota-password "$OTA_PWD"
+unset OTA_PWD
+
+# ✗ WRONG - password printed to console
+iotstack update bleproxy --ota-password "actual_password"
+
+# ✗ WRONG - password in command line (visible in ps, history)
+iotstack update bleproxy --ota-password "myPassword123"
+```
+
+**In code:**
+- ✓ Output: `echo "[OK] OTA password updated (provided)"`
+- ✗ Output: `echo "[OK] OTA password: $password"`
+- ✓ Output: `echo "[OK] Generated cryptographically secure password"`
+- ✗ Output: `echo "[OK] Generated password: $new_password"`
+
 ## 🚨 CRITICAL: Pass Password Handling
 
 **When using `pass insert` to store secrets, ALWAYS echo the password TWICE** (for confirmation):
