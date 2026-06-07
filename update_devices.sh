@@ -1323,17 +1323,18 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   FQDN="${HOSTNAME}.local"
   dim "  started → ${HOSTNAME}"
 
-  # Extract device name from YAML's 'name:' field (needed for temp files during reassign)
-  # First try to extract from esphome.name field (with variable substitution)
-  DEVICE_NAME=$(grep -E '^\s+name:' "$YAML_FILE" | head -1 | sed 's/.*name:\s*["'\'']*//' | sed 's/["'\''].*//' | xargs)
+  # Extract device name from YAML filename (needed for temp files during reassign)
+  DEVICE_NAME=$(basename "$YAML_FILE" .yaml)
 
-  # If not found or empty, fall back to YAML filename
-  if [[ -z "$DEVICE_NAME" ]]; then
-    DEVICE_NAME=$(basename "$YAML_FILE" .yaml)
+  # Find the actual firmware binary by searching the build directory
+  # ESPHome creates: yamls/.esphome/build/<resolved-name>/.pioenvs/<resolved-name>/firmware.ota.bin
+  # We search for the most recently created firmware.ota.bin in case name has variables
+  FIRMWARE_BIN=$(find "yamls/.esphome/build" -name "firmware.ota.bin" -type f 2>/dev/null | xargs ls -t 2>/dev/null | head -1)
+
+  if [[ -z "$FIRMWARE_BIN" ]]; then
+    # Fallback: assume standard build path based on filename
+    FIRMWARE_BIN="yamls/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"
   fi
-
-  # OTA firmware is in yamls/.esphome/build/<device>/.pioenvs/<device>/firmware.ota.bin
-  FIRMWARE_BIN="yamls/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"
 
   (
     # Run upload with 30-second timeout (fail fast if auth fails)
