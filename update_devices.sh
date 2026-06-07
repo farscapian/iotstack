@@ -1005,12 +1005,13 @@ PYEOF
 fi
 
 # ── Compile (with SHA256 cache to skip unnecessary builds) ───────────────────
-# Cache key: SHA256 of the YAML file + ESPHome version.
+# Cache key: SHA256 of the ORIGINAL YAML file + ESPHome version.
 # If both match a prior successful build, skip compilation and reuse the
 # stored config_hash. Invalidated by any YAML edit or ESPHome upgrade.
+# Uses ORIGINAL_YAML_FILE to ignore temp file changes (OTA password embedding)
 CACHE_FILE="${BASE_LOG_DIR}/${YAML_NAME}.build.cache"
 
-YAML_SHA256=$(sha256sum "$YAML_FILE" | awk '{print $1}')
+YAML_SHA256=$(sha256sum "$ORIGINAL_YAML_FILE" | awk '{print $1}')
 ESPHOME_VERSION=$("$ESPHOME_BIN" version 2>/dev/null | grep -o '[0-9][0-9]*\.[0-9.]*' | head -1)
 
 CACHED_YAML_SHA256=$(grep '^yaml_sha256='     "$CACHE_FILE" 2>/dev/null | cut -d= -f2 || true)
