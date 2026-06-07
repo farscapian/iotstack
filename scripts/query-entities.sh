@@ -64,18 +64,18 @@ sync_secret() {
 
 # Get HA_TOKEN: sync from secrets.yaml if needed, then use pass
 HA_TOKEN=$(sync_secret "HA Token" "ha_token" "iotstack/common/ha_token" || pass show "iotstack/common/ha_token" 2>/dev/null || echo "")
+HA_TOKEN=$(printf '%s' "$HA_TOKEN" | xargs)  # Trim all whitespace
 
 [[ -z "$HA_TOKEN" ]] && err "HA_TOKEN not found in pass or secrets.yaml"
 
 # Get HA_URL: sync from secrets.yaml if needed, then use pass or default
 HA_URL=$(sync_secret "HA URL" "ha_url" "iotstack/common/ha_url" || pass show "iotstack/common/ha_url" 2>/dev/null || echo "$HA_URL")
-
-# Trim whitespace (newlines, spaces)
-HA_URL=$(echo "$HA_URL" | tr -d '[:space:]')
+HA_URL=$(printf '%s' "$HA_URL" | xargs)  # Trim all whitespace
 
 [[ -z "$HA_URL" ]] && err "HA_URL not found in pass, secrets.yaml, or HA_URL env var"
 
 echo "[INFO] Using HA_URL: $HA_URL" >&2
+echo "[DEBUG] HA_URL length: ${#HA_URL} chars" >&2
 
 # Step 1: Get device list and find matching device_id
 echo "[DEBUG] Fetching device registry from: $HA_URL/api/config/device_registry/list" >&2
