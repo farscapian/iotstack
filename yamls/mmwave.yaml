@@ -489,7 +489,7 @@ light:
             call.set_red(0.0);
             call.set_green(1.0);
             call.set_blue(0.0);
-            call.set_transition_length(100ms);
+            call.set_transition_length(100);
             call.perform();
 
 # 8. Scripts
