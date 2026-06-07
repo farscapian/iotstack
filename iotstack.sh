@@ -1350,49 +1350,82 @@ cmd_flash() {
   if [[ -z "$device" ]]; then
     err "Usage: iotstack flash <role|yaml> [tty-device]
 Examples:
-  iotstack flash bleproxy                    # auto-detect if only one device
-  iotstack flash bleproxy /dev/ttyACM0       # specify device
+  iotstack flash bleproxy                    # flash all matching esp32 variants
+  iotstack flash bleproxy /dev/ttyACM0       # flash single device
   iotstack flash yamls/mmwave.yaml /dev/ttyUSB0"
-  fi
-
-  # If no device specified, auto-detect
-  if [[ -z "$tty_device" ]]; then
-    # Find all USB serial devices
-    local tty_devices=()
-    for dev in /dev/ttyACM* /dev/ttyUSB*; do
-      if [[ -e "$dev" ]]; then
-        tty_devices+=("$dev")
-      fi
-    done 2>/dev/null
-
-    if [[ ${#tty_devices[@]} -eq 0 ]]; then
-      err "No USB serial devices found. Plug in the device and try again, or specify manually:
-  iotstack flash $device /dev/ttyACM0"
-    elif [[ ${#tty_devices[@]} -gt 1 ]]; then
-      err "Multiple USB serial devices found:
-$(printf '  %s\n' "${tty_devices[@]}")
-Please specify which one:
-  iotstack flash $device ${tty_devices[0]}"
-    else
-      tty_device="${tty_devices[0]}"
-    fi
   fi
 
   # Resolve device role to YAML path
   local yaml_path
   yaml_path=$(resolve_device "$device")
 
-  # Verify TTY device exists
-  if [[ ! -e "$tty_device" ]]; then
-    err "TTY device not found: $tty_device"
+  # Extract ESP32 variant from YAML (e.g., esp32c6, esp32s3)
+  local esp32_variant
+  esp32_variant=$(grep -i "board:" "$yaml_path" | grep -o "seeed_xiao_esp32[^ ]*\|esp32[^ ]*" | head -1 | tr '[:upper:]' '[:lower:]')
+
+  if [[ -z "$esp32_variant" ]]; then
+    err "Could not determine ESP32 variant from: $yaml_path"
   fi
 
-  echo "[INFO] Flashing to: $tty_device"
-  echo "[INFO] Configuration: $yaml_path"
+  info "Target ESP32 variant: $esp32_variant"
+
+  # If specific device specified, flash only that one
+  if [[ -n "$tty_device" ]]; then
+    if [[ ! -e "$tty_device" ]]; then
+      err "TTY device not found: $tty_device"
+    fi
+
+    info "Flashing to: $tty_device"
+    info "Configuration: $yaml_path"
+    echo ""
+
+    esphome run "$yaml_path" --device "$tty_device"
+    return
+  fi
+
+  # Auto-detect all USB serial devices
+  local tty_devices=()
+  for dev in /dev/ttyACM* /dev/ttyUSB*; do
+    if [[ -e "$dev" ]]; then
+      tty_devices+=("$dev")
+    fi
+  done 2>/dev/null
+
+  if [[ ${#tty_devices[@]} -eq 0 ]]; then
+    err "No USB serial devices found. Plug in device(s) and try again."
+  fi
+
+  info "Found ${#tty_devices[@]} USB device(s): ${tty_devices[*]}"
+  info "Configuration: $yaml_path"
   echo ""
 
-  # Use esphome to flash via serial
-  esphome run "$yaml_path" --device "$tty_device"
+  # Flash all devices in parallel
+  local pids=()
+  for tty in "${tty_devices[@]}"; do
+    info "Starting flash on $tty..."
+    esphome run "$yaml_path" --device "$tty" > /tmp/iotstack-flash-$(basename "$tty").log 2>&1 &
+    pids+=($!)
+  done
+
+  # Wait for all to complete
+  local failed=0
+  for i in "${!pids[@]}"; do
+    pid=${pids[$i]}
+    tty=${tty_devices[$i]}
+    if wait "$pid"; then
+      ok "Flash successful on $tty"
+    else
+      warn "Flash FAILED on $tty"
+      failed=$((failed + 1))
+    fi
+  done
+
+  if [[ $failed -gt 0 ]]; then
+    err "Failed to flash $failed device(s). Check logs:
+$(printf '  /tmp/iotstack-flash-%s.log\n' "$(basename ${tty_devices[0]})")"
+  else
+    ok "Successfully flashed all ${#tty_devices[@]} device(s)"
+  fi
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
