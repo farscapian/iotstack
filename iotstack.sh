@@ -921,7 +921,8 @@ cmd_update() {
   done
 
   if [[ -z "$device_or_yaml" ]]; then
-    err "Usage: iotstack update [options] [<device>|<yaml>|all] [--thread]"
+    help_update
+    exit 1
   fi
 
   # Resolve device name to YAML if needed
@@ -1021,7 +1022,8 @@ cmd_reassign() {
 
   # Last positional is the target device/yaml, rest are MACs
   if [[ ${#positional_args[@]} -lt 2 ]]; then
-    err "Usage: iotstack reassign <MAC1> [MAC2 ...] <device|yaml>"
+    help_reassign
+    exit 1
   fi
 
   local device_or_yaml="${positional_args[-1]}"
@@ -1080,7 +1082,8 @@ cmd_verify() {
   done
 
   if [[ -z "$device_or_yaml" ]]; then
-    err "Usage: iotstack verify [<device>|<yaml>|all] [--thread]"
+    help_verify
+    exit 1
   fi
 
   # Resolve device name to YAML if needed
@@ -1231,21 +1234,29 @@ cmd_secret() {
   export GNUPGHOME="${HOME}/.iotstack/.gnupg"
   export PASSWORD_STORE_DIR="${HOME}/.iotstack/.pass"
 
+  if [[ -z "$command" ]]; then
+    help_secret
+    exit 1
+  fi
+
   case "$command" in
     get)
       if [[ -z "$role" || -z "$secret_type" ]]; then
-        err "Usage: iotstack secret get <role> <ota|api> [version]"
+        help_secret
+        exit 1
       fi
       "$SCRIPT_DIR/iotstack-secrets" get "$role" "$secret_type" "$value"
       ;;
     set)
       if [[ -z "$role" || -z "$secret_type" || -z "$value" ]]; then
-        err "Usage: iotstack secret set <role> <ota|api> <value>"
+        help_secret
+        exit 1
       fi
       "$SCRIPT_DIR/iotstack-secrets" set "$role" "$secret_type" "$value"
       ;;
     *)
-      err "Unknown secret command: $command. Use 'get' or 'set'"
+      help_secret
+      exit 1
       ;;
   esac
 }
@@ -1264,7 +1275,8 @@ cmd_rotate_secrets() {
   local secrets_yaml="${HOME}/.iotstack/secrets/secrets.yaml"
 
   if [[ -z "$role" ]]; then
-    err "Usage: iotstack rotate-secrets <role> [new-secret]"
+    help_rotate_secrets
+    exit 1
   fi
 
   # Verify role exists (check if YAML file exists)
@@ -1601,11 +1613,8 @@ cmd_flash() {
   local tty_device="${2:-}"
 
   if [[ -z "$device" ]]; then
-    err "Usage: iotstack flash <role|yaml> [tty-device]
-Examples:
-  iotstack flash bleproxy                    # flash all matching esp32 variants
-  iotstack flash bleproxy /dev/ttyACM0       # flash single device
-  iotstack flash yamls/mmwave.yaml /dev/ttyUSB0"
+    help_flash
+    exit 1
   fi
 
   # Resolve device role to YAML path
