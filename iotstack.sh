@@ -1011,7 +1011,8 @@ cmd_update() {
       for yaml_variant in "$wifi_yaml" "$thread_yaml"; do
         [[ -z "$yaml_variant" ]] && continue
 
-        yaml="yamls/$yaml_variant"
+        # yaml_variant already includes the path prefix (e.g., "yamls/bleproxy.yaml")
+        yaml="${SCRIPT_DIR}/$yaml_variant"
         if [[ -f "$yaml" ]] && grep -q '^esphome:' "$yaml" 2>/dev/null; then
           # Build update command with MACs and OTA password if specified
           declare -a cmd=("$UPDATE_SCRIPT" "${update_args[@]}")
