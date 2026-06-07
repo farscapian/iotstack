@@ -110,7 +110,9 @@ sync_secret() {
     else
       warn "Secret '$pass_path' changed in secrets.yaml, updating pass"
     fi
-    echo "$secrets_value" | pass insert -f "$pass_path" 2>&1 || true
+    if ! echo "$secrets_value" | pass insert -f "$pass_path" 2>&1; then
+      warn "Failed to sync '$pass_path' to pass - may cause repeated warnings"
+    fi
   fi
   # If they match, don't warn - already in sync
 
