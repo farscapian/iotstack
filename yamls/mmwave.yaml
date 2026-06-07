@@ -39,36 +39,44 @@ api:
   on_client_connected:
     - if:
         condition:
-          binary_sensor.is_on: presence
+          not: id(manual_mode)
         then:
-          - light.turn_on:
-              id: rgb_led
-              red: 100%
-              green: 0%
-              blue: 0%
-              brightness: 60%
-              effect: "Pulse Heart Rate"
-        else:
-          - light.turn_on:
-              id: rgb_led
-              red: 0%
-              green: 100%
-              blue: 0%
-              brightness: 60%
-              transition_length: 500ms
+          - if:
+              condition:
+                binary_sensor.is_on: presence
+              then:
+                - light.turn_on:
+                    id: rgb_led
+                    red: 100%
+                    green: 0%
+                    blue: 0%
+                    brightness: 60%
+                    effect: "Pulse Heart Rate"
+              else:
+                - light.turn_on:
+                    id: rgb_led
+                    red: 0%
+                    green: 100%
+                    blue: 0%
+                    brightness: 60%
+                    transition_length: 500ms
   on_client_disconnected:
     - if:
         condition:
-          not:
-            api.connected:
+          not: id(manual_mode)
         then:
-          - light.turn_on:
-              id: rgb_led
-              red: 100%
-              green: 50%
-              blue: 0%
-              brightness: 60%
-              effect: "Strobe Red Yellow"
+          - if:
+              condition:
+                not:
+                  api.connected:
+              then:
+                - light.turn_on:
+                    id: rgb_led
+                    red: 100%
+                    green: 50%
+                    blue: 0%
+                    brightness: 60%
+                    effect: "Strobe Red Yellow"
 
 ota:
   - platform: esphome
@@ -123,43 +131,51 @@ binary_sensor:
     on_press:
       - if:
           condition:
-            api.connected:
+            not: id(manual_mode)
           then:
-            - light.turn_on:
-                id: rgb_led
-                red: 100%
-                green: 0%
-                blue: 0%
-                brightness: 20%
-                effect: "Pulse Heart Rate"
-          else:
-            - light.turn_on:
-                id: rgb_led
-                red: 100%
-                green: 50%
-                blue: 0%
-                brightness: 20%
-                effect: "Strobe Red Yellow"
+            - if:
+                condition:
+                  api.connected:
+                then:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 100%
+                      green: 0%
+                      blue: 0%
+                      brightness: 20%
+                      effect: "Pulse Heart Rate"
+                else:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 100%
+                      green: 50%
+                      blue: 0%
+                      brightness: 20%
+                      effect: "Strobe Red Yellow"
     on_release:
       - if:
           condition:
-            api.connected:
+            not: id(manual_mode)
           then:
-            - light.turn_on:
-                id: rgb_led
-                red: 0%
-                green: 100%
-                blue: 0%
-                brightness: 20%
-                transition_length: 500ms
-          else:
-            - light.turn_on:
-                id: rgb_led
-                red: 100%
-                green: 50%
-                blue: 0%
-                brightness: 20%
-                effect: "Strobe Red Yellow"
+            - if:
+                condition:
+                  api.connected:
+                then:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 0%
+                      green: 100%
+                      blue: 0%
+                      brightness: 20%
+                      transition_length: 500ms
+                else:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 100%
+                      green: 50%
+                      blue: 0%
+                      brightness: 20%
+                      effect: "Strobe Red Yellow"
 
   # Physical button (GPIO9 - boot button on Seeed XIAO)
   - platform: gpio
@@ -279,6 +295,10 @@ globals:
   - id: brightness_multiplier
     type: float
     initial_value: '0.5'  # Default to 50%
+    restore_value: no
+  - id: manual_mode
+    type: bool
+    initial_value: 'false'
     restore_value: no
 
 # 7. Buttons
@@ -451,6 +471,45 @@ light:
             call.set_transition_length(0);
             call.perform();
             is_yellow = !is_yellow;
+      - lambda:
+          name: "Distance"
+          update_interval: 100ms
+          lambda: |-
+            // Distance-based brightness (green color)
+            // 6 inches (0.15m) = 100% bright, 20 feet (6.1m) = 10% bright
+            if (!id(distance_sensor).has_state()) {
+              // No distance reading - turn off
+              auto call = id(rgb_led).make_call();
+              call.set_state(false);
+              call.perform();
+              return;
+            }
+
+            float distance = id(distance_sensor).state;  // in feet
+            float min_dist = 0.5f;    // 6 inches
+            float max_dist = 20.0f;   // 20 feet
+            float min_brightness = 0.1f;  // 10% at far distance
+            float max_brightness = 1.0f;  // 100% at close distance
+
+            float brightness;
+            if (distance <= min_dist) {
+              brightness = max_brightness;  // Very close - full brightness
+            } else if (distance >= max_dist) {
+              brightness = min_brightness;  // Far - dim
+            } else {
+              // Linear interpolation between min and max
+              float ratio = (distance - min_dist) / (max_dist - min_dist);
+              brightness = max_brightness - (ratio * (max_brightness - min_brightness));
+            }
+
+            auto call = id(rgb_led).make_call();
+            call.set_state(true);
+            call.set_brightness(brightness * id(brightness_multiplier));
+            call.set_red(0.0);
+            call.set_green(1.0);
+            call.set_blue(0.0);
+            call.set_transition_length(100ms);
+            call.perform();
 
 # 8. Scripts
 script:
@@ -459,16 +518,19 @@ script:
     then:
       - lambda: |-
           int current = id(current_effect);
-          current = (current + 1) % 3;  // Cycle through 0, 1, 2
+          current = (current + 1) % 4;  // Cycle through 0, 1, 2, 3
           id(current_effect) = current;
+          id(manual_mode) = true;  // User is now manually controlling
 
           auto call = id(rgb_led).make_call();
           if (current == 0) {
             call.set_effect("Off");
           } else if (current == 1) {
-            call.set_effect("Pulse Heart Rate");
-          } else {
             call.set_effect("Pulse Breath Rate");
+          } else if (current == 2) {
+            call.set_effect("Pulse Heart Rate");
+          } else if (current == 3) {
+            call.set_effect("Distance");
           }
           call.perform();
 
