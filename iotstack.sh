@@ -329,20 +329,23 @@ Arguments:
 
 Options:
   --thread              Use Thread variant instead of WiFi
+  --ota-password <pwd>  OTA password for device authentication
   --dry-run             Compile and show what would be flashed (no flashing)
   --force-reflash       Flash all devices regardless of version
   --jobs N              Max concurrent OTA jobs (default: 4)
   -v, --verbose         Show full compilation output
 
 Examples:
-  iotstack update bleproxy                              # Update all bleproxy devices
-  iotstack update threadrouter --thread                 # Update Thread device
-  iotstack update all                                   # Update all devices
-  iotstack update --dry-run mmwave                      # Preview without flashing
-  iotstack update --force-reflash bleproxy              # Force flash all devices
-  iotstack update --jobs 8 bleproxy                     # Update 8 devices in parallel
-  iotstack update a1a7b0 8e1aa8 bleproxy               # Update only specific devices by MAC
-  iotstack update 135b60 1a7b00 1af95c threadrouter    # Update 3 specific Thread devices
+  iotstack update bleproxy                                            # Update all bleproxy devices
+  iotstack update threadrouter --thread                               # Update Thread device
+  iotstack update all                                                 # Update all devices
+  iotstack update --dry-run mmwave                                    # Preview without flashing
+  iotstack update --force-reflash bleproxy                            # Force flash all devices
+  iotstack update --jobs 8 bleproxy                                   # Update 8 devices in parallel
+  iotstack update a1a7b0 8e1aa8 bleproxy                              # Update only specific devices by MAC
+  iotstack update 135b60 1a7b00 1af95c threadrouter                   # Update 3 specific Thread devices
+  iotstack update bleproxy --ota-password "myPassword123"             # Update with specific OTA password
+  iotstack update a1a7b0 mmwave --ota-password "myPassword123"        # Update MAC with custom password
 
 EOF
 }
@@ -898,6 +901,7 @@ cmd_update() {
 
   local device_or_yaml=""
   local use_thread=""
+  local ota_password=""
   declare -a update_args=()
   declare -a mac_suffixes=()
 
@@ -907,6 +911,10 @@ cmd_update() {
       --thread)
         use_thread="--thread"
         shift
+        ;;
+      --ota-password)
+        ota_password="$2"
+        shift 2
         ;;
       --dry-run|--flash-anyway|--verbose|-v|--jobs)
         update_args+=("$1")
@@ -966,15 +974,16 @@ cmd_update() {
     failed=0
     while IFS= read -r yaml; do
       if grep -q '^esphome:' "$yaml" 2>/dev/null; then
-        # Pass MACs if specified (for filtering specific devices)
-        if [[ ${#mac_suffixes[@]} -gt 0 ]]; then
-          result=$("$UPDATE_SCRIPT" "${update_args[@]}" "--macs" "${mac_suffixes[@]}" "$yaml" 2>&1) && found=$((found + 1)) || failed=$((failed + 1))
+        # Build update command with MACs and OTA password if specified
+        declare -a cmd=("$UPDATE_SCRIPT" "${update_args[@]}")
+        [[ -n "$ota_password" ]] && cmd+=("--ota-password" "$ota_password")
+        [[ ${#mac_suffixes[@]} -gt 0 ]] && cmd+=("--macs" "${mac_suffixes[@]}")
+        cmd+=("$yaml")
+
+        if "${cmd[@]}"; then
+          found=$((found + 1))
         else
-          if "$UPDATE_SCRIPT" "${update_args[@]}" "$yaml"; then
-            found=$((found + 1))
-          else
-            failed=$((failed + 1))
-          fi
+          failed=$((failed + 1))
         fi
         echo
       fi
@@ -993,12 +1002,13 @@ cmd_update() {
       err "File not found: $yaml_file"
     fi
 
-    # Pass MACs if specified (for filtering specific devices)
-    if [[ ${#mac_suffixes[@]} -gt 0 ]]; then
-      "$UPDATE_SCRIPT" "${update_args[@]}" "--macs" "${mac_suffixes[@]}" "$yaml_file"
-    else
-      "$UPDATE_SCRIPT" "${update_args[@]}" "$yaml_file"
-    fi
+    # Build update command with OTA password and MACs if specified
+    declare -a cmd=("$UPDATE_SCRIPT" "${update_args[@]}")
+    [[ -n "$ota_password" ]] && cmd+=("--ota-password" "$ota_password")
+    [[ ${#mac_suffixes[@]} -gt 0 ]] && cmd+=("--macs" "${mac_suffixes[@]}")
+    cmd+=("$yaml_file")
+
+    "${cmd[@]}"
   fi
 }
 
