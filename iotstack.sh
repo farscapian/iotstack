@@ -90,11 +90,14 @@ get_yaml_device_info() {
   echo "${device_type}|${network_type}"
 }
 
-# List available role names (YAML filenames without extension)
+# List available role names (YAML filenames without extension, excluding secrets.yaml)
 list_device_names() {
   for yaml_file in "$YAMLS_DIR"/*.yaml; do
     if [[ -f "$yaml_file" ]]; then
-      basename "$yaml_file" .yaml
+      local basename_only=$(basename "$yaml_file" .yaml)
+      # Skip secrets.yaml (not a device role)
+      [[ "$basename_only" == "secrets" ]] && continue
+      echo "$basename_only"
     fi
   done | sort
 }
@@ -315,26 +318,31 @@ iotstack update — Flash ESPHome devices
 
 Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
+  iotstack update [options] [<MAC1> [MAC2 ...]] <device|yaml> [--thread]
 
 Arguments:
-  <device>   Device role (e.g., bleproxy, mmwave)
-  <yaml>     Path to device config (e.g., yamls/bleproxy.yaml)
-  all        Update all device configs in the project
+  <device>      Device role (e.g., bleproxy, mmwave)
+  <yaml>        Path to device config (e.g., yamls/bleproxy.yaml)
+  all           Update all device configs in the project
+  <MAC1> [MAC2...]  MAC suffix(es) to update (6 hex digits each)
+                    Update only specific devices matching these MACs
 
 Options:
-  --thread               Use Thread variant instead of WiFi
-  --dry-run              Compile and show what would be flashed (no flashing)
-  --force-reflash        Flash all devices regardless of version
-  --jobs N               Max concurrent OTA jobs (default: 4)
-  -v, --verbose          Show full compilation output
+  --thread              Use Thread variant instead of WiFi
+  --dry-run             Compile and show what would be flashed (no flashing)
+  --force-reflash       Flash all devices regardless of version
+  --jobs N              Max concurrent OTA jobs (default: 4)
+  -v, --verbose         Show full compilation output
 
 Examples:
-  iotstack update bleproxy                   # Update WiFi device
-  iotstack update threadrouter --thread      # Update Thread device
-  iotstack update all                        # Update all devices
-  iotstack update --dry-run mmwave           # Preview without flashing
-  iotstack update --force-reflash bleproxy   # Force flash all devices
-  iotstack update --jobs 8 bleproxy          # Update 8 devices in parallel
+  iotstack update bleproxy                              # Update all bleproxy devices
+  iotstack update threadrouter --thread                 # Update Thread device
+  iotstack update all                                   # Update all devices
+  iotstack update --dry-run mmwave                      # Preview without flashing
+  iotstack update --force-reflash bleproxy              # Force flash all devices
+  iotstack update --jobs 8 bleproxy                     # Update 8 devices in parallel
+  iotstack update a1a7b0 8e1aa8 bleproxy               # Update only specific devices by MAC
+  iotstack update 135b60 1a7b00 1af95c threadrouter    # Update 3 specific Thread devices
 
 EOF
 }
@@ -891,8 +899,9 @@ cmd_update() {
   local device_or_yaml=""
   local use_thread=""
   declare -a update_args=()
+  declare -a mac_suffixes=()
 
-  # Parse arguments
+  # Parse arguments - collect MACs (6-digit hex), options, and device name
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --thread)
@@ -908,14 +917,25 @@ cmd_update() {
         shift
         ;;
       all)
-        device_or_yaml="all"
+        if [[ -z "$device_or_yaml" ]]; then
+          device_or_yaml="all"
+        fi
         shift
         ;;
       *)
-        if [[ -z "$device_or_yaml" ]]; then
+        # Check if it's a MAC suffix (6 hex digits) or device name
+        if [[ "$1" =~ ^[0-9a-fA-F]{6}$ ]]; then
+          # It's a MAC suffix
+          mac_suffixes+=("$1")
+          shift
+        elif [[ -z "$device_or_yaml" ]]; then
+          # First non-MAC argument is the device/yaml
           device_or_yaml="$1"
+          shift
+        else
+          # Unknown argument
+          shift
         fi
-        shift
         ;;
     esac
   done
@@ -946,10 +966,15 @@ cmd_update() {
     failed=0
     while IFS= read -r yaml; do
       if grep -q '^esphome:' "$yaml" 2>/dev/null; then
-        if "$UPDATE_SCRIPT" "${update_args[@]}" "$yaml"; then
-          found=$((found + 1))
+        # Pass MACs if specified (for filtering specific devices)
+        if [[ ${#mac_suffixes[@]} -gt 0 ]]; then
+          result=$("$UPDATE_SCRIPT" "${update_args[@]}" "--macs" "${mac_suffixes[@]}" "$yaml" 2>&1) && found=$((found + 1)) || failed=$((failed + 1))
         else
-          failed=$((failed + 1))
+          if "$UPDATE_SCRIPT" "${update_args[@]}" "$yaml"; then
+            found=$((found + 1))
+          else
+            failed=$((failed + 1))
+          fi
         fi
         echo
       fi
@@ -968,7 +993,12 @@ cmd_update() {
       err "File not found: $yaml_file"
     fi
 
-    "$UPDATE_SCRIPT" "${update_args[@]}" "$yaml_file"
+    # Pass MACs if specified (for filtering specific devices)
+    if [[ ${#mac_suffixes[@]} -gt 0 ]]; then
+      "$UPDATE_SCRIPT" "${update_args[@]}" "--macs" "${mac_suffixes[@]}" "$yaml_file"
+    else
+      "$UPDATE_SCRIPT" "${update_args[@]}" "$yaml_file"
+    fi
   fi
 }
 
@@ -1706,7 +1736,9 @@ $(printf '  /tmp/iotstack-flash-%s.log\n' "$(basename ${tty_devices[0]})")"
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 sync_common_secrets() {
-  # Silently sync common secrets from secrets.yaml to pass (no console output)
+  # Seed common secrets from secrets.yaml ONLY if pass doesn't have them yet
+  # Pass takes precedence: if a value exists in pass, it's never overridden
+  # secrets.yaml is only for initial seeding with well-known defaults (e.g., CHANGE_ME)
   local secrets_yaml="$YAMLS_DIR/secrets.yaml"
 
   [[ ! -f "$secrets_yaml" ]] && return 0
@@ -1715,20 +1747,18 @@ sync_common_secrets() {
   export GNUPGHOME="${HOME}/.iotstack/.gnupg"
   export PASSWORD_STORE_DIR="${HOME}/.iotstack/.pass"
 
-  # Sync HA token if present
-  local ha_token=$(grep "^ha_token:" "$secrets_yaml" 2>/dev/null | cut -d'"' -f2 | xargs || echo "")
-  if [[ -n "$ha_token" ]]; then
-    local pass_token=$(pass show "iotstack/common/ha_token" 2>/dev/null | xargs || echo "")
-    if [[ "$pass_token" != "$ha_token" ]]; then
+  # Seed HA token only if pass doesn't have it yet
+  if ! pass show "iotstack/common/ha_token" >/dev/null 2>&1; then
+    local ha_token=$(grep "^ha_token:" "$secrets_yaml" 2>/dev/null | cut -d'"' -f2 | xargs || echo "")
+    if [[ -n "$ha_token" ]]; then
       { echo "$ha_token"; echo "$ha_token"; } | pass insert -f "iotstack/common/ha_token" 2>&1 >/dev/null || true
     fi
   fi
 
-  # Sync HA URL if present
-  local ha_url=$(grep "^ha_url:" "$secrets_yaml" 2>/dev/null | cut -d'"' -f2 | xargs || echo "")
-  if [[ -n "$ha_url" ]]; then
-    local pass_url=$(pass show "iotstack/common/ha_url" 2>/dev/null | xargs || echo "")
-    if [[ "$pass_url" != "$ha_url" ]]; then
+  # Seed HA URL only if pass doesn't have it yet
+  if ! pass show "iotstack/common/ha_url" >/dev/null 2>&1; then
+    local ha_url=$(grep "^ha_url:" "$secrets_yaml" 2>/dev/null | cut -d'"' -f2 | xargs || echo "")
+    if [[ -n "$ha_url" ]]; then
       { echo "$ha_url"; echo "$ha_url"; } | pass insert -f "iotstack/common/ha_url" 2>&1 >/dev/null || true
     fi
   fi
