@@ -660,6 +660,9 @@ fi
 # ── Handle custom OTA password for authentication ─────────────────────────
 # If user provided a custom OTA password, create a temporary YAML with it
 # The OTA password is used to authenticate the OTA upload from the current device
+# IMPORTANT: Save original YAML name for caching (before temp file creation)
+ORIGINAL_YAML_FILE="$YAML_FILE"
+
 if [[ -n "$API_KEY" ]]; then
   # Create temp YAML in same directory as original so it can find secrets.yaml
   YAML_DIR="$(dirname "$YAML_FILE")"
@@ -692,7 +695,9 @@ if [[ "$YAML_FILE" == *"/thread/"* || "$YAML_FILE" == "thread-"* ]]; then
 fi
 
 # ── Logging ──────────────────────────────────────────────────────────────────
-YAML_NAME="$(basename "${YAML_FILE%.yaml}")"
+# Use original YAML file for cache key (before any temp file creation)
+# This ensures cache is consistent across reassign runs with different OTA passwords
+YAML_NAME="$(basename "${ORIGINAL_YAML_FILE%.yaml}")"
 BASE_LOG_DIR="${HOME}/.iotstack/logs"
 LOG_ROOT="${BASE_LOG_DIR}/${YAML_NAME}"
 RUN_TS="$(date '+%Y%m%d_%H%M%S')"
