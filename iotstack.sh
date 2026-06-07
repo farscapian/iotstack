@@ -409,18 +409,35 @@ Usage:
 Arguments:
   <MAC1> [MAC2 ...]  MAC suffix(es) to reassign (e.g., 19b164 199ef4)
   <device|yaml>      Target device role or YAML config
-  --ota-password     OTA password for device authentication (if needed)
+
+Options:
+  --ota-password <pwd>              Single OTA password for device authentication
+  --ota-password-list-path <file>   File with list of passwords to try (one per line)
 
 Examples:
-  iotstack reassign 19b164 bleproxy                           # Reassign to bleproxy role
-  iotstack reassign 8dfcac 0f4df4 mmwave                      # Reassign multiple to mmwave
-  iotstack reassign 11cdc4 threadrouter                       # Reassign to thread device
-  iotstack reassign 19b164 yamls/custom.yaml                  # Reassign to custom YAML
-  iotstack reassign 19b164 mmwave --ota-password <password>   # With OTA password
+  iotstack reassign 19b164 bleproxy                                # Reassign to bleproxy role
+  iotstack reassign 8dfcac 0f4df4 mmwave                           # Reassign multiple to mmwave
+  iotstack reassign 11cdc4 threadrouter                            # Reassign to thread device
+  iotstack reassign 19b164 yamls/custom.yaml                       # Reassign to custom YAML
+  iotstack reassign 19b164 mmwave --ota-password <password>        # With OTA password
+  iotstack reassign 19b164 threadrouter --ota-password-list-path ~/tmp/passwords.txt
 
-SECURITY: Pass passwords via environment variables to avoid shell history:
+PASSWORD LIST FILE FORMAT:
+  - One password per line
+  - No spaces or quotes
+  - Empty lines and lines starting with # are ignored
+  - Example (passwords.txt):
+    myPassword123
+    anotherPassword456
+    # Old password, probably not used
+    oldPassword789
+
+SECURITY: Pass single password via environment variable to avoid shell history:
   export OTA_PWD=<password>
   iotstack reassign 19b164 mmwave --ota-password \"\$OTA_PWD\"
+
+For password list mode, ensure the file permissions are restrictive:
+  chmod 600 ~/tmp/passwords.txt
 
 EOF
 }
@@ -1031,6 +1048,7 @@ cmd_reassign() {
 
   local use_thread=""
   local api_key=""
+  local password_list_file=""
   declare -a update_args=()
   declare -a positional_args=()
 
@@ -1043,6 +1061,10 @@ cmd_reassign() {
         ;;
       --ota-password)
         api_key="$2"
+        shift 2
+        ;;
+      --ota-password-list-path)
+        password_list_file="$2"
         shift 2
         ;;
       --dry-run|-v|--verbose)
@@ -1087,16 +1109,76 @@ cmd_reassign() {
 
   info "Reassigning devices..."
   echo "  MACs: ${reassign_macs[*]}"
-  [[ -n "$api_key" ]] && echo "  OTA Password: (provided)"
-  echo
 
-  # Build and invoke update_devices.sh with reassign flags
-  if [[ -n "$api_key" ]]; then
-    "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" --ota-password "$api_key" "${update_args[@]}"
+  # Handle password list if provided
+  if [[ -n "$password_list_file" ]]; then
+    # Expand path (handle ~)
+    password_list_file="${password_list_file/#\~/$HOME}"
+
+    if [[ ! -f "$password_list_file" ]]; then
+      err "Password list file not found: $password_list_file"
+    fi
+
+    echo "  Mode: Password list brute-force"
+    echo
+
+    declare -a successful_passwords=()
+    declare -a failed_passwords=()
+    local password_count=0
+
+    while IFS= read -r password || [[ -n "$password" ]]; do
+      # Skip empty lines and comments
+      [[ -z "$password" ]] && continue
+      [[ "$password" =~ ^[[:space:]]*# ]] && continue
+
+      # Trim whitespace
+      password=$(printf '%s' "$password" | xargs)
+      [[ -z "$password" ]] && continue
+
+      password_count=$((password_count + 1))
+      echo "[${password_count}] Trying password (${#password} chars)..."
+
+      # Try reassign with this password
+      if "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" --ota-password "$password" "${update_args[@]}" 2>&1 | grep -q "flash successful"; then
+        ok "  ✓ Password worked!"
+        successful_passwords+=("$password")
+      else
+        failed_passwords+=("$password")
+      fi
+      echo
+    done < "$password_list_file"
+
+    # Summary
+    echo "════════════════════════════════════════════════════════"
+    echo "[INFO] Password brute-force summary:"
+    echo "  Total tried: $password_count"
+    echo "  Successful: ${#successful_passwords[@]}"
+    echo "  Failed: ${#failed_passwords[@]}"
+
+    if [[ ${#successful_passwords[@]} -gt 0 ]]; then
+      echo
+      ok "Working password(s):"
+      for pwd in "${successful_passwords[@]}"; do
+        echo "  → $(printf '%s' "$pwd" | head -c 32)${#pwd}"
+      done
+      return 0
+    else
+      err "No passwords from the list worked"
+      return 1
+    fi
   else
-    "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" "${update_args[@]}"
+    # Single password mode
+    [[ -n "$api_key" ]] && echo "  OTA Password: (provided)"
+    echo
+
+    # Build and invoke update_devices.sh with reassign flags
+    if [[ -n "$api_key" ]]; then
+      "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" --ota-password "$api_key" "${update_args[@]}"
+    else
+      "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" "${update_args[@]}"
+    fi
+    return $?
   fi
-  return $?
 }
 
 cmd_verify() {
