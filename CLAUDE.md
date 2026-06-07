@@ -237,6 +237,35 @@ All code changes should be staged and ready, but **git commits and pushes must O
 
 This ensures that all commits represent validated, tested, working changes — not experimental code that may need revision.
 
+## 🚨 CRITICAL: Pass Password Handling
+
+**When using `pass insert` to store secrets, ALWAYS echo the password TWICE** (for confirmation):
+
+```bash
+# ✓ CORRECT - password echoed twice
+{ echo "$password"; echo "$password"; } | pass insert -f "iotstack/roles/bleproxy/ota_password"
+
+# ✗ WRONG - password only echoed once (WILL FAIL SILENTLY)
+echo "$password" | pass insert -f "iotstack/roles/bleproxy/ota_password"
+```
+
+**Why:** `pass insert` requires the password to be entered twice (for confirmation), just like interactive password entry. If only provided once, the insert fails silently with exit code 1, causing:
+- Secret never gets stored in pass
+- Subsequent script runs see it as "missing" and try to sync again
+- Results in repeated warnings and failed secret syncing
+
+**This applies to:**
+- `setup.sh` — initial secret seeding
+- `iotstack-secrets` — manual secret updates
+- `scripts/ha-websocket-query.sh` — syncing secrets from YAML
+- Any script that uses `pass insert`
+
+**Impact of getting this wrong:**
+- Silent failures (no visible error message)
+- Repeated warning messages on every invocation
+- Hours of debugging to figure out why secrets won't sync
+- Wasted time investigating pass store, permissions, etc.
+
 ## Testing Checklist
 
 Before requesting human approval:
