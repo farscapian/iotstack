@@ -464,7 +464,7 @@ script:
 
           auto call = id(rgb_led).make_call();
           if (current == 0) {
-            call.set_effect("None");
+            call.set_effect("Off");
           } else if (current == 1) {
             call.set_effect("Pulse Heart Rate");
           } else {
