@@ -344,8 +344,12 @@ Examples:
   iotstack update --jobs 8 bleproxy                                   # Update 8 devices in parallel
   iotstack update a1a7b0 8e1aa8 bleproxy                              # Update only specific devices by MAC
   iotstack update 135b60 1a7b00 1af95c threadrouter                   # Update 3 specific Thread devices
-  iotstack update bleproxy --ota-password "myPassword123"             # Update with specific OTA password
-  iotstack update a1a7b0 mmwave --ota-password "myPassword123"        # Update MAC with custom password
+  iotstack update bleproxy --ota-password <password>                  # Update with OTA password
+  iotstack update a1a7b0 mmwave --ota-password <password>             # Update MAC subset with password
+
+NOTE: Pass OTA password via environment variable to avoid shell history:
+  export OTA_PWD=<password>
+  iotstack update bleproxy --ota-password \"\$OTA_PWD\"
 
 EOF
 }
@@ -412,7 +416,11 @@ Examples:
   iotstack reassign 8dfcac 0f4df4 mmwave                      # Reassign multiple to mmwave
   iotstack reassign 11cdc4 threadrouter                       # Reassign to thread device
   iotstack reassign 19b164 yamls/custom.yaml                  # Reassign to custom YAML
-  iotstack reassign 19b164 mmwave --ota-password "mypass"     # With OTA password
+  iotstack reassign 19b164 mmwave --ota-password <password>   # With OTA password
+
+SECURITY: Pass passwords via environment variables to avoid shell history:
+  export OTA_PWD=<password>
+  iotstack reassign 19b164 mmwave --ota-password \"\$OTA_PWD\"
 
 EOF
 }
@@ -1079,7 +1087,7 @@ cmd_reassign() {
 
   info "Reassigning devices..."
   echo "  MACs: ${reassign_macs[*]}"
-  [[ -n "$api_key" ]] && echo "  OTA Password: $api_key"
+  [[ -n "$api_key" ]] && echo "  OTA Password: (provided)"
   echo
 
   # Build and invoke update_devices.sh with reassign flags
@@ -1389,7 +1397,7 @@ cmd_rotate_secrets() {
     echo "[INFO] Generating cryptographically secure password..."
     # Generate 32 bytes of random data, encode as base64, remove padding/special chars for compatibility
     new_password=$(openssl rand -base64 32 | tr -d '=+/' | cut -c1-32)
-    echo "[OK] Generated password (32 chars): $new_password"
+    echo "[OK] Generated cryptographically secure password (32 chars)"
     echo
     read -p "Use this password? (Y/n) " -n 1 -r
     echo
