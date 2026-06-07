@@ -35,46 +35,57 @@ ensure_websocat() {
 
   echo "[INFO] Installing websocat..." >&2
 
-  local arch=$(uname -m)
-  local os=$(uname -s | tr '[:upper:]' '[:lower:]')
   local install_dir="${HOME}/.local/bin"
-
   mkdir -p "$install_dir"
 
-  # Try downloading prebuilt binary
-  if [[ "$os" == "linux" ]]; then
-    local binary_url="https://github.com/vi/websocat/releases/download/v1.13.0/websocat_${arch}-unknown-linux-musl"
-    echo "[INFO] Downloading prebuilt websocat binary..." >&2
-
-    if curl -sL "$binary_url" -o "$install_dir/websocat" 2>/dev/null; then
-      chmod +x "$install_dir/websocat"
-      export PATH="$install_dir:$PATH"
-      echo "[OK] websocat installed to $install_dir" >&2
-      return 0
-    fi
-  fi
-
-  # Fallback: try cargo
+  # Try cargo first (most reliable)
   if command -v cargo &>/dev/null; then
     echo "[INFO] Installing websocat via cargo..." >&2
-    cargo install websocat --quiet 2>/dev/null || true
-    if command -v websocat &>/dev/null; then
-      echo "[OK] websocat installed via cargo" >&2
+    if cargo install websocat --root "$install_dir" 2>&1 | grep -q "Installed"; then
+      export PATH="$install_dir/bin:$PATH"
+      echo "[OK] websocat installed via cargo to $install_dir/bin" >&2
       return 0
     fi
   fi
 
-  # Fallback: try apt
+  # Try apt
   if command -v apt &>/dev/null; then
-    echo "[INFO] Trying apt (may fail)..." >&2
-    sudo apt update -qq && sudo apt install -y websocat >/dev/null 2>&1 || true
-    if command -v websocat &>/dev/null; then
+    echo "[INFO] Trying apt..." >&2
+    if sudo apt update -qq && sudo apt install -y websocat >/dev/null 2>&1; then
       echo "[OK] websocat installed via apt" >&2
       return 0
     fi
   fi
 
-  err "Could not install websocat. Please install manually: https://github.com/vi/websocat/releases"
+  # Try downloading latest release (fallback)
+  echo "[INFO] Downloading websocat from GitHub releases..." >&2
+  local arch=$(uname -m)
+
+  # Map architecture names
+  if [[ "$arch" == "x86_64" ]]; then
+    arch="x86_64"
+  elif [[ "$arch" == "aarch64" ]]; then
+    arch="aarch64"
+  fi
+
+  # Try multiple release URLs
+  local urls=(
+    "https://github.com/vi/websocat/releases/download/v1.13.0/websocat_${arch}-unknown-linux-musl"
+    "https://github.com/vi/websocat/releases/download/v1.12.1/websocat_${arch}-unknown-linux-musl"
+  )
+
+  for url in "${urls[@]}"; do
+    if curl -sL "$url" -o "$install_dir/websocat" 2>/dev/null && [[ -s "$install_dir/websocat" ]]; then
+      if file "$install_dir/websocat" | grep -q "ELF"; then
+        chmod +x "$install_dir/websocat"
+        export PATH="$install_dir:$PATH"
+        echo "[OK] websocat installed to $install_dir" >&2
+        return 0
+      fi
+    fi
+  done
+
+  err "Could not install websocat. Install manually: cargo install websocat or https://github.com/vi/websocat/releases"
 }
 
 # Helper: sync secret from secrets.yaml to pass if different
