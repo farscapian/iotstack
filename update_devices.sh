@@ -1402,6 +1402,18 @@ done
       line+="$part"
     done
     echo -e "${DIM}  [${elapsed}s]${RST}  ${line}"
+
+    # Break early if all devices have either auth failed or completed
+    all_done=true
+    for hostname in "${FLASH_LIST[@]}"; do
+      result_f="${WORK_DIR}/${hostname}.result"
+      # Device is done if: result file exists (completed) OR auth failed
+      if [[ ! -f "$result_f" ]] && [[ ! -v auth_failed_devices[$hostname] ]]; then
+        all_done=false
+        break
+      fi
+    done
+    [[ "$all_done" == true ]] && break
   done
 ) &
 MONITOR_PID=$!
