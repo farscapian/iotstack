@@ -128,34 +128,51 @@ echo "[INFO] Using WebSocket URL: $WS_URL" >&2
 # Ensure websocat is available
 ensure_websocat
 
-# Create WebSocket query commands
-query_devices() {
-  cat <<'EOF'
-{"type": "auth", "access_token": "$HA_TOKEN"}
-{"id": 1, "type": "config/device_registry/list"}
-EOF
-}
-
-query_entities() {
-  cat <<'EOF'
-{"type": "auth", "access_token": "$HA_TOKEN"}
-{"id": 2, "type": "config/entity_registry/list"}
-EOF
-}
-
 # Send WebSocket commands and parse responses
 echo "[DEBUG] Connecting to WebSocket..." >&2
 
+# Use timeout and process WebSocket response properly
+query_ha_ws() {
+  local cmd="$1"
+  local timeout=10
+
+  # Replace token in command
+  cmd="${cmd//\$HA_TOKEN/$HA_TOKEN}"
+
+  # Send command and capture response (with timeout)
+  timeout "$timeout" bash -c "
+    (echo '$cmd'; sleep 1) | websocat '$WS_URL' 2>/dev/null
+  "
+}
+
 if [[ "$LIST_DEVICES" == "true" ]]; then
   # Query and list devices
-  query_devices | sed "s|\$HA_TOKEN|$HA_TOKEN|" | websocat "$WS_URL" 2>/dev/null | \
+  echo "[DEBUG] Sending device registry query..." >&2
+
+  auth_cmd='{"type": "auth", "access_token": "$HA_TOKEN"}'
+  device_cmd='{"id": 1, "type": "config/device_registry/list"}'
+
+  {
+    echo "$auth_cmd"
+    sleep 0.5
+    echo "$device_cmd"
+    sleep 2
+  } | sed "s|\$HA_TOKEN|$HA_TOKEN|g" | websocat -n "$WS_URL" 2>/dev/null | \
     jq -r 'select(.id == 1) | .result[] | "\(.id): \(.name)"'
 else
   # Query entities for specific device
   echo "[INFO] Querying entities for device: $DEVICE_NAME" >&2
 
+  auth_cmd='{"type": "auth", "access_token": "$HA_TOKEN"}'
+  device_cmd='{"id": 1, "type": "config/device_registry/list"}'
+
   # First get device ID
-  device_id=$(query_devices | sed "s|\$HA_TOKEN|$HA_TOKEN|" | websocat "$WS_URL" 2>/dev/null | \
+  device_id=$({
+    echo "$auth_cmd"
+    sleep 0.5
+    echo "$device_cmd"
+    sleep 2
+  } | sed "s|\$HA_TOKEN|$HA_TOKEN|g" | websocat -n "$WS_URL" 2>/dev/null | \
     jq -r --arg name "$DEVICE_NAME" '.result[] | select(.name | ascii_downcase | contains($name | ascii_downcase)) | .id' | head -1)
 
   if [[ -z "$device_id" ]]; then
@@ -165,7 +182,14 @@ else
   echo "[INFO] Found device_id: $device_id" >&2
 
   # Query entities for this device
-  query_entities | sed "s|\$HA_TOKEN|$HA_TOKEN|" | websocat "$WS_URL" 2>/dev/null | \
+  entity_cmd='{"id": 2, "type": "config/entity_registry/list"}'
+
+  {
+    echo "$auth_cmd"
+    sleep 0.5
+    echo "$entity_cmd"
+    sleep 2
+  } | sed "s|\$HA_TOKEN|$HA_TOKEN|g" | websocat -n "$WS_URL" 2>/dev/null | \
     jq --arg dev_id "$device_id" '[.result[] | select(.device_id == $dev_id)] | sort_by(.platform)'
 fi
 
