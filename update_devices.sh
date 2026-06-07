@@ -676,8 +676,8 @@ if [[ -n "$API_KEY" ]]; then
   # Use temp YAML for compilation and OTA
   YAML_FILE="$TEMP_YAML"
 
-  # Clean up temp file on exit
-  trap 'rm -f "$TEMP_YAML" 2>/dev/null; cleanup' EXIT
+  # Clean up temp file on exit (expand $TEMP_YAML now, not at trap-run time)
+  trap "rm -f '$TEMP_YAML' 2>/dev/null; cleanup" EXIT
 fi
 
 if ! [[ "$MAX_JOBS" =~ ^[1-9][0-9]*$ ]]; then
