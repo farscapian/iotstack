@@ -189,6 +189,14 @@ Commands:
       iotstack flash mmwave /dev/ttyUSB0
       iotstack flash yamls/custom.yaml
 
+  query [<device-name>|--list]
+    Query Home Assistant device and entity registry via WebSocket API.
+    Shows all entities (buttons, sensors, etc.) for a device.
+    Examples:
+      iotstack query --list                          # List all devices in HA
+      iotstack query "Bilresa5 - Secondary RoomRemote"
+      iotstack query "Kitchen RoomRemote"
+
   list [devices|roles]
     Show devices and roles.
     Subcommands:
@@ -898,6 +906,18 @@ cmd_verify() {
   fi
 }
 
+cmd_query() {
+  # Query Home Assistant device/entity registry via WebSocket
+  local query_script="${SCRIPT_DIR}/scripts/ha-websocket-query.sh"
+
+  if [[ ! -f "$query_script" ]]; then
+    err "Query script not found: $query_script"
+  fi
+
+  # Delegate to WebSocket query script (with env vars already set)
+  "$query_script" "$@"
+}
+
 cmd_list() {
   local output_format="text"
   local subcommand=""
@@ -1408,6 +1428,10 @@ main() {
     flash)
       shift
       cmd_flash "$@"
+      ;;
+    query)
+      shift
+      cmd_query "$@"
       ;;
     help)
       if [[ $# -gt 1 ]]; then
