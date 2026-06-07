@@ -44,7 +44,32 @@ The `iotstack.sh` CLI tool provides a user-friendly wrapper around this script w
 
 ## Features
 
-### 1. Delta Updates (Default: On)
+### 1. Subset Device Updating by MAC Suffix
+
+Update only specific devices under a role instead of all devices:
+
+```bash
+# Update all bleproxy devices (default)
+iotstack update bleproxy
+
+# Update only specific devices by MAC suffix
+iotstack update a1a7b0 8e1aa8 bleproxy
+
+# Multiple MACs
+iotstack update 135b60 1a7b00 1af95c threadrouter
+
+# Works with all options
+iotstack update a1a7b0 8e1aa8 bleproxy --dry-run
+iotstack update a1a7b0 mmwave --force-reflash
+```
+
+**How it works:**
+- MAC suffixes are 6-character hex strings (last 6 chars of MAC address)
+- MACs come before the device name in command
+- Only devices matching specified MACs are flashed
+- All other update options (--dry-run, --force-reflash, etc.) work normally
+
+### 2. Delta Updates (Default: On)
 - Compares `config_hash` from device's mDNS TXT record vs. compiled firmware
 - Only flashes devices with mismatched hashes
 - `--no-upgrade-delta` forces flash all devices
@@ -236,6 +261,26 @@ All code changes should be staged and ready, but **git commits and pushes must O
 5. **Only push to remote** after commit succeeds
 
 This ensures that all commits represent validated, tested, working changes — not experimental code that may need revision.
+
+## Secrets Management: Seeding Pattern
+
+**secrets.yaml is ONLY for seeding the pass store, not for operational values.**
+
+Architecture:
+- **secrets.yaml**: Initial seed with well-known defaults (e.g., `CHANGE_ME`)
+- **pass store**: Encrypted operational source of truth (versioned, secure)
+- **iotstack startup**: Auto-seeds pass from secrets.yaml (only if pass doesn't have key yet)
+
+Precedence: If pass has a value, secrets.yaml is ignored
+```
+secrets.yaml value        →  pass (first run, if pass is empty)
+                          ↓
+                        pass value (all subsequent runs)
+```
+
+User updates secrets via `iotstack secret set <role> <ota|api> <value>`, which updates pass (not secrets.yaml).
+
+This allows secrets.yaml to be checked into git with safe defaults while protecting actual secrets in encrypted pass store.
 
 ## 🚨 CRITICAL: Pass Password Handling
 
