@@ -1356,6 +1356,7 @@ done
 # percentage regex. Thread OTA is slower so this is especially useful there.
 (
   elapsed=0
+  auth_failed=false
   while true; do
     sleep 4
     elapsed=$((elapsed + 4))
@@ -1368,6 +1369,7 @@ done
       if [[ -f "$log_f" ]] && grep -q "Authentication invalid" "$log_f" 2>/dev/null; then
         echo fail > "$result_f"
         parts+=("${RED}✗${RST} ${hostname} (auth failed)")
+        auth_failed=true
         continue
       fi
 
@@ -1395,6 +1397,13 @@ done
       line+="$part"
     done
     echo -e "${DIM}  [${elapsed}s]${RST}  ${line}"
+
+    # Break out early if authentication failed
+    if [[ "$auth_failed" == true ]]; then
+      # Kill all background upload jobs when auth fails (fail fast)
+      jobs -p | xargs -r kill 2>/dev/null || true
+      break
+    fi
   done
 ) &
 MONITOR_PID=$!
