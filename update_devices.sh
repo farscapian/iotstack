@@ -1351,12 +1351,12 @@ done
 
 # ── Background progress monitor ──────────────────────────────────────────────
 # Polls each device's log file every 4s and prints a one-line status summary.
-# Also detects authentication failures and stops early.
+# Also detects authentication failures for individual devices.
 # ESPHome OTA logs progress as e.g. "OTA in progress: 25%" — captured by the
 # percentage regex. Thread OTA is slower so this is especially useful there.
 (
   elapsed=0
-  auth_failed=false
+  declare -A auth_failed_devices
   while true; do
     sleep 4
     elapsed=$((elapsed + 4))
@@ -1365,11 +1365,11 @@ done
       result_f="${WORK_DIR}/${hostname}.result"
       log_f="${WORK_DIR}/${hostname}.log"
 
-      # Check for authentication failure and stop early
+      # Check for authentication failure on this specific device
       if [[ -f "$log_f" ]] && grep -q "Authentication invalid" "$log_f" 2>/dev/null; then
         echo fail > "$result_f"
         parts+=("${RED}✗${RST} ${hostname} (auth failed)")
-        auth_failed=true
+        auth_failed_devices[$hostname]=true
         continue
       fi
 
@@ -1397,13 +1397,6 @@ done
       line+="$part"
     done
     echo -e "${DIM}  [${elapsed}s]${RST}  ${line}"
-
-    # Break out early if authentication failed
-    if [[ "$auth_failed" == true ]]; then
-      # Kill all background upload jobs when auth fails (fail fast)
-      jobs -p | xargs -r kill 2>/dev/null || true
-      break
-    fi
   done
 ) &
 MONITOR_PID=$!
