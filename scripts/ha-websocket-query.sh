@@ -88,6 +88,9 @@ sync_secret() {
     secrets_value=$(grep "^${secrets_key}:" "$SECRETS_YAML" | cut -d'"' -f2 || echo "")
   fi
 
+  # Trim whitespace from secrets_value
+  secrets_value=$(printf '%s' "$secrets_value" | xargs)
+
   if [[ -z "$secrets_value" ]]; then
     return 1
   fi
@@ -97,16 +100,21 @@ sync_secret() {
     pass_value=$(pass show "$pass_path")
   fi
 
+  # Trim whitespace from pass_value for comparison
+  pass_value=$(printf '%s' "$pass_value" | xargs)
+
+  # Only sync and warn if values differ
   if [[ "$pass_value" != "$secrets_value" ]]; then
     if [[ -z "$pass_value" ]]; then
-      warn "Secret '$pass_path' not in pass, syncing from secrets.yaml"
+      warn "Syncing '$pass_path' from secrets.yaml (first time)"
     else
-      warn "Secret '$pass_path' differs from secrets.yaml, updating pass"
+      warn "Secret '$pass_path' changed in secrets.yaml, updating pass"
     fi
     echo "$secrets_value" | pass insert -f "$pass_path" 2>&1 || true
   fi
+  # If they match, don't warn - already in sync
 
-  printf '%s' "$secrets_value" | xargs
+  printf '%s' "$secrets_value"
 }
 
 # Get secrets
