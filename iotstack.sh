@@ -881,7 +881,7 @@ list_yaml_configs() {
 
 cmd_update() {
   # Handle help request
-  if [[ "$1" == "help" ]]; then
+  if [[ "${1:-}" == "help" ]]; then
     help_update
     return 0
   fi
@@ -974,7 +974,7 @@ cmd_update() {
 
 cmd_reassign() {
   # Handle help request
-  if [[ "$1" == "help" ]]; then
+  if [[ "${1:-}" == "help" ]]; then
     help_reassign
     return 0
   fi
@@ -1053,7 +1053,7 @@ cmd_reassign() {
 
 cmd_verify() {
   # Handle help request
-  if [[ "$1" == "help" ]]; then
+  if [[ "${1:-}" == "help" ]]; then
     help_verify
     return 0
   fi
@@ -1135,7 +1135,7 @@ cmd_verify() {
 
 cmd_query() {
   # Handle help request
-  if [[ "$1" == "help" ]]; then
+  if [[ "${1:-}" == "help" ]]; then
     help_query
     return 0
   fi
@@ -1153,7 +1153,7 @@ cmd_query() {
 
 cmd_list() {
   # Handle help request
-  if [[ "$1" == "help" ]]; then
+  if [[ "${1:-}" == "help" ]]; then
     help_list
     return 0
   fi
@@ -1220,7 +1220,7 @@ cmd_list() {
 
 cmd_secret() {
   # Handle help request
-  if [[ "$1" == "help" ]]; then
+  if [[ "${1:-}" == "help" ]]; then
     help_secret
     return 0
   fi
@@ -1263,7 +1263,7 @@ cmd_secret() {
 
 cmd_rotate_secrets() {
   # Handle help request
-  if [[ "$1" == "help" ]]; then
+  if [[ "${1:-}" == "help" ]]; then
     help_rotate_secrets
     return 0
   fi
@@ -1605,7 +1605,7 @@ list_roles() {
 # ── Flash command: serial/USB flashing ─────────────────────────────────────
 cmd_flash() {
   # Handle help request
-  if [[ "$1" == "help" ]]; then
+  if [[ "${1:-}" == "help" ]]; then
     help_flash
     return 0
   fi
