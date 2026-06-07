@@ -4,9 +4,21 @@
 
 set -euo pipefail
 
-DEVICE_NAME="${1:-BILRESA5}"
+DEVICE_NAME="${1:-}"
+LIST_DEVICES="${LIST_DEVICES:-false}"
 HA_URL="${HA_URL:-http://localhost:8123}"
 SECRETS_YAML="${SECRETS_YAML:-$(dirname "$0")/../yamls/secrets.yaml}"
+
+if [[ "$DEVICE_NAME" == "--list" ]] || [[ "$DEVICE_NAME" == "-l" ]]; then
+  LIST_DEVICES=true
+  DEVICE_NAME=""
+fi
+
+if [[ -z "$DEVICE_NAME" && "$LIST_DEVICES" != "true" ]]; then
+  echo "Usage: $0 <device-name>" >&2
+  echo "       $0 --list     (list all devices)" >&2
+  exit 1
+fi
 
 # Setup pass environment
 export GNUPGHOME="${HOME}/.iotstack/.gnupg"
@@ -60,7 +72,6 @@ HA_URL=$(sync_secret "HA URL" "ha_url" "iotstack/common/ha_url" || pass show "io
 
 [[ -z "$HA_URL" ]] && err "HA_URL not found in pass, secrets.yaml, or HA_URL env var"
 
-echo "[INFO] Querying entities for device: $DEVICE_NAME" >&2
 echo "[INFO] Using HA_URL: $HA_URL" >&2
 
 # Step 1: Get device list and find matching device_id
@@ -80,7 +91,15 @@ if ! echo "$device_data" | jq empty 2>/dev/null; then
   err "Invalid JSON response from device registry:\n$device_data"
 fi
 
+# If --list flag, show all devices and exit
+if [[ "$LIST_DEVICES" == "true" ]]; then
+  echo "[INFO] Available devices:" >&2
+  echo "$device_data" | jq -r '.[] | "  \(.id): \(.name)"'
+  exit 0
+fi
+
 # Look for device matching name or id containing DEVICE_NAME (case-insensitive)
+echo "[INFO] Querying entities for device: $DEVICE_NAME" >&2
 echo "[DEBUG] Searching for device matching: '$DEVICE_NAME'" >&2
 device_id=$(echo "$device_data" | jq -r --arg name "$DEVICE_NAME" '
   .[] |
