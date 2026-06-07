@@ -80,26 +80,21 @@ if ! echo "$device_data" | jq empty 2>/dev/null; then
   err "Invalid JSON response from device registry:\n$device_data"
 fi
 
-# Look for device matching name or id containing DEVICE_NAME
+# Look for device matching name or id containing DEVICE_NAME (case-insensitive)
+echo "[DEBUG] Searching for device matching: '$DEVICE_NAME'" >&2
 device_id=$(echo "$device_data" | jq -r --arg name "$DEVICE_NAME" '
   .[] |
-  select(.name | ascii_downcase | contains($name | ascii_downcase)) |
+  select(
+    (.name | ascii_downcase | contains($name | ascii_downcase)) or
+    (.id | ascii_downcase | contains($name | ascii_downcase))
+  ) |
   .id
 ' | head -1)
 
 if [[ -z "$device_id" ]]; then
-  # Try matching by id itself
-  device_id=$(echo "$device_data" | jq -r --arg name "$DEVICE_NAME" '
-    .[] |
-    select(.id | contains($name)) |
-    .id
-  ' | head -1)
-fi
-
-if [[ -z "$device_id" ]]; then
   warn "Device '$DEVICE_NAME' not found in device registry"
   echo "[DEBUG] Available devices:" >&2
-  echo "$device_data" | jq -r '.[] | "\(.id): \(.name)"' >&2
+  echo "$device_data" | jq -r '.[] | "  \(.id): \(.name)"' >&2
   exit 1
 fi
 
