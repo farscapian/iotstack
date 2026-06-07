@@ -1570,8 +1570,8 @@ list_roles() {
     temp_data=$(mktemp)
     trap 'rm -f "$temp_data"' RETURN
 
-    # Gather role data into temp file
-    list_device_names | while read -r device; do
+    # Gather role data into temp file (using process substitution to avoid subshell)
+    while IFS= read -r device; do
       yaml_file="${YAMLS_DIR}/${device}.yaml"
 
       if [[ -f "$yaml_file" ]]; then
@@ -1586,7 +1586,7 @@ list_roles() {
       fi
 
       echo "$device|$device_type|$network_type|$config_display" >> "$temp_data"
-    done
+    done < <(list_device_names)
 
     # Calculate column widths
     local header_role="Role"
