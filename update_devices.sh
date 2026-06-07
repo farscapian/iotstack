@@ -1323,8 +1323,14 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   FQDN="${HOSTNAME}.local"
   dim "  started → ${HOSTNAME}"
 
-  # Extract device name from YAML filename (e.g., mmwave.yaml → mmwave)
-  DEVICE_NAME=$(basename "$YAML_FILE" .yaml)
+  # Extract device name from YAML's 'name:' field (needed for temp files during reassign)
+  # First try to extract from esphome.name field (with variable substitution)
+  DEVICE_NAME=$(grep -E '^\s+name:' "$YAML_FILE" | head -1 | sed 's/.*name:\s*["'\'']*//' | sed 's/["'\''].*//' | xargs)
+
+  # If not found or empty, fall back to YAML filename
+  if [[ -z "$DEVICE_NAME" ]]; then
+    DEVICE_NAME=$(basename "$YAML_FILE" .yaml)
+  fi
 
   # OTA firmware is in yamls/.esphome/build/<device>/.pioenvs/<device>/firmware.ota.bin
   FIRMWARE_BIN="yamls/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"
