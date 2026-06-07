@@ -35,17 +35,46 @@ ensure_websocat() {
 
   echo "[INFO] Installing websocat..." >&2
 
-  if command -v cargo &>/dev/null; then
-    # Install from Rust cargo
-    cargo install websocat --quiet || err "Failed to install websocat via cargo"
-  elif command -v apt &>/dev/null; then
-    # Install from apt
-    sudo apt update -qq && sudo apt install -y websocat >/dev/null 2>&1 || err "Failed to install websocat via apt"
-  else
-    err "Could not install websocat. Please install manually: https://github.com/vi/websocat"
+  local arch=$(uname -m)
+  local os=$(uname -s | tr '[:upper:]' '[:lower:]')
+  local install_dir="${HOME}/.local/bin"
+
+  mkdir -p "$install_dir"
+
+  # Try downloading prebuilt binary
+  if [[ "$os" == "linux" ]]; then
+    local binary_url="https://github.com/vi/websocat/releases/download/v1.13.0/websocat_${arch}-unknown-linux-musl"
+    echo "[INFO] Downloading prebuilt websocat binary..." >&2
+
+    if curl -sL "$binary_url" -o "$install_dir/websocat" 2>/dev/null; then
+      chmod +x "$install_dir/websocat"
+      export PATH="$install_dir:$PATH"
+      echo "[OK] websocat installed to $install_dir" >&2
+      return 0
+    fi
   fi
 
-  echo "[OK] websocat installed" >&2
+  # Fallback: try cargo
+  if command -v cargo &>/dev/null; then
+    echo "[INFO] Installing websocat via cargo..." >&2
+    cargo install websocat --quiet 2>/dev/null || true
+    if command -v websocat &>/dev/null; then
+      echo "[OK] websocat installed via cargo" >&2
+      return 0
+    fi
+  fi
+
+  # Fallback: try apt
+  if command -v apt &>/dev/null; then
+    echo "[INFO] Trying apt (may fail)..." >&2
+    sudo apt update -qq && sudo apt install -y websocat >/dev/null 2>&1 || true
+    if command -v websocat &>/dev/null; then
+      echo "[OK] websocat installed via apt" >&2
+      return 0
+    fi
+  fi
+
+  err "Could not install websocat. Please install manually: https://github.com/vi/websocat/releases"
 }
 
 # Helper: sync secret from secrets.yaml to pass if different
