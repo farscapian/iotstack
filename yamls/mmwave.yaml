@@ -219,6 +219,7 @@ sensor:
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     distance:
+      id: distance_sensor
       name: "Detection Distance"
       unit_of_measurement: "ft"
       state_class: measurement

@@ -997,22 +997,37 @@ cmd_update() {
 
     found=0
     failed=0
-    while IFS= read -r yaml; do
-      if grep -q '^esphome:' "$yaml" 2>/dev/null; then
-        # Build update command with MACs and OTA password if specified
-        declare -a cmd=("$UPDATE_SCRIPT" "${update_args[@]}")
-        [[ -n "$ota_password" ]] && cmd+=("--ota-password" "$ota_password")
-        [[ ${#mac_suffixes[@]} -gt 0 ]] && cmd+=("--macs" "${mac_suffixes[@]}")
-        cmd+=("$yaml")
+    # Only compile device roles from iotstack-roles.conf, not random YAML files
+    while IFS='=' read -r role rest; do
+      # Skip empty lines and comments
+      [[ -z "$role" ]] && continue
+      [[ "$role" =~ ^[[:space:]]*# ]] && continue
 
-        if "${cmd[@]}"; then
-          found=$((found + 1))
-        else
-          failed=$((failed + 1))
+      # Extract WiFi YAML (before colon)
+      wifi_yaml="${rest%%:*}"
+      thread_yaml="${rest##*:}"
+
+      # Try WiFi variant first, then Thread variant
+      for yaml_variant in "$wifi_yaml" "$thread_yaml"; do
+        [[ -z "$yaml_variant" ]] && continue
+
+        yaml="yamls/$yaml_variant"
+        if [[ -f "$yaml" ]] && grep -q '^esphome:' "$yaml" 2>/dev/null; then
+          # Build update command with MACs and OTA password if specified
+          declare -a cmd=("$UPDATE_SCRIPT" "${update_args[@]}")
+          [[ -n "$ota_password" ]] && cmd+=("--ota-password" "$ota_password")
+          [[ ${#mac_suffixes[@]} -gt 0 ]] && cmd+=("--macs" "${mac_suffixes[@]}")
+          cmd+=("$yaml")
+
+          if "${cmd[@]}"; then
+            found=$((found + 1))
+          else
+            failed=$((failed + 1))
+          fi
+          echo
         fi
-        echo
-      fi
-    done < <(find . -maxdepth 3 -name "*.yaml" -type f | sort)
+      done
+    done < <(cat iotstack-roles.conf 2>/dev/null || echo "")
 
     echo "────────────────────────────────────────────────────────────"
     if [[ $failed -eq 0 ]]; then
