@@ -500,7 +500,6 @@ script:
           int current = id(current_effect);
           current = (current + 1) % 4;  // Cycle through 0, 1, 2, 3
           id(current_effect) = current;
-          id(manual_mode) = true;  // User is now manually controlling
 
           auto call = id(rgb_led).make_call();
           if (current == 0) {
