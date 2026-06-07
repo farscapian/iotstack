@@ -65,10 +65,20 @@ echo "[INFO] Using HA_URL: $HA_URL" >&2
 
 # Step 1: Get device list and find matching device_id
 echo "[DEBUG] Fetching device registry..." >&2
-device_data=$(curl -s -X GET \
+device_data=$(curl -s -m 10 -X GET \
   -H "Authorization: Bearer $HA_TOKEN" \
   -H "Content-Type: application/json" \
-  "$HA_URL/api/config/device_registry/list")
+  "$HA_URL/api/config/device_registry/list" 2>&1)
+
+# Check for curl errors
+if [[ $? -ne 0 ]]; then
+  err "Failed to query device registry: $device_data"
+fi
+
+# Check if response is valid JSON
+if ! echo "$device_data" | jq empty 2>/dev/null; then
+  err "Invalid JSON response from device registry:\n$device_data"
+fi
 
 # Look for device matching name or id containing DEVICE_NAME
 device_id=$(echo "$device_data" | jq -r --arg name "$DEVICE_NAME" '
@@ -97,23 +107,32 @@ echo "[DEBUG] Found device_id: $device_id" >&2
 
 # Step 2: Query entity registry for entities belonging to this device
 echo "[DEBUG] Fetching entity registry..." >&2
-curl -s -X GET \
+entity_data=$(curl -s -m 10 -X GET \
   -H "Authorization: Bearer $HA_TOKEN" \
   -H "Content-Type: application/json" \
-  "$HA_URL/api/config/entity_registry/list" | \
-  jq --arg dev_id "$device_id" '
-    [
-      .[] |
-      select(.device_id == $dev_id) |
-      {
-        entity_id,
-        name,
-        original_name,
-        device_id,
-        platform,
-        disabled_by
-      }
-    ] | sort_by(.platform)
-  '
+  "$HA_URL/api/config/entity_registry/list" 2>&1)
+
+if [[ $? -ne 0 ]]; then
+  err "Failed to query entity registry: $entity_data"
+fi
+
+if ! echo "$entity_data" | jq empty 2>/dev/null; then
+  err "Invalid JSON response from entity registry"
+fi
+
+echo "$entity_data" | jq --arg dev_id "$device_id" '
+  [
+    .[] |
+    select(.device_id == $dev_id) |
+    {
+      entity_id,
+      name,
+      original_name,
+      device_id,
+      platform,
+      disabled_by
+    }
+  ] | sort_by(.platform)
+'
 
 echo "[INFO] Query complete" >&2
