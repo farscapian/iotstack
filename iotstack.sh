@@ -1027,7 +1027,7 @@ cmd_update() {
           echo
         fi
       done
-    done < <(cat iotstack-roles.conf 2>/dev/null || echo "")
+    done < <(cat "${SCRIPT_DIR}/iotstack-roles.conf" 2>/dev/null || echo "")
 
     echo "────────────────────────────────────────────────────────────"
     if [[ $failed -eq 0 ]]; then
