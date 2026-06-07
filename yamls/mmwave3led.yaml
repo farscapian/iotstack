@@ -1,0 +1,516 @@
+# ESP32-C6 WiFi mmWave with 3 Status LEDs (Master/Slave Architecture)
+# Three WS2812 addressable RGB LEDs for rich status display:
+#   LED1 (GPIO1): Device role identifier (static color)
+#   LED2 (GPIO4): Network status (WiFi/Thread + HA connection)
+#   LED3 (GPIO5): Network activity (blinks on API traffic)
+#
+# Button Architecture (for BILRESA integration):
+#   Master button (Primary): Controls LED assignment for slave buttons
+#   Slave 1 button (Secondary): Highlights assigned LED
+#   Slave 2 button (Tertiary): Highlights assigned LED
+#
+# In normal mode, each slave button highlights its assigned LED.
+# In config mode, pressing slave buttons reassigns which LED they control.
+
+substitutions:
+  device_role: "mmwave3led"
+  friendly_name: "mmWave 3-LED"
+  role_color_r: "100"  # mmWave = red/orange (100%, 50%, 0%)
+  role_color_g: "50"
+  role_color_b: "0"
+
+esphome:
+  name: ${device_role}
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: true
+  project:
+    name: "iotstack.${device_role}"
+    version: "1.0.0"
+  on_boot:
+    priority: -100
+    then:
+      # Boot sequence: all LEDs flash role color
+      - light.turn_on:
+          id: led_role
+          red: ${role_color_r}%
+          green: ${role_color_g}%
+          blue: ${role_color_b}%
+          brightness: 100%
+      - delay: 200ms
+      - light.turn_off:
+          id: led_role
+      - delay: 200ms
+      - light.turn_on:
+          id: led_role
+          red: ${role_color_r}%
+          green: ${role_color_g}%
+          blue: ${role_color_b}%
+          brightness: 100%
+
+esp32:
+  board: seeed_xiao_esp32c6
+  variant: esp32c6
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+# 1. Core services
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+  level: INFO
+
+api:
+  encryption:
+    key: !secret mmwave3led_api_encryption_key
+  on_client_connected:
+    - script.execute: update_network_status
+  on_client_disconnected:
+    - script.execute: update_network_status
+
+ota:
+  - platform: esphome
+    password: !secret mmwave3led_ota_password
+
+safe_mode:
+  num_attempts: 5
+  reboot_timeout: 3min
+
+time:
+  - platform: sntp
+    id: device_time
+
+# 2. WiFi networking
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+# 3. Hardware buses
+uart:
+  id: uart_bus
+  baud_rate: 115200
+  rx_pin: GPIO17
+  tx_pin: GPIO16
+  parity: NONE
+  stop_bits: 1
+
+i2c:
+  id: bus_a
+  sda: GPIO22
+  scl: GPIO23
+  scan: true
+
+# 4. mmWave component
+seeed_mr60bha2:
+  id: my_mr60bha2
+  uart_id: uart_bus
+
+# 5. Sensors (same as mmwave.yaml)
+binary_sensor:
+  - platform: template
+    id: presence
+    internal: true
+    lambda: |-
+      return id(target_count).has_state() && id(target_count).state > 0;
+    filters:
+      - delayed_off: 20s
+
+  - platform: gpio
+    pin:
+      number: GPIO9
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+      ignore_strapping_warning: true
+    name: "Device Button"
+    internal: true
+    on_click:
+      min_length: 50ms
+      max_length: 350ms
+      then:
+        - script.execute: button_master_press
+
+text_sensor:
+  - platform: template
+    name: "Presence"
+    lambda: |-
+      return id(presence).state ? std::string("Detected") : std::string("Not Detected");
+    update_interval: 1s
+
+sensor:
+  - platform: seeed_mr60bha2
+    mr60bha2_id: my_mr60bha2
+    breath_rate:
+      id: breath_rate_sensor
+      name: "Respiratory Rate"
+      device_class: ""
+      unit_of_measurement: "brpm"
+      state_class: measurement
+      accuracy_decimals: 0
+
+  - platform: seeed_mr60bha2
+    mr60bha2_id: my_mr60bha2
+    heart_rate:
+      id: heart_rate_sensor
+      name: "Heart Rate"
+      device_class: ""
+      unit_of_measurement: "bpm"
+      state_class: measurement
+      accuracy_decimals: 0
+
+  - platform: seeed_mr60bha2
+    mr60bha2_id: my_mr60bha2
+    distance:
+      name: "Detection Distance"
+      unit_of_measurement: "ft"
+      state_class: measurement
+      accuracy_decimals: 2
+      filters:
+        - multiply: 0.0328084
+    num_targets:
+      name: "Target Count"
+      id: target_count
+      state_class: measurement
+
+  - platform: uptime
+    name: "Uptime"
+    entity_category: diagnostic
+
+  - platform: wifi_signal
+    name: "WiFi RSSI (dBm)"
+    update_interval: 60s
+    entity_category: diagnostic
+
+# 6. Global variables for LED control and master/slave mapping
+globals:
+  # LED assignment mapping (which button controls which LED)
+  - id: slave1_assigned_led
+    type: int
+    initial_value: '2'  # Slave 1 (secondary button) controls LED 2
+    restore_value: no
+
+  - id: slave2_assigned_led
+    type: int
+    initial_value: '3'  # Slave 2 (tertiary button) controls LED 3
+    restore_value: no
+
+  # Configuration mode flag (master button toggles this)
+  - id: config_mode
+    type: bool
+    initial_value: 'false'
+    restore_value: no
+
+  # Network status tracking
+  - id: wifi_connected
+    type: bool
+    initial_value: 'false'
+    restore_value: no
+
+  - id: api_connected
+    type: bool
+    initial_value: 'false'
+    restore_value: no
+
+  - id: last_activity_time
+    type: uint32_t
+    initial_value: '0'
+    restore_value: no
+
+# 7. RGB LEDs (3x WS2812 on separate GPIO pins)
+light:
+  # LED 1: Device Role Identifier (GPIO1)
+  - platform: esp32_rmt_led_strip
+    id: led_role
+    name: "LED 1: Role"
+    pin: GPIO1
+    num_leds: 1
+    rgb_order: GRB
+    chipset: WS2812
+    restore_mode: ALWAYS_OFF
+    effects:
+      - lambda:
+          name: "Off"
+          update_interval: 1000ms
+          lambda: |-
+            auto call = id(led_role).make_call();
+            call.set_state(false);
+            call.perform();
+      - lambda:
+          name: "Role Static"
+          lambda: |-
+            auto call = id(led_role).make_call();
+            call.set_state(true);
+            call.set_red(${role_color_r}/100.0f);
+            call.set_green(${role_color_g}/100.0f);
+            call.set_blue(${role_color_b}/100.0f);
+            call.set_brightness(1.0);
+            call.perform();
+      - lambda:
+          name: "Role Pulse"
+          update_interval: 500ms
+          lambda: |-
+            static bool is_bright = true;
+            auto call = id(led_role).make_call();
+            call.set_state(true);
+            call.set_red(${role_color_r}/100.0f);
+            call.set_green(${role_color_g}/100.0f);
+            call.set_blue(${role_color_b}/100.0f);
+            call.set_brightness(is_bright ? 1.0f : 0.3f);
+            call.perform();
+            is_bright = !is_bright;
+      - lambda:
+          name: "Highlight"
+          update_interval: 100ms
+          lambda: |-
+            auto call = id(led_role).make_call();
+            call.set_state(true);
+            call.set_red(1.0); call.set_green(1.0); call.set_blue(1.0);
+            call.set_brightness(1.0);
+            call.perform();
+
+  # LED 2: Network Status (GPIO4)
+  - platform: esp32_rmt_led_strip
+    id: led_network
+    name: "LED 2: Network"
+    pin: GPIO4
+    num_leds: 1
+    rgb_order: GRB
+    chipset: WS2812
+    restore_mode: ALWAYS_OFF
+    effects:
+      - lambda:
+          name: "Off"
+          update_interval: 1000ms
+          lambda: |-
+            auto call = id(led_network).make_call();
+            call.set_state(false);
+            call.perform();
+      - lambda:
+          name: "Connected"
+          update_interval: 100ms
+          lambda: |-
+            // Green: WiFi + HA connected
+            auto call = id(led_network).make_call();
+            call.set_state(true);
+            call.set_red(0.0); call.set_green(1.0); call.set_blue(0.0);
+            call.set_brightness(1.0);
+            call.perform();
+      - lambda:
+          name: "WiFi Only"
+          update_interval: 500ms
+          lambda: |-
+            // Yellow: WiFi connected, HA disconnected
+            static bool is_bright = true;
+            auto call = id(led_network).make_call();
+            call.set_state(true);
+            call.set_red(1.0); call.set_green(1.0); call.set_blue(0.0);
+            call.set_brightness(is_bright ? 1.0f : 0.4f);
+            call.perform();
+            is_bright = !is_bright;
+      - lambda:
+          name: "Offline"
+          update_interval: 250ms
+          lambda: |-
+            // Red: WiFi disconnected
+            static bool is_on = true;
+            auto call = id(led_network).make_call();
+            call.set_state(is_on);
+            call.set_red(1.0); call.set_green(0.0); call.set_blue(0.0);
+            call.set_brightness(1.0);
+            call.perform();
+            is_on = !is_on;
+      - lambda:
+          name: "Highlight"
+          update_interval: 100ms
+          lambda: |-
+            auto call = id(led_network).make_call();
+            call.set_state(true);
+            call.set_red(1.0); call.set_green(1.0); call.set_blue(1.0);
+            call.set_brightness(1.0);
+            call.perform();
+
+  # LED 3: Network Activity (GPIO5)
+  - platform: esp32_rmt_led_strip
+    id: led_activity
+    name: "LED 3: Activity"
+    pin: GPIO5
+    num_leds: 1
+    rgb_order: GRB
+    chipset: WS2812
+    restore_mode: ALWAYS_OFF
+    effects:
+      - lambda:
+          name: "Off"
+          update_interval: 1000ms
+          lambda: |-
+            auto call = id(led_activity).make_call();
+            call.set_state(false);
+            call.perform();
+      - lambda:
+          name: "Activity Monitor"
+          update_interval: 50ms
+          lambda: |-
+            // Blink on API activity (last 200ms)
+            uint32_t now = millis();
+            bool recently_active = (now - id(last_activity_time)) < 200;
+
+            auto call = id(led_activity).make_call();
+            call.set_state(recently_active);
+            call.set_red(0.0); call.set_green(0.0); call.set_blue(1.0);
+            call.set_brightness(1.0);
+            call.perform();
+      - lambda:
+          name: "Highlight"
+          update_interval: 100ms
+          lambda: |-
+            auto call = id(led_activity).make_call();
+            call.set_state(true);
+            call.set_red(1.0); call.set_green(1.0); call.set_blue(1.0);
+            call.set_brightness(1.0);
+            call.perform();
+
+# 8. Buttons (for local testing; replace with BILRESA automations later)
+button:
+  - platform: template
+    name: "Button: Master (Config Toggle)"
+    icon: "mdi:cog"
+    on_press:
+      - script.execute: button_master_press
+
+  - platform: template
+    name: "Button: Slave 1 (Secondary)"
+    icon: "mdi:numeric-1"
+    on_press:
+      - script.execute: button_slave1_press
+
+  - platform: template
+    name: "Button: Slave 2 (Tertiary)"
+    icon: "mdi:numeric-2"
+    on_press:
+      - script.execute: button_slave2_press
+
+  - platform: safe_mode
+    name: "Safe Mode"
+    entity_category: config
+
+  - platform: restart
+    name: "Restart"
+    entity_category: config
+
+  - platform: factory_reset
+    name: "Factory Reset"
+    entity_category: config
+
+# 9. Scripts: Master/Slave Control Logic
+script:
+  # Master button: Toggle config mode
+  - id: button_master_press
+    mode: restart
+    then:
+      - lambda: |-
+          id(config_mode) = !id(config_mode);
+
+          if (id(config_mode)) {
+            ESP_LOGI("LED_CONTROL", "Entering CONFIG mode");
+            // Flash all LEDs to indicate config mode
+            auto call1 = id(led_role).make_call();
+            call1.set_effect("Highlight");
+            call1.perform();
+          } else {
+            ESP_LOGI("LED_CONTROL", "Exiting CONFIG mode");
+            // Return to normal mode
+            auto call1 = id(led_role).make_call();
+            call1.set_effect("Role Pulse");
+            call1.perform();
+          }
+
+  # Slave 1 button: Toggle assigned LED or reassign in config mode
+  - id: button_slave1_press
+    mode: restart
+    then:
+      - lambda: |-
+          if (id(config_mode)) {
+            // Config mode: Cycle through LED assignments (1, 2, 3)
+            id(slave1_assigned_led) = (id(slave1_assigned_led) % 3) + 1;
+            ESP_LOGI("LED_CONTROL", "Slave1 reassigned to LED %d", id(slave1_assigned_led));
+          }
+
+          // Highlight the assigned LED
+          auto call = id(led_role).make_call();
+          if (id(slave1_assigned_led) == 1) {
+            call = id(led_role).make_call();
+            call.set_effect("Highlight");
+            call.perform();
+          } else if (id(slave1_assigned_led) == 2) {
+            call = id(led_network).make_call();
+            call.set_effect("Highlight");
+            call.perform();
+          } else if (id(slave1_assigned_led) == 3) {
+            call = id(led_activity).make_call();
+            call.set_effect("Highlight");
+            call.perform();
+          }
+
+  # Slave 2 button: Toggle assigned LED or reassign in config mode
+  - id: button_slave2_press
+    mode: restart
+    then:
+      - lambda: |-
+          if (id(config_mode)) {
+            // Config mode: Cycle through LED assignments (1, 2, 3)
+            id(slave2_assigned_led) = (id(slave2_assigned_led) % 3) + 1;
+            ESP_LOGI("LED_CONTROL", "Slave2 reassigned to LED %d", id(slave2_assigned_led));
+          }
+
+          // Highlight the assigned LED
+          auto call = id(led_role).make_call();
+          if (id(slave2_assigned_led) == 1) {
+            call = id(led_role).make_call();
+            call.set_effect("Highlight");
+            call.perform();
+          } else if (id(slave2_assigned_led) == 2) {
+            call = id(led_network).make_call();
+            call.set_effect("Highlight");
+            call.perform();
+          } else if (id(slave2_assigned_led) == 3) {
+            call = id(led_activity).make_call();
+            call.set_effect("Highlight");
+            call.perform();
+          }
+
+  # Update network status LED based on WiFi and API connection
+  - id: update_network_status
+    mode: restart
+    then:
+      - lambda: |-
+          id(api_connected) = api::global_api_server->is_connected();
+          id(wifi_connected) = id(wifi_signal).has_state();
+
+          auto call = id(led_network).make_call();
+          if (id(wifi_connected) && id(api_connected)) {
+            call.set_effect("Connected");
+          } else if (id(wifi_connected)) {
+            call.set_effect("WiFi Only");
+          } else {
+            call.set_effect("Offline");
+          }
+          call.perform();
+
+  # Called when API activity occurs (for activity LED)
+  - id: mark_activity
+    mode: restart
+    then:
+      - lambda: |-
+          id(last_activity_time) = millis();
+
+  # Initialize LEDs on startup
+  - id: init_leds
+    mode: restart
+    then:
+      - light.turn_on:
+          id: led_role
+          effect: "Role Pulse"
+      - script.execute: update_network_status
+      - light.turn_on:
+          id: led_activity
+          effect: "Activity Monitor"
