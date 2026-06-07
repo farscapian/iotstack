@@ -140,13 +140,15 @@ get_ha_device_areas() {
   } | websocat -n "$ws_url" 2>/dev/null | jq -s '
     # Build area lookup map (area_id -> name)
     (.[1].result | map({(.id): .name}) | add) as $areas |
-    # Map device_name to area_name (handle MAC suffix variations)
+    # Map device names to area (handle multiple formats)
     .[0].result | map(
       .name as $name |
       ($name | sub("-[0-9a-fA-F]{6}$"; "")) as $name_base |
+      ($name | scan("[0-9a-fA-F]{6}$") | join("")) as $mac_suffix |
       {
         ($name): ($areas[.area_id] // "-"),
-        ($name_base): ($areas[.area_id] // "-")
+        ($name_base): ($areas[.area_id] // "-"),
+        ($mac_suffix): ($areas[.area_id] // "-")
       }
     ) | add
   '
