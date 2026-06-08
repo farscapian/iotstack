@@ -210,7 +210,6 @@ Usage:
   iotstack flash <device|yaml> [tty-device]
   iotstack list [devices|roles]
   iotstack secret get <role> <ota|api> [version]
-  iotstack secret set <role> <ota|api> <value>
   iotstack rotate-secrets <role> [new-password]
   iotstack help [command]
 
@@ -272,12 +271,6 @@ Commands:
       iotstack secret get bleproxy ota              # Current OTA password
       iotstack secret get bleproxy api              # Current API key
       iotstack secret get bleproxy ota 0            # Archived version (v0)
-
-  secret set <role> <ota|api> <value>
-    Set a secret (auto-versions old value).
-    Examples:
-      iotstack secret set bleproxy ota "newPassword"
-      iotstack secret set mmwave api "newApiKey"
 
   rotate-secrets <role> [new-secret]
     Rotate secrets (OTA password and API encryption key) for all devices in a role.
@@ -518,29 +511,28 @@ EOF
 
 help_secret() {
   cat << 'EOF'
-iotstack secret — Manage encrypted secrets in pass store
+iotstack secret — Retrieve encrypted secrets from pass store
 
 Usage:
   iotstack secret get <role> <ota|api> [version]
-  iotstack secret set <role> <ota|api> <value>
 
 Arguments:
   <role>        Device role (e.g., bleproxy, mmwave)
   <ota|api>     Secret type (OTA password or API key)
   [version]     Version number for historical secrets (default: current)
-  <value>       New secret value
 
 Examples:
   iotstack secret get bleproxy ota              # Get current OTA password
   iotstack secret get bleproxy api              # Get current API key
   iotstack secret get bleproxy ota 0            # Get archived OTA password v0
-  iotstack secret set bleproxy ota "newPass123" # Set new OTA password
-  iotstack secret set mmwave api "newKey"       # Set new API key
+
+To rotate secrets, use:
+  iotstack rotate-secrets <role>
 
 Notes:
   - Secrets stored in encrypted pass store
   - Old secrets are archived with version numbers
-  - OTA password: auto-synced from secrets.yaml if different
+  - Use rotate-secrets to generate new secrets securely
 
 EOF
 }
@@ -1483,13 +1475,6 @@ cmd_secret() {
       fi
       "$SCRIPT_DIR/iotstack-secrets" get "$role" "$secret_type" "$value"
       ;;
-    set)
-      if [[ -z "$role" || -z "$secret_type" || -z "$value" ]]; then
-        help_secret
-        exit 1
-      fi
-      "$SCRIPT_DIR/iotstack-secrets" set "$role" "$secret_type" "$value"
-      ;;
     *)
       help_secret
       exit 1
@@ -1569,7 +1554,7 @@ cmd_rotate_secrets() {
 
       # Set it in pass as v00 so future rotations have it versioned
       echo "[INFO] Storing current password in pass as v00..."
-      cmd_secret set "$role" ota "$current_password"
+      "$SCRIPT_DIR/iotstack-secrets" set "$role" ota "$current_password"
       echo "[OK] Current password extracted and stored in pass"
     else
       err "Could not find OTA password secret in ${role}.yaml"
@@ -1680,7 +1665,7 @@ cmd_rotate_secrets() {
     echo
 
     echo "[INFO] Updating password manager with versioned secrets..."
-    cmd_secret set "$role" ota "$new_password"
+    "$SCRIPT_DIR/iotstack-secrets" set "$role" ota "$new_password"
 
     # Only rotate API key if HA is configured
     if [[ "$ha_configured" == true ]]; then
@@ -1701,7 +1686,7 @@ cmd_rotate_secrets() {
 
           if [[ -n "$current_api_key" ]]; then
             echo "[INFO] Storing current API key in pass as v00..."
-            cmd_secret set "$role" api "$current_api_key"
+            "$SCRIPT_DIR/iotstack-secrets" set "$role" api "$current_api_key"
             echo "[OK] Current API key stored in pass"
           fi
         fi
@@ -1711,7 +1696,7 @@ cmd_rotate_secrets() {
       local new_api_key
       echo "[INFO] Generating new API encryption key..."
       new_api_key=$(openssl rand -base64 32)
-      cmd_secret set "$role" api "$new_api_key"
+      "$SCRIPT_DIR/iotstack-secrets" set "$role" api "$new_api_key"
       echo "[OK] API encryption key rotated"
     fi
 
