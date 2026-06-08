@@ -1334,12 +1334,13 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
 
   # Find the actual firmware binary by searching the build directory
   # ESPHome creates: yamls/.esphome/build/<resolved-name>/.pioenvs/<resolved-name>/firmware.ota.bin
-  # We search for the most recently created firmware.ota.bin in case name has variables
-  FIRMWARE_BIN=$(find "yamls/.esphome/build" -name "firmware.ota.bin" -type f 2>/dev/null | xargs ls -t 2>/dev/null | head -1)
+  # IMPORTANT: Look in the SPECIFIC device directory first to avoid picking up wrong firmware
+  # (e.g., recovery-thread.ota.bin when we want threadrouter.ota.bin)
+  FIRMWARE_BIN="yamls/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"
 
-  if [[ -z "$FIRMWARE_BIN" ]]; then
-    # Fallback: assume standard build path based on filename
-    FIRMWARE_BIN="yamls/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"
+  # Fallback: search for most recently created firmware.ota.bin (in case name has variables)
+  if [[ ! -f "$FIRMWARE_BIN" ]]; then
+    FIRMWARE_BIN=$(find "yamls/.esphome/build" -name "firmware.ota.bin" -type f 2>/dev/null | xargs ls -t 2>/dev/null | head -1)
   fi
 
   (
