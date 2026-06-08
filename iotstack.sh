@@ -1242,13 +1242,27 @@ cmd_reassign() {
     fi
     echo
 
+    # Suppress verbose esphome output, only show errors
+    local log_file="${HOME}/.iotstack/logs/reassign-$(date +%s).log"
+    mkdir -p "$(dirname "$log_file")"
+
     # Build and invoke update_devices.sh with reassign flags
     if [[ -n "$api_key" ]]; then
-      "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" --ota-password "$api_key" "${update_args[@]}"
+      "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" --ota-password "$api_key" "${update_args[@]}" > "$log_file" 2>&1
     else
-      "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" "${update_args[@]}"
+      "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" "${update_args[@]}" > "$log_file" 2>&1
     fi
-    return $?
+
+    local exit_code=$?
+
+    # Show summary lines from log (ok/err/warn only)
+    grep -E '^\[OK\]|\[ERR\]|\[WARN\]|^═' "$log_file" 2>/dev/null || true
+
+    if [[ $exit_code -ne 0 ]]; then
+      warn "See full log: $log_file"
+    fi
+
+    return $exit_code
   fi
 }
 
