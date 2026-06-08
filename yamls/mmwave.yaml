@@ -313,14 +313,13 @@ switch:
     id: sleep_mode
     icon: "mdi:sleep"
     entity_category: config
-    on_turn_on:
+    optimistic: true
+    turn_on_action:
       - lambda: |-
-          // Send sleep mode command to sensor via UART
           id(uart_bus).write_str("sensorStop\r\n");
           ESP_LOGI("SENSOR", "Sleep mode enabled (sensor muted)");
-    on_turn_off:
+    turn_off_action:
       - lambda: |-
-          // Wake sensor from sleep
           id(uart_bus).write_str("sensorStart\r\n");
           ESP_LOGI("SENSOR", "Sleep mode disabled (sensor active)");
 
@@ -329,11 +328,12 @@ switch:
     id: sensor_enabled
     icon: "mdi:radar"
     entity_category: config
-    on_turn_on:
+    optimistic: true
+    turn_on_action:
       - lambda: |-
           id(uart_bus).write_str("sensorStart\r\n");
           ESP_LOGI("SENSOR", "Sensor enabled");
-    on_turn_off:
+    turn_off_action:
       - lambda: |-
           id(uart_bus).write_str("sensorStop\r\n");
           ESP_LOGI("SENSOR", "Sensor disabled");
