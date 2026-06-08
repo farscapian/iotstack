@@ -444,25 +444,50 @@ EOF
 
 help_flash() {
   cat << 'EOF'
-iotstack flash — Flash device via serial/USB (for bricked devices)
+iotstack flash — Initial device setup with dual-partition recovery
 
 Usage:
-  iotstack flash <device|yaml> [tty-device]
+  iotstack flash <device> [tty-device] [options]
+  iotstack flash recovery [tty-device]
 
 Arguments:
-  <device|yaml>  Device role or YAML config file
-  [tty-device]   Serial device (e.g., /dev/ttyACM0). Auto-detected if omitted.
+  <device>        Device role (e.g., bleproxy, mmwave, threadrouter)
+  recovery        Flash recovery image (no production firmware after)
+  [tty-device]    Serial device (e.g., /dev/ttyACM0). Auto-detected if omitted.
+
+Options:
+  --ota-only      Skip recovery flash, only OTA production (device already has recovery)
+
+WORKFLOW:
+
+Fresh Device (brand new, never flashed):
+  iotstack flash bleproxy /dev/ttyUSB0
+  → Flashes recovery.yaml via serial (dual-partition setup)
+  → Waits 10s for device to boot
+  → Automatically OTA flashes bleproxy firmware
+  → Done! Device ready for production
+
+Existing Device (already has recovery):
+  iotstack flash bleproxy /dev/ttyUSB0 --ota-only
+  → Skips recovery, just OTA flashes production
+  → Faster than full setup
+
+Recovery Only:
+  iotstack flash recovery /dev/ttyUSB0
+  → Flashes just recovery image via serial
+  → Useful for manual recovery partition management
 
 Examples:
-  iotstack flash bleproxy                 # Flash all ESP32-C6 devices in parallel
-  iotstack flash bleproxy /dev/ttyACM0    # Flash single device
-  iotstack flash mmwave /dev/ttyUSB0      # Flash to specific serial port
-  iotstack flash yamls/custom.yaml        # Flash custom config
+  iotstack flash bleproxy /dev/ttyUSB0         # Smart setup (recovery + production)
+  iotstack flash recovery /dev/ttyUSB0         # Recovery image only
+  iotstack flash mmwave /dev/ttyACM0 --ota-only # Skip recovery, update production only
+  iotstack flash threadrouter                  # Auto-detect all USB devices
 
 Notes:
-  - Compiles firmware once, uploads to all matching devices in parallel
-  - Each device is uploaded via serial (30-60s per device)
-  - No boot wait - command returns immediately after upload
+  - Fresh device setup: 2-3 minutes total (recovery serial flash + production OTA)
+  - Recovery image enables automatic fallback if production firmware fails
+  - All devices share the same universal recovery.yaml firmware
+  - OTA updates after setup use: iotstack update <device>
 
 EOF
 }
@@ -1756,48 +1781,62 @@ cmd_flash() {
     help_flash
     return 0
   fi
-  local device="$1"
+  local device="${1:-}"
   local tty_device="${2:-}"
+  local skip_recovery="${3:-}"
 
   if [[ -z "$device" ]]; then
     help_flash
     exit 1
   fi
 
-  # Resolve device role to YAML path
-  local yaml_path
-  yaml_path=$(resolve_device "$device")
-
-  # Extract ESP32 variant from YAML (e.g., esp32c6, esp32s3)
-  local esp32_variant
-  esp32_variant=$(grep -i "board:" "$yaml_path" | grep -o "seeed_xiao_esp32[^ ]*\|esp32[^ ]*" | head -1 | tr '[:upper:]' '[:lower:]')
-
-  if [[ -z "$esp32_variant" ]]; then
-    err "Could not determine ESP32 variant from: $yaml_path"
+  # Special handling for "recovery" role
+  if [[ "$device" == "recovery" ]]; then
+    _flash_recovery "$tty_device"
+    return
   fi
 
-  info "Target ESP32 variant: $esp32_variant"
+  # For production roles: smart dual-partition setup
+  # If device is fresh (no recovery): flash recovery first, then production
+  # If device exists (has recovery): just flash production via OTA
+  _flash_production_smart "$device" "$tty_device" "$skip_recovery"
+}
 
-  # If specific device specified, flash only that one
+_flash_recovery() {
+  # Flash recovery image via serial (factory.bin)
+  local tty_device="$1"
+
+  info "Flashing recovery firmware (dual-partition setup)"
+  echo ""
+
+  local recovery_yaml="$YAMLS_DIR/recovery.yaml"
+  if [[ ! -f "$recovery_yaml" ]]; then
+    err "Recovery firmware not found: $recovery_yaml"
+  fi
+
+  # If specific TTY device, flash only that one
   if [[ -n "$tty_device" ]]; then
     if [[ ! -e "$tty_device" ]]; then
       err "TTY device not found: $tty_device"
     fi
 
     info "Flashing to: $tty_device"
-    info "Configuration: $yaml_path"
-    echo ""
+    info "Compiling recovery firmware..."
+    esphome compile "$recovery_yaml" >/dev/null 2>&1 || err "Compilation failed"
 
-    # Compile first (cached if already done), then upload without waiting for boot
-    info "Compiling..."
-    esphome compile "$yaml_path" >/dev/null 2>&1 || err "Compilation failed"
-    info "Uploading..."
-    esphome upload "$yaml_path" --device "$tty_device" || err "Upload failed"
-    ok "Flash complete on $tty_device"
+    info "Uploading recovery firmware to device..."
+    esphome upload "$recovery_yaml" --device "$tty_device" || err "Upload failed"
+    ok "Recovery firmware flashed successfully"
+
+    echo ""
+    info "Device booting recovery firmware (purple LED indicator)..."
+    info "Waiting 10 seconds for device to stabilize..."
+    sleep 10
+
     return
   fi
 
-  # Auto-detect all USB serial devices
+  # Auto-detect USB serial devices
   local tty_devices=()
   for dev in /dev/ttyACM* /dev/ttyUSB*; do
     if [[ -e "$dev" ]]; then
@@ -1810,20 +1849,18 @@ cmd_flash() {
   fi
 
   info "Found ${#tty_devices[@]} USB device(s): ${tty_devices[*]}"
-  info "Configuration: $yaml_path"
   echo ""
 
-  # Compile once (cached for parallel uploads)
-  info "Compiling firmware..."
-  esphome compile "$yaml_path" >/dev/null 2>&1 || err "Compilation failed"
-  ok "Firmware compiled"
+  info "Compiling recovery firmware..."
+  esphome compile "$recovery_yaml" >/dev/null 2>&1 || err "Compilation failed"
+  ok "Recovery firmware compiled"
   echo ""
 
-  # Upload to all devices in parallel (no boot wait)
+  # Upload to all devices in parallel
   local pids=()
   for tty in "${tty_devices[@]}"; do
     info "Starting upload on $tty..."
-    esphome upload "$yaml_path" --device "$tty" > /tmp/iotstack-flash-$(basename "$tty").log 2>&1 &
+    esphome upload "$recovery_yaml" --device "$tty" > /tmp/iotstack-flash-recovery-$(basename "$tty").log 2>&1 &
     pids+=($!)
   done
 
@@ -1833,21 +1870,113 @@ cmd_flash() {
     pid=${pids[$i]}
     tty=${tty_devices[$i]}
     if wait "$pid"; then
-      ok "Flash successful on $tty"
+      ok "Recovery firmware flashed on $tty"
     else
-      warn "Flash FAILED on $tty"
+      warn "Recovery flash FAILED on $tty"
       failed=$((failed + 1))
     fi
   done
 
   if [[ $failed -gt 0 ]]; then
-    err "Failed to upload to $failed device(s). Check logs:
-$(printf '  /tmp/iotstack-flash-%s.log\n' "$(basename ${tty_devices[0]})")"
+    err "Failed to flash recovery to $failed device(s)"
   else
-    ok "Successfully uploaded to all ${#tty_devices[@]} device(s)"
+    ok "Recovery firmware flashed to all ${#tty_devices[@]} device(s)"
     echo ""
-    echo "Devices will boot with new firmware. Safe mode boot sequence in progress..."
+    info "Devices booting recovery firmware (purple LED indicator)..."
+    info "Waiting 10 seconds for devices to stabilize..."
+    sleep 10
   fi
+}
+
+_flash_production_smart() {
+  # Smart production firmware flash: detect if device is fresh (needs recovery)
+  # If fresh: flash recovery first, then production via OTA
+  # If exists: skip recovery, just OTA flash production
+  local device="$1"
+  local tty_device="$2"
+  local skip_recovery="$3"
+
+  # Resolve device role to YAML path
+  local yaml_path
+  yaml_path=$(resolve_device "$device")
+
+  info "Production firmware setup for: $device"
+  echo ""
+
+  # If TTY device specified: flash via serial (assume fresh device)
+  if [[ -n "$tty_device" ]]; then
+    if [[ ! -e "$tty_device" ]]; then
+      err "TTY device not found: $tty_device"
+    fi
+
+    # Check if user wants to skip recovery
+    if [[ "$skip_recovery" != "--ota-only" ]]; then
+      info "Fresh device detected (serial connection)"
+      info "Step 1: Flashing recovery firmware..."
+      echo ""
+      _flash_recovery "$tty_device"
+      echo ""
+      info "Step 2: Waiting for device to appear on network..."
+      echo ""
+    else
+      info "Skipping recovery (--ota-only flag)"
+      echo ""
+    fi
+
+    # Now flash production via OTA
+    info "Compiling production firmware..."
+    esphome compile "$yaml_path" >/dev/null 2>&1 || err "Compilation failed"
+
+    info "Waiting for device to connect to network..."
+    local max_wait=30
+    local waited=0
+    local device_hostname=""
+
+    while [[ $waited -lt $max_wait ]]; do
+      # Try to find device via mDNS
+      device_hostname=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep ":" | tail -1 | awk '{print $4}' | cut -d' ' -f1)
+      if [[ -n "$device_hostname" ]]; then
+        break
+      fi
+      sleep 1
+      waited=$((waited + 1))
+    done
+
+    if [[ -z "$device_hostname" ]]; then
+      warn "Device not found on network. Continuing with OTA by device name..."
+      device_hostname="${device}-*.local"
+    fi
+
+    info "OTA flashing production firmware to: $device_hostname"
+    esphome upload "$yaml_path" --device "$device_hostname" || err "OTA upload failed"
+
+    ok "Production firmware setup complete!"
+    return
+  fi
+
+  # No TTY specified: check if device exists on network
+  info "Searching for existing $device on network..."
+
+  local existing_devices=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep ":" | grep -i "$device" | wc -l)
+
+  if [[ $existing_devices -eq 0 ]]; then
+    err "Device '$device' not found on network and no serial device specified.
+Use: iotstack flash $device /dev/ttyUSB0  (to flash fresh device via serial)"
+  fi
+
+  # Device exists, just do OTA flash
+  info "Device found on network, proceeding with OTA flash"
+  echo ""
+
+  info "Compiling production firmware..."
+  esphome compile "$yaml_path" >/dev/null 2>&1 || err "Compilation failed"
+  ok "Firmware compiled"
+  echo ""
+
+  info "OTA flashing to: $device"
+  esphome upload "$yaml_path" --device "$device.local" || err "OTA upload failed"
+
+  ok "Production firmware updated successfully!"
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
