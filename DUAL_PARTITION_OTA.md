@@ -235,15 +235,71 @@ esphome upload yamls/bleproxy.yaml \
 - Verify OTA writes to correct partition
 - Confirm partition switching works
 
-## Next Steps
+## Testing Checklist (BLE Proxy - Phase 1)
+
+Before rolling out to other device roles, validate bleproxy-recovery on real hardware:
+
+### Compilation & Initial Flash
+- [ ] Compile bleproxy-recovery.yaml without errors
+- [ ] Flash recovery firmware via serial to a test device
+- [ ] Device boots successfully, WiFi connects
+- [ ] Purple LED blink pattern visible on boot
+
+### Automatic Fallback Testing
+- [ ] Modify production bleproxy.yaml to have a broken lambda (intentional failure)
+- [ ] Compile and OTA flash broken production to device
+- [ ] Device enters boot loop (should retry 5 times)
+- [ ] After 5 boot attempts, automatically switches to recovery partition
+- [ ] Device boots recovery firmware (purple LED pattern)
+- [ ] WiFi connects successfully from recovery
+
+### Manual Partition Toggle Testing
+- [ ] Hold GPIO0 boot button for 3+ seconds
+- [ ] LED shows toggle feedback
+- [ ] Device reboots into production (or recovery if was recovery)
+- [ ] Device boots successfully into switched partition
+
+### Remote Partition Toggle (HA Button)
+- [ ] Press "Toggle Boot Partition" button in Home Assistant
+- [ ] LED flashes 3 times to confirm
+- [ ] Device reboots into alternate partition
+- [ ] Both partitions boot successfully
+
+### OTA Recovery Testing
+- [ ] With device running broken production firmware in recovery mode
+- [ ] OTA flash fixed production firmware using recovery OTA password
+- [ ] Device reboots into production firmware
+- [ ] Production firmware boots and works correctly
+
+### Full Cycle Testing
+- [ ] Start on production firmware (working)
+- [ ] Trigger intentional failure (corrupt lambda)
+- [ ] Device auto-fallbacks to recovery
+- [ ] OTA flash fixed firmware from recovery
+- [ ] Device runs fixed production
+- [ ] Cycle works reliably multiple times
+
+### Credential Verification
+- [ ] Recovery OTA password: `IotstackRecovery2024` ✓
+- [ ] Recovery API key: `IotstackRecoveryAPIKey2024` ✓
+- [ ] Only these credentials work on recovery firmware
+- [ ] Production credentials don't affect recovery
+
+### Documentation
+- [ ] All three entry methods (auto, button, HA) work
+- [ ] LED indicators are clear and consistent
+- [ ] Recovery workflow is smooth and user-friendly
+- [ ] Ready to document as official procedure
+
+## Next Steps (After BLE Proxy Validation)
 
 1. ✅ Create recovery YAML (bleproxy-recovery.yaml)
-2. ⏳ Create partition table (partitions/dual_app_recovery.csv)
-3. ⏳ Test partition table on real device
-4. ⏳ Create mmwave-recovery.yaml, threadrouter-recovery.yaml
+2. ✅ Create partition table (partitions/dual_app_recovery.csv)
+3. ⏳ **TEST on real bleproxy device** (above checklist)
+4. ⏳ Create mmwave-recovery.yaml, threadrouter-recovery.yaml (copy pattern)
 5. ⏳ Update iotstack-roles.conf for recovery variants
 6. ⏳ Add recovery OTA scripts to iotstack.sh
-7. ⏳ Test full recovery workflow
+7. ⏳ Test full recovery workflow on all device types
 
 ## References
 

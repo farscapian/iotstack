@@ -46,8 +46,7 @@ esp32:
   variant: esp32c6
   # PARTITION TABLE CONFIGURATION
   # Custom partition table for dual-app OTA recovery
-  # See partition_table.csv in project root
-  # partitions: custom:partitions/dual_app_recovery.csv
+  partitions: custom:partitions/dual_app_recovery.csv
 
 wifi:
   ssid: !secret wifi_ssid
