@@ -1208,8 +1208,38 @@ cmd_reassign() {
       return 1
     fi
   else
-    # Single password mode
-    [[ -n "$api_key" ]] && echo "  OTA Password: (provided)"
+    # Single password mode - auto-retrieve from pass if not provided
+    if [[ -n "$api_key" ]]; then
+      echo "  OTA Password: (provided)"
+    else
+      # Try to auto-retrieve OTA password from pass for current device role
+      # First, discover the device to find its current role
+      local source_role=""
+      for mac in "${reassign_macs[@]}"; do
+        # Query mDNS to find device with this MAC suffix
+        local device_info=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -i "$mac" | head -1)
+        if [[ -n "$device_info" ]]; then
+          # Extract device name (e.g., "bleproxy-137284" from the line)
+          local device_name=$(echo "$device_info" | awk -F' ' '{print $4}' | cut -d'.' -f1)
+          # Extract role (everything before the MAC suffix)
+          source_role=$(echo "$device_name" | sed "s/-$mac\$//")
+
+          if [[ -n "$source_role" ]]; then
+            # Try to retrieve OTA password for this role
+            api_key=$(cmd_secret get "$source_role" ota 2>/dev/null) || true
+            if [[ -n "$api_key" ]]; then
+              echo "  OTA Password: (auto-retrieved from $source_role)"
+              break
+            fi
+          fi
+        fi
+      done
+
+      if [[ -z "$api_key" ]]; then
+        warn "Could not auto-retrieve OTA password. Proceeding without password."
+        echo "  OTA Password: (none)"
+      fi
+    fi
     echo
 
     # Build and invoke update_devices.sh with reassign flags
