@@ -48,7 +48,7 @@ esp32:
   # PARTITION TABLE CONFIGURATION
   # Custom partition table for dual-app OTA recovery
   # Generated dynamically by scripts/generate-partitions.sh
-  partitions: custom:partitions/dual_app_recovery.csv
+  partitions: custom:../partitions/dual_app_recovery.csv
 
 wifi:
   ssid: !secret wifi_ssid
