@@ -306,23 +306,8 @@ button:
     name: "Factory Reset"
     entity_category: config
 
-# 7. Sensor Controls (Sleep Mode, Sensitivity, Enable/Disable)
+# 7. Sensor Controls
 switch:
-  - platform: template
-    name: "Sleep Mode"
-    id: sleep_mode
-    icon: "mdi:sleep"
-    entity_category: config
-    optimistic: true
-    turn_on_action:
-      - lambda: |-
-          id(uart_bus).write_str("sensorStop\r\n");
-          ESP_LOGI("SENSOR", "Sleep mode enabled (sensor muted)");
-    turn_off_action:
-      - lambda: |-
-          id(uart_bus).write_str("sensorStart\r\n");
-          ESP_LOGI("SENSOR", "Sleep mode disabled (sensor active)");
-
   - platform: template
     name: "Sensor Enabled"
     id: sensor_enabled
@@ -337,34 +322,6 @@ switch:
       - lambda: |-
           id(uart_bus).write_str("sensorStop\r\n");
           ESP_LOGI("SENSOR", "Sensor disabled");
-
-select:
-  - platform: template
-    name: "Sensitivity"
-    id: sensitivity
-    icon: "mdi:tune"
-    entity_category: config
-    options:
-      - "High"
-      - "Medium"
-      - "Low"
-      - "Off"
-    initial_option: "High"
-    set_action:
-      - lambda: |-
-          if (x == "High") {
-            id(uart_bus).write_str("sensorSensitivity=3\r\n");
-            ESP_LOGI("SENSOR", "Sensitivity: High");
-          } else if (x == "Medium") {
-            id(uart_bus).write_str("sensorSensitivity=2\r\n");
-            ESP_LOGI("SENSOR", "Sensitivity: Medium");
-          } else if (x == "Low") {
-            id(uart_bus).write_str("sensorSensitivity=1\r\n");
-            ESP_LOGI("SENSOR", "Sensitivity: Low");
-          } else if (x == "Off") {
-            id(uart_bus).write_str("sensorStop\r\n");
-            ESP_LOGI("SENSOR", "Sensitivity: Off (sensor stopped)");
-          }
 
 # 7. RGB LED (onboard WS2812, GPIO1)
 light:
