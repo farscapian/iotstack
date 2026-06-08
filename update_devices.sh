@@ -1329,8 +1329,11 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   FQDN="${HOSTNAME}.local"
   dim "  started → ${HOSTNAME}"
 
-  # Extract device name from YAML filename (needed for temp files during reassign)
-  DEVICE_NAME=$(basename "$YAML_FILE" .yaml)
+  # Extract device name from ORIGINAL YAML filename (not temp file)
+  # IMPORTANT: Use ORIGINAL_YAML_FILE because YAML_FILE might be a temp file with OTA password
+  # Temp files are like: .temp-api-key-713092.threadrouter.yaml (wrong basename)
+  # Original files are like: threadrouter.yaml (correct basename)
+  DEVICE_NAME=$(basename "$ORIGINAL_YAML_FILE" .yaml)
 
   # Find the actual firmware binary by searching the build directory
   # ESPHome creates: yamls/.esphome/build/<resolved-name>/.pioenvs/<resolved-name>/firmware.ota.bin
