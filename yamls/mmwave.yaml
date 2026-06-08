@@ -306,6 +306,66 @@ button:
     name: "Factory Reset"
     entity_category: config
 
+# 7. Sensor Controls (Sleep Mode, Sensitivity, Enable/Disable)
+switch:
+  - platform: template
+    name: "Sleep Mode"
+    id: sleep_mode
+    icon: "mdi:sleep"
+    entity_category: config
+    on_turn_on:
+      - lambda: |-
+          // Send sleep mode command to sensor via UART
+          id(uart_bus).write_str("sensorStop\r\n");
+          ESP_LOGI("SENSOR", "Sleep mode enabled (sensor muted)");
+    on_turn_off:
+      - lambda: |-
+          // Wake sensor from sleep
+          id(uart_bus).write_str("sensorStart\r\n");
+          ESP_LOGI("SENSOR", "Sleep mode disabled (sensor active)");
+
+  - platform: template
+    name: "Sensor Enabled"
+    id: sensor_enabled
+    icon: "mdi:radar"
+    entity_category: config
+    on_turn_on:
+      - lambda: |-
+          id(uart_bus).write_str("sensorStart\r\n");
+          ESP_LOGI("SENSOR", "Sensor enabled");
+    on_turn_off:
+      - lambda: |-
+          id(uart_bus).write_str("sensorStop\r\n");
+          ESP_LOGI("SENSOR", "Sensor disabled");
+
+select:
+  - platform: template
+    name: "Sensitivity"
+    id: sensitivity
+    icon: "mdi:tune"
+    entity_category: config
+    options:
+      - "High"
+      - "Medium"
+      - "Low"
+      - "Off"
+    initial_option: "High"
+    set_action:
+      - lambda: |-
+          if (x == "High") {
+            id(uart_bus).write_str("sensorSensitivity=3\r\n");
+            ESP_LOGI("SENSOR", "Sensitivity: High");
+          } else if (x == "Medium") {
+            id(uart_bus).write_str("sensorSensitivity=2\r\n");
+            ESP_LOGI("SENSOR", "Sensitivity: Medium");
+          } else if (x == "Low") {
+            id(uart_bus).write_str("sensorSensitivity=1\r\n");
+            ESP_LOGI("SENSOR", "Sensitivity: Low");
+          } else if (x == "Off") {
+            id(uart_bus).write_str("sensorStop\r\n");
+            ESP_LOGI("SENSOR", "Sensitivity: Off (sensor stopped)");
+          }
+
 # 7. RGB LED (onboard WS2812, GPIO1)
 light:
   - platform: esp32_rmt_led_strip
@@ -538,3 +598,41 @@ script:
           else:
             - light.turn_off:
                 id: rgb_led
+
+# 9. Automations - Nighttime Sensor Management
+automation:
+  # Enable sleep mode at 10 PM (chirping off, sensor quiet)
+  - alias: "mmWave Sleep Mode - Night (10 PM)"
+    trigger:
+      platform: time
+      at: "22:00:00"
+    action:
+      - switch.turn_on: sleep_mode
+
+  # Disable sleep mode at 7 AM (resume normal operation)
+  - alias: "mmWave Sleep Mode - Morning (7 AM)"
+    trigger:
+      platform: time
+      at: "07:00:00"
+    action:
+      - switch.turn_off: sleep_mode
+
+  # Optional: Reduce sensitivity at night instead of sleep
+  # Uncomment these if you prefer low sensitivity over full sleep mode
+  # - alias: "mmWave Sensitivity - Night (10 PM)"
+  #   trigger:
+  #     platform: time
+  #     at: "22:00:00"
+  #   action:
+  #     - select.select_option:
+  #         entity_id: select.sensitivity
+  #         option: "Low"
+  #
+  # - alias: "mmWave Sensitivity - Morning (7 AM)"
+  #   trigger:
+  #     platform: time
+  #     at: "07:00:00"
+  #   action:
+  #     - select.select_option:
+  #         entity_id: select.sensitivity
+  #         option: "High"
