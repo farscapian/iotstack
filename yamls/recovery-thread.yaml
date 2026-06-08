@@ -121,7 +121,9 @@ button:
   - platform: restart
     name: "Restart"
   - platform: factory_reset
-    name: "Factory Reset"
+    name: "Reset Device"
+    entity_category: config
+    disabled_by_default: true
 
   - platform: template
     name: "Toggle Boot Partition"

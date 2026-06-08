@@ -139,7 +139,9 @@ button:
   - platform: restart
     name: "Restart"
   - platform: factory_reset
-    name: "Factory Reset"
+    name: "Reset Device"
+    entity_category: config
+    disabled_by_default: true
 
   # Manual partition toggle button for HA integration
   - platform: template
