@@ -69,9 +69,60 @@ safe_mode:
   num_attempts: 3
   reboot_timeout: 2min
 
+# Global variables for partition toggle
+globals:
+  - id: boot_button_pressed_time
+    type: uint32_t
+    initial_value: '0'
+    restore_value: no
+
 binary_sensor:
   - platform: status
     name: "Connection Status"
+
+  # Boot button (GPIO0) on Seeed XIAO ESP32-C6
+  # Hold for 3+ seconds to toggle between recovery/production partitions
+  - platform: gpio
+    pin:
+      number: GPIO0
+      mode:
+        input: true
+        pullup: true
+      ignore_strapping_warning: true
+    name: "Partition Toggle Button"
+    internal: true
+    on_press:
+      then:
+        - lambda: |-
+            id(boot_button_pressed_time) = millis();
+            ESP_LOGI("PARTITION", "Boot button pressed - hold 3+ seconds to toggle partition");
+    on_release:
+      then:
+        - lambda: |-
+            uint32_t hold_time = millis() - id(boot_button_pressed_time);
+            if (hold_time >= 3000) {
+              ESP_LOGI("PARTITION", "Long press detected (%.1fs) - switching partition", hold_time/1000.0f);
+
+              // Write OTA flags to switch partition
+              // This tells bootloader to use alternate partition on next boot
+              esp_ota_get_boot_partition();  // Get current partition info
+              const esp_partition_t* running = esp_ota_get_running_partition();
+
+              // Toggle to alternate partition
+              const esp_partition_t* next;
+              if (running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
+                next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
+              } else {
+                next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
+              }
+
+              if (next != NULL) {
+                esp_ota_set_boot_partition(next);
+                ESP_LOGI("PARTITION", "Boot partition switched to: %s", next->label);
+              } else {
+                ESP_LOGE("PARTITION", "Failed to find alternate partition");
+              }
+            }
 
 sensor:
   - platform: uptime
@@ -86,6 +137,35 @@ button:
     name: "Restart"
   - platform: factory_reset
     name: "Factory Reset"
+
+  # Manual partition toggle button for HA integration
+  - platform: template
+    name: "Toggle Boot Partition"
+    icon: "mdi:swap-horizontal"
+    on_press:
+      then:
+        - lambda: |-
+            // Manually toggle partition without holding physical button
+            const esp_partition_t* running = esp_ota_get_running_partition();
+            const esp_partition_t* next;
+
+            if (running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
+              next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
+            } else {
+              next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
+            }
+
+            if (next != NULL) {
+              esp_ota_set_boot_partition(next);
+              ESP_LOGI("PARTITION", "Boot partition toggled to: %s", next->label);
+              // Flash LED 3 times to confirm
+              for (int i = 0; i < 3; i++) {
+                digitalWrite(15, LOW);   // LED on
+                delay(200);
+                digitalWrite(15, HIGH);  // LED off
+                delay(200);
+              }
+            }
 
 # Status LED - Onboard LED on XIAO ESP32-C6 (GPIO15, active-low)
 # Purple blinking indicates recovery mode is active
@@ -108,9 +188,31 @@ logger:
 # 5. From recovery, OTA flash production firmware using recovery_ota_password
 # 6. Device reboots into production
 #
+# Partition Toggle Feature (Manual Recovery Entry):
+# - Physical method: Hold GPIO0 (boot button) for 3+ seconds
+#   → Device switches to alternate partition and reboots
+#   → Purple LED confirms toggle happened
+# - HA method: Press "Toggle Boot Partition" button in Home Assistant
+#   → Same effect, no physical access needed
+#   → 3x LED flash confirms partition switched
+#
 # Partition Layout (ESP32-C6 4MB flash):
 # 0x0000 - 0x20000:     Bootloader (128KB)
 # 0x20000 - 0x24000:    Partition table (16KB)
-# 0x24000 - 0x224000:   Recovery app partition (2MB)
-# 0x224000 - 0x424000:  Production app partition (2MB)
+# 0x24000 - 0x224000:   Recovery app partition (ota_0)
+# 0x224000 - 0x424000:  Production app partition (ota_1)
 # 0x424000 - 0x400000:  Unused/spare (reserved)
+#
+# Recovery Quick-Start:
+# 1. Production firmware fails
+# 2. Choose one method to enter recovery:
+#    a) Wait for automatic fallback (5 boot attempts)
+#    b) Hold GPIO0 button for 3+ seconds to manual switch
+#    c) Press "Toggle Boot Partition" button in HA
+# 3. Device boots recovery (purple LED blink pattern)
+# 4. OTA flash production firmware:
+#    esphome upload yamls/bleproxy.yaml \
+#      --device <device>.local \
+#      --ota-password IotstackRecovery2024
+# 5. Device reboots into production
+# 6. All done from computer - no device visits needed!

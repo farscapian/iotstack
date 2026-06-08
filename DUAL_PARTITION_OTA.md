@@ -93,31 +93,77 @@ ESPHome's OTA bootloader automatically:
 
 ## Recovery Workflow
 
-### Scenario: Production Firmware Fails
+### Three Ways to Enter Recovery Mode
+
+#### Option 1: Automatic Fallback (No Action Needed)
+```
+Production firmware fails
+  ↓
+Boot loop (5 attempts) detected by bootloader
+  ↓
+Bootloader auto-switches to recovery partition
+  ↓
+Device boots recovery firmware (purple LED indicator)
+```
+
+#### Option 2: Manual Physical Button (GPIO0)
+```
+Hold GPIO0 boot button for 3+ seconds
+  ↓
+Device logs "switching partition"
+  ↓
+ESP32 writes OTA flags to switch partition
+  ↓
+Device reboots into alternate partition
+  ↓
+Recovery firmware boots (if production was active) or vice versa
+```
+
+#### Option 3: Home Assistant Button
+```
+Press "Toggle Boot Partition" button in HA
+  ↓
+Device receives command via API
+  ↓
+Partition toggle code executes
+  ↓
+LED flashes 3 times to confirm
+  ↓
+Device reboots into alternate partition
+```
+
+### Complete Recovery Scenario
 
 ```
 ┌─────────────────────────────────────────────────┐
 │ 1. Device boots production firmware             │
 │    (on ota_1 partition)                         │
 │                                                  │
-│ 2. Boot loop detected (5 boot attempts)         │
-│    Bootloader checks alternate partition        │
+│ 2. Production firmware fails/crashes            │
+│    Boot loop detected or user initiates toggle  │
 │                                                  │
-│ 3. Device boots recovery firmware               │
+│ 3. Choose entry method:                         │
+│    • Wait for auto-fallback (5 boot attempts)   │
+│    • Hold GPIO0 button 3+ seconds               │
+│    • Press HA "Toggle Boot Partition" button    │
+│                                                  │
+│ 4. Device boots recovery firmware               │
 │    (on ota_0 partition)                         │
 │    LED: Purple blink = recovery mode active     │
 │                                                  │
-│ 4. Device connects to WiFi                      │
+│ 5. Device connects to WiFi                      │
 │    API available with recovery credentials      │
 │                                                  │
-│ 5. User from computer:                          │
-│    esphome upload --device <device> \\         │
-│      --ota-password recovery_password \\        │
-│      production.bin                             │
+│ 6. User from computer:                          │
+│    esphome upload yamls/bleproxy.yaml \\       │
+│      --device <device>.local \\                 │
+│      --ota-password IotstackRecovery2024        │
 │                                                  │
-│ 6. OTA writes production.bin to ota_1           │
+│ 7. OTA writes production firmware to ota_1      │
+│    Set ota_1 as boot partition                  │
 │                                                  │
-│ 7. Device reboots into production               │
+│ 8. Device reboots into production               │
+│    LED: Returns to normal pattern               │
 │    Normal operation resumes                     │
 └─────────────────────────────────────────────────┘
 ```
