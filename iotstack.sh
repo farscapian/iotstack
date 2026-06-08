@@ -1239,6 +1239,13 @@ cmd_reassign() {
           source_role=$(echo "$device_name" | sed "s/-$mac\$//")
 
           if [[ -n "$source_role" ]]; then
+            # If device is running recovery firmware, use well-known recovery password
+            if [[ "$source_role" =~ ^recovery ]]; then
+              api_key="IotstackRecovery2024"
+              echo "  OTA Password: (well-known recovery password)"
+              break
+            fi
+
             # Try to retrieve OTA password for this role
             api_key=$(cmd_secret get "$source_role" ota 2>/dev/null) || true
             if [[ -n "$api_key" ]]; then
