@@ -1209,12 +1209,15 @@ cmd_reassign() {
     fi
   else
     # Single password mode - auto-retrieve from pass if not provided
+    local source_role=""
+    local target_role="$device_or_yaml"
+
+    # First, check if device is already the target role
     if [[ -n "$api_key" ]]; then
       echo "  OTA Password: (provided)"
     else
       # Try to auto-retrieve OTA password from pass for current device role
       # First, discover the device to find its current role
-      local source_role=""
       for mac in "${reassign_macs[@]}"; do
         # Query mDNS to find device with this MAC suffix
         local device_info=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -i "$mac" | head -1)
@@ -1225,6 +1228,13 @@ cmd_reassign() {
           source_role=$(echo "$device_name" | sed "s/-$mac\$//")
 
           if [[ -n "$source_role" ]]; then
+            # Check if already the target role
+            if [[ "$source_role" == "$target_role" ]]; then
+              ok "Device $device_name is already assigned to $target_role — no reassign needed."
+              echo
+              return 0
+            fi
+
             # Try to retrieve OTA password for this role
             api_key=$(cmd_secret get "$source_role" ota 2>/dev/null) || true
             if [[ -n "$api_key" ]]; then
