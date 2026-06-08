@@ -1,0 +1,160 @@
+# Thread-Only Recovery Firmware - All ESP32-C6 Device Roles
+# This is the RECOVERY image for Thread networks (no WiFi)
+# Use when you have a Thread mesh network and want OTA via Thread
+#
+# Size Benefits:
+# - Removes WiFi stack (significant space savings)
+# - Smaller firmware = faster initial deployment
+# - OTA updates via Thread mesh (slower but resilient)
+# - Thread mesh redundancy = more reliable recovery
+#
+# WARNING: Only use this if you have a Thread network!
+# WARNING: Recovery credentials are well-known - only use this to recover!
+
+substitutions:
+  device_role: "recovery-thread"
+  friendly_name: "Recovery Mode (Thread)"
+  # Well-known recovery credentials (NEVER CHANGE THESE - documented security)
+  recovery_ota_password: "IotstackRecovery2024"
+  recovery_api_key: "9Cyl+abaIMyBmUyi326qO0W/ZuoO4ZNnLB7nuuJGjDg="
+
+esphome:
+  name: ${device_role}
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: true
+  project:
+    name: "iotstack.${device_role}"
+    version: "1.0.0"
+  on_boot:
+    priority: -100
+    then:
+      # Recovery mode boot sequence: purple blinking LED
+      - output.turn_on: onboard_led_output
+      - delay: 500ms
+      - output.turn_off: onboard_led_output
+      - delay: 500ms
+      - output.turn_on: onboard_led_output
+      - delay: 500ms
+      - output.turn_off: onboard_led_output
+
+esp32:
+  board: seeed_xiao_esp32c6
+  framework:
+    type: esp-idf
+  flash_size: 4MB
+  variant: esp32c6
+  partitions: dual_app_recovery.csv
+
+# Thread networking (no WiFi)
+openthread:
+  device_type: FTD
+  tlv: !secret thread_tlv
+  force_dataset: true
+
+# IPv6 required for Thread
+network:
+  enable_ipv6: true
+
+api:
+  encryption:
+    key: ${recovery_api_key}
+
+ota:
+  - platform: esphome
+    password: ${recovery_ota_password}
+
+safe_mode:
+  num_attempts: 3
+  reboot_timeout: 2min
+
+# Global variables for partition toggle
+globals:
+  - id: boot_button_pressed_time
+    type: uint32_t
+    initial_value: '0'
+    restore_value: no
+
+binary_sensor:
+  - platform: status
+    name: "Connection Status"
+
+  # Boot button (GPIO9) on Seeed XIAO ESP32-C6
+  - platform: gpio
+    pin:
+      number: GPIO9
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+      ignore_strapping_warning: true
+    name: "Partition Toggle Button"
+    internal: true
+    on_press:
+      then:
+        - lambda: |-
+            id(boot_button_pressed_time) = millis();
+            ESP_LOGI("PARTITION", "Boot button pressed - hold 3+ seconds to toggle partition");
+    on_release:
+      then:
+        - lambda: |-
+            uint32_t hold_time = millis() - id(boot_button_pressed_time);
+            if (hold_time >= 3000) {
+              ESP_LOGI("PARTITION", "Long press detected (%.1fs) - switching partition", hold_time/1000.0f);
+              const esp_partition_t* running = esp_ota_get_running_partition();
+              const esp_partition_t* next;
+              if (running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
+                next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
+              } else {
+                next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
+              }
+              if (next != NULL) {
+                esp_ota_set_boot_partition(next);
+                ESP_LOGI("PARTITION", "Boot partition switched to: %s", next->label);
+              }
+            }
+
+sensor:
+  - platform: uptime
+    name: "Uptime"
+
+button:
+  - platform: restart
+    name: "Restart"
+  - platform: factory_reset
+    name: "Factory Reset"
+
+  - platform: template
+    name: "Toggle Boot Partition"
+    icon: "mdi:swap-horizontal"
+    on_press:
+      then:
+        - lambda: |-
+            const esp_partition_t* running = esp_ota_get_running_partition();
+            const esp_partition_t* next;
+            if (running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
+              next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
+            } else {
+              next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
+            }
+            if (next != NULL) {
+              esp_ota_set_boot_partition(next);
+              ESP_LOGI("PARTITION", "Boot partition toggled to: %s", next->label);
+            }
+        - output.turn_on: onboard_led_output
+        - delay: 200ms
+        - output.turn_off: onboard_led_output
+        - delay: 200ms
+        - output.turn_on: onboard_led_output
+        - delay: 200ms
+        - output.turn_off: onboard_led_output
+
+output:
+  - platform: gpio
+    pin:
+      number: GPIO15
+      inverted: true
+    id: onboard_led_output
+
+logger:
+  level: INFO
+  hardware_uart: USB_SERIAL_JTAG
