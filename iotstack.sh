@@ -20,6 +20,74 @@ ok()   { echo -e "${GRN}[OK]${RST} $*"; }
 warn() { echo -e "${YLW}[WARN]${RST} $*"; }
 info() { echo -e "${BLU}[INFO]${RST} $*"; }
 
+# ── Compilation Cache ────────────────────────────────────────────────────────
+
+_get_yaml_sha() {
+  # Get SHA256 of YAML file
+  local yaml_file="$1"
+  [[ -f "$yaml_file" ]] && sha256sum "$yaml_file" | awk '{print $1}' || echo ""
+}
+
+_get_binary_sha() {
+  # Get SHA256 of compiled firmware binary
+  local device_name="$1"
+  local build_dir="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
+  [[ -f "$build_dir" ]] && sha256sum "$build_dir" | awk '{print $1}' || echo ""
+}
+
+_check_compilation_cache() {
+  # Check if we can skip compilation based on YAML SHA
+  # Returns 0 (can skip) or 1 (must compile)
+  local yaml_sha="$1"
+  local device_name="$2"
+
+  [[ ! -f "$COMPILATION_CACHE" ]] && return 1
+
+  # Look for matching YAML SHA in cache
+  grep "^${yaml_sha}," "$COMPILATION_CACHE" >/dev/null 2>&1
+  return $?
+}
+
+_update_compilation_cache() {
+  # Record compilation result in cache
+  local yaml_sha="$1"
+  local binary_sha="$2"
+  local device_name="$3"
+
+  local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  echo "${yaml_sha},${binary_sha},${device_name},${timestamp}" >> "$COMPILATION_CACHE"
+}
+
+smart_compile() {
+  # Smart compilation that uses cache to skip rebuilds
+  # Usage: smart_compile <yaml_file> [device_name_for_logging]
+  local yaml_file="$1"
+  local device_name="${2:-unknown}"
+
+  # Get YAML SHA before compilation
+  local yaml_sha=$(_get_yaml_sha "$yaml_file")
+  [[ -z "$yaml_sha" ]] && err "Failed to compute SHA256 of $yaml_file"
+
+  # Check if we can skip compilation
+  if _check_compilation_cache "$yaml_sha" "$device_name"; then
+    ok "Firmware already compiled (cached)"
+    return 0
+  fi
+
+  # YAML changed or first compile - need to rebuild
+  info "Compiling firmware..."
+  esphome compile "$yaml_file" || return 1
+
+  # Get binary SHA after successful compilation
+  local binary_sha=$(_get_binary_sha "$device_name")
+  if [[ -n "$binary_sha" ]]; then
+    _update_compilation_cache "$yaml_sha" "$binary_sha" "$device_name"
+    ok "Compilation cached"
+  fi
+
+  return 0
+}
+
 # Prompt for multi-device operations
 confirm_multi_device() {
   local count="$1"
@@ -48,6 +116,10 @@ SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 UPDATE_SCRIPT="${SCRIPT_DIR}/update_devices.sh"
 YAMLS_DIR="${SCRIPT_DIR}/yamls"
+
+# Compilation cache
+COMPILATION_CACHE="${HOME}/.iotstack/compilation-cache.csv"
+mkdir -p "$(dirname "$COMPILATION_CACHE")"
 
 # ── Worktree Isolation ────────────────────────────────────────────────────────
 # Each iotstack invocation gets its own isolated worktree to prevent code
@@ -2037,7 +2109,7 @@ _flash_recovery() {
 
     info "Flashing to: $tty_device"
     info "Compiling recovery firmware..."
-    esphome compile "$recovery_yaml" || err "Compilation failed"
+    smart_compile "$recovery_yaml" "recovery" || err "Compilation failed"
 
     info "Uploading recovery firmware to device..."
 
@@ -2302,8 +2374,7 @@ Use: iotstack flash $device /dev/ttyUSB0  (to flash fresh device via serial)"
   echo ""
 
   info "Compiling production firmware..."
-  esphome compile "$yaml_path" >/dev/null 2>&1 || err "Compilation failed"
-  ok "Firmware compiled"
+  smart_compile "$yaml_path" "$device" || err "Compilation failed"
   echo ""
 
   info "OTA flashing to: $device"
