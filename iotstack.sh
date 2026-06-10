@@ -1846,17 +1846,26 @@ cmd_set() {
       ;;
     *)
       cat << 'EOF'
-Usage: iotstack set <property> [args]
+Usage: iotstack set boot-partition <recovery|production> [mac-suffix]
 
-Properties:
-  boot-partition <recovery|production> [mac-suffix]
-    Set which partition device boots into
+Set which partition a recovery device boots into.
+
+IMPORTANT: Commands are DEVICE-SPECIFIC — no "set all" operations.
+
+USB-Connected Device (one must be plugged in):
+  iotstack set boot-partition recovery           # Toggle USB device → recovery
+  iotstack set boot-partition production         # Toggle USB device → production
+
+Network Device (specify MAC):
+  iotstack set boot-partition recovery 1af95c    # Network device → recovery
+  iotstack set boot-partition production 9019c8  # Network device → production
 
 Examples:
-  iotstack set boot-partition recovery           # All devices → recovery
-  iotstack set boot-partition production         # All devices → production
-  iotstack set boot-partition recovery 1af95c    # Specific device → recovery
-  iotstack set boot-partition production 9019c8  # Specific device → production
+  # Device plugged in via USB
+  iotstack set boot-partition production
+
+  # Device on network, specific MAC
+  iotstack set boot-partition recovery 1af95c
 EOF
       exit 1
       ;;
@@ -1873,30 +1882,37 @@ _set_boot_partition() {
   fi
 
   if [[ -z "$mac" ]]; then
-    # Set all recovery devices
-    info "Setting all recovery devices to boot: $target_partition"
-    echo ""
+    # No MAC specified: must have exactly ONE USB device
+    local usb_devices=()
+    for dev in /dev/ttyACM* /dev/ttyUSB*; do
+      [[ -e "$dev" ]] && usb_devices+=("$dev")
+    done 2>/dev/null
 
-    local recovery_devices=()
-    while IFS= read -r line; do
-      if [[ "$line" =~ recovery-([0-9a-f]+) ]]; then
-        recovery_devices+=("${BASH_REMATCH[1]}")
-      fi
-    done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
-
-    if [[ ${#recovery_devices[@]} -eq 0 ]]; then
-      err "No recovery devices found on network"
+    if [[ ${#usb_devices[@]} -eq 0 ]]; then
+      err "No USB devices found. Plug in device or use: iotstack set boot-partition $target_partition <mac-suffix>"
     fi
 
-    for device_mac in "${recovery_devices[@]}"; do
-      _boot_partition_single "$target_partition" "$device_mac"
-    done
+    if [[ ${#usb_devices[@]} -gt 1 ]]; then
+      err "Multiple USB devices found: ${usb_devices[*]}"
+      err "Specify which one: iotstack set boot-partition $target_partition <mac-suffix>"
+    fi
 
-    echo ""
-    ok "All devices set to boot: $target_partition"
+    # Single USB device - use API to toggle
+    local device="${usb_devices[0]}"
+    info "Setting boot partition on $device to: $target_partition"
+
+    # Device must be running recovery firmware for this to work
+    info "Toggling boot partition..."
+    if timeout 5 curl -s -X POST "http://localhost:6053/api/services/button/press" \
+      -H "Content-Type: application/json" \
+      -d '{"entity_id": "button.recovery_toggle_boot_partition"}' >/dev/null 2>&1; then
+      ok "Boot partition toggled, device rebooting..."
+    else
+      err "Could not communicate with device. Ensure it's running and connected."
+    fi
   else
-    # Set specific device
-    _boot_partition_single "$target_partition" "$mac"
+    # MAC specified: toggle via network mDNS discovery
+    _boot_partition_network "$target_partition" "$mac"
   fi
 }
 
