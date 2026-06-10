@@ -130,6 +130,62 @@ if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
 fi
 
 # ── GPG Key Setup (required before pass) ──────────────────────────────────
+# ── Avahi mDNS TTL Optimization ────────────────────────────────────────────
+echo
+echo "════════════════════════════════════════════════════════"
+echo "Checking avahi-daemon mDNS TTL (optional optimization)"
+echo "════════════════════════════════════════════════════════"
+echo
+
+if command -v avahi-daemon &>/dev/null; then
+  AVAHI_CONF="/etc/avahi/avahi-daemon.conf"
+
+  if [[ -f "$AVAHI_CONF" ]]; then
+    current_ttl=$(grep "^ttl=" "$AVAHI_CONF" 2>/dev/null | cut -d= -f2 || echo "75")
+
+    if [[ "$current_ttl" -gt 60 ]]; then
+      echo "Current mDNS TTL: ${YLW}${current_ttl}s${RST}"
+      echo "Shorter TTL = faster offline device detection (currently takes ~${current_ttl}s)"
+      echo
+      read -p "Reduce TTL to 30 seconds for faster device discovery? (y/N) " -n 1 -r
+      echo
+
+      if [[ $REPLY =~ ^[Yy]$ ]]; then
+        # Backup original config
+        sudo cp "$AVAHI_CONF" "${AVAHI_CONF}.backup.$(date +%s)"
+
+        # Update TTL
+        if grep -q "^ttl=" "$AVAHI_CONF"; then
+          sudo sed -i 's/^ttl=.*/ttl=30/' "$AVAHI_CONF"
+        else
+          # Add TTL line in [publish] section if not present
+          sudo sed -i '/\[publish\]/a ttl=30' "$AVAHI_CONF"
+        fi
+
+        # Restart avahi daemon
+        if sudo systemctl is-active --quiet avahi-daemon; then
+          sudo systemctl restart avahi-daemon
+          ok "avahi-daemon restarted with TTL=30s"
+        else
+          warn "avahi-daemon not running. Start it with: sudo systemctl start avahi-daemon"
+        fi
+      else
+        dim "Keeping current TTL (${current_ttl}s)"
+      fi
+    else
+      ok "avahi-daemon TTL already optimized (${current_ttl}s)"
+    fi
+  else
+    warn "avahi-daemon.conf not found at $AVAHI_CONF"
+  fi
+else
+  warn "avahi-daemon not installed. Device discovery will use system defaults."
+  echo "    To install: sudo apt install avahi-daemon"
+fi
+
+echo
+
+# ── GPG Key Setup (required before pass) ──────────────────────────────────
 echo
 echo "════════════════════════════════════════════════════════"
 echo "Setting up GPG key (required for pass)"
