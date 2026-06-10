@@ -1,6 +1,9 @@
 #!/bin/bash
 # iotstack.sh — CLI tool for managing IoT Stack ESPHome devices
 # Wrapper around update_devices.sh with a cleaner interface
+#
+# Each invocation runs in an isolated git worktree to prevent code changes
+# from affecting running commands.
 
 set -euo pipefail
 
@@ -21,6 +24,38 @@ SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 UPDATE_SCRIPT="${SCRIPT_DIR}/update_devices.sh"
 YAMLS_DIR="${SCRIPT_DIR}/yamls"
+
+# ── Worktree Isolation ────────────────────────────────────────────────────────
+# Each iotstack invocation gets its own isolated worktree to prevent code
+# changes from affecting running commands.
+
+_setup_worktree() {
+  local worktree_dir="${SCRIPT_DIR}/.git/worktrees/iotstack-$$"
+
+  # Create and enter worktree
+  cd "$SCRIPT_DIR"
+  git worktree add --no-checkout "$worktree_dir" HEAD 2>/dev/null || return 0
+
+  # Re-exec in worktree
+  cd "$worktree_dir"
+  export IOTSTACK_WORKTREE="$worktree_dir"
+  exec bash "$SCRIPT_PATH" "$@"
+}
+
+_cleanup_worktree() {
+  if [[ -n "${IOTSTACK_WORKTREE:-}" ]]; then
+    cd "$SCRIPT_DIR" 2>/dev/null || return 0
+    git worktree remove "$IOTSTACK_WORKTREE" --force 2>/dev/null || true
+  fi
+}
+
+# Create isolated worktree for this invocation
+if [[ -z "${IOTSTACK_WORKTREE:-}" ]]; then
+  trap _cleanup_worktree EXIT
+  _setup_worktree "$@"
+fi
+
+# ──────────────────────────────────────────────────────────────────────────────
 
 # Check if update_devices.sh exists
 if [[ ! -f "$UPDATE_SCRIPT" ]]; then
