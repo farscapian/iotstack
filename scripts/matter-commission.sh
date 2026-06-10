@@ -164,17 +164,41 @@ echo "[info] Manual code:   ${MANUAL_CODE:0:4}-${MANUAL_CODE:4:3}-${MANUAL_CODE:
 echo ""
 
 # ---------------------------------------------------------------------------
-# 5a. Wait for device to be ready
+# 5a. Wait for device to become commissionable
 # ---------------------------------------------------------------------------
-echo "[info] Ensure the device is powered on and ready for commissioning."
-echo "[info] Waiting 15 seconds for device to stabilize..."
+echo "[info] Ensure the device is powered on and in commissioning mode."
+echo "[info] Waiting for device to advertise as commissionable..."
 echo ""
 
-for ((i=15; i>0; i--)); do
-    printf "[info] Starting in %2d seconds... (press Ctrl-C to cancel)\r" "$i"
+MAX_WAIT=60
+WAITED=0
+FOUND=false
+
+while [[ $WAITED -lt $MAX_WAIT ]]; do
+    # Attempt discovery with --discover-once to do a single scan
+    DISCOVER_OUTPUT=$(chip-tool discover commissionables --discover-once 2>&1 || true)
+
+    # Check if discriminator was found in output
+    if echo "$DISCOVER_OUTPUT" | grep -q "Discriminator: ${DISCRIMINATOR}"; then
+        info "Device found! Ready to commission."
+        FOUND=true
+        break
+    fi
+
+    # Show progress every 5 seconds
+    if (( WAITED % 5 == 0 )); then
+        printf "[info] Scanning... %d/%d seconds (press Ctrl-C to cancel)\n" "$WAITED" "$MAX_WAIT"
+    fi
+
     sleep 1
+    WAITED=$((WAITED + 1))
 done
+
 echo ""
+
+if [[ "$FOUND" != "true" ]]; then
+    warn "Device not found after ${MAX_WAIT} seconds, attempting commissioning anyway..."
+fi
 
 # ---------------------------------------------------------------------------
 # 6. Commission via chip-tool (Thread)
