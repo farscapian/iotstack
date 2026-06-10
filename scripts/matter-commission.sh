@@ -10,41 +10,45 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${HOME}/.iotstack/matter-commission.env"
-
 # ---------------------------------------------------------------------------
-# 1. Stub out .env if it doesn't exist
-# ---------------------------------------------------------------------------
-if [[ ! -f "${ENV_FILE}" ]]; then
-    mkdir -p "$(dirname "${ENV_FILE}")"
-    cat > "${ENV_FILE}" << 'EOF'
-# Thread dataset in hex (from: ot-ctl dataset active -x  or  dbus-send to OTBR)
-THREAD_DATASET_HEX=""
-
-# Home Assistant
-HA_URL="http://homeassistant.local:8123"
-HA_TOKEN=""
-
-# Auto-incrementing node ID (updated by script after each successful commission)
-NEXT_NODE_ID=1
-EOF
-    echo "[info] Created stub ${ENV_FILE} — fill it in and re-run."
-    exit 0
-fi
-
-# shellcheck source=/dev/null
-source "${ENV_FILE}"
-
-# ---------------------------------------------------------------------------
-# 2. Validate required env vars
+# 1. Helper functions
 # ---------------------------------------------------------------------------
 die() { echo "[error] $*" >&2; exit 1; }
+info() { echo "[info] $*"; }
+warn() { echo "[warn] $*"; }
 
-[[ -n "${THREAD_DATASET_HEX:-}" ]] || die "THREAD_DATASET_HEX is not set in ${ENV_FILE}"
-[[ -n "${HA_URL:-}"             ]] || die "HA_URL is not set in ${ENV_FILE}"
-[[ -n "${HA_TOKEN:-}"           ]] || die "HA_TOKEN is not set in ${ENV_FILE}"
-[[ -n "${NEXT_NODE_ID:-}"       ]] || die "NEXT_NODE_ID is not set in ${ENV_FILE}"
+# Get secret from pass store
+get_secret() {
+    local key="$1"
+    pass show "$key" 2>/dev/null || echo ""
+}
+
+# Set secret in pass store (requires double-entry for confirmation)
+set_secret() {
+    local key="$1"
+    local value="$2"
+    { echo "$value"; echo "$value"; } | pass insert -f "$key" 2>&1 >/dev/null || return 1
+}
+
+# ---------------------------------------------------------------------------
+# 2. Load secrets from pass store
+# ---------------------------------------------------------------------------
+info "Loading Matter commissioning secrets from pass..."
+
+THREAD_TLV=$(get_secret "iotstack/matter/thread_tlv")
+HA_URL=$(get_secret "iotstack/common/ha_url")
+HA_TOKEN=$(get_secret "iotstack/common/ha_token")
+NEXT_NODE_ID=$(get_secret "iotstack/matter/next_node_id")
+
+# Validate required secrets
+[[ -n "${THREAD_TLV:-}" ]] || die "Thread TLV not found. Set with: pass insert iotstack/matter/thread_tlv"
+[[ -n "${HA_URL:-}" ]] || die "HA_URL not found. Set with: pass insert iotstack/common/ha_url"
+[[ -n "${HA_TOKEN:-}" ]] || die "HA_TOKEN not found. Set with: pass insert iotstack/common/ha_token"
+[[ -n "${NEXT_NODE_ID:-}" ]] || {
+    info "Initializing NEXT_NODE_ID to 1..."
+    set_secret "iotstack/matter/next_node_id" "1" || die "Failed to initialize NEXT_NODE_ID"
+    NEXT_NODE_ID="1"
+}
 
 NODE_ID="${NEXT_NODE_ID}"
 
@@ -244,10 +248,10 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 9. Increment NEXT_NODE_ID in .env
+# 9. Increment NEXT_NODE_ID in pass store
 # ---------------------------------------------------------------------------
 NEXT="$(( NODE_ID + 1 ))"
-sed -i "s/^NEXT_NODE_ID=.*/NEXT_NODE_ID=${NEXT}/" "${ENV_FILE}"
-echo "[info] NEXT_NODE_ID incremented to ${NEXT} in ${ENV_FILE}"
+set_secret "iotstack/matter/next_node_id" "$NEXT" || warn "Failed to update NEXT_NODE_ID in pass"
+info "NEXT_NODE_ID incremented to ${NEXT}"
 
 echo "[done] Node ${NODE_ID} commissioned and handed off to HA."

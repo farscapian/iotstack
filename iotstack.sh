@@ -2490,11 +2490,16 @@ Scans a Matter QR code (zbarcam), decodes the payload, commissions the device
 via chip-tool (Thread), opens a commissioning window, and hands off to Home
 Assistant for adoption.
 
-Configuration file: ~/.iotstack/matter-commission.env
-  - THREAD_DATASET_HEX: Thread network dataset (hex)
-  - HA_URL: Home Assistant URL
-  - HA_TOKEN: Home Assistant long-lived token
-  - NEXT_NODE_ID: Auto-increment node ID (updated after each commission)
+Required secrets (stored in pass):
+  iotstack/matter/thread_tlv          Thread network TLV data (hex)
+  iotstack/common/ha_url              Home Assistant URL
+  iotstack/common/ha_token            Home Assistant long-lived token
+  iotstack/matter/next_node_id        Auto-increment node ID (auto-initialized)
+
+Set secrets with:
+  pass insert iotstack/matter/thread_tlv
+  pass insert iotstack/common/ha_url
+  pass insert iotstack/common/ha_token
 
 Dependencies:
   - zbar-tools (zbarcam): apt install zbar-tools
