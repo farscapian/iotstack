@@ -168,6 +168,20 @@ echo "[info] Node ID:      ${NODE_ID}"
 echo "[info] Discriminator: ${DISCRIMINATOR}"
 echo "[info] Passcode:      ${PASSCODE}"
 echo "[info] Manual code:   ${MANUAL_CODE:0:4}-${MANUAL_CODE:4:3}-${MANUAL_CODE:7}"
+echo ""
+
+# ---------------------------------------------------------------------------
+# 5a. Wait for device to be ready
+# ---------------------------------------------------------------------------
+echo "[info] Ensure the device is powered on and ready for commissioning."
+echo "[info] Waiting 15 seconds for device to stabilize..."
+echo ""
+
+for ((i=15; i>0; i--)); do
+    printf "[info] Starting in %2d seconds... (press Ctrl-C to cancel)\r" "$i"
+    sleep 1
+done
+echo ""
 
 # ---------------------------------------------------------------------------
 # 6. Commission via chip-tool (Thread)
