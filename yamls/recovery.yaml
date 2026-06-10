@@ -33,13 +33,21 @@ esphome:
     priority: -100
     then:
       # Recovery mode boot sequence: purple blinking LED
-      - output.turn_on: onboard_led_output
+      - light.turn_on:
+          id: status_led
+          red: 1.0
+          green: 0.0
+          blue: 1.0
       - delay: 500ms
-      - output.turn_off: onboard_led_output
+      - light.turn_off: status_led
       - delay: 500ms
-      - output.turn_on: onboard_led_output
+      - light.turn_on:
+          id: status_led
+          red: 1.0
+          green: 0.0
+          blue: 1.0
       - delay: 500ms
-      - output.turn_off: onboard_led_output
+      - light.turn_off: status_led
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -164,22 +172,30 @@ button:
               esp_ota_set_boot_partition(next);
               ESP_LOGI("PARTITION", "Boot partition toggled to: %s", next->label);
             }
-        - output.turn_on: onboard_led_output
+        - light.turn_on:
+            id: status_led
+            red: 1.0
+            green: 0.0
+            blue: 1.0
         - delay: 200ms
-        - output.turn_off: onboard_led_output
+        - light.turn_off: status_led
         - delay: 200ms
-        - output.turn_on: onboard_led_output
+        - light.turn_on:
+            id: status_led
+            red: 1.0
+            green: 0.0
+            blue: 1.0
         - delay: 200ms
-        - output.turn_off: onboard_led_output
+        - light.turn_off: status_led
 
-# Status LED - Onboard LED on XIAO ESP32-C6 (GPIO15, active-low)
+# Status LED - Addressable RGB LED on XIAO ESP32-C6 (GPIO15, WS2812B)
 # Purple blinking indicates recovery mode is active
-output:
-  - platform: gpio
-    pin:
-      number: GPIO15
-      inverted: true
-    id: onboard_led_output
+light:
+  - platform: neopixel
+    pin: GPIO15
+    num_leds: 1
+    name: "Status LED"
+    id: status_led
 
 logger:
   level: INFO  # Minimal logging in recovery mode
