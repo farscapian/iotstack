@@ -1973,8 +1973,8 @@ _flash_recovery_dual() {
   # Usage: iotstack flash recovery mmwave
   local production_role="$1"
 
-  # First: flash recovery via serial to all USB devices
-  _flash_recovery
+  # First: flash recovery via serial to all USB devices (auto-detect)
+  _flash_recovery ""
 
   # Second: OTA update to production role once devices boot
   info "Flashing production firmware ($production_role) via OTA..."
