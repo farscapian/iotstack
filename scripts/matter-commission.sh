@@ -130,52 +130,23 @@ PYEOF
 }
 
 # ---------------------------------------------------------------------------
-# 4. Get Matter payload — from argument or zbarcam
+# 4. Get Matter payload — from QR code image file
 # ---------------------------------------------------------------------------
-MT_PAYLOAD=""
+[[ $# -lt 1 ]] && die "Usage: $0 <path-to-qr-image>"
 
-# Attempt to enable camera autofocus via v4l2-ctl
-_enable_camera_autofocus() {
-    if command -v v4l2-ctl &>/dev/null; then
-        local camera_dev="/dev/video0"
-        if [[ -e "$camera_dev" ]]; then
-            # Try different autofocus control names (varies by camera)
-            if v4l2-ctl -d "$camera_dev" -c focus_auto=1 2>/dev/null; then
-                info "Camera autofocus enabled (focus_auto)"
-            elif v4l2-ctl -d "$camera_dev" -c focus_automatic_continuous=1 2>/dev/null; then
-                info "Camera autofocus enabled (focus_automatic_continuous)"
-            else
-                # Camera might not support autofocus, but that's okay
-                true
-            fi
-        fi
-    fi
-}
+QR_IMAGE="$1"
+[[ ! -f "$QR_IMAGE" ]] && die "QR code image not found: $QR_IMAGE"
 
-if [[ $# -ge 1 ]]; then
-    ARG="${1}"
-    if [[ "${ARG}" == MT:* ]]; then
-        MT_PAYLOAD="${ARG}"
-        echo "[info] Using provided payload: ${MT_PAYLOAD}"
-    else
-        die "Argument does not look like a Matter payload (expected MT:...): ${ARG}"
-    fi
-else
-    _enable_camera_autofocus
-    echo "[info] Point camera at Matter QR code... (Ctrl-C to abort)"
-    echo "[info] If focus is blurry, try: v4l2-ctl -d /dev/video0 -c focus_auto=1"
-    echo ""
+# Check for zbarimg
+command -v zbarimg &>/dev/null || die "zbarimg not found. Install with: sudo apt install zbar-tools"
 
-    while [[ -z "${MT_PAYLOAD}" ]]; do
-        RAW="$(zbarcam --raw --oneshot -q 2>/dev/null | tr -d '[:space:]')" || true
-        if [[ "${RAW}" == MT:* ]]; then
-            MT_PAYLOAD="${RAW}"
-            echo "[info] Got payload: ${MT_PAYLOAD}"
-        else
-            [[ -n "${RAW}" ]] && echo "[info] Ignoring non-Matter scan: ${RAW}"
-        fi
-    done
-fi
+# Decode QR code from image
+info "Decoding QR code from: $QR_IMAGE"
+MT_PAYLOAD=$(zbarimg --raw "$QR_IMAGE" 2>/dev/null | grep "^MT:" | head -1 || echo "")
+
+[[ -z "$MT_PAYLOAD" ]] && die "No Matter QR code found in image. Ensure the image contains a valid Matter QR code."
+
+info "Got payload: $MT_PAYLOAD"
 
 # ---------------------------------------------------------------------------
 # 5. Decode

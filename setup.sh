@@ -207,14 +207,9 @@ echo
 
 MISSING_DEPS=()
 
-# Check for zbar-tools (zbarcam)
-if ! command -v zbarcam &>/dev/null; then
+# Check for zbar-tools (zbarimg for QR decoding)
+if ! command -v zbarimg &>/dev/null; then
   MISSING_DEPS+=("zbar-tools")
-fi
-
-# Check for v4l-utils (v4l2-ctl for camera autofocus)
-if ! command -v v4l2-ctl &>/dev/null; then
-  MISSING_DEPS+=("v4l-utils")
 fi
 
 # Check for chip-tool
@@ -244,11 +239,6 @@ if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
     # zbar-tools
     if [[ " ${MISSING_DEPS[*]} " =~ " zbar-tools " ]]; then
       sudo apt update && sudo apt install -y zbar-tools || warn "Failed to install zbar-tools"
-    fi
-
-    # v4l-utils
-    if [[ " ${MISSING_DEPS[*]} " =~ " v4l-utils " ]]; then
-      sudo apt install -y v4l-utils || warn "Failed to install v4l-utils"
     fi
 
     # curl
