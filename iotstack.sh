@@ -1889,13 +1889,7 @@ _flash_recovery() {
 
     info "Flashing to: $tty_device"
     info "Compiling recovery firmware..."
-    echo "DEBUG: About to compile $recovery_yaml" >&2
-    esphome compile "$recovery_yaml"
-    local compile_status=$?
-    echo "DEBUG: esphome exit code: $compile_status" >&2
-    if [[ $compile_status -ne 0 ]]; then
-      err "Compilation failed with exit code $compile_status"
-    fi
+    esphome compile "$recovery_yaml" || err "Compilation failed"
 
     info "Uploading recovery firmware to device (full serial flash including bootloader)..."
 
@@ -1934,13 +1928,7 @@ _flash_recovery() {
   echo ""
 
   info "Compiling recovery firmware..."
-  echo "DEBUG: About to compile $recovery_yaml" >&2
-  esphome compile "$recovery_yaml"
-  local compile_status=$?
-  echo "DEBUG: esphome exit code: $compile_status" >&2
-  if [[ $compile_status -ne 0 ]]; then
-    err "Compilation failed with exit code $compile_status"
-  fi
+  esphome compile "$recovery_yaml" || err "Compilation failed"
   ok "Recovery firmware compiled"
   echo ""
 
@@ -2005,6 +1993,44 @@ _flash_recovery_dual() {
   info "Updating devices to $production_role firmware..."
   "$UPDATE_SCRIPT" "$yaml_file" --ota-password "$ota_password" --jobs 1 || err "OTA update failed"
 
+  # Third: Toggle boot partition to production and reboot devices
+  info "Toggling boot partition to production firmware..."
+  echo ""
+
+  # Discover recovery devices and toggle them
+  local recovery_devices=()
+  while IFS= read -r line; do
+    if [[ "$line" =~ recovery-([0-9a-f]+) ]]; then
+      recovery_devices+=("${BASH_REMATCH[1]}")
+    fi
+  done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+
+  if [[ ${#recovery_devices[@]} -gt 0 ]]; then
+    # Use ESPHome service call via Home Assistant if available
+    local ha_url=$(pass show iotstack/common/ha_url 2>/dev/null || echo "")
+    local ha_token=$(pass show iotstack/common/ha_token 2>/dev/null || echo "")
+
+    if [[ -n "$ha_url" && -n "$ha_token" ]]; then
+      # Call the partition toggle button via Home Assistant
+      for mac in "${recovery_devices[@]}"; do
+        local device_name="recovery-$mac"
+        local entity_id="button.${device_name,,}_toggle_boot_partition"
+
+        info "Toggling partition on $device_name..."
+        curl -s -X POST "$ha_url/api/services/button/press" \
+          -H "Authorization: Bearer $ha_token" \
+          -H "Content-Type: application/json" \
+          -d "{\"entity_id\": \"$entity_id\"}" >/dev/null 2>&1 && \
+          ok "  Partition toggled, device rebooting..." || \
+          warn "  Could not toggle partition via HA (continuing anyway)"
+      done
+    else
+      warn "Home Assistant not configured - devices will stay in recovery mode"
+      warn "To boot into production: hold GPIO9 for 3+ seconds or use HA button"
+    fi
+  fi
+
+  echo ""
   ok "Dual-flash complete: recovery + $production_role"
 }
 
