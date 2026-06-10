@@ -441,12 +441,13 @@ iotstack flash — Initial device setup with dual-partition recovery
 
 Usage:
   iotstack flash <device> [tty-device] [options]
-  iotstack flash recovery [tty-device]
+  iotstack flash recovery [tty-device|role]
 
 Arguments:
   <device>        Device role (e.g., bleproxy, mmwave, threadrouter)
-  recovery        Flash recovery image (no production firmware after)
+  recovery        Flash recovery image via serial
   [tty-device]    Serial device (e.g., /dev/ttyACM0). Auto-detected if omitted.
+  [role]          Production role for dual-flash (e.g., mmwave, bleproxy)
 
 Options:
   --ota-only      Skip recovery flash, only OTA production (device already has recovery)
@@ -456,7 +457,7 @@ WORKFLOW:
 Fresh Device (brand new, never flashed):
   iotstack flash bleproxy /dev/ttyUSB0
   → Flashes recovery.yaml via serial (dual-partition setup)
-  → Waits 10s for device to boot
+  → Waits 15s for device to boot
   → Automatically OTA flashes bleproxy firmware
   → Done! Device ready for production
 
@@ -465,6 +466,13 @@ Existing Device (already has recovery):
   → Skips recovery, just OTA flashes production
   → Faster than full setup
 
+Dual-Flash (recovery + production in one command):
+  iotstack flash recovery mmwave
+  → Flashes recovery via serial to all USB devices
+  → Waits for devices to boot
+  → OTA updates all devices to mmwave firmware
+  → Done! All devices ready with dual-partition setup
+
 Recovery Only:
   iotstack flash recovery /dev/ttyUSB0
   → Flashes just recovery image via serial
@@ -472,6 +480,7 @@ Recovery Only:
 
 Examples:
   iotstack flash bleproxy /dev/ttyUSB0         # Smart setup (recovery + production)
+  iotstack flash recovery mmwave               # Dual-flash: recovery + mmwave
   iotstack flash recovery /dev/ttyUSB0         # Recovery image only
   iotstack flash mmwave /dev/ttyACM0 --ota-only # Skip recovery, update production only
   iotstack flash threadrouter                  # Auto-detect all USB devices
@@ -1832,7 +1841,7 @@ cmd_flash() {
     return 0
   fi
   local device="${1:-}"
-  local tty_device="${2:-}"
+  local tty_device_or_role="${2:-}"
   local skip_recovery="${3:-}"
 
   if [[ -z "$device" ]]; then
@@ -1842,14 +1851,22 @@ cmd_flash() {
 
   # Special handling for "recovery" role
   if [[ "$device" == "recovery" ]]; then
-    _flash_recovery "$tty_device"
+    # Check if second arg is a production role (dual-flash mode)
+    if [[ -n "$tty_device_or_role" && ! "$tty_device_or_role" =~ ^/dev/ ]]; then
+      # Dual-flash: recovery + production role
+      local production_role="$tty_device_or_role"
+      _flash_recovery_dual "$production_role"
+    else
+      # Single flash: recovery only
+      _flash_recovery "$tty_device_or_role"
+    fi
     return
   fi
 
   # For production roles: smart dual-partition setup
   # If device is fresh (no recovery): flash recovery first, then production
   # If device exists (has recovery): just flash production via OTA
-  _flash_production_smart "$device" "$tty_device" "$skip_recovery"
+  _flash_production_smart "$device" "$tty_device_or_role" "$skip_recovery"
 }
 
 _flash_recovery() {
@@ -1945,10 +1962,38 @@ _flash_recovery() {
   else
     ok "Recovery firmware flashed to all ${#tty_devices[@]} device(s)"
     echo ""
-    info "Devices booting recovery firmware (purple LED indicator)..."
-    info "Waiting 10 seconds for devices to stabilize..."
-    sleep 10
+    info "Devices booting recovery firmware..."
+    info "Waiting 15 seconds for devices to stabilize and connect..."
+    sleep 15
   fi
+}
+
+_flash_recovery_dual() {
+  # Dual-flash: recovery via serial + production role via OTA
+  # Usage: iotstack flash recovery mmwave
+  local production_role="$1"
+
+  # First: flash recovery via serial to all USB devices
+  _flash_recovery
+
+  # Second: OTA update to production role once devices boot
+  info "Flashing production firmware ($production_role) via OTA..."
+  echo ""
+
+  # Resolve role to YAML
+  local yaml_file
+  yaml_file=$(resolve_device "$production_role" false) || err "Unknown role: $production_role"
+
+  # Auto-detect devices and update them (using well-known recovery password)
+  verify_secrets_mounted
+
+  # Get recovery password from pass or use well-known default
+  local ota_password="IotstackRecovery2024"
+
+  info "Updating devices to $production_role firmware..."
+  "$UPDATE_SCRIPT" "$yaml_file" --ota-password "$ota_password" --jobs 1 || err "OTA update failed"
+
+  ok "Dual-flash complete: recovery + $production_role"
 }
 
 _flash_production_smart() {
