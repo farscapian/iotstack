@@ -208,7 +208,7 @@ Usage:
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
   iotstack flash <device|yaml> [tty-device]
-  iotstack set boot-partition <recovery|production> [mac-suffix]
+  iotstack set-boot <device> <recovery|production>
   iotstack list [devices|roles]
   iotstack secret get <role> <ota|api> [version]
   iotstack rotate-secrets <role> [new-password]
@@ -1835,84 +1835,68 @@ list_roles() {
 }
 
 # ── Flash command: serial/USB flashing ─────────────────────────────────────
-cmd_set() {
-  # Set device properties
-  local subcommand="${1:-}"
+cmd_set_boot() {
+  # Set boot partition for a specific device
+  # Usage: iotstack set-boot <device> <recovery|production>
+  #   device: MAC suffix (1af95c) or serial device (/dev/ttyACM0)
+  #   partition: recovery or production
+  local device="${1:-}"
+  local partition="${2:-}"
 
-  case "$subcommand" in
-    boot-partition)
-      shift
-      _set_boot_partition "$@"
-      ;;
-    *)
-      cat << 'EOF'
-Usage: iotstack set boot-partition <recovery|production> [mac-suffix]
+  if [[ -z "$device" || -z "$partition" ]]; then
+    cat << 'EOF'
+Usage: iotstack set-boot <device> <recovery|production>
 
 Set which partition a recovery device boots into.
 
-IMPORTANT: Commands are DEVICE-SPECIFIC — no "set all" operations.
-
-USB-Connected Device (one must be plugged in):
-  iotstack set boot-partition recovery           # Toggle USB device → recovery
-  iotstack set boot-partition production         # Toggle USB device → production
-
-Network Device (specify MAC):
-  iotstack set boot-partition recovery 1af95c    # Network device → recovery
-  iotstack set boot-partition production 9019c8  # Network device → production
+Arguments:
+  <device>      MAC suffix (e.g., 1af95c) OR serial device (e.g., /dev/ttyACM0)
+  <partition>   recovery or production
 
 Examples:
-  # Device plugged in via USB
-  iotstack set boot-partition production
+  Network device (by MAC):
+    iotstack set-boot 1af95c recovery          # Set recovery-1af95c → recovery
+    iotstack set-boot 9019c8 production        # Set recovery-9019c8 → production
 
-  # Device on network, specific MAC
-  iotstack set boot-partition recovery 1af95c
+  USB-connected device:
+    iotstack set-boot /dev/ttyACM0 recovery    # Set /dev/ttyACM0 → recovery
+    iotstack set-boot /dev/ttyUSB0 production  # Set /dev/ttyUSB0 → production
 EOF
-      exit 1
-      ;;
-  esac
-}
+    exit 1
+  fi
 
-_set_boot_partition() {
-  # Set boot partition to recovery or production
-  local target_partition="${1:-}"
-  local mac="${2:-}"
-
-  if [[ ! "$target_partition" =~ ^(recovery|production)$ ]]; then
+  if [[ ! "$partition" =~ ^(recovery|production)$ ]]; then
     err "Partition must be 'recovery' or 'production'"
   fi
 
-  if [[ -z "$mac" ]]; then
-    # No MAC specified: must have exactly ONE USB device
-    local usb_devices=()
-    for dev in /dev/ttyACM* /dev/ttyUSB*; do
-      [[ -e "$dev" ]] && usb_devices+=("$dev")
-    done 2>/dev/null
-
-    if [[ ${#usb_devices[@]} -eq 0 ]]; then
-      err "No USB devices found. Plug in device or use: iotstack set boot-partition $target_partition <mac-suffix>"
+  # Determine if device is serial (USB) or MAC (network)
+  if [[ "$device" =~ ^/dev/ ]]; then
+    # Serial device
+    if [[ ! -e "$device" ]]; then
+      err "Device not found: $device"
     fi
-
-    if [[ ${#usb_devices[@]} -gt 1 ]]; then
-      err "Multiple USB devices found: ${usb_devices[*]}"
-      err "Specify which one: iotstack set boot-partition $target_partition <mac-suffix>"
-    fi
-
-    # Single USB device - use API to toggle
-    local device="${usb_devices[0]}"
-    info "Setting boot partition on $device to: $target_partition"
-
-    # Device must be running recovery firmware for this to work
-    info "Toggling boot partition..."
-    if timeout 5 curl -s -X POST "http://localhost:6053/api/services/button/press" \
-      -H "Content-Type: application/json" \
-      -d '{"entity_id": "button.recovery_toggle_boot_partition"}' >/dev/null 2>&1; then
-      ok "Boot partition toggled, device rebooting..."
-    else
-      err "Could not communicate with device. Ensure it's running and connected."
-    fi
+    info "Setting $device to boot: $partition"
+    _boot_partition_usb "$device" "$partition"
   else
-    # MAC specified: toggle via network mDNS discovery
-    _boot_partition_network "$target_partition" "$mac"
+    # MAC suffix
+    info "Setting recovery-$device to boot: $partition"
+    _boot_partition_network "$partition" "$device"
+  fi
+}
+
+_boot_partition_usb() {
+  # Set boot partition on USB-connected device
+  local device="$1"
+  local partition="$2"
+
+  # Device must be running recovery firmware for this to work
+  info "Toggling boot partition..."
+  if timeout 5 curl -s -X POST "http://localhost:6053/api/services/button/press" \
+    -H "Content-Type: application/json" \
+    -d '{"entity_id": "button.recovery_toggle_boot_partition"}' >/dev/null 2>&1; then
+    ok "Boot partition toggled to: $partition"
+  else
+    err "Could not communicate with device. Ensure it's running and connected."
   fi
 }
 
@@ -2145,7 +2129,7 @@ _flash_recovery_dual() {
           # Last resort: manual instructions
           warn "  Could not reach device via API"
           warn "  Manual toggle: hold GPIO9 for 3+ seconds, or:"
-          warn "  iotstack set boot-partition production $mac"
+          warn "  iotstack set-boot $mac production"
         fi
       done
     fi
@@ -2358,9 +2342,9 @@ main() {
       shift
       cmd_flash "$@"
       ;;
-    set)
+    set-boot)
       shift
-      cmd_set "$@"
+      cmd_set_boot "$@"
       ;;
     query)
       shift
@@ -2374,7 +2358,7 @@ main() {
           reassign)         help_reassign ;;
           list)             help_list ;;
           flash)            help_flash ;;
-          set)              cmd_set help ;;
+          set-boot)         cmd_set_boot help ;;
           query)            help_query ;;
           secret)           help_secret ;;
           rotate-secrets)   help_rotate_secrets ;;
