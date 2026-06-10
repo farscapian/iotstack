@@ -1889,7 +1889,9 @@ _flash_recovery() {
 
     info "Flashing to: $tty_device"
     info "Compiling recovery firmware..."
-    esphome compile "$recovery_yaml" || err "Compilation failed"
+    if ! esphome compile "$recovery_yaml" 2>&1 | tee /dev/tty; then
+      err "Compilation failed"
+    fi
 
     info "Uploading recovery firmware to device (full serial flash including bootloader)..."
 
