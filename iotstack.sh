@@ -208,7 +208,7 @@ Usage:
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
   iotstack flash <device|yaml> [tty-device]
-  iotstack partition-toggle <mac-suffix>
+  iotstack toggle-boot-partition <mac-suffix>
   iotstack list [devices|roles]
   iotstack secret get <role> <ota|api> [version]
   iotstack rotate-secrets <role> [new-password]
@@ -1835,20 +1835,20 @@ list_roles() {
 }
 
 # ── Flash command: serial/USB flashing ─────────────────────────────────────
-cmd_partition_toggle() {
+cmd_toggle_boot_partition() {
   # Toggle boot partition on recovery device
-  # Usage: iotstack partition-toggle <mac-suffix>
+  # Usage: iotstack toggle-boot-partition <mac-suffix>
   local mac="${1:-}"
 
   if [[ -z "$mac" ]]; then
     cat << 'EOF'
-Usage: iotstack partition-toggle <mac-suffix>
+Usage: iotstack toggle-boot-partition <mac-suffix>
 
 Toggle boot partition on a recovery device to switch to production.
 
 Examples:
-  iotstack partition-toggle 1af95c    # Toggle recovery-1af95c
-  iotstack partition-toggle 9019c8    # Toggle recovery-9019c8
+  iotstack toggle-boot-partition 1af95c    # Toggle recovery-1af95c
+  iotstack toggle-boot-partition 9019c8    # Toggle recovery-9019c8
 
 The device will:
   1. Toggle to alternate partition
@@ -2085,7 +2085,7 @@ _flash_recovery_dual() {
           # Last resort: manual instructions
           warn "  Could not reach device via API"
           warn "  Manual toggle: hold GPIO9 for 3+ seconds, or:"
-          warn "  iotstack partition-toggle $mac"
+          warn "  iotstack toggle-boot-partition $mac"
         fi
       done
     fi
@@ -2298,9 +2298,9 @@ main() {
       shift
       cmd_flash "$@"
       ;;
-    partition-toggle)
+    toggle-boot-partition)
       shift
-      cmd_partition_toggle "$@"
+      cmd_toggle_boot_partition "$@"
       ;;
     query)
       shift
@@ -2314,7 +2314,7 @@ main() {
           reassign)         help_reassign ;;
           list)             help_list ;;
           flash)            help_flash ;;
-          partition-toggle) cmd_partition_toggle help ;;
+          toggle-boot-partition) cmd_toggle_boot_partition help ;;
           query)            help_query ;;
           secret)           help_secret ;;
           rotate-secrets)   help_rotate_secrets ;;
