@@ -20,6 +20,30 @@ ok()   { echo -e "${GRN}[OK]${RST} $*"; }
 warn() { echo -e "${YLW}[WARN]${RST} $*"; }
 info() { echo -e "${BLU}[INFO]${RST} $*"; }
 
+# Prompt for multi-device operations
+confirm_multi_device() {
+  local count="$1"
+  local devices_desc="$2"
+
+  if [[ $count -le 1 ]]; then
+    return 0  # Single device, no prompt needed
+  fi
+
+  echo ""
+  warn "This operation will affect $count device(s):"
+  echo "  $devices_desc"
+  echo ""
+  read -p "Continue? (y/N) " -n 1 -r
+  echo ""
+
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    return 0
+  else
+    info "Operation cancelled."
+    exit 0
+  fi
+}
+
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 UPDATE_SCRIPT="${SCRIPT_DIR}/update_devices.sh"
@@ -1202,6 +1226,9 @@ cmd_reassign() {
   info "Reassigning devices..."
   echo "  MACs: ${reassign_macs[*]}"
 
+  # Confirm before reassigning multiple devices
+  confirm_multi_device ${#reassign_macs[@]} "$(printf '%s\n' "${reassign_macs[@]}")"
+
   # Handle password list if provided
   if [[ -n "$password_list_file" ]]; then
     # Expand path (handle ~)
@@ -2054,7 +2081,9 @@ _flash_recovery() {
   fi
 
   info "Found ${#tty_devices[@]} USB device(s): ${tty_devices[*]}"
-  echo ""
+
+  # Confirm before flashing multiple devices
+  confirm_multi_device ${#tty_devices[@]} "$(printf '%s\n' "${tty_devices[@]}")"
 
   info "Compiling recovery firmware..."
   esphome compile "$recovery_yaml" || err "Compilation failed"
