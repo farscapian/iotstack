@@ -31,19 +31,6 @@ esphome:
     version: "1.0.0"
   on_boot:
     priority: -100
-    then:
-      # Recovery mode boot sequence: fast blinking LED
-      - output.turn_on: status_led
-      - delay: 200ms
-      - output.turn_off: status_led
-      - delay: 200ms
-      - output.turn_on: status_led
-      - delay: 200ms
-      - output.turn_off: status_led
-      - delay: 200ms
-      - output.turn_on: status_led
-      - delay: 200ms
-      - output.turn_off: status_led
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -168,22 +155,6 @@ button:
               esp_ota_set_boot_partition(next);
               ESP_LOGI("PARTITION", "Boot partition toggled to: %s", next->label);
             }
-        - output.turn_on: status_led
-        - delay: 100ms
-        - output.turn_off: status_led
-        - delay: 100ms
-        - output.turn_on: status_led
-        - delay: 100ms
-        - output.turn_off: status_led
-
-# Status LED - GPIO15 on XIAO ESP32-C6
-# Fast blinking indicates recovery mode is active
-output:
-  - platform: gpio
-    pin:
-      number: GPIO15
-      inverted: true
-    id: status_led
 
 logger:
   level: INFO  # Minimal logging in recovery mode
