@@ -152,46 +152,136 @@ if [[ -z "${WINDOW_CODE}" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 8. Notify HA via WebSocket / REST to adopt the device
+# 8. Notify HA via WebSocket to adopt the device
 # ---------------------------------------------------------------------------
-echo "[info] Triggering HA Matter commission..."
+echo "[info] Triggering HA Matter commission via WebSocket..."
 
-# HA Matter integration accepts a manual code via the config_entries/flow API
-FLOW_RESPONSE="$(curl -sf \
-    -X POST \
-    -H "Authorization: Bearer ${HA_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d '{"handler":"matter","show_advanced_options":false}' \
-    "${HA_URL}/api/config/config_entries/flow")"
+# Use Python to handle WebSocket connection and commissioning
+python3 << 'PYTHON_EOF'
+import sys
+import json
+import websocket
+import time
 
-FLOW_ID="$(echo "${FLOW_RESPONSE}" | python3 -c \
-    "import sys,json; print(json.load(sys.stdin).get('flow_id',''))")"
+ha_url = sys.argv[1]
+ha_token = sys.argv[2]
+window_code = sys.argv[3]
 
-if [[ -z "${FLOW_ID}" ]]; then
-    die "Failed to start HA Matter config flow. Response: ${FLOW_RESPONSE}"
-fi
+# Convert HTTP(S) URL to WebSocket URL
+ws_url = ha_url.replace("http://", "ws://").replace("https://", "wss://")
+ws_url = f"{ws_url}/api/websocket"
 
-echo "[info] HA flow ID: ${FLOW_ID}"
+try:
+    ws = websocket.create_connection(ws_url, timeout=10)
 
-# Submit the manual pairing code to the flow
-ADOPT_RESPONSE="$(curl -sf \
-    -X POST \
-    -H "Authorization: Bearer ${HA_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d "{\"code\":\"${WINDOW_CODE}\"}" \
-    "${HA_URL}/api/config/config_entries/flow/${FLOW_ID}")"
+    # Step 1: Receive type: auth_required
+    auth_msg = json.loads(ws.recv())
+    if auth_msg.get("type") != "auth_required":
+        print(f"[error] Unexpected message type: {auth_msg.get('type')}")
+        sys.exit(1)
 
-echo "[info] HA adoption response: ${ADOPT_RESPONSE}"
+    # Step 2: Send authentication
+    ws.send(json.dumps({
+        "type": "auth",
+        "access_token": ha_token
+    }))
 
-RESULT_TYPE="$(echo "${ADOPT_RESPONSE}" | python3 -c \
-    "import sys,json; print(json.load(sys.stdin).get('type',''))")"
+    # Step 3: Receive auth_ok
+    auth_ok = json.loads(ws.recv())
+    if auth_ok.get("type") != "auth_ok":
+        print(f"[error] Authentication failed: {auth_ok.get('message', 'Unknown error')}")
+        sys.exit(1)
 
-if [[ "${RESULT_TYPE}" == "create_entry" ]]; then
-    echo "[info] HA successfully adopted the device."
-else
-    echo "[warn] HA flow result type: '${RESULT_TYPE}' — may need manual follow-up in HA UI."
-    echo "[info] Manual pairing code for HA: ${WINDOW_CODE}"
-fi
+    print("[info] HA WebSocket authenticated successfully")
+
+    # Step 4: Subscribe to config entry flow updates
+    ws.send(json.dumps({
+        "id": 1,
+        "type": "subscribe_events",
+        "event_type": "config_entry_options_updated"
+    }))
+
+    # Step 5: Start Matter commissioning flow
+    ws.send(json.dumps({
+        "id": 2,
+        "type": "call_service",
+        "domain": "config_entries",
+        "service": "flow_start",
+        "service_data": {
+            "handler": "matter"
+        }
+    }))
+
+    # Step 6: Wait for flow start response and extract flow_id
+    flow_id = None
+    max_wait = 5
+    start_time = time.time()
+
+    while time.time() - start_time < max_wait:
+        try:
+            msg = json.loads(ws.recv())
+            if msg.get("id") == 2 and msg.get("type") == "result":
+                if msg.get("success"):
+                    print("[info] HA Matter commissioning flow started")
+                    flow_id = msg.get("result", {}).get("flow_id")
+                    break
+                else:
+                    print(f"[error] Failed to start flow: {msg.get('error', {}).get('message')}")
+                    sys.exit(1)
+        except json.JSONDecodeError:
+            continue
+
+    if not flow_id:
+        print("[error] Timeout waiting for flow_id")
+        sys.exit(1)
+
+    print(f"[info] HA flow ID: {flow_id}")
+
+    # Step 7: Submit the pairing code to the flow
+    ws.send(json.dumps({
+        "id": 3,
+        "type": "call_service",
+        "domain": "config_entries",
+        "service": "flow_progress",
+        "service_data": {
+            "flow_id": flow_id,
+            "user_input": {
+                "code": window_code
+            }
+        }
+    }))
+
+    # Step 8: Wait for commissioning result
+    max_wait = 30
+    start_time = time.time()
+
+    while time.time() - start_time < max_wait:
+        try:
+            msg = json.loads(ws.recv())
+            if msg.get("id") == 3 and msg.get("type") == "result":
+                if msg.get("success"):
+                    result = msg.get("result", {})
+                    if result.get("type") == "create_entry":
+                        print("[info] HA successfully adopted the device via WebSocket")
+                    else:
+                        print(f"[warn] HA flow result type: '{result.get('type')}' — may need manual follow-up")
+                        print(f"[info] Manual pairing code: {window_code}")
+                else:
+                    print(f"[warn] Flow submission failed: {msg.get('error', {}).get('message')}")
+                    print(f"[info] Manual pairing code for HA: {window_code}")
+                break
+        except json.JSONDecodeError:
+            continue
+
+    ws.close()
+
+except Exception as e:
+    print(f"[error] WebSocket error: {e}")
+    print(f"[info] Manual pairing code for HA: {window_code}")
+    sys.exit(1)
+
+PYTHON_EOF
+" ${HA_URL} "${HA_TOKEN}" "${WINDOW_CODE}"
 
 # ---------------------------------------------------------------------------
 # 9. Increment NEXT_NODE_ID in pass store

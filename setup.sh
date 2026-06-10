@@ -248,7 +248,8 @@ if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
 
     # python3
     if [[ " ${MISSING_DEPS[*]} " =~ " python3 " ]]; then
-      sudo apt install -y python3 || warn "Failed to install python3"
+      sudo apt install -y python3 python3-pip || warn "Failed to install python3"
+      pip3 install websocket-client >/dev/null 2>&1 || warn "Failed to install websocket-client Python library"
     fi
 
     # chip-tool (needs separate install from source or snap)
