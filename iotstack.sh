@@ -1983,8 +1983,8 @@ _flash_recovery() {
     local build_dir="$YAMLS_DIR/.esphome/build/recovery/.pioenvs/recovery"
     [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
 
-    esptool.py --chip esp32c6 --port "$tty_device" --baud 460800 \
-      write_flash --flash_mode dio --flash_size 4MB \
+    esptool --chip esp32c6 --port "$tty_device" --baud 460800 \
+      write-flash --flash-mode dio --flash-size 4MB \
       0x0 "$build_dir/bootloader.bin" \
       0x8000 "$build_dir/partitions.bin" \
       0x30000 "$build_dir/firmware.bin" || err "Flash failed"
@@ -2029,8 +2029,8 @@ _flash_recovery() {
     info "Flashing $tty (log: $log_file)..."
     echo "════════════════════════════════════════════════════════"
 
-    if esptool.py --chip esp32c6 --port "$tty" --baud 460800 \
-      write_flash --flash_mode dio --flash_size 4MB \
+    if esptool --chip esp32c6 --port "$tty" --baud 460800 \
+      write-flash --flash-mode dio --flash-size 4MB \
       0x0 "$build_dir/bootloader.bin" \
       0x8000 "$build_dir/partitions.bin" \
       0x30000 "$build_dir/firmware.bin" 2>&1 | tee "$log_file"; then
