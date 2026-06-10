@@ -198,6 +198,77 @@ fi
 
 echo
 
+# ── Matter Commissioning Dependencies ──────────────────────────────────────
+echo
+echo "════════════════════════════════════════════════════════"
+echo "Checking Matter commissioning dependencies (optional)"
+echo "════════════════════════════════════════════════════════"
+echo
+
+MISSING_DEPS=()
+
+# Check for zbar-tools (zbarcam)
+if ! command -v zbarcam &>/dev/null; then
+  MISSING_DEPS+=("zbar-tools")
+fi
+
+# Check for chip-tool
+if ! command -v chip-tool &>/dev/null; then
+  MISSING_DEPS+=("chip-tool")
+fi
+
+# Check for curl and python3 (usually present)
+if ! command -v curl &>/dev/null; then
+  MISSING_DEPS+=("curl")
+fi
+
+if ! command -v python3 &>/dev/null; then
+  MISSING_DEPS+=("python3")
+fi
+
+if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
+  echo "Missing dependencies for Matter commissioning:"
+  printf '  %s\n' "${MISSING_DEPS[@]}"
+  echo
+  read -p "Install missing dependencies now? (y/N) " -n 1 -r
+  echo
+
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "Installing dependencies..."
+
+    # zbar-tools
+    if [[ " ${MISSING_DEPS[*]} " =~ " zbar-tools " ]]; then
+      sudo apt update && sudo apt install -y zbar-tools || warn "Failed to install zbar-tools"
+    fi
+
+    # curl
+    if [[ " ${MISSING_DEPS[*]} " =~ " curl " ]]; then
+      sudo apt install -y curl || warn "Failed to install curl"
+    fi
+
+    # python3
+    if [[ " ${MISSING_DEPS[*]} " =~ " python3 " ]]; then
+      sudo apt install -y python3 || warn "Failed to install python3"
+    fi
+
+    # chip-tool (needs separate install from source or snap)
+    if [[ " ${MISSING_DEPS[*]} " =~ " chip-tool " ]]; then
+      warn "chip-tool must be installed separately:"
+      echo "  https://github.com/project-chip/connectedhomeip/tree/master/examples/chip-tool"
+      echo "  Or via: sudo snap install chip-tool"
+    fi
+  else
+    dim "Skipping dependency installation"
+    echo "To use 'iotstack commission', install:"
+    printf '  sudo apt install %s\n' "${MISSING_DEPS[@]}"
+    echo "  And: sudo snap install chip-tool  (or build from source)"
+  fi
+else
+  ok "All Matter commissioning dependencies installed"
+fi
+
+echo
+
 # ── GPG Key Setup (required before pass) ──────────────────────────────────
 echo
 echo "════════════════════════════════════════════════════════"
