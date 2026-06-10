@@ -32,22 +32,18 @@ esphome:
   on_boot:
     priority: -100
     then:
-      # Recovery mode boot sequence: purple blinking LED
-      - light.turn_on:
-          id: status_led
-          red: 1.0
-          green: 0.0
-          blue: 1.0
-      - delay: 500ms
-      - light.turn_off: status_led
-      - delay: 500ms
-      - light.turn_on:
-          id: status_led
-          red: 1.0
-          green: 0.0
-          blue: 1.0
-      - delay: 500ms
-      - light.turn_off: status_led
+      # Recovery mode boot sequence: fast blinking LED
+      - output.turn_on: status_led
+      - delay: 200ms
+      - output.turn_off: status_led
+      - delay: 200ms
+      - output.turn_on: status_led
+      - delay: 200ms
+      - output.turn_off: status_led
+      - delay: 200ms
+      - output.turn_on: status_led
+      - delay: 200ms
+      - output.turn_off: status_led
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -172,29 +168,21 @@ button:
               esp_ota_set_boot_partition(next);
               ESP_LOGI("PARTITION", "Boot partition toggled to: %s", next->label);
             }
-        - light.turn_on:
-            id: status_led
-            red: 1.0
-            green: 0.0
-            blue: 1.0
-        - delay: 200ms
-        - light.turn_off: status_led
-        - delay: 200ms
-        - light.turn_on:
-            id: status_led
-            red: 1.0
-            green: 0.0
-            blue: 1.0
-        - delay: 200ms
-        - light.turn_off: status_led
+        - output.turn_on: status_led
+        - delay: 100ms
+        - output.turn_off: status_led
+        - delay: 100ms
+        - output.turn_on: status_led
+        - delay: 100ms
+        - output.turn_off: status_led
 
-# Status LED - Addressable RGB LED on XIAO ESP32-C6 (GPIO15, WS2812B)
-# Purple blinking indicates recovery mode is active
-light:
-  - platform: neopixel
-    pin: GPIO15
-    num_leds: 1
-    name: "Status LED"
+# Status LED - GPIO15 on XIAO ESP32-C6
+# Fast blinking indicates recovery mode is active
+output:
+  - platform: gpio
+    pin:
+      number: GPIO15
+      inverted: true
     id: status_led
 
 logger:
