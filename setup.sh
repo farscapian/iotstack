@@ -441,10 +441,6 @@ echo
 echo "Your encrypted secrets are stored in:"
 echo -e "  ${GRN}${PASS_DIR}${RST}"
 echo
-echo "To manage passwords:"
-echo -e "  ${GRN}pass ls iotstack${RST}"
-echo -e "  ${GRN}pass insert iotstack/<role>/<secret-type>${RST}"
-echo
 echo "For more information:"
 echo -e "  ${GRN}docs/RAMDISK-SECRETS.md${RST}  (RAM-only secrets)"
 echo -e "  ${GRN}docs/QUICK-START-SECRETS.md${RST}  (Password manager setup)"
