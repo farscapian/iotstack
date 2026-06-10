@@ -2054,7 +2054,10 @@ _flash_recovery() {
 
     # Extract MAC suffix from esptool output (BASE MAC: xx:xx:xx:xx:xx:xx)
     local device_mac
-    device_mac=$(echo "$esptool_output" | grep "BASE MAC:" | awk '{print $NF}' | sed 's/://g' | tail -c 7)
+    device_mac=$(echo "$esptool_output" | grep "BASE MAC:" | awk '{print $NF}' | sed 's/://g' | tr -d '[:space:]')
+    device_mac="${device_mac: -6}"  # Get last 6 characters
+
+    [[ -z "$device_mac" || ! "$device_mac" =~ ^[0-9a-f]{6}$ ]] && err "Failed to extract MAC address from device"
 
     ok "Recovery firmware flashed successfully"
     echo ""
@@ -2264,7 +2267,7 @@ _flash_production_smart() {
       local found=false
 
       while [[ $waited -lt $max_wait ]]; do
-        if avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -qi "recovery-$device_mac"; then
+        if avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "recovery-$device_mac"; then
           found=true
           break
         fi
