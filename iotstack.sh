@@ -2491,13 +2491,13 @@ via chip-tool (Thread), opens a commissioning window, and hands off to Home
 Assistant for adoption.
 
 Required secrets (stored in pass):
-  iotstack/matter/thread_tlv          Thread network TLV data (hex)
+  iotstack/common/thread_tlv          Thread network TLV data (hex)
   iotstack/common/ha_url              Home Assistant URL
   iotstack/common/ha_token            Home Assistant long-lived token
   iotstack/matter/next_node_id        Auto-increment node ID (auto-initialized)
 
 Set secrets with:
-  pass insert iotstack/matter/thread_tlv
+  pass insert iotstack/common/thread_tlv
   pass insert iotstack/common/ha_url
   pass insert iotstack/common/ha_token
 

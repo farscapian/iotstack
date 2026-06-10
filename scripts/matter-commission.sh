@@ -35,13 +35,13 @@ set_secret() {
 # ---------------------------------------------------------------------------
 info "Loading Matter commissioning secrets from pass..."
 
-THREAD_TLV=$(get_secret "iotstack/matter/thread_tlv")
+THREAD_TLV=$(get_secret "iotstack/common/thread_tlv")
 HA_URL=$(get_secret "iotstack/common/ha_url")
 HA_TOKEN=$(get_secret "iotstack/common/ha_token")
 NEXT_NODE_ID=$(get_secret "iotstack/matter/next_node_id")
 
 # Validate required secrets
-[[ -n "${THREAD_TLV:-}" ]] || die "Thread TLV not found. Set with: pass insert iotstack/matter/thread_tlv"
+[[ -n "${THREAD_TLV:-}" ]] || die "Thread TLV not found. Set with: pass insert iotstack/common/thread_tlv"
 [[ -n "${HA_URL:-}" ]] || die "HA_URL not found. Set with: pass insert iotstack/common/ha_url"
 [[ -n "${HA_TOKEN:-}" ]] || die "HA_TOKEN not found. Set with: pass insert iotstack/common/ha_token"
 [[ -n "${NEXT_NODE_ID:-}" ]] || {
