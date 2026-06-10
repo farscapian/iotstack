@@ -1906,25 +1906,22 @@ _flash_recovery() {
   ok "Recovery firmware compiled"
   echo ""
 
-  # Flash to all devices in parallel
-  local pids=()
-  for tty in "${tty_devices[@]}"; do
-    info "Starting flash on $tty..."
-    esphome run "$recovery_yaml" --device "$tty" < /dev/null > /tmp/iotstack-flash-recovery-$(basename "$tty").log 2>&1 &
-    pids+=($!)
-  done
-
-  # Wait for all to complete
+  # Flash to all devices sequentially (one at a time)
   local failed=0
-  for i in "${!pids[@]}"; do
-    pid=${pids[$i]}
-    tty=${tty_devices[$i]}
-    if wait "$pid"; then
+  for tty in "${tty_devices[@]}"; do
+    local log_file="/tmp/iotstack-flash-recovery-$(basename "$tty").log"
+    echo ""
+    info "Flashing $tty (log: $log_file)..."
+    echo "════════════════════════════════════════════════════════"
+
+    if esphome run "$recovery_yaml" --device "$tty" < /dev/null 2>&1 | tee "$log_file"; then
       ok "Recovery firmware flashed on $tty"
     else
       warn "Recovery flash FAILED on $tty"
       failed=$((failed + 1))
     fi
+
+    echo "════════════════════════════════════════════════════════"
   done
 
   if [[ $failed -gt 0 ]]; then
