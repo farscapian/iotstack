@@ -208,6 +208,7 @@ Usage:
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
   iotstack flash <device|yaml> [tty-device]
+  iotstack partition-toggle <mac-suffix>
   iotstack list [devices|roles]
   iotstack secret get <role> <ota|api> [version]
   iotstack rotate-secrets <role> [new-password]
@@ -1834,6 +1835,47 @@ list_roles() {
 }
 
 # ── Flash command: serial/USB flashing ─────────────────────────────────────
+cmd_partition_toggle() {
+  # Toggle boot partition on recovery device
+  # Usage: iotstack partition-toggle <mac-suffix>
+  local mac="${1:-}"
+
+  if [[ -z "$mac" ]]; then
+    cat << 'EOF'
+Usage: iotstack partition-toggle <mac-suffix>
+
+Toggle boot partition on a recovery device to switch to production.
+
+Examples:
+  iotstack partition-toggle 1af95c    # Toggle recovery-1af95c
+  iotstack partition-toggle 9019c8    # Toggle recovery-9019c8
+
+The device will:
+  1. Toggle to alternate partition
+  2. Reboot automatically
+EOF
+    exit 1
+  fi
+
+  local device_name="recovery-$mac"
+  local device_host="${device_name}.local"
+
+  info "Toggling partition on $device_name..."
+
+  # Try ESPHome API directly on device (no HA needed)
+  if curl -s -X POST "http://$device_host/api/services/button/press" \
+    -H "Content-Type: application/json" \
+    -d "{\"entity_id\": \"button.${device_name}_toggle_boot_partition\"}" \
+    --max-time 5 >/dev/null 2>&1; then
+    ok "Partition toggled, device rebooting..."
+    sleep 3
+    info "Waiting for device to come back online..."
+    sleep 5
+  else
+    err "Could not reach device at $device_host (is it on the network?)"
+  fi
+}
+
 cmd_flash() {
   # Handle help request
   if [[ "${1:-}" == "help" ]]; then
@@ -2006,7 +2048,7 @@ _flash_recovery_dual() {
   done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
 
   if [[ ${#recovery_devices[@]} -gt 0 ]]; then
-    # Use ESPHome service call via Home Assistant if available
+    # Try to toggle via Home Assistant first
     local ha_url=$(pass show iotstack/common/ha_url 2>/dev/null || echo "")
     local ha_token=$(pass show iotstack/common/ha_token 2>/dev/null || echo "")
 
@@ -2016,7 +2058,7 @@ _flash_recovery_dual() {
         local device_name="recovery-$mac"
         local entity_id="button.${device_name,,}_toggle_boot_partition"
 
-        info "Toggling partition on $device_name..."
+        info "Toggling partition on $device_name (via HA)..."
         curl -s -X POST "$ha_url/api/services/button/press" \
           -H "Authorization: Bearer $ha_token" \
           -H "Content-Type: application/json" \
@@ -2025,8 +2067,27 @@ _flash_recovery_dual() {
           warn "  Could not toggle partition via HA (continuing anyway)"
       done
     else
-      warn "Home Assistant not configured - devices will stay in recovery mode"
-      warn "To boot into production: hold GPIO9 for 3+ seconds or use HA button"
+      # Fallback: toggle via ESPHome API directly on device
+      for mac in "${recovery_devices[@]}"; do
+        local device_name="recovery-$mac"
+        local device_host="${device_name}.local"
+
+        info "Toggling partition on $device_name (via ESPHome API)..."
+
+        # Try to reach the device and trigger the button via ESPHome's native API
+        # This uses curl to POST to the button service on the device
+        if curl -s -X POST "http://$device_host/api/services/button/press" \
+          -H "Content-Type: application/json" \
+          -d "{\"entity_id\": \"button.${device_name}_toggle_boot_partition\"}" \
+          --max-time 5 >/dev/null 2>&1; then
+          ok "  Partition toggled, device rebooting..."
+        else
+          # Last resort: manual instructions
+          warn "  Could not reach device via API"
+          warn "  Manual toggle: hold GPIO9 for 3+ seconds, or:"
+          warn "  iotstack partition-toggle $mac"
+        fi
+      done
     fi
   fi
 
@@ -2237,6 +2298,10 @@ main() {
       shift
       cmd_flash "$@"
       ;;
+    partition-toggle)
+      shift
+      cmd_partition_toggle "$@"
+      ;;
     query)
       shift
       cmd_query "$@"
@@ -2244,15 +2309,16 @@ main() {
     help)
       if [[ $# -gt 1 ]]; then
         case "$2" in
-          update)         help_update ;;
-          verify)         help_verify ;;
-          reassign)       help_reassign ;;
-          list)           help_list ;;
-          flash)          help_flash ;;
-          query)          help_query ;;
-          secret)         help_secret ;;
-          rotate-secrets) help_rotate_secrets ;;
-          *)              err "Unknown command: $2" ;;
+          update)           help_update ;;
+          verify)           help_verify ;;
+          reassign)         help_reassign ;;
+          list)             help_list ;;
+          flash)            help_flash ;;
+          partition-toggle) cmd_partition_toggle help ;;
+          query)            help_query ;;
+          secret)           help_secret ;;
+          rotate-secrets)   help_rotate_secrets ;;
+          *)                err "Unknown command: $2" ;;
         esac
       else
         usage
