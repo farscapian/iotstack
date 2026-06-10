@@ -95,8 +95,17 @@ while i < len(encoded):
 def extract(v, start, length):
     return (v >> start) & ((1 << length) - 1)
 
-discriminator = extract(bits, 45, 12)
-passcode      = extract(bits, 57, 27)
+# Matter QR code bit layout:
+# Bits 0-2: Version (3)
+# Bits 3-14: VID (12)
+# Bits 15-26: PID (12)
+# Bits 27-39: Discriminator (13)
+# Bits 40-66: Passcode (27)
+# Bits 67-79: Future use (13)
+# Bits 80-87: CRC (8)
+
+discriminator = extract(bits, 27, 13)
+passcode      = extract(bits, 40, 27)
 
 # Build 11-digit manual pairing code
 short_disc  = (discriminator >> 8) & 0xF
