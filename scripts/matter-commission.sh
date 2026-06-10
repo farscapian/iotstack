@@ -52,91 +52,6 @@ NEXT_NODE_ID=$(get_secret "iotstack/matter/next_node_id")
 
 NODE_ID="${NEXT_NODE_ID}"
 
-# ---------------------------------------------------------------------------
-# 3. Decode Matter QR payload  (pure Python, no extra deps)
-# ---------------------------------------------------------------------------
-decode_matter_qr() {
-    local payload="$1"
-    python3 - "${payload}" << 'PYEOF'
-import sys
-
-BASE38 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-."
-
-def b38_decode(s):
-    v = 0
-    for c in reversed(s):
-        v = v * 38 + BASE38.index(c)
-    return v
-
-payload = sys.argv[1]
-assert payload.startswith("MT:"), "Not a Matter payload"
-encoded = payload[3:]
-
-bits = 0
-bit_len = 0
-i = 0
-while i < len(encoded):
-    chunk = encoded[i:i+5]
-    val = b38_decode(chunk)
-    if len(chunk) == 5:
-        nbits = 24
-    elif len(chunk) == 4:
-        nbits = 20
-    elif len(chunk) == 3:
-        nbits = 16
-    elif len(chunk) == 2:
-        nbits = 12
-    else:
-        nbits = 6
-    bits |= val << bit_len
-    bit_len += nbits
-    i += 5
-
-def extract(v, start, length):
-    return (v >> start) & ((1 << length) - 1)
-
-# Matter QR code bit layout:
-# Bits 0-2: Version (3)
-# Bits 3-14: VID (12)
-# Bits 15-26: PID (12)
-# Bits 27-39: Discriminator (13)
-# Bits 40-66: Passcode (27)
-# Bits 67-79: Future use (13)
-# Bits 80-87: CRC (8)
-
-discriminator = extract(bits, 27, 13)
-passcode      = extract(bits, 40, 27)
-
-# Build 11-digit manual pairing code
-short_disc  = (discriminator >> 8) & 0xF
-chunk2_val  = (short_disc << 14) | (passcode & 0x3FFF)
-chunk3_val  = passcode >> 14
-digits      = f"{chunk2_val:06d}{chunk3_val:04d}"
-
-MULT = [
-    [0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],
-    [3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],[5,9,8,7,6,0,4,3,2,1],
-    [6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],
-    [9,8,7,6,5,4,3,2,1,0],
-]
-PERM = [
-    [0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],
-    [8,9,1,6,0,4,3,5,2,7],[9,4,5,3,1,2,6,8,7,0],[4,2,8,6,5,7,3,9,0,1],
-    [2,7,9,3,8,0,6,4,1,5],[7,0,4,6,9,1,3,2,5,8],
-]
-INV = [0,4,3,2,1,9,8,7,6,5]
-
-c = 0
-for i2, ch in enumerate(reversed(digits)):
-    c = MULT[c][PERM[(i2+1) % 8][int(ch)]]
-check = INV[c]
-full = digits + str(check)
-
-print(f"DISCRIMINATOR={discriminator}")
-print(f"PASSCODE={passcode}")
-print(f"MANUAL_CODE={full}")
-PYEOF
-}
 
 # ---------------------------------------------------------------------------
 # 4. Get Matter payload — from QR code image file
@@ -158,18 +73,15 @@ MT_PAYLOAD=$(zbarimg --raw "$QR_IMAGE" 2>/dev/null | grep "^MT:" | head -1 || ec
 info "Got payload: $MT_PAYLOAD"
 
 # ---------------------------------------------------------------------------
-# 5. Decode
+# 5. Validate payload format
 # ---------------------------------------------------------------------------
-echo "[info] Decoding Matter payload..."
-DECODED="$(decode_matter_qr "${MT_PAYLOAD}")"
-echo "${DECODED}"
+if [[ ! "${MT_PAYLOAD}" =~ ^MT:[A-Z0-9\.\-]+$ ]]; then
+    die "Invalid Matter payload format: ${MT_PAYLOAD}"
+fi
 
-eval "${DECODED}"   # sets DISCRIMINATOR, PASSCODE, MANUAL_CODE
-
-echo "[info] Node ID:      ${NODE_ID}"
-echo "[info] Discriminator: ${DISCRIMINATOR}"
-echo "[info] Passcode:      ${PASSCODE}"
-echo "[info] Manual code:   ${MANUAL_CODE:0:4}-${MANUAL_CODE:4:3}-${MANUAL_CODE:7}"
+echo "[info] QR payload: ${MT_PAYLOAD}"
+echo "[info] Node ID:   ${NODE_ID}"
+echo "[info] chip-tool will decode the payload during commissioning"
 echo ""
 
 # ---------------------------------------------------------------------------
