@@ -137,12 +137,17 @@ MT_PAYLOAD=""
 # Attempt to enable camera autofocus via v4l2-ctl
 _enable_camera_autofocus() {
     if command -v v4l2-ctl &>/dev/null; then
-        # Try to find the camera device
         local camera_dev="/dev/video0"
         if [[ -e "$camera_dev" ]]; then
-            # Enable autofocus (may fail if not supported)
-            v4l2-ctl -d "$camera_dev" -c focus_auto=1 2>/dev/null || true
-            info "Camera autofocus enabled (if supported by your device)"
+            # Try different autofocus control names (varies by camera)
+            if v4l2-ctl -d "$camera_dev" -c focus_auto=1 2>/dev/null; then
+                info "Camera autofocus enabled (focus_auto)"
+            elif v4l2-ctl -d "$camera_dev" -c focus_automatic_continuous=1 2>/dev/null; then
+                info "Camera autofocus enabled (focus_automatic_continuous)"
+            else
+                # Camera might not support autofocus, but that's okay
+                true
+            fi
         fi
     fi
 }
