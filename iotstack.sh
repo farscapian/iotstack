@@ -338,6 +338,7 @@ Usage:
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
   iotstack flash <device|yaml> [tty-device]
   iotstack set-boot <device> <recovery|production>
+  iotstack commission [MT:payload...]
   iotstack list [devices|roles]
   iotstack secret get <role> <ota|api> [version]
   iotstack rotate-secrets <role> [new-password]
@@ -401,6 +402,16 @@ Commands:
       iotstack secret get bleproxy ota              # Current OTA password
       iotstack secret get bleproxy api              # Current API key
       iotstack secret get bleproxy ota 0            # Archived version (v0)
+
+  commission [MT:payload...]
+    Commission a Matter device via QR code (zbarcam) or manual payload.
+    - Scans Matter QR code, decodes payload, commissions via chip-tool
+    - Opens commissioning window and hands off to Home Assistant
+    - Thread network only (requires Thread dataset configured)
+    - Config: ~/.iotstack/matter-commission.env
+    Examples:
+      iotstack commission                      # Scan QR code
+      iotstack commission "MT:CUO00UDN168Q..."  # Use payload directly
 
   rotate-secrets <role> [new-secret]
     Rotate secrets (OTA password and API encryption key) for all devices in a role.
@@ -2452,6 +2463,54 @@ verify_wifi_credentials() {
   fi
 }
 
+cmd_commission() {
+  # Commission a Matter device via QR code or manual payload
+  # Usage: iotstack commission [MT:payload...]
+  local payload="${1:-}"
+
+  verify_secrets_mounted
+
+  local matter_script="${SCRIPT_DIR}/scripts/matter-commission.sh"
+  [[ ! -f "$matter_script" ]] && err "Matter commission script not found: $matter_script"
+
+  if [[ -n "$payload" ]]; then
+    # User provided payload directly
+    "$matter_script" "$payload"
+  else
+    # Scan via zbarcam
+    "$matter_script"
+  fi
+}
+
+help_commission() {
+  cat << 'EOF'
+Commission a Matter device via QR code scanning or manual payload.
+
+Scans a Matter QR code (zbarcam), decodes the payload, commissions the device
+via chip-tool (Thread), opens a commissioning window, and hands off to Home
+Assistant for adoption.
+
+Configuration file: ~/.iotstack/matter-commission.env
+  - THREAD_DATASET_HEX: Thread network dataset (hex)
+  - HA_URL: Home Assistant URL
+  - HA_TOKEN: Home Assistant long-lived token
+  - NEXT_NODE_ID: Auto-increment node ID (updated after each commission)
+
+Dependencies:
+  - zbar-tools (zbarcam): apt install zbar-tools
+  - chip-tool: https://github.com/project-chip/connectedhomeip
+  - curl, python3
+
+Usage:
+  iotstack commission                          # Scan QR code via camera
+  iotstack commission "MT:CUO00UDN168Q..."     # Use provided payload
+
+Examples:
+  iotstack commission                          # Point camera at Matter QR
+  iotstack commission "MT:..."                 # Paste payload from QR scan
+EOF
+}
+
 main() {
   # Mount secrets store early - needed for all operations
   verify_secrets_mounted
@@ -2497,6 +2556,10 @@ main() {
       shift
       cmd_set_boot "$@"
       ;;
+    commission)
+      shift
+      cmd_commission "$@"
+      ;;
     query)
       shift
       cmd_query "$@"
@@ -2510,6 +2573,7 @@ main() {
           list)             help_list ;;
           flash)            help_flash ;;
           set-boot)         cmd_set_boot help ;;
+          commission)       help_commission ;;
           query)            help_query ;;
           secret)           help_secret ;;
           rotate-secrets)   help_rotate_secrets ;;
