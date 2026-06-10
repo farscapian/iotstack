@@ -134,6 +134,19 @@ PYEOF
 # ---------------------------------------------------------------------------
 MT_PAYLOAD=""
 
+# Attempt to enable camera autofocus via v4l2-ctl
+_enable_camera_autofocus() {
+    if command -v v4l2-ctl &>/dev/null; then
+        # Try to find the camera device
+        local camera_dev="/dev/video0"
+        if [[ -e "$camera_dev" ]]; then
+            # Enable autofocus (may fail if not supported)
+            v4l2-ctl -d "$camera_dev" -c focus_auto=1 2>/dev/null || true
+            info "Camera autofocus enabled (if supported by your device)"
+        fi
+    fi
+}
+
 if [[ $# -ge 1 ]]; then
     ARG="${1}"
     if [[ "${ARG}" == MT:* ]]; then
@@ -143,7 +156,11 @@ if [[ $# -ge 1 ]]; then
         die "Argument does not look like a Matter payload (expected MT:...): ${ARG}"
     fi
 else
+    _enable_camera_autofocus
     echo "[info] Point camera at Matter QR code... (Ctrl-C to abort)"
+    echo "[info] If focus is blurry, try: v4l2-ctl -d /dev/video0 -c focus_auto=1"
+    echo ""
+
     while [[ -z "${MT_PAYLOAD}" ]]; do
         RAW="$(zbarcam --raw --oneshot -q 2>/dev/null | tr -d '[:space:]')" || true
         if [[ "${RAW}" == MT:* ]]; then
