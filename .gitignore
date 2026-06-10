@@ -1,7 +1,7 @@
 secrets.yaml
 *secret*
 archive/
-wifi/secrets.yaml
+secrets.yaml
 **/.temp-rename-*.yaml
 .esphome/
 yamls/.esphome/

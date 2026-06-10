@@ -10,7 +10,7 @@ esphome:
   name_add_mac_suffix: true
   project:
     name: "iotstack.${device_role}"
-    version: 1.5.0
+    version: "1.5.0"
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -37,7 +37,6 @@ api:
 ota:
   - platform: esphome
     password: !secret threadrouter_ota_password
-    allow_partition_access: true
 
 # 6. Safe mode — Thread-only node; safe mode OTA recovery requires USB serial
 #    if Thread is disrupted during update

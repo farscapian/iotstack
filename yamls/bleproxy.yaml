@@ -11,7 +11,7 @@ esphome:
   name_add_mac_suffix: true
   project:
     name: "iotstack.${device_role}"
-    version: "1.4.2"
+    version: "1.5.0"
 
 esp32:
   board: seeed_xiao_esp32c6
