@@ -1874,8 +1874,8 @@ _flash_recovery() {
     info "Compiling recovery firmware..."
     esphome compile "$recovery_yaml" >/dev/null 2>&1 || err "Compilation failed"
 
-    info "Uploading recovery firmware to device..."
-    esphome upload "$recovery_yaml" --device "$tty_device" || err "Upload failed"
+    info "Uploading recovery firmware to device (full serial flash including bootloader)..."
+    esphome run "$recovery_yaml" --device "$tty_device" < /dev/null || err "Flash failed"
     ok "Recovery firmware flashed successfully"
 
     echo ""
@@ -1906,11 +1906,11 @@ _flash_recovery() {
   ok "Recovery firmware compiled"
   echo ""
 
-  # Upload to all devices in parallel
+  # Flash to all devices in parallel
   local pids=()
   for tty in "${tty_devices[@]}"; do
-    info "Starting upload on $tty..."
-    esphome upload "$recovery_yaml" --device "$tty" > /tmp/iotstack-flash-recovery-$(basename "$tty").log 2>&1 &
+    info "Starting flash on $tty..."
+    esphome run "$recovery_yaml" --device "$tty" < /dev/null > /tmp/iotstack-flash-recovery-$(basename "$tty").log 2>&1 &
     pids+=($!)
   done
 
