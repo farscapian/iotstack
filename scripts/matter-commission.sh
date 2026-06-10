@@ -93,16 +93,14 @@ echo ""
 
 MAX_WAIT=60
 WAITED=0
-FOUND=false
 
 while [[ $WAITED -lt $MAX_WAIT ]]; do
     # Attempt discovery with --discover-once to do a single scan
     DISCOVER_OUTPUT=$(chip-tool discover commissionables --discover-once 2>&1 || true)
 
-    # Check if discriminator was found in output
-    if echo "$DISCOVER_OUTPUT" | grep -q "Discriminator: ${DISCRIMINATOR}"; then
-        info "Device found! Ready to commission."
-        FOUND=true
+    # Check if any commissionable devices were found
+    if echo "$DISCOVER_OUTPUT" | grep -q "Discriminator:"; then
+        info "Commissionable device(s) found!"
         break
     fi
 
@@ -116,10 +114,6 @@ while [[ $WAITED -lt $MAX_WAIT ]]; do
 done
 
 echo ""
-
-if [[ "$FOUND" != "true" ]]; then
-    warn "Device not found after ${MAX_WAIT} seconds, attempting commissioning anyway..."
-fi
 
 # ---------------------------------------------------------------------------
 # 6. Commission via chip-tool (Thread)
