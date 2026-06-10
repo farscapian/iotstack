@@ -2062,22 +2062,31 @@ _flash_recovery_dual() {
   # First: flash recovery via serial to all USB devices (auto-detect)
   _flash_recovery ""
 
-  # Second: OTA update to production role once devices boot
-  info "Flashing production firmware ($production_role) via OTA..."
+  # Second: Discover recovery devices and reassign to production role
+  info "Step 2: Reassigning devices to $production_role firmware via OTA..."
   echo ""
+
+  # Discover recovery devices
+  local recovery_macs=()
+  while IFS= read -r line; do
+    if [[ "$line" =~ recovery-([0-9a-f]+) ]]; then
+      recovery_macs+=("${BASH_REMATCH[1]}")
+    fi
+  done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+
+  if [[ ${#recovery_macs[@]} -eq 0 ]]; then
+    err "No recovery devices found on network. Check WiFi connection."
+  fi
 
   # Resolve role to YAML
   local yaml_file
   yaml_file=$(resolve_device "$production_role" false) || err "Unknown role: $production_role"
 
-  # Auto-detect devices and update them (using well-known recovery password)
-  verify_secrets_mounted
-
-  # Get recovery password from pass or use well-known default
+  # Use well-known recovery password for reassign
   local ota_password="IotstackRecovery2024"
 
-  info "Updating devices to $production_role firmware..."
-  "$UPDATE_SCRIPT" "$yaml_file" --ota-password "$ota_password" --jobs 1 || err "OTA update failed"
+  info "Flashing ${#recovery_macs[@]} device(s) to $production_role..."
+  "$UPDATE_SCRIPT" --reassign "${recovery_macs[@]}" "$yaml_file" --ota-password "$ota_password" --jobs 1 || err "OTA update failed"
 
   # Third: Toggle boot partition to production and reboot devices
   info "Toggling boot partition to production firmware..."
