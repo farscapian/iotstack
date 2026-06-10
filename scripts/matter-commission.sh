@@ -175,7 +175,7 @@ echo "[info] Manual code:   ${MANUAL_CODE:0:4}-${MANUAL_CODE:4:3}-${MANUAL_CODE:
 echo "[info] Commissioning node ${NODE_ID} via chip-tool (Thread)..."
 chip-tool pairing code-thread \
     "${NODE_ID}" \
-    "${THREAD_DATASET_HEX}" \
+    "${THREAD_TLV}" \
     "${MT_PAYLOAD}"
 
 echo "[info] Commission complete."
