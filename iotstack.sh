@@ -208,7 +208,7 @@ Usage:
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
   iotstack flash <device|yaml> [tty-device]
-  iotstack toggle-boot-partition <mac-suffix>
+  iotstack set boot-partition <recovery|production> [mac-suffix]
   iotstack list [devices|roles]
   iotstack secret get <role> <ota|api> [version]
   iotstack rotate-secrets <role> [new-password]
@@ -1835,42 +1835,86 @@ list_roles() {
 }
 
 # ── Flash command: serial/USB flashing ─────────────────────────────────────
-cmd_toggle_boot_partition() {
-  # Toggle boot partition on recovery device
-  # Usage: iotstack toggle-boot-partition <mac-suffix>
-  local mac="${1:-}"
+cmd_set() {
+  # Set device properties
+  local subcommand="${1:-}"
 
-  if [[ -z "$mac" ]]; then
-    cat << 'EOF'
-Usage: iotstack toggle-boot-partition <mac-suffix>
+  case "$subcommand" in
+    boot-partition)
+      shift
+      _set_boot_partition "$@"
+      ;;
+    *)
+      cat << 'EOF'
+Usage: iotstack set <property> [args]
 
-Toggle boot partition on a recovery device to switch to production.
+Properties:
+  boot-partition <recovery|production> [mac-suffix]
+    Set which partition device boots into
 
 Examples:
-  iotstack toggle-boot-partition 1af95c    # Toggle recovery-1af95c
-  iotstack toggle-boot-partition 9019c8    # Toggle recovery-9019c8
-
-The device will:
-  1. Toggle to alternate partition
-  2. Reboot automatically
+  iotstack set boot-partition recovery           # All devices → recovery
+  iotstack set boot-partition production         # All devices → production
+  iotstack set boot-partition recovery 1af95c    # Specific device → recovery
+  iotstack set boot-partition production 9019c8  # Specific device → production
 EOF
-    exit 1
+      exit 1
+      ;;
+  esac
+}
+
+_set_boot_partition() {
+  # Set boot partition to recovery or production
+  local target_partition="${1:-}"
+  local mac="${2:-}"
+
+  if [[ ! "$target_partition" =~ ^(recovery|production)$ ]]; then
+    err "Partition must be 'recovery' or 'production'"
   fi
 
+  if [[ -z "$mac" ]]; then
+    # Set all recovery devices
+    info "Setting all recovery devices to boot: $target_partition"
+    echo ""
+
+    local recovery_devices=()
+    while IFS= read -r line; do
+      if [[ "$line" =~ recovery-([0-9a-f]+) ]]; then
+        recovery_devices+=("${BASH_REMATCH[1]}")
+      fi
+    done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+
+    if [[ ${#recovery_devices[@]} -eq 0 ]]; then
+      err "No recovery devices found on network"
+    fi
+
+    for device_mac in "${recovery_devices[@]}"; do
+      _boot_partition_single "$target_partition" "$device_mac"
+    done
+
+    echo ""
+    ok "All devices set to boot: $target_partition"
+  else
+    # Set specific device
+    _boot_partition_single "$target_partition" "$mac"
+  fi
+}
+
+_boot_partition_single() {
+  # Set boot partition on a single device
+  local target_partition="$1"
+  local mac="$2"
   local device_name="recovery-$mac"
   local device_host="${device_name}.local"
 
-  info "Toggling partition on $device_name..."
+  info "Setting $device_name to boot: $target_partition..."
 
   # Try ESPHome API directly on device (no HA needed)
   if curl -s -X POST "http://$device_host/api/services/button/press" \
     -H "Content-Type: application/json" \
     -d "{\"entity_id\": \"button.${device_name}_toggle_boot_partition\"}" \
     --max-time 5 >/dev/null 2>&1; then
-    ok "Partition toggled, device rebooting..."
-    sleep 3
-    info "Waiting for device to come back online..."
-    sleep 5
+    ok "  Boot partition set to $target_partition, device rebooting..."
   else
     err "Could not reach device at $device_host (is it on the network?)"
   fi
@@ -2085,7 +2129,7 @@ _flash_recovery_dual() {
           # Last resort: manual instructions
           warn "  Could not reach device via API"
           warn "  Manual toggle: hold GPIO9 for 3+ seconds, or:"
-          warn "  iotstack toggle-boot-partition $mac"
+          warn "  iotstack set boot-partition production $mac"
         fi
       done
     fi
@@ -2298,9 +2342,9 @@ main() {
       shift
       cmd_flash "$@"
       ;;
-    toggle-boot-partition)
+    set)
       shift
-      cmd_toggle_boot_partition "$@"
+      cmd_set "$@"
       ;;
     query)
       shift
@@ -2314,7 +2358,7 @@ main() {
           reassign)         help_reassign ;;
           list)             help_list ;;
           flash)            help_flash ;;
-          toggle-boot-partition) cmd_toggle_boot_partition help ;;
+          set)              cmd_set help ;;
           query)            help_query ;;
           secret)           help_secret ;;
           rotate-secrets)   help_rotate_secrets ;;
