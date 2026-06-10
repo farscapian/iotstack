@@ -129,6 +129,17 @@ if [[ ":$PATH:" != *":$LOCAL_BIN:"* ]]; then
   fi
 fi
 
+# Add iotstack environment variables to bashrc
+if ! grep -q "GNUPGHOME=.*\.iotstack" "$BASHRC" 2>/dev/null; then
+  {
+    echo ""
+    echo "# iotstack environment variables (for pass/GPG)"
+    echo "export GNUPGHOME=\"\${HOME}/.iotstack/.gnupg\""
+    echo "export PASSWORD_STORE_DIR=\"\${HOME}/.iotstack/.pass\""
+  } >> "$BASHRC"
+  ok "Added iotstack env vars to $BASHRC"
+fi
+
 # ── GPG Key Setup (required before pass) ──────────────────────────────────
 # ── Avahi mDNS TTL Optimization ────────────────────────────────────────────
 echo
@@ -440,7 +451,7 @@ echo -e "  ${GRN}docs/QUICK-START-SECRETS.md${RST}  (Password manager setup)"
 echo -e "  ${GRN}iotstack help${RST}  (CLI commands)"
 
 echo
-echo "Environment variables:"
+echo "Environment variables (automatically set by ${BASHRC}):"
 export GNUPGHOME="${IOTSTACK_HOME}/.gnupg"
 export PASSWORD_STORE_DIR="${IOTSTACK_HOME}/.pass"
 echo -e "  ${GRN}GNUPGHOME${RST}=${GNUPGHOME}"
