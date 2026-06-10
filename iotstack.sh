@@ -52,10 +52,8 @@ _update_compilation_cache() {
   # Record compilation result in cache
   local yaml_sha="$1"
   local binary_sha="$2"
-  local device_name="$3"
 
-  local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-  echo "${yaml_sha},${binary_sha},${device_name},${timestamp}" >> "$COMPILATION_CACHE"
+  echo "${yaml_sha},${binary_sha}" >> "$COMPILATION_CACHE"
 }
 
 smart_compile() {
@@ -81,7 +79,7 @@ smart_compile() {
   # Get binary SHA after successful compilation
   local binary_sha=$(_get_binary_sha "$device_name")
   if [[ -n "$binary_sha" ]]; then
-    _update_compilation_cache "$yaml_sha" "$binary_sha" "$device_name"
+    _update_compilation_cache "$yaml_sha" "$binary_sha"
     ok "Compilation cached"
   fi
 
