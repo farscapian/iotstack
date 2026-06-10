@@ -1875,7 +1875,16 @@ _flash_recovery() {
     esphome compile "$recovery_yaml" >/dev/null 2>&1 || err "Compilation failed"
 
     info "Uploading recovery firmware to device (full serial flash including bootloader)..."
-    esphome run "$recovery_yaml" --device "$tty_device" < /dev/null || err "Flash failed"
+
+    # Use esptool to flash the compiled binaries
+    local build_dir="$YAMLS_DIR/.esphome/build/recovery/.pioenvs/recovery"
+    [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
+
+    esptool.py --chip esp32c6 --port "$tty_device" --baud 460800 \
+      write_flash --flash_mode dio --flash_size 4MB \
+      0x0 "$build_dir/bootloader.bin" \
+      0x8000 "$build_dir/partitions.bin" \
+      0x30000 "$build_dir/firmware.bin" || err "Flash failed"
     ok "Recovery firmware flashed successfully"
 
     echo ""
@@ -1907,6 +1916,9 @@ _flash_recovery() {
   echo ""
 
   # Flash to all devices sequentially (one at a time)
+  local build_dir="$YAMLS_DIR/.esphome/build/recovery/.pioenvs/recovery"
+  [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
+
   local failed=0
   for tty in "${tty_devices[@]}"; do
     local log_file="/tmp/iotstack-flash-recovery-$(basename "$tty").log"
@@ -1914,7 +1926,11 @@ _flash_recovery() {
     info "Flashing $tty (log: $log_file)..."
     echo "════════════════════════════════════════════════════════"
 
-    if esphome run "$recovery_yaml" --device "$tty" < /dev/null 2>&1 | tee "$log_file"; then
+    if esptool.py --chip esp32c6 --port "$tty" --baud 460800 \
+      write_flash --flash_mode dio --flash_size 4MB \
+      0x0 "$build_dir/bootloader.bin" \
+      0x8000 "$build_dir/partitions.bin" \
+      0x30000 "$build_dir/firmware.bin" 2>&1 | tee "$log_file"; then
       ok "Recovery firmware flashed on $tty"
     else
       warn "Recovery flash FAILED on $tty"
