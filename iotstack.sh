@@ -2218,32 +2218,33 @@ _flash_production_smart() {
       echo ""
     fi
 
-    # Now flash production via OTA
-    info "Compiling production firmware..."
-    esphome compile "$yaml_path" >/dev/null 2>&1 || err "Compilation failed"
-
-    info "Waiting for device to connect to network..."
+    # Now discover recovery devices and reassign to production
+    info "Waiting for recovery device to connect to network..."
     local max_wait=30
     local waited=0
-    local device_hostname=""
+    local recovery_macs=()
 
     while [[ $waited -lt $max_wait ]]; do
-      # Try to find device via mDNS
-      device_hostname=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep ":" | tail -1 | awk '{print $4}' | cut -d' ' -f1)
-      if [[ -n "$device_hostname" ]]; then
+      # Discover recovery devices
+      while IFS= read -r line; do
+        if [[ "$line" =~ recovery-([0-9a-f]+) ]]; then
+          recovery_macs+=("${BASH_REMATCH[1]}")
+        fi
+      done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+
+      if [[ ${#recovery_macs[@]} -gt 0 ]]; then
         break
       fi
       sleep 1
       waited=$((waited + 1))
     done
 
-    if [[ -z "$device_hostname" ]]; then
-      warn "Device not found on network. Continuing with OTA by device name..."
-      device_hostname="${device}-*.local"
+    if [[ ${#recovery_macs[@]} -eq 0 ]]; then
+      err "Recovery device not found on network after $max_wait seconds. Check WiFi connection."
     fi
 
-    info "OTA flashing production firmware to: $device_hostname"
-    esphome upload "$yaml_path" --device "$device_hostname" || err "OTA upload failed"
+    info "Reassigning ${#recovery_macs[@]} recovery device(s) to $device firmware..."
+    "$UPDATE_SCRIPT" --reassign "${recovery_macs[@]}" "$yaml_path" --ota-password "IotstackRecovery2024" --jobs 1 || err "OTA update failed"
 
     ok "Production firmware setup complete!"
     return
