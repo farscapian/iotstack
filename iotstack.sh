@@ -1889,8 +1889,12 @@ _flash_recovery() {
 
     info "Flashing to: $tty_device"
     info "Compiling recovery firmware..."
-    if ! esphome compile "$recovery_yaml" 2>&1 | tee /dev/tty; then
-      err "Compilation failed"
+    echo "DEBUG: About to compile $recovery_yaml" >&2
+    esphome compile "$recovery_yaml"
+    local compile_status=$?
+    echo "DEBUG: esphome exit code: $compile_status" >&2
+    if [[ $compile_status -ne 0 ]]; then
+      err "Compilation failed with exit code $compile_status"
     fi
 
     info "Uploading recovery firmware to device (full serial flash including bootloader)..."
@@ -1930,7 +1934,13 @@ _flash_recovery() {
   echo ""
 
   info "Compiling recovery firmware..."
-  esphome compile "$recovery_yaml" >/dev/null 2>&1 || err "Compilation failed"
+  echo "DEBUG: About to compile $recovery_yaml" >&2
+  esphome compile "$recovery_yaml"
+  local compile_status=$?
+  echo "DEBUG: esphome exit code: $compile_status" >&2
+  if [[ $compile_status -ne 0 ]]; then
+    err "Compilation failed with exit code $compile_status"
+  fi
   ok "Recovery firmware compiled"
   echo ""
 
