@@ -1991,7 +1991,7 @@ cmd_flash() {
 }
 
 _flash_recovery() {
-  # Flash recovery image via serial (factory.bin)
+  # Flash recovery image via serial and return the device's MAC suffix
   local tty_device="$1"
 
   info "Flashing recovery firmware (dual-partition setup)"
@@ -2012,24 +2012,32 @@ _flash_recovery() {
     info "Compiling recovery firmware..."
     esphome compile "$recovery_yaml" || err "Compilation failed"
 
-    info "Uploading recovery firmware to device (full serial flash including bootloader)..."
+    info "Uploading recovery firmware to device..."
 
-    # Use esptool to flash the compiled binaries
+    # Use esptool to flash the compiled binaries and capture MAC
     local build_dir="$YAMLS_DIR/.esphome/build/recovery/.pioenvs/recovery"
     [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
 
-    esptool --chip esp32c6 --port "$tty_device" --baud 460800 \
+    local esptool_output
+    esptool_output=$(esptool --chip esp32c6 --port "$tty_device" --baud 460800 \
       write-flash --flash-mode dio --flash-size 4MB \
       0x0 "$build_dir/bootloader.bin" \
       0x8000 "$build_dir/partitions.bin" \
-      0x30000 "$build_dir/firmware.bin" || err "Flash failed"
-    ok "Recovery firmware flashed successfully"
+      0x30000 "$build_dir/firmware.bin" 2>&1) || err "Flash failed"
 
+    # Extract MAC suffix from esptool output (BASE MAC: xx:xx:xx:xx:xx:xx)
+    local device_mac
+    device_mac=$(echo "$esptool_output" | grep "BASE MAC:" | awk '{print $NF}' | sed 's/://g' | tail -c 7)
+
+    ok "Recovery firmware flashed successfully"
     echo ""
-    info "Device booting recovery firmware (purple LED indicator)..."
+
+    info "Device booting recovery firmware..."
     info "Waiting 10 seconds for device to stabilize..."
     sleep 10
 
+    # Return the MAC suffix for later reassignment
+    echo "$device_mac"
     return
   fi
 
@@ -2205,11 +2213,12 @@ _flash_production_smart() {
     fi
 
     # Check if user wants to skip recovery
+    local device_mac=""
     if [[ "$skip_recovery" != "--ota-only" ]]; then
       info "Fresh device detected (serial connection)"
       info "Step 1: Flashing recovery firmware..."
       echo ""
-      _flash_recovery "$tty_device"
+      device_mac=$(_flash_recovery "$tty_device")
       echo ""
       info "Step 2: Waiting for device to appear on network..."
       echo ""
@@ -2218,33 +2227,29 @@ _flash_production_smart() {
       echo ""
     fi
 
-    # Now discover recovery devices and reassign to production
-    info "Waiting for recovery device to connect to network..."
-    local max_wait=30
-    local waited=0
-    local recovery_macs=()
+    # Reassign recovery device to production
+    if [[ -n "$device_mac" ]]; then
+      info "Waiting for recovery device ($device_mac) to connect to network..."
+      local max_wait=30
+      local waited=0
+      local found=false
 
-    while [[ $waited -lt $max_wait ]]; do
-      # Discover recovery devices
-      while IFS= read -r line; do
-        if [[ "$line" =~ recovery-([0-9a-f]+) ]]; then
-          recovery_macs+=("${BASH_REMATCH[1]}")
+      while [[ $waited -lt $max_wait ]]; do
+        if avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -qi "recovery-$device_mac"; then
+          found=true
+          break
         fi
-      done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+        sleep 1
+        waited=$((waited + 1))
+      done
 
-      if [[ ${#recovery_macs[@]} -gt 0 ]]; then
-        break
+      if [[ "$found" != "true" ]]; then
+        err "Recovery device (recovery-$device_mac) not found on network after $max_wait seconds. Check WiFi connection."
       fi
-      sleep 1
-      waited=$((waited + 1))
-    done
 
-    if [[ ${#recovery_macs[@]} -eq 0 ]]; then
-      err "Recovery device not found on network after $max_wait seconds. Check WiFi connection."
+      info "Reassigning recovery-$device_mac to $device firmware..."
+      "$UPDATE_SCRIPT" --reassign "$device_mac" "$yaml_path" --ota-password "IotstackRecovery2024" --jobs 1 || err "OTA update failed"
     fi
-
-    info "Reassigning ${#recovery_macs[@]} recovery device(s) to $device firmware..."
-    "$UPDATE_SCRIPT" --reassign "${recovery_macs[@]}" "$yaml_path" --ota-password "IotstackRecovery2024" --jobs 1 || err "OTA update failed"
 
     ok "Production firmware setup complete!"
     return
