@@ -2130,7 +2130,53 @@ sync_common_secrets() {
   fi
 }
 
+verify_wifi_credentials() {
+  # Check if wifi_ssid and wifi_password exist in secrets.yaml
+  # If missing, prompt user to provide them
+  local secrets_yaml="$YAMLS_DIR/secrets.yaml"
+
+  [[ ! -f "$secrets_yaml" ]] && return 0  # File doesn't exist yet, will be created
+
+  local has_ssid=false
+  local has_password=false
+
+  if grep -q "^wifi_ssid:" "$secrets_yaml"; then
+    has_ssid=true
+  fi
+
+  if grep -q "^wifi_password:" "$secrets_yaml"; then
+    has_password=true
+  fi
+
+  if [[ "$has_ssid" == false ]] || [[ "$has_password" == false ]]; then
+    warn "Missing WiFi credentials in $secrets_yaml"
+    echo ""
+
+    if [[ "$has_ssid" == false ]]; then
+      read -p "Enter WiFi SSID: " wifi_ssid
+      [[ -z "$wifi_ssid" ]] && err "WiFi SSID cannot be empty"
+      echo "wifi_ssid: \"$wifi_ssid\"" >> "$secrets_yaml"
+    fi
+
+    if [[ "$has_password" == false ]]; then
+      read -sp "Enter WiFi password: " wifi_password
+      echo ""
+      [[ -z "$wifi_password" ]] && err "WiFi password cannot be empty"
+      echo "wifi_password: \"$wifi_password\"" >> "$secrets_yaml"
+    fi
+
+    ok "WiFi credentials added to $secrets_yaml"
+    echo ""
+  fi
+}
+
 main() {
+  # Mount secrets store early - needed for all operations
+  verify_secrets_mounted
+
+  # Check WiFi credentials exist, prompt if missing
+  verify_wifi_credentials
+
   # Sync common secrets silently at startup
   sync_common_secrets
 
