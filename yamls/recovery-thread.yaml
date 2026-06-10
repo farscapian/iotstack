@@ -25,8 +25,6 @@ esphome:
   project:
     name: "iotstack.${device_role}"
     version: "1.0.0"
-  on_boot:
-    priority: -100
 
 esp32:
   board: seeed_xiao_esp32c6
