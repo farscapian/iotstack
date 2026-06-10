@@ -162,7 +162,9 @@ if command -v avahi-daemon &>/dev/null; then
           sudo sed -i '/\[publish\]/a ttl=30' "$AVAHI_CONF"
         fi
 
-        # Restart avahi daemon
+        # Reload systemd and restart avahi daemon
+        sudo systemctl daemon-reload
+
         if sudo systemctl is-active --quiet avahi-daemon; then
           sudo systemctl restart avahi-daemon
           ok "avahi-daemon restarted with TTL=30s"
