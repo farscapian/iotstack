@@ -2363,8 +2363,8 @@ _flash_production_smart() {
         err "Recovery device (recovery-$device_mac) not found on network after $max_wait seconds. Check WiFi connection."
       fi
 
-      info "Device found on network! Waiting for it to fully stabilize..."
-      sleep 15
+      info "Device found on network! Waiting for OTA service to fully initialize..."
+      sleep 30
 
       info "Reassigning recovery-$device_mac to $device firmware..."
       if ! "$UPDATE_SCRIPT" --reassign "$device_mac" "$yaml_path" --ota-password "IotstackRecovery2024" --jobs 1; then
