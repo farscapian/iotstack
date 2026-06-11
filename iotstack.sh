@@ -2342,6 +2342,9 @@ _flash_production_smart() {
 
     # Reassign recovery device to production
     if [[ -n "$device_mac" ]]; then
+      # Extract only the MAC suffix (last 6 chars) from captured output
+      device_mac=$(echo "$device_mac" | tail -1 | tr -d '[:space:]')
+
       info "Waiting for recovery device ($device_mac) to connect to network..."
       local max_wait=30
       local waited=0
