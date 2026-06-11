@@ -1,0 +1,23 @@
+<svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="256" height="256" fill="#0D47A1"/>
+
+  <!-- Stack of devices (3 boxes) -->
+  <!-- Bottom device -->
+  <rect x="48" y="160" width="160" height="60" fill="#42A5F5" stroke="#1976D2" stroke-width="2" rx="4"/>
+  <rect x="52" y="164" width="152" height="8" fill="#1976D2" opacity="0.3"/>
+
+  <!-- Middle device -->
+  <rect x="56" y="100" width="144" height="60" fill="#64B5F6" stroke="#1565C0" stroke-width="2" rx="4"/>
+  <rect x="60" y="104" width="136" height="8" fill="#1565C0" opacity="0.3"/>
+
+  <!-- Top device -->
+  <rect x="64" y="40" width="128" height="60" fill="#90CAF9" stroke="#0D47A1" stroke-width="2" rx="4"/>
+  <rect x="68" y="44" width="120" height="8" fill="#0D47A1" opacity="0.3"/>
+
+  <!-- WiFi/signal indicator on top device -->
+  <g transform="translate(176, 55)">
+    <path d="M 0 0 Q 4 -4 8 0" fill="none" stroke="#0D47A1" stroke-width="1.5"/>
+    <path d="M 2 2 Q 4 0 6 2" fill="none" stroke="#0D47A1" stroke-width="1.5"/>
+  </g>
+</svg>

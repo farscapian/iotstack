@@ -433,6 +433,45 @@ else
   warn "Failed to mount secrets. Run manually: ./scripts/mount-secrets"
 fi
 
+# ── Create Desktop Taskbar Application ────────────────────────────────────
+echo
+echo "Creating taskbar application..."
+APPLICATIONS_DIR="${HOME}/.local/share/applications"
+ICONS_DIR="${HOME}/.local/share/icons"
+DESKTOP_FILE="${APPLICATIONS_DIR}/iotstack.desktop"
+LOGO_SRC="${SCRIPT_DIR}/assets/iotstack-logo.svg"
+
+mkdir -p "$APPLICATIONS_DIR" "$ICONS_DIR"
+
+# Copy logo to icons directory
+if [[ -f "$LOGO_SRC" ]]; then
+  cp "$LOGO_SRC" "$ICONS_DIR/iotstack-logo.svg"
+  ok "Installed logo to $ICONS_DIR/iotstack-logo.svg"
+else
+  warn "Logo not found at $LOGO_SRC"
+fi
+
+# Create .desktop file for taskbar
+cat > "$DESKTOP_FILE" << 'EOF'
+[Desktop Entry]
+Name=iotstack
+Comment=IoT device management and flashing
+Exec=codium /home/derek/Sync/mini_projects/iotstack
+Icon=iotstack-logo
+Type=Application
+Categories=Development;Utility;
+Terminal=false
+EOF
+
+chmod 644 "$DESKTOP_FILE"
+ok "Created taskbar application: $DESKTOP_FILE"
+
+# Update desktop database
+if command -v update-desktop-database &>/dev/null; then
+  update-desktop-database "$APPLICATIONS_DIR" >/dev/null 2>&1 || true
+  ok "Updated desktop database"
+fi
+
 echo
 echo "════════════════════════════════════════════════════════"
 echo "Setup Complete!"
