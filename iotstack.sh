@@ -2368,28 +2368,11 @@ _flash_production_smart() {
     return
   fi
 
-  # No TTY specified: check if device exists on network
-  info "Searching for existing $device on network..."
+  # No TTY specified: flash command requires serial device
+  err "Serial device required for flash command.
+Usage: iotstack flash $device /dev/ttyUSB0
 
-  local existing_devices=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep ":" | grep -i "$device" | wc -l)
-
-  if [[ $existing_devices -eq 0 ]]; then
-    err "Device '$device' not found on network and no serial device specified.
-Use: iotstack flash $device /dev/ttyUSB0  (to flash fresh device via serial)"
-  fi
-
-  # Device exists, just do OTA flash
-  info "Device found on network, proceeding with OTA flash"
-  echo ""
-
-  info "Compiling production firmware..."
-  smart_compile "$yaml_path" "$device" || err "Compilation failed"
-  echo ""
-
-  info "OTA flashing to: $device"
-  esphome upload "$yaml_path" --device "$device.local" || err "OTA upload failed"
-
-  ok "Production firmware updated successfully!"
+Note: Use 'iotstack update $device' for OTA flashing to devices already on network"
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────
