@@ -76,21 +76,23 @@ ok "API Key: (derived)"
 # ── Use Python to generate and write NVS data ────────────────────────────
 info "Writing NVS partition to device..."
 
+export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
+       OTA_PASSWORD="$DEVICE_OTA_PASSWORD" API_KEY="$DEVICE_API_KEY" \
+       DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE"
+
 python3 << 'NVSPYTHON'
 import json
-import sys
-import hashlib
-import struct
+import os
+import subprocess
 
-wifi_ssid = sys.argv[1]
-wifi_password = sys.argv[2]
-ota_password = sys.argv[3]
-api_key = sys.argv[4]
-device_mac = sys.argv[5]
-tty_device = sys.argv[6]
+wifi_ssid = os.environ['WIFI_SSID']
+wifi_password = os.environ['WIFI_PASSWORD']
+ota_password = os.environ['OTA_PASSWORD']
+api_key = os.environ['API_KEY']
+device_mac = os.environ['DEVICE_MAC']
+tty_device = os.environ['TTY_DEVICE']
 
 # Create NVS-format data (simplified key-value store)
-# For now, store as JSON which firmware can parse
 nvs_data = {
     "wifi_ssid": wifi_ssid,
     "wifi_password": wifi_password,
@@ -113,7 +115,6 @@ with open(nvs_file, 'r+b') as f:
 print(f"[OK] NVS partition prepared ({current_size} bytes)")
 
 # Write to device at offset 0x3d000 (after firmware)
-import subprocess
 result = subprocess.run([
     'esptool', '--chip', 'esp32c6', '--port', tty_device, '--baud', '460800',
     'write_flash', '0x3d000', nvs_file
@@ -123,13 +124,11 @@ if result.returncode == 0:
     print("[OK] NVS written to device")
 else:
     print(f"[ERROR] Failed to write NVS: {result.stderr}")
-    sys.exit(1)
+    exit(1)
 
 # Cleanup
-import os
 os.remove(nvs_file)
 
 NVSPYTHON
-"$WIFI_SSID" "$WIFI_PASSWORD" "$DEVICE_OTA_PASSWORD" "$DEVICE_API_KEY" "$DEVICE_MAC" "$TTY_DEVICE"
 
 ok "Device configured with device-specific secrets"
