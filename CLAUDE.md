@@ -301,6 +301,17 @@ Example: Baud rate issues with ESP32 flash corruption
 
 **Secrets are stored in device flash (NVS partition), not in firmware binary or YAML files.**
 
+### Implementation Status (2026-06-12)
+
+| Component | Status | Notes |
+|-----------|--------|-------|
+| NVS partition write | ✅ Working | Writes proper NVS binary format to 0x9000 |
+| NVS key-value format | ✅ Working | Uses esp_idf_nvs_partition_gen for correct binary format |
+| OTA password from NVS | ✅ Working | nvs_ota_password component loads and applies password |
+| WiFi credentials from NVS | ⏳ Partial | nvs_secrets reads credentials but WiFi component doesn't support runtime changes |
+| API encryption key | ✅ Stored | Safely written to NVS, awaiting API component support |
+| Flash encryption | ⏳ TODO | Planned for production hardening with eFuses |
+
 Architecture:
 1. **Pass store** (`~/.iotstack/.pass/`): Role-based master secrets (encrypted)
    - One secret per role (e.g., `iotstack/roles/bleproxy/ota_password`)
@@ -464,15 +475,38 @@ Firmware at startup:
 
 Two custom ESPHome components read from NVS at runtime:
 
-1. **nvs_ota_password**: Reads `ota_password` from NVS, calls `OTA::set_auth_password()`
+1. **nvs_ota_password**: Reads `ota_password` from NVS, sets OTA authentication
    - No password in firmware binary
    - Dynamically sets OTA authentication at startup
    - Enables device-specific OTA without recompilation
+   - Status: ✅ Working
 
 2. **nvs_secrets**: Reads WiFi and API credentials from NVS
-   - Fallback for WiFi SSID/password if not in YAML
-   - API encryption key derivation
-   - Makes firmware truly generic across devices
+   - Reads `wifi_ssid`, `wifi_password`, `api_key` from NVS partition
+   - Logs what was found (for debugging)
+   - **⚠️ LIMITATION**: ESPHome WiFi component does NOT support dynamic credential changes after initialization
+   - Makes values available for future use (e.g., config portal)
+   - Status: ✅ Reads from NVS, ⏳ WiFi update requires different approach
+
+### WiFi Credential Challenge (Technical Limitation)
+
+**Problem:** ESPHome's WiFi component initializes during setup phase using YAML values. Once initialized, credentials cannot be changed dynamically at runtime. This means:
+- ❌ Cannot apply WiFi SSID/password from NVS to WiFi component
+- ❌ Device uses YAML placeholder ('configured-via-nvs') instead of real credentials
+- ❌ Cannot connect to network without recompilation for each device
+
+**Possible Solutions (TODO):**
+1. **Device-specific firmware**: Build separate firmware for each device with YAML containing real WiFi credentials
+   - Pro: Clean separation, minimal code changes
+   - Con: Requires build per device, increases complexity
+2. **WiFi provisioning portal**: Add web/BLE portal to configure WiFi at first boot
+   - Pro: Generic firmware for all devices
+   - Con: More complex, requires additional hardware interaction
+3. **Modify ESPHome WiFi component**: Fork ESPHome to support runtime WiFi changes
+   - Pro: Clean solution
+   - Con: Maintenance burden, diverges from upstream
+
+**Current Status:** NVS write works correctly, credentials stored safely, but WiFi connection requires alternative approach.
 
 ## Flash Encryption & eFuses - Production Enhancement (TODO)
 
