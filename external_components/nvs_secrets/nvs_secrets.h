@@ -1,8 +1,6 @@
 #pragma once
 
 #include "esphome/core/component.h"
-#include "esphome/components/wifi/wifi_component.h"
-#include "esphome/components/api/api_server.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include <string>
@@ -14,7 +12,6 @@ class NVSSecrets : public Component {
  public:
   void setup() override;
   void dump_config() override;
-  float get_setup_priority() const override { return setup_priority::EARLY; }
 
   std::string get_wifi_ssid() const { return wifi_ssid_; }
   std::string get_wifi_password() const { return wifi_password_; }
