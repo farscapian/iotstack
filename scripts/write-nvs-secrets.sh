@@ -53,7 +53,13 @@ fi
 API_ENCRYPTION_KEY_BASE=$(pass show "iotstack/roles/${DEVICE_ROLE}/api_encryption_key" 2>/dev/null || echo "")
 
 if [[ -z "$API_ENCRYPTION_KEY_BASE" ]]; then
-  err "API encryption key not found for role: $DEVICE_ROLE"
+  info "API encryption key not found for role: $DEVICE_ROLE, generating..."
+  API_ENCRYPTION_KEY_BASE=$(openssl rand -base64 32 | tr -d '\n')
+  # Store it in pass
+  { echo "$API_ENCRYPTION_KEY_BASE"; echo "$API_ENCRYPTION_KEY_BASE"; } | \
+    pass insert -f "iotstack/roles/${DEVICE_ROLE}/api_encryption_key" 2>/dev/null || \
+    err "Failed to store API encryption key in pass"
+  ok "API encryption key generated and stored for role: $DEVICE_ROLE"
 fi
 
 # ── Derive device-specific API key ────────────────────────────────────────
