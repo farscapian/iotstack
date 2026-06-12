@@ -2392,6 +2392,33 @@ _flash_production_smart() {
         err "OTA update failed. Device may still be booting. Try again in a moment:
   iotstack update $device"
       fi
+
+      # Wait for device to reboot and appear with correct firmware name
+      info "OTA update complete! Waiting for device to reboot..."
+      local product_name="${device_role}"
+      local max_reboot_wait=45
+      local reboot_waited=0
+      local rebooted=false
+
+      while [[ $reboot_waited -lt $max_reboot_wait ]]; do
+        if avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "${product_name}-${device_mac}"; then
+          rebooted=true
+          ok "Device rebooted successfully as $product_name-$device_mac"
+          break
+        fi
+
+        sleep 1
+        reboot_waited=$((reboot_waited + 1))
+
+        if (( reboot_waited % 10 == 0 )); then
+          info "  Still rebooting... ($reboot_waited/$max_reboot_wait seconds)"
+        fi
+      done
+
+      if [[ "$rebooted" != "true" ]]; then
+        warn "Device did not appear as $product_name-$device_mac after $max_reboot_wait seconds."
+        warn "It may still be booting. Check with: iotstack list devices"
+      fi
     fi
 
     ok "Production firmware setup complete!"
