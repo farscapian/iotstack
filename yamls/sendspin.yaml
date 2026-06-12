@@ -49,10 +49,9 @@ time:
     id: device_time
 
 # 2. WiFi — power save disabled to keep audio stream stable
+# WiFi credentials are loaded from NVS by nvs_secrets component at startup
 
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
   power_save_mode: none
 
 # 3. Sendspin protocol hub

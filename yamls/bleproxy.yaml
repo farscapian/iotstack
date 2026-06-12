@@ -24,9 +24,9 @@ esp32:
   flash_size: 4MB
   variant: esp32c6
 
+# WiFi credentials are loaded from NVS by nvs_secrets component at startup
+# YAML does not contain any secrets - all come from device flash (NVS)
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
   power_save_mode: none
 
 # Custom NVS secrets component - loads device-specific API key from NVS

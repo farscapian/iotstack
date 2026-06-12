@@ -23,9 +23,10 @@ esp32:
   flash_size: 4MB
   variant: esp32c6
   
+# Thread configuration
+# Thread TLV is loaded from NVS by nvs_secrets component at startup
 openthread:
   device_type: FTD
-  tlv: !secret thread_tlv
   force_dataset: true
 
 # 3. Network — required for IPv6/Thread

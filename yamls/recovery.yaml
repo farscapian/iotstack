@@ -39,9 +39,9 @@ esp32:
   # NVS partition at 0x3d000 (24KB) for device-specific secrets
   partitions: dual_app_recovery.csv
 
+# WiFi credentials are loaded from NVS by nvs_secrets component at startup
+# YAML does not contain any secrets - all come from device flash (NVS)
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
   power_save_mode: none
 
 api:

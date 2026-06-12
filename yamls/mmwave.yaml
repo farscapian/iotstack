@@ -93,9 +93,8 @@ time:
     id: device_time
 
 # 2. WiFi networking
+# WiFi credentials are loaded from NVS by nvs_secrets component at startup
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
 
 # 3. Hardware buses
 uart:

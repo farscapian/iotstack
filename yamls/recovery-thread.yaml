@@ -36,9 +36,9 @@ esp32:
   partitions: dual_app_recovery.csv
 
 # Thread networking (no WiFi)
+# Thread TLV is loaded from NVS by nvs_secrets component at startup
 openthread:
   device_type: FTD
-  tlv: !secret thread_tlv
   force_dataset: true
 
 # IPv6 required for Thread
