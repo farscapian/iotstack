@@ -377,76 +377,8 @@ if [[ -f "$SECRETS_YAML" ]]; then
       } | pass insert -f "$pass_path" 2>&1 | grep -v "^mkdir:" || true
     fi
   done
-
-  # Extract secrets and add them to pass
-  # Format: key: "value" or key: value
-  while IFS= read -r line; do
-    [[ "$line" =~ ^#.*$ ]] && continue  # Skip comments
-    [[ -z "$line" ]] && continue         # Skip empty lines
-
-    # Handle both quoted and unquoted values
-    if [[ "$line" =~ ^([a-z_]+):[[:space:]]+\"(.*)\"$ ]]; then
-      # Quoted value
-      key="${BASH_REMATCH[1]}"
-      value="${BASH_REMATCH[2]}"
-    elif [[ "$line" =~ ^([a-z_]+):[[:space:]]+([^[:space:]].*[^[:space:]])$ ]]; then
-      # Unquoted value
-      key="${BASH_REMATCH[1]}"
-      value="${BASH_REMATCH[2]}"
-    else
-      continue
-    fi
-
-    # Handle device secrets: bleproxy_api_encryption_key -> iotstack/roles/bleproxy/api_encryption_key
-    if [[ "$key" =~ ^([a-z_]+)_(api_encryption_key|ota_password)$ ]]; then
-      role="${BASH_REMATCH[1]}"
-      secret_type="${BASH_REMATCH[2]}"
-
-      # Only seed if corresponding YAML file exists
-      if [[ ! -f "${SCRIPT_DIR}/yamls/${role}.yaml" ]]; then
-        continue
-      fi
-
-      pass_path="iotstack/roles/${role}/${secret_type}"
-
-      # Add to pass if not already present
-      if ! pass show "$pass_path" >/dev/null 2>&1; then
-        insert_output=$({
-          echo "$value"
-          echo "$value"
-        } | pass insert -f "$pass_path" 2>&1)
-        if [[ $? -eq 0 ]]; then
-          ok "Added: $pass_path"
-        else
-          warn "Failed to add: $pass_path"
-          [[ -n "$insert_output" ]] && echo "    Error: $insert_output" >&2
-        fi
-      fi
-    fi
-  done < "$SECRETS_YAML"
 else
-  warn "secrets.yaml not found, skipping seeding"
-fi
-
-# ── Generate Recovery OTA Password ─────────────────────────────────────────
-echo
-echo "Setting up recovery firmware OTA password..."
-
-RECOVERY_OTA_PATH="iotstack/recovery/ota_password"
-
-# Generate secure random password if not already set
-if ! pass show "$RECOVERY_OTA_PATH" >/dev/null 2>&1; then
-  # Generate 24-character random password (mix of upper/lower/digits)
-  recovery_password=$(openssl rand -base64 18 | tr -d '=' | tr '+/' '-_')
-
-  # Store in pass (requires double-entry for confirmation)
-  if { echo "$recovery_password"; echo "$recovery_password"; } | pass insert -f "$RECOVERY_OTA_PATH" 2>&1 >/dev/null; then
-    ok "Generated and stored recovery OTA password"
-  else
-    warn "Failed to store recovery OTA password in pass"
-  fi
-else
-  dim "Recovery OTA password already set"
+  warn "pass not initialized; skipping pass store setup"
 fi
 
 # ── Create Desktop Taskbar Application ────────────────────────────────────
@@ -506,9 +438,6 @@ echo
 echo "2. Start using iotstack:"
 echo -e "  ${GRN}iotstack update bleproxy${RST}"
 echo -e "  ${GRN}iotstack flash bleproxy /dev/ttyACM0${RST}"
-echo
-echo "Device-specific secrets are automatically written to NVS during flashing"
-echo "(no tmpfs or manual secret mounting needed)."
 echo
 echo "Your role-based secrets are stored encrypted in:"
 echo -e "  ${GRN}${PASS_DIR}${RST}"
