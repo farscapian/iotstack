@@ -23,10 +23,6 @@ esphome:
   project:
     name: "iotstack.${device_role}"
     version: "1.0.0"
-  # Include custom NVS components for reading secrets from device flash
-  includes:
-    - custom_components/nvs_secrets/
-    - custom_components/nvs_ota_password/
 
 esp32:
   board: seeed_xiao_esp32c6

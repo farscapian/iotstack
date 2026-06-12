@@ -9,10 +9,6 @@ esphome:
     name: iotstack.sk6812-led-strip
     version: 1.0.0
   name_add_mac_suffix: true
-  # Include custom NVS components for reading device-specific secrets from flash
-  includes:
-    - custom_components/nvs_secrets/
-    - custom_components/nvs_ota_password/
 
 esp32:
   board: seeed_xiao_esp32s3

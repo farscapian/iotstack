@@ -26,10 +26,6 @@ esphome:
   project:
     name: "iotstack.${device_role}"
     version: "1.0.0"
-  # Include custom NVS components for reading device-specific secrets from flash
-  includes:
-    - custom_components/nvs_secrets/
-    - custom_components/nvs_ota_password/
   on_boot:
     priority: -100
     then:
