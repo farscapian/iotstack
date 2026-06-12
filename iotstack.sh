@@ -56,6 +56,33 @@ _update_compilation_cache() {
   echo "${yaml_sha},${binary_sha}" >> "$COMPILATION_CACHE"
 }
 
+_check_serial_port_in_use() {
+  # Check if serial port is already open by screen, minicom, picocom, or other tools
+  local tty_device="$1"
+
+  # Try lsof first (most reliable)
+  if command -v lsof &>/dev/null; then
+    local processes
+    processes=$(lsof "$tty_device" 2>/dev/null | tail -n +2)  # Skip header
+    if [[ -n "$processes" ]]; then
+      err "Serial port $tty_device is already in use:
+$processes
+
+Please close the terminal session (screen, minicom, etc.) before flashing.
+If using screen: press Ctrl+A then D to detach, then: screen -X -S <session> quit"
+    fi
+    return 0
+  fi
+
+  # Fallback to fuser if lsof is not available
+  if command -v fuser &>/dev/null; then
+    if fuser "$tty_device" >/dev/null 2>&1; then
+      warn "Serial port $tty_device may be in use. Close any open terminal sessions before flashing."
+    fi
+    return 0
+  fi
+}
+
 smart_compile() {
   # Smart compilation that uses cache to skip rebuilds
   # Usage: smart_compile <yaml_file> [device_name_for_logging]
@@ -2115,6 +2142,9 @@ _flash_recovery() {
     if [[ ! -e "$tty_device" ]]; then
       err "TTY device not found: $tty_device"
     fi
+
+    # Check if serial port is already in use
+    _check_serial_port_in_use "$tty_device"
 
     info "Flashing to: $tty_device"
     info "Compiling recovery firmware..."
