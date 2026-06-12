@@ -2202,14 +2202,14 @@ _flash_recovery() {
     trap "rm -f $esptool_log" RETURN
 
     if [[ $VERBOSE -eq 1 ]]; then
-      # Show all output: run esptool, tee to file AND screen
+      # Show all output: redirect both stdout and stderr to tee (display + file)
       esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
         write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
         0x0 "$build_dir/bootloader.bin" \
         0x8000 "$build_dir/partitions.bin" \
-        0x30000 "$build_dir/firmware.bin" | tee "$esptool_log" || err "Flash failed"
+        0x30000 "$build_dir/firmware.bin" 2>&1 | tee "$esptool_log" || err "Flash failed"
     else
-      # Suppress output, only keep summary
+      # Suppress output, capture silently
       esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
         write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
         0x0 "$build_dir/bootloader.bin" \
