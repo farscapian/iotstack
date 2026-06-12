@@ -23,6 +23,40 @@ err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
 ok()   { echo -e "${GRN}[OK]${RST} $*"; }
 info() { echo -e "${YLW}[INFO]${RST} $*"; }
 
+# Get or prompt for credential (lazy-loading on demand)
+_get_or_prompt_credential() {
+  local pass_path="$1"
+  local prompt_text="$2"
+  local is_secret="${3:-true}"  # true for passwords, false for non-secret values
+
+  # Try to get from pass store
+  local value=$(pass show "$pass_path" 2>/dev/null || echo "")
+
+  # If not set or is placeholder, prompt user
+  if [[ -z "$value" || "$value" == "CONFIGURE_ME" ]]; then
+    echo "" >&2
+    if [[ "$is_secret" == "true" ]]; then
+      # For secrets, read without echo
+      read -s -p "${YLW}[PROMPT]${RST} $prompt_text: " value </dev/tty >&2
+      echo >&2
+    else
+      # For non-secrets, read normally
+      read -p "${YLW}[PROMPT]${RST} $prompt_text: " value </dev/tty >&2
+    fi
+
+    if [[ -z "$value" ]]; then
+      err "Credential required: $pass_path"
+    fi
+
+    # Store in pass for future use (double echo for confirmation)
+    info "Storing credential in pass store: $pass_path"
+    { echo "$value"; echo "$value"; } | pass insert -f "$pass_path" 2>/dev/null || \
+      err "Failed to store credential in pass store"
+  fi
+
+  echo "$value"
+}
+
 # Arguments
 TTY_DEVICE="${1:-}"
 DEVICE_MAC="${2:-}"
@@ -36,17 +70,24 @@ DEVICE_OTA_PASSWORD="${4:-}"
 
 [[ ! -e "$TTY_DEVICE" ]] && err "TTY device not found: $TTY_DEVICE"
 
-# ── Retrieve role-based secrets from pass store ────────────────────────────
+# ── Retrieve role-based secrets from pass store (lazy-load on demand) ─────
 info "Retrieving secrets for role: $DEVICE_ROLE"
 
-# Get WiFi credentials (from common store, not role-specific)
-WIFI_SSID=$(pass show "iotstack/common/wifi_ssid" 2>/dev/null || echo "")
-WIFI_PASSWORD=$(pass show "iotstack/common/wifi_password" 2>/dev/null || echo "")
+# Get WiFi credentials (lazy-load if not set or placeholder)
+WIFI_SSID=$(_get_or_prompt_credential "iotstack/common/wifi_ssid" "WiFi network name (SSID)" false)
+WIFI_PASSWORD=$(_get_or_prompt_credential "iotstack/common/wifi_password" "WiFi password" true)
 
-if [[ -z "$WIFI_SSID" || -z "$WIFI_PASSWORD" ]]; then
-  err "WiFi credentials not found in pass store. Set with:
-  pass insert iotstack/common/wifi_ssid
-  pass insert iotstack/common/wifi_password"
+# Get optional Thread credentials (lazy-load with skip option)
+THREAD_TLV=$(pass show "iotstack/common/thread_tlv" 2>/dev/null || echo "")
+if [[ -z "$THREAD_TLV" || "$THREAD_TLV" == "CONFIGURE_ME" ]]; then
+  read -p "Thread TLV commissioning string (optional, press Enter to skip): " -r </dev/tty THREAD_TLV_INPUT 2>/dev/null || THREAD_TLV_INPUT=""
+  if [[ -n "$THREAD_TLV_INPUT" ]]; then
+    { echo "$THREAD_TLV_INPUT"; echo "$THREAD_TLV_INPUT"; } | pass insert -f "iotstack/common/thread_tlv" 2>/dev/null || true
+    THREAD_TLV="$THREAD_TLV_INPUT"
+    ok "Thread TLV stored in pass"
+  else
+    THREAD_TLV=""
+  fi
 fi
 
 # Get role-based API encryption key for derivation
@@ -78,7 +119,7 @@ info "Writing NVS partition to device..."
 
 export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
        OTA_PASSWORD="$DEVICE_OTA_PASSWORD" API_KEY="$DEVICE_API_KEY" \
-       DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE"
+       THREAD_TLV="$THREAD_TLV" DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE"
 
 python3 << 'NVSPYTHON'
 import json
@@ -89,6 +130,7 @@ wifi_ssid = os.environ['WIFI_SSID']
 wifi_password = os.environ['WIFI_PASSWORD']
 ota_password = os.environ['OTA_PASSWORD']
 api_key = os.environ['API_KEY']
+thread_tlv = os.environ.get('THREAD_TLV', '')
 device_mac = os.environ['DEVICE_MAC']
 tty_device = os.environ['TTY_DEVICE']
 
@@ -99,6 +141,10 @@ nvs_data = {
     "ota_password": ota_password,
     "api_encryption_key": api_key,
 }
+
+# Add optional Thread TLV if present
+if thread_tlv:
+    nvs_data["thread_tlv"] = thread_tlv
 
 # Write to temporary file
 nvs_file = f"/tmp/nvs_{device_mac}.json"
