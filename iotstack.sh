@@ -2355,7 +2355,7 @@ _flash_production_smart() {
       device_mac=$(echo "$device_mac" | tail -1 | tr -d '[:space:]')
 
       info "Waiting for recovery device ($device_mac) to connect to network..."
-      local max_wait=30
+      local max_wait=60
       local waited=0
       local found=false
 
