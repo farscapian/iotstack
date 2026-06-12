@@ -4,14 +4,13 @@
 #
 # Key features:
 # - Works for ALL device roles (bleproxy, mmwave, threadrouter, etc.)
-# - Hardcoded recovery OTA password (never changes)
-# - Hardcoded recovery API encryption key (never changes)
+# - Device-specific OTA password from NVS (unique per device)
+# - Device-specific API encryption key from NVS (unique per device)
 # - Minimal functionality to save flash space
-# - Distinctive LED indicator (purple blink = recovery mode)
+# - Single firmware binary for all devices (secrets from NVS)
 # - Can OTA flash any production firmware back
 #
 # WARNING: Do NOT use this as production firmware!
-# WARNING: Recovery credentials are well-known - only use this to recover!
 
 substitutions:
   device_role: "recovery"
@@ -28,9 +27,10 @@ esphome:
   project:
     name: "iotstack.${device_role}"
     version: "1.0.0"
-  # Include custom NVS secrets component
+  # Include custom NVS components for reading secrets from device flash
   includes:
     - custom_components/nvs_secrets/
+    - custom_components/nvs_ota_password/
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -52,16 +52,19 @@ api:
   encryption:
     key: ${recovery_api_key}
 
-# Custom NVS secrets component - loads device-specific secrets from NVS partition
-# Reads: wifi_ssid, wifi_password, ota_password, api_encryption_key
+# Custom NVS secrets component - loads device-specific secrets from NVS
 nvs_secrets:
 
+# Custom NVS OTA Password component - loads OTA password from NVS at startup
+# Sets the OTA service password dynamically from device flash
+# This allows unique OTA passwords per device without firmware recompilation
+nvs_ota_password:
+
 # OTA Configuration for recovery partition
-# Uses recovery_ota_password from secrets store (compiled version)
-# Also reads device-specific password from NVS at runtime
+# Password is set dynamically by nvs_ota_password component from NVS
+# No hardcoded password in firmware binary
 ota:
   - platform: esphome
-    password: !secret recovery_ota_password
 
 safe_mode:
   num_attempts: 3

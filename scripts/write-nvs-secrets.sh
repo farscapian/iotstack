@@ -1,12 +1,12 @@
 #!/bin/bash
 # write-nvs-secrets.sh
 # Write device-specific secrets to NVS partition after firmware flash
-# Derives unique secrets from role-based secrets + device MAC
+# Accepts pre-computed device-specific OTA password (computed by iotstack.sh)
 #
 # Usage:
-#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 device_mac device_role
+#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 device_mac device_role ota_password
 # Example:
-#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c bleproxy
+#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c recovery a1b2c3d4e5f6
 
 set -euo pipefail
 
@@ -27,10 +27,12 @@ info() { echo -e "${YLW}[INFO]${RST} $*"; }
 TTY_DEVICE="${1:-}"
 DEVICE_MAC="${2:-}"
 DEVICE_ROLE="${3:-}"
+DEVICE_OTA_PASSWORD="${4:-}"
 
-[[ -z "$TTY_DEVICE" ]] && err "Usage: $0 <tty_device> <device_mac> <device_role>"
-[[ -z "$DEVICE_MAC" ]] && err "Usage: $0 <tty_device> <device_mac> <device_role>"
-[[ -z "$DEVICE_ROLE" ]] && err "Usage: $0 <tty_device> <device_mac> <device_role>"
+[[ -z "$TTY_DEVICE" ]] && err "Usage: $0 <tty_device> <device_mac> <device_role> <ota_password>"
+[[ -z "$DEVICE_MAC" ]] && err "Usage: $0 <tty_device> <device_mac> <device_role> <ota_password>"
+[[ -z "$DEVICE_ROLE" ]] && err "Usage: $0 <tty_device> <device_mac> <device_role> <ota_password>"
+[[ -z "$DEVICE_OTA_PASSWORD" ]] && err "Usage: $0 <tty_device> <device_mac> <device_role> <ota_password>"
 
 [[ ! -e "$TTY_DEVICE" ]] && err "TTY device not found: $TTY_DEVICE"
 
@@ -47,30 +49,23 @@ if [[ -z "$WIFI_SSID" || -z "$WIFI_PASSWORD" ]]; then
   pass insert iotstack/common/wifi_password"
 fi
 
-# Get role-based base secrets
-OTA_PASSWORD_BASE=$(pass show "iotstack/roles/${DEVICE_ROLE}/ota_password" 2>/dev/null || echo "")
+# Get role-based API encryption key for derivation
 API_ENCRYPTION_KEY_BASE=$(pass show "iotstack/roles/${DEVICE_ROLE}/api_encryption_key" 2>/dev/null || echo "")
-
-if [[ -z "$OTA_PASSWORD_BASE" ]]; then
-  err "OTA password not found for role: $DEVICE_ROLE"
-fi
 
 if [[ -z "$API_ENCRYPTION_KEY_BASE" ]]; then
   err "API encryption key not found for role: $DEVICE_ROLE"
 fi
 
-# ── Derive device-specific secrets ────────────────────────────────────────
-info "Deriving device-specific secrets from role + MAC"
+# ── Derive device-specific API key ────────────────────────────────────────
+info "Deriving device-specific API encryption key from role + MAC"
 
-# Derive device-specific OTA password: sha256(base | mac)[0:32]
-DEVICE_OTA_PASSWORD=$(echo -n "${OTA_PASSWORD_BASE}|${DEVICE_MAC}" | sha256sum | cut -c1-32)
-
-# Derive device-specific API key: sha256(base | mac) - keep full hash for API key
+# OTA password is pre-computed and passed as parameter (never stored on disk)
+# API key is derived from role secret + MAC: sha256(base | mac)
 DEVICE_API_KEY=$(echo -n "${API_ENCRYPTION_KEY_BASE}|${DEVICE_MAC}" | sha256sum | cut -c1-64)
 
-info "Device secrets derived"
-ok "OTA Password: (hidden)"
-ok "API Key: (hidden)"
+info "Device secrets ready"
+ok "OTA Password: (from parameter)"
+ok "API Key: (derived)"
 
 # ── Use Python to generate and write NVS data ────────────────────────────
 info "Writing NVS partition to device..."

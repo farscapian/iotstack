@@ -2147,9 +2147,22 @@ _flash_recovery() {
     ok "Recovery firmware flashed to: $device_mac"
     echo ""
 
+    # Compute device-specific OTA password from role-based secret
+    # sha256(role_secret | device_mac) - never stored, computed in-memory only
+    local recovery_role_password
+    recovery_role_password=$(pass show "iotstack/roles/recovery/ota_password" 2>/dev/null)
+    if [[ -z "$recovery_role_password" ]]; then
+      err "Recovery role OTA password not in pass store. Run setup.sh to initialize."
+    fi
+
+    local device_specific_ota_password
+    device_specific_ota_password=$(echo -n "${recovery_role_password}|${device_mac}" | sha256sum | cut -c1-32)
+
     # Write device-specific secrets to NVS partition
+    # Firmware reads these via custom NVS components
     info "Writing device-specific secrets to NVS..."
-    "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "recovery" || err "Failed to write NVS secrets"
+    "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "recovery" "$device_specific_ota_password" || \
+      err "Failed to write NVS secrets"
 
     info "Device booting recovery firmware..."
     sleep 10
@@ -2392,19 +2405,19 @@ _flash_production_smart() {
 
       info "Reassigning recovery-$device_mac to $device firmware..."
 
-      # Retrieve base recovery OTA password from pass store
-      local base_recovery_password
-      base_recovery_password=$(pass show "iotstack/recovery/ota_password" 2>/dev/null)
-      if [[ -z "$base_recovery_password" ]]; then
-        err "Recovery OTA password not found in pass store. Run setup.sh again to initialize it."
+      # Retrieve recovery role-based OTA password from pass store
+      local recovery_role_password
+      recovery_role_password=$(pass show "iotstack/roles/recovery/ota_password" 2>/dev/null)
+      if [[ -z "$recovery_role_password" ]]; then
+        err "Recovery role OTA password not in pass store. Run setup.sh to initialize."
       fi
 
-      # Derive device-specific password from base + MAC (unique per device)
-      local device_specific_password
-      device_specific_password=$(echo -n "${base_recovery_password}|${device_mac}" | sha256sum | cut -c1-32)
-      info "Using device-specific OTA password for recovery-$device_mac"
+      # Compute device-specific OTA password from role secret + MAC
+      # sha256(role_secret | device_mac) - computed in-memory only
+      local device_ota_password
+      device_ota_password=$(echo -n "${recovery_role_password}|${device_mac}" | sha256sum | cut -c1-32)
 
-      if ! "$UPDATE_SCRIPT" --reassign "$device_mac" "$yaml_path" --ota-password "$device_specific_password" --jobs 1; then
+      if ! "$UPDATE_SCRIPT" --reassign "$device_mac" "$yaml_path" --ota-password "$device_ota_password" --jobs 1; then
         err "OTA update failed. Device may still be booting. Try again in a moment:
   iotstack update $device"
       fi
