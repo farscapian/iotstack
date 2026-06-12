@@ -91,6 +91,8 @@ time:
 # 2. WiFi networking
 # WiFi credentials are loaded from NVS by nvs_secrets component at startup
 wifi:
+  ssid: "configured-via-nvs"  # Placeholder - overridden by nvs_secrets component
+  password: "placeholder"      # Placeholder - overridden by nvs_secrets component
 
 # 3. Hardware buses
 uart:

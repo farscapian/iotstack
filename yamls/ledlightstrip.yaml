@@ -18,6 +18,8 @@ esp32:
 
 # WiFi credentials are loaded from NVS by nvs_secrets component at startup
 wifi:
+  ssid: "configured-via-nvs"  # Placeholder - overridden by nvs_secrets component
+  password: "placeholder"      # Placeholder - overridden by nvs_secrets component
 
 # Custom NVS secrets component - loads device-specific API key from NVS
 nvs_secrets:
