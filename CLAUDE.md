@@ -262,25 +262,52 @@ All code changes should be staged and ready, but **git commits and pushes must O
 
 This ensures that all commits represent validated, tested, working changes — not experimental code that may need revision.
 
-## Secrets Management: Seeding Pattern
+## Secrets Management: NVS-Based Architecture
 
-**secrets.yaml is ONLY for seeding the pass store, not for operational values.**
+**Secrets are stored in device flash (NVS partition), not in firmware binary or YAML files.**
 
 Architecture:
-- **secrets.yaml**: Initial seed with well-known defaults (e.g., `CHANGE_ME`)
-- **pass store**: Encrypted operational source of truth (versioned, secure)
-- **iotstack startup**: Auto-seeds pass from secrets.yaml (only if pass doesn't have key yet)
+1. **Pass store** (`~/.iotstack/.pass/`): Role-based master secrets (encrypted)
+   - One secret per role (e.g., `iotstack/roles/bleproxy/ota_password`)
+   - Generated during setup.sh, stored securely
+   - Never written to disk unencrypted
 
-Precedence: If pass has a value, secrets.yaml is ignored
+2. **NVS partition** (device flash at 0x3d000): Device-specific secrets
+   - Unique per device: `sha256(role_secret | device_mac)`
+   - Written after firmware flash via `write-nvs-secrets.sh`
+   - Persists across firmware updates
+   - Separate from firmware binary
+
+3. **secrets.yaml**: Placeholder values only
+   - Checked into git (safe for repo)
+   - Used only at compile time (fallback/default)
+   - Actual secrets come from NVS at runtime
+
+Workflow:
 ```
-secrets.yaml value        →  pass (first run, if pass is empty)
-                          ↓
-                        pass value (all subsequent runs)
+setup.sh (first run)
+  ↓
+  Role secrets generated & stored in pass
+  ↓
+iotstack flash <device> <role>
+  ↓
+  Firmware compiled with placeholder secrets.yaml
+  ↓
+  Firmware flashed to device via esptool
+  ↓
+  write-nvs-secrets.sh:
+    - Retrieves role secret from pass
+    - Derives device-specific secret (sha256 | mac)
+    - Writes to device NVS partition
+  ↓
+Device boots
+  ↓
+  nvs_secrets component reads from NVS
+  ↓
+  Device has unique, secure secrets
 ```
 
-User updates secrets via `iotstack secret set <role> <ota|api> <value>`, which updates pass (not secrets.yaml).
-
-This allows secrets.yaml to be checked into git with safe defaults while protecting actual secrets in encrypted pass store.
+Key benefit: **Single firmware binary for all devices, unique secrets per device, no disk exposure of real secrets.**
 
 ## 🚨 CRITICAL: Never Print Passwords or Secrets to Console
 

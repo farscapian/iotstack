@@ -449,15 +449,6 @@ else
   dim "Recovery OTA password already set"
 fi
 
-# Mount secrets tmpfs so secrets are available immediately
-echo
-echo "Mounting secrets tmpfs..."
-if "$SCRIPT_DIR/scripts/mount-secrets"; then
-  ok "Secrets mounted to RAM"
-else
-  warn "Failed to mount secrets. Run manually: ./scripts/mount-secrets"
-fi
-
 # ── Create Desktop Taskbar Application ────────────────────────────────────
 echo
 echo "Creating taskbar application..."
@@ -512,22 +503,17 @@ echo
 echo "1. Load environment:"
 echo -e "  ${GRN}source $BASHRC${RST}"
 echo
-echo "2. Mount secrets into RAM (no unencrypted disk writes):"
-echo -e "  ${GRN}./scripts/mount-secrets${RST}"
-echo
-echo "3. Use iotstack:"
+echo "2. Start using iotstack:"
 echo -e "  ${GRN}iotstack update bleproxy${RST}"
-echo -e "  ${GRN}iotstack rotate-password mmwave${RST}"
+echo -e "  ${GRN}iotstack flash bleproxy /dev/ttyACM0${RST}"
 echo
-echo "4. When done (optional, auto-erased on reboot):"
-echo -e "  ${GRN}./scripts/unmount-secrets${RST}"
+echo "Device-specific secrets are automatically written to NVS during flashing"
+echo "(no tmpfs or manual secret mounting needed)."
 echo
-echo "Your encrypted secrets are stored in:"
+echo "Your role-based secrets are stored encrypted in:"
 echo -e "  ${GRN}${PASS_DIR}${RST}"
 echo
 echo "For more information:"
-echo -e "  ${GRN}docs/RAMDISK-SECRETS.md${RST}  (RAM-only secrets)"
-echo -e "  ${GRN}docs/QUICK-START-SECRETS.md${RST}  (Password manager setup)"
 echo -e "  ${GRN}iotstack help${RST}  (CLI commands)"
 
 echo

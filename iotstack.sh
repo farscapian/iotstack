@@ -2117,18 +2117,16 @@ _flash_recovery() {
     fi
 
     info "Flashing to: $tty_device"
-
-    # Step 1: Compile generic recovery firmware to extract device MAC
-    info "Compiling recovery firmware (generic)..."
+    info "Compiling recovery firmware..."
     smart_compile "$recovery_yaml" "recovery" || err "Compilation failed"
 
-    info "Uploading to device..."
+    info "Uploading recovery firmware to device..."
 
     # Erase flash completely to handle devices with incompatible firmware (RCP, etc.)
-    info "Erasing flash memory (handles RCP firmware and corrupted partitions)..."
+    info "Erasing flash memory..."
     esptool --chip esp32c6 --port "$tty_device" --baud 460800 erase_flash >/dev/null 2>&1 || err "Erase failed"
 
-    # Use esptool to flash and capture MAC
+    # Flash generic recovery firmware and capture MAC
     local build_dir="$YAMLS_DIR/.esphome/build/recovery/.pioenvs/recovery"
     [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
 
@@ -2139,76 +2137,21 @@ _flash_recovery() {
       0x8000 "$build_dir/partitions.bin" \
       0x30000 "$build_dir/firmware.bin" 2>&1) || err "Flash failed"
 
-    # Extract MAC suffix from esptool output (BASE MAC: xx:xx:xx:xx:xx:xx)
+    # Extract MAC address from esptool output
     local device_mac
     device_mac=$(echo "$esptool_output" | grep "BASE MAC:" | awk '{print $NF}' | sed 's/://g' | tr -d '[:space:]')
-    device_mac="${device_mac: -6}"  # Get last 6 characters
+    device_mac="${device_mac: -6}"
 
     [[ -z "$device_mac" || ! "$device_mac" =~ ^[0-9a-f]{6}$ ]] && err "Failed to extract MAC address from device"
 
-    ok "Recovery firmware flashed (generic version)"
+    ok "Recovery firmware flashed to: $device_mac"
     echo ""
 
-    # Step 2: Derive device-specific OTA password
-    local base_recovery_password
-    base_recovery_password=$(pass show "iotstack/recovery/ota_password" 2>/dev/null)
-    if [[ -z "$base_recovery_password" ]]; then
-      err "Recovery OTA password not found in pass store. Run setup.sh again to initialize it."
-    fi
-
-    local device_specific_password
-    device_specific_password=$(echo -n "${base_recovery_password}|${device_mac}" | sha256sum | cut -c1-32)
-
-    info "Generating device-specific recovery firmware for: $device_mac"
-    info "Device-specific OTA password: (hidden)"
-
-    # Step 3: Create temporary secrets with device-specific password
-    local temp_secrets_dir="/tmp/.iotstack-recovery-${device_mac}"
-    mkdir -p "$temp_secrets_dir"
-    local temp_secrets="$temp_secrets_dir/secrets.yaml"
-
-    # Copy original secrets and override recovery password
-    cp "$YAMLS_DIR/secrets.yaml" "$temp_secrets" 2>/dev/null || true
-    echo "recovery_ota_password: \"$device_specific_password\"" >> "$temp_secrets"
-
-    # Temporarily override YAMLS_DIR to use temp secrets
-    local orig_yamls="$YAMLS_DIR"
-    export YAMLS_DIR="$temp_secrets_dir"
-    cp "$orig_yamls/secrets.yaml" "$temp_secrets" 2>/dev/null || true
-    echo "recovery_ota_password: \"$device_specific_password\"" >> "$temp_secrets"
-
-    # Copy recovery.yaml to temp directory
-    cp "$orig_yamls/recovery.yaml" "$temp_secrets_dir/" 2>/dev/null || true
-
-    # Recompile with device-specific password
-    info "Recompiling recovery firmware with device-specific password..."
-    ESPHOME_DASHBOARD_REPO_PATH="$temp_secrets_dir" esphome compile "$temp_secrets_dir/recovery.yaml" >/dev/null 2>&1 || {
-      rm -rf "$temp_secrets_dir"
-      err "Failed to recompile with device-specific password"
-    }
-
-    # Flash the device-specific recovery firmware
-    info "Flashing device-specific recovery firmware..."
-    local temp_build_dir="$temp_secrets_dir/.esphome/build/recovery/.pioenvs/recovery"
-
-    esptool --chip esp32c6 --port "$tty_device" --baud 460800 \
-      write-flash --flash-mode dio --flash-size 4MB \
-      0x0 "$temp_build_dir/bootloader.bin" \
-      0x8000 "$temp_build_dir/partitions.bin" \
-      0x30000 "$temp_build_dir/firmware.bin" >/dev/null 2>&1 || {
-      rm -rf "$temp_secrets_dir"
-      err "Failed to flash device-specific firmware"
-    }
-
-    # Cleanup
-    rm -rf "$temp_secrets_dir"
-    export YAMLS_DIR="$orig_yamls"
-
-    ok "Device-specific recovery firmware flashed successfully"
-    echo ""
+    # Write device-specific secrets to NVS partition
+    info "Writing device-specific secrets to NVS..."
+    "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "recovery" || err "Failed to write NVS secrets"
 
     info "Device booting recovery firmware..."
-    info "Waiting 10 seconds for device to stabilize..."
     sleep 10
 
     # Return the MAC suffix for later reassignment
