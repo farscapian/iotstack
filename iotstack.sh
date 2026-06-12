@@ -2200,7 +2200,8 @@ _flash_recovery() {
 
     info "Flashing recovery firmware..."
     if [[ $VERBOSE -eq 1 ]]; then
-      info "See detailed output in: $flash_log"
+      info "Detailed output:"
+      info "tail -f $flash_log"
     fi
 
     # Flash and capture output
