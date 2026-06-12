@@ -1,6 +1,5 @@
 #include "nvs_ota_password.h"
 #include "esphome/core/log.h"
-#include "esphome/components/ota/ota_component.h"
 
 namespace esphome {
 namespace nvs_ota_password {

@@ -1,10 +1,17 @@
 #pragma once
 
 #include "esphome/core/component.h"
-#include "esphome/components/ota/ota_component.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include <string>
+
+// Forward declaration - OTA component is globally available
+namespace esphome {
+namespace ota {
+class OtaComponent;
+extern OtaComponent* global_ota_component;
+}
+}
 
 namespace esphome {
 namespace nvs_ota_password {
