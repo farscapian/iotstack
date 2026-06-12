@@ -38,22 +38,25 @@ _get_binary_sha() {
 _check_compilation_cache() {
   # Check if we can skip compilation based on YAML SHA
   # Returns 0 (can skip) or 1 (must compile)
-  local yaml_sha="$1"
-  local device_name="$2"
+  local yaml_file="$1"
+  local yaml_name=$(basename "$yaml_file")
+  local yaml_sha=$(_get_yaml_sha "$yaml_file")
 
   [[ ! -f "$COMPILATION_CACHE" ]] && return 1
 
-  # Look for matching YAML SHA in cache
-  grep "^${yaml_sha}," "$COMPILATION_CACHE" >/dev/null 2>&1
+  # Look for matching YAML name and SHA in cache
+  grep "^${yaml_name},${yaml_sha}," "$COMPILATION_CACHE" >/dev/null 2>&1
   return $?
 }
 
 _update_compilation_cache() {
   # Record compilation result in cache
-  local yaml_sha="$1"
+  local yaml_file="$1"
   local binary_sha="$2"
+  local yaml_name=$(basename "$yaml_file")
+  local yaml_sha=$(_get_yaml_sha "$yaml_file")
 
-  echo "${yaml_sha},${binary_sha}" >> "$COMPILATION_CACHE"
+  echo "${yaml_name},${yaml_sha},${binary_sha}" >> "$COMPILATION_CACHE"
 }
 
 _check_serial_port_in_use() {
@@ -94,7 +97,7 @@ smart_compile() {
   [[ -z "$yaml_sha" ]] && err "Failed to compute SHA256 of $yaml_file"
 
   # Check if we can skip compilation
-  if _check_compilation_cache "$yaml_sha" "$device_name"; then
+  if _check_compilation_cache "$yaml_file"; then
     ok "Firmware already compiled (cached)"
     return 0
   fi
@@ -106,7 +109,7 @@ smart_compile() {
   # Get binary SHA after successful compilation
   local binary_sha=$(_get_binary_sha "$device_name")
   if [[ -n "$binary_sha" ]]; then
-    _update_compilation_cache "$yaml_sha" "$binary_sha"
+    _update_compilation_cache "$yaml_file" "$binary_sha"
     ok "Compilation cached"
   fi
 
