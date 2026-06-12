@@ -14,8 +14,6 @@
 substitutions:
   device_role: "recovery-thread"
   friendly_name: "Recovery Mode (Thread)"
-  # Recovery credentials from secrets store (generated during setup)
-  recovery_api_key: "9Cyl+abaIMyBmUyi326qO0W/ZuoO4ZNnLB7nuuJGjDg="
 
 esphome:
   name: ${device_role}
@@ -24,6 +22,10 @@ esphome:
   project:
     name: "iotstack.${device_role}"
     version: "1.0.0"
+  # Include custom NVS components for reading secrets from device flash
+  includes:
+    - custom_components/nvs_secrets/
+    - custom_components/nvs_ota_password/
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -43,13 +45,21 @@ openthread:
 network:
   enable_ipv6: true
 
-api:
-  encryption:
-    key: ${recovery_api_key}
+# Custom NVS secrets component - loads device-specific secrets from NVS
+nvs_secrets:
 
+# Custom NVS OTA Password component - loads OTA password from NVS at startup
+# Sets the OTA service password dynamically from device flash
+nvs_ota_password:
+
+api:
+  # API encryption key is set dynamically by nvs_secrets component from NVS
+  # No hardcoded key in firmware binary
+
+# OTA Configuration for recovery partition
+# Password is set dynamically by nvs_ota_password component from NVS
 ota:
   - platform: esphome
-    password: !secret recovery_ota_password
 
 safe_mode:
   num_attempts: 3
