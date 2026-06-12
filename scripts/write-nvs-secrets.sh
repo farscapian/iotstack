@@ -160,27 +160,24 @@ print(f"[OK] Created NVS CSV file for nvs_partition_gen")
 # The tool generates a binary in NVS format (not raw JSON)
 nvs_bin_path = f"/tmp/nvs_{device_mac}.bin"
 
-try:
-    # Import the NVS partition generator from ESP-IDF
-    from esp_idf_nvs_partition_gen import nvs_partition_gen
+# Use command-line nvs_partition_gen tool to create proper NVS binary
+print(f"[OK] Generating NVS partition binary using esp_idf_nvs_partition_gen")
 
-    print(f"[OK] Using nvs_partition_gen to generate proper NVS partition")
+result = subprocess.run([
+    'python3', '-m', 'esp_idf_nvs_partition_gen', 'generate',
+    nvs_csv_path,        # input CSV file
+    nvs_bin_path,        # output binary file
+    '0x6000',            # partition size in bytes (24KB)
+    '--version', '2'     # Version 2 (multipage blob support)
+], capture_output=True, text=True)
 
-    # Generate the binary file
-    nvs_partition_gen.generate(
-        input_file=nvs_csv_path,
-        output_file=nvs_bin_path,
-        size=0x6000,  # 24KB NVS partition size
-        version=2  # Version 2 supports multipage blobs
-    )
-
-    print(f"[OK] NVS partition binary generated at {nvs_bin_path}")
-
-except Exception as e:
-    print(f"[ERROR] Failed to generate NVS partition: {e}")
-    import traceback
-    traceback.print_exc()
+if result.returncode != 0:
+    print(f"[ERROR] Failed to generate NVS partition")
+    print(f"[ERROR] stdout: {result.stdout}")
+    print(f"[ERROR] stderr: {result.stderr}")
     sys.exit(1)
+
+print(f"[OK] NVS partition binary generated at {nvs_bin_path}")
 
 # Write to device at offset 0x9000 (NVS partition)
 # Using 9600 baud for reliable writes (higher speeds cause corruption)
