@@ -9,6 +9,12 @@ yamls/.esphome/
 
 # Exception: allow custom_components and scripts (not secrets)
 !custom_components/
+!custom_components/nvs_secrets/
+!custom_components/nvs_secrets/**
+!custom_components/nvs_ota_password/
+!custom_components/nvs_ota_password/**
+!custom_components/nvs_writer/
+!custom_components/nvs_writer/**
 !scripts/write-nvs-secrets.sh
 !scripts/iotstack-secrets
 !scripts/rotate-secrets
