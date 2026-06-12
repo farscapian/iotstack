@@ -2197,20 +2197,28 @@ _flash_recovery() {
     local build_dir="$YAMLS_DIR/.esphome/build/recovery/.pioenvs/recovery"
     [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
 
-    local esptool_output
+    # Use temp file for esptool output
+    local esptool_log=$(mktemp)
+    trap "rm -f $esptool_log" RETURN
+
     if [[ $VERBOSE -eq 1 ]]; then
-      esptool_output=$(esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
+      # Show all output: run esptool, tee to file AND screen
+      esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
         write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
         0x0 "$build_dir/bootloader.bin" \
         0x8000 "$build_dir/partitions.bin" \
-        0x30000 "$build_dir/firmware.bin" 2>&1) || err "Flash failed"
+        0x30000 "$build_dir/firmware.bin" | tee "$esptool_log" || err "Flash failed"
     else
-      esptool_output=$(esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
+      # Suppress output, only keep summary
+      esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
         write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
         0x0 "$build_dir/bootloader.bin" \
         0x8000 "$build_dir/partitions.bin" \
-        0x30000 "$build_dir/firmware.bin" 2>&1 | grep -E "Wrote|Hash|BASE MAC") || err "Flash failed"
+        0x30000 "$build_dir/firmware.bin" > "$esptool_log" 2>&1 || err "Flash failed"
     fi
+
+    # Extract MAC address from output
+    local esptool_output=$(cat "$esptool_log")
 
     # Extract MAC address from esptool output
     local device_mac
