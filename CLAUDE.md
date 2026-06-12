@@ -37,6 +37,20 @@ The `iotstack.sh` CLI tool provides a user-friendly wrapper around this script w
 - Uses `wait -n` for slot-based job queuing
 - Respects Thread device constraints: forces `--jobs 1` for Thread configs (Thread OTA is slow; parallelism causes mesh contention)
 
+### Serial Flash Baud Rate: 9600 (Critical)
+**⚠️ IMPORTANT: All esptool flash operations use 9600 baud, NOT 57600 or 115200**
+
+Testing with ESP32-C6 devices revealed that higher baud rates cause data corruption during large firmware transfers:
+- **57600 baud**: Firmware corruption starts ~52KB into 807KB transfers
+- **115200 baud**: Worse corruption, more frequent failures
+- **9600 baud**: 100% reliable, full file integrity verified
+
+**Why?** Higher baud rates accumulate bit errors over long transfers. A single bit flip during 789KB transfer is catastrophic. Conservative 9600 baud prevents this.
+
+**Performance tradeoff**: 57600 (~2.5 sec) vs 9600 (~10-15 sec). Reliability >> Speed.
+
+If baud rate changes are ever considered, empirically test with actual 789KB firmware transfers and verify full SHA256 checksums.
+
 ### YAML Configuration
 - ESPHome devices are configured via YAML files in the `yamls/` directory
 - Each device has a simple `name:` for mDNS discovery (e.g., `ble-proxy`, `thread-router`)
@@ -184,8 +198,6 @@ This is used in the `--reassign` offline device warning and the websocket client
 
 ### Temporary File Handling
 - Temp YAML files go to `~/.iotstack/artifacts/` (not cluttering the repo)
-- Single source of truth: `secrets.yaml` lives in `yamls/` directory
-- ESPHome YAML files automatically find `secrets.yaml` in the same directory
 - Temp files are cleaned up on script exit via `trap` handler
 - Pattern: `.temp-reassign-<PID>.yaml` is gitignored
 
@@ -218,7 +230,6 @@ r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)'
 |-------|-----------|----------|
 | Prompt doesn't appear, script hangs | User input code runs after stdout redirect | Use `>&2` for messages, `</dev/tty` for input |
 | `grep: invalid option -- '$'` | Pattern starts with dash (e.g., `-19b164$`) | Use `grep -- ` to stop option processing |
-| ESPHome can't find secrets.yaml | secrets.yaml not in yamls/ directory | Ensure secrets.yaml exists in yamls/ where YAML configs live |
 | Device discovery finds wrong devices | Filtering by device_name in reassign mode | In reassign mode, discover ALL then filter by MAC suffix |
 | Entity updates affect wrong integrations | Not checking platform field | Always filter: `if platform != 'esphome': continue` |
 
@@ -261,6 +272,30 @@ All code changes should be staged and ready, but **git commits and pushes must O
 5. **Only push to remote** after commit succeeds
 
 This ensures that all commits represent validated, tested, working changes — not experimental code that may need revision.
+
+### Research FIRST, Then Debug
+
+**When encountering a persistent problem, do targeted internet research BEFORE systematic debugging.**
+
+Example: Baud rate issues with ESP32 flash corruption
+- ❌ Bad: Try 460800 → 115200 → 57600 (3+ hours of testing)
+- ✅ Good: Research "ESP32 firmware corruption baud rate" → find 9600 standard (5 minutes)
+
+**When to research:**
+- Problem seems common or straightforward (baud rates, timeouts, memory issues)
+- Embedded systems problem (existing best practices likely exist)
+- Multiple attempts are failing with similar symptoms
+- Problem affects reliability/stability (not just convenience)
+
+**Why this matters:**
+- Embedded systems have well-established best practices (9600 baud for large transfers, etc.)
+- Community knowledge saves hours of empirical debugging
+- Understanding root cause (via research) prevents re-discovering the same issue
+
+**When systematic debugging is still appropriate:**
+- Cutting-edge/novel problems without community precedent
+- Edge cases specific to this project's architecture
+- After research has identified the likely cause (then test to confirm)
 
 ## Secrets Management: NVS-Based Architecture
 
