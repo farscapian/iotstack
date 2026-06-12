@@ -163,8 +163,10 @@ nvs_bin_path = f"/tmp/nvs_{device_mac}.bin"
 # Use command-line nvs_partition_gen tool to create proper NVS binary
 print(f"[OK] Generating NVS partition binary using esp_idf_nvs_partition_gen")
 
+# Use the same Python environment that has esp_idf_nvs_partition_gen
+idf_python = os.path.expanduser('~/.espressif/python_env/idf6.1_py3.14_env/bin/python3')
 result = subprocess.run([
-    'python3', '-m', 'esp_idf_nvs_partition_gen', 'generate',
+    idf_python, '-m', 'esp_idf_nvs_partition_gen', 'generate',
     nvs_csv_path,        # input CSV file
     nvs_bin_path,        # output binary file
     '0x6000',            # partition size in bytes (24KB)
