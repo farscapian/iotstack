@@ -35,13 +35,15 @@ _get_or_prompt_credential() {
   # If not set or is placeholder, prompt user
   if [[ -z "$value" || "$value" == "CONFIGURE_ME" ]]; then
     echo "" >&2
+    echo -ne "${YLW}[PROMPT]${RST} $prompt_text: " >&2
+
     if [[ "$is_secret" == "true" ]]; then
       # For secrets, read without echo
-      read -s -p "${YLW}[PROMPT]${RST} $prompt_text: " value </dev/tty >&2
+      read -s value </dev/tty 2>/dev/null || value=""
       echo >&2
     else
       # For non-secrets, read normally
-      read -p "${YLW}[PROMPT]${RST} $prompt_text: " value </dev/tty >&2
+      read value </dev/tty 2>/dev/null || value=""
     fi
 
     if [[ -z "$value" ]]; then
@@ -80,7 +82,8 @@ WIFI_PASSWORD=$(_get_or_prompt_credential "iotstack/common/wifi_password" "WiFi 
 # Get optional Thread credentials (lazy-load with skip option)
 THREAD_TLV=$(pass show "iotstack/common/thread_tlv" 2>/dev/null || echo "")
 if [[ -z "$THREAD_TLV" || "$THREAD_TLV" == "CONFIGURE_ME" ]]; then
-  read -p "Thread TLV commissioning string (optional, press Enter to skip): " -r </dev/tty THREAD_TLV_INPUT 2>/dev/null || THREAD_TLV_INPUT=""
+  echo -ne "${YLW}[PROMPT]${RST} Thread TLV commissioning string (optional, press Enter to skip): " >&2
+  read -r THREAD_TLV_INPUT </dev/tty 2>/dev/null || THREAD_TLV_INPUT=""
   if [[ -n "$THREAD_TLV_INPUT" ]]; then
     { echo "$THREAD_TLV_INPUT"; echo "$THREAD_TLV_INPUT"; } | pass insert -f "iotstack/common/thread_tlv" 2>/dev/null || true
     THREAD_TLV="$THREAD_TLV_INPUT"
