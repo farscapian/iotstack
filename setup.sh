@@ -452,11 +452,12 @@ else
 fi
 
 # Create .desktop file for taskbar (with pinning support)
-cat > "$DESKTOP_FILE" << 'EOF'
+# Use dynamic path so it works regardless of where repo is cloned
+cat > "$DESKTOP_FILE" << EOF
 [Desktop Entry]
 Name=iotstack
 Comment=IoT device management and flashing
-Exec=codium /home/derek/Sync/mini_projects/iotstack
+Exec=codium $SCRIPT_DIR
 Icon=iotstack-logo
 Type=Application
 Categories=Development;Utility;
