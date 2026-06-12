@@ -1,23 +1,132 @@
 <svg viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0F172A;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1E293B;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="primaryGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3B82F6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1E40AF;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="accentGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#06B6D4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0891B2;stop-opacity:1" />
+    </linearGradient>
+
+    <linearGradient id="highlightGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8B5CF6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#6366F1;stop-opacity:1" />
+    </linearGradient>
+
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
   <!-- Background -->
-  <rect width="256" height="256" fill="#0D47A1"/>
+  <rect width="256" height="256" fill="url(#bgGradient)"/>
 
-  <!-- Stack of devices (3 boxes) -->
-  <!-- Bottom device -->
-  <rect x="48" y="160" width="160" height="60" fill="#42A5F5" stroke="#1976D2" stroke-width="2" rx="4"/>
-  <rect x="52" y="164" width="152" height="8" fill="#1976D2" opacity="0.3"/>
+  <!-- Central hub device -->
+  <g id="centralHub">
+    <!-- Main body -->
+    <rect x="96" y="96" width="64" height="64" fill="url(#primaryGradient)" stroke="#0E7490" stroke-width="1.5" rx="6"/>
 
-  <!-- Middle device -->
-  <rect x="56" y="100" width="144" height="60" fill="#64B5F6" stroke="#1565C0" stroke-width="2" rx="4"/>
-  <rect x="60" y="104" width="136" height="8" fill="#1565C0" opacity="0.3"/>
+    <!-- Top accent line -->
+    <rect x="96" y="96" width="64" height="3" fill="#06B6D4" opacity="0.8" rx="1"/>
 
-  <!-- Top device -->
-  <rect x="64" y="40" width="128" height="60" fill="#90CAF9" stroke="#0D47A1" stroke-width="2" rx="4"/>
-  <rect x="68" y="44" width="120" height="8" fill="#0D47A1" opacity="0.3"/>
+    <!-- Circuit board pattern on device -->
+    <line x1="110" y1="105" x2="146" y2="105" stroke="#06B6D4" stroke-width="0.5" opacity="0.4"/>
+    <line x1="110" y1="115" x2="146" y2="115" stroke="#06B6D4" stroke-width="0.5" opacity="0.4"/>
+    <line x1="110" y1="125" x2="146" y2="125" stroke="#06B6D4" stroke-width="0.5" opacity="0.4"/>
+    <line x1="110" y1="135" x2="146" y2="135" stroke="#06B6D4" stroke-width="0.5" opacity="0.4"/>
+    <line x1="110" y1="145" x2="146" y2="145" stroke="#06B6D4" stroke-width="0.5" opacity="0.4"/>
 
-  <!-- WiFi/signal indicator on top device -->
-  <g transform="translate(176, 55)">
-    <path d="M 0 0 Q 4 -4 8 0" fill="none" stroke="#0D47A1" stroke-width="1.5"/>
-    <path d="M 2 2 Q 4 0 6 2" fill="none" stroke="#0D47A1" stroke-width="1.5"/>
+    <!-- Center indicator light -->
+    <circle cx="128" cy="128" r="6" fill="url(#accentGradient)" filter="url(#glow)"/>
+  </g>
+
+  <!-- Connection nodes around the hub -->
+
+  <!-- Top-left node -->
+  <g id="nodeTL">
+    <line x1="115" y1="96" x2="80" y2="50" stroke="#3B82F6" stroke-width="2" opacity="0.6"/>
+    <circle cx="70" cy="40" r="10" fill="url(#accentGradient)" stroke="#06B6D4" stroke-width="1" filter="url(#softGlow)"/>
+    <circle cx="70" cy="40" r="5" fill="#06B6D4" opacity="0.4"/>
+  </g>
+
+  <!-- Top node -->
+  <g id="nodeT">
+    <line x1="128" y1="96" x2="128" y2="30" stroke="#3B82F6" stroke-width="2" opacity="0.6"/>
+    <circle cx="128" cy="20" r="10" fill="url(#highlightGradient)" stroke="#8B5CF6" stroke-width="1" filter="url(#softGlow)"/>
+    <circle cx="128" cy="20" r="5" fill="#8B5CF6" opacity="0.4"/>
+  </g>
+
+  <!-- Top-right node -->
+  <g id="nodeTR">
+    <line x1="141" y1="96" x2="176" y2="50" stroke="#3B82F6" stroke-width="2" opacity="0.6"/>
+    <circle cx="186" cy="40" r="10" fill="url(#accentGradient)" stroke="#06B6D4" stroke-width="1" filter="url(#softGlow)"/>
+    <circle cx="186" cy="40" r="5" fill="#06B6D4" opacity="0.4"/>
+  </g>
+
+  <!-- Left node -->
+  <g id="nodeL">
+    <line x1="96" y1="115" x2="30" y2="115" stroke="#3B82F6" stroke-width="2" opacity="0.6"/>
+    <circle cx="20" cy="115" r="10" fill="url(#highlightGradient)" stroke="#8B5CF6" stroke-width="1" filter="url(#softGlow)"/>
+    <circle cx="20" cy="115" r="5" fill="#8B5CF6" opacity="0.4"/>
+  </g>
+
+  <!-- Right node -->
+  <g id="nodeR">
+    <line x1="160" y1="115" x2="226" y2="115" stroke="#3B82F6" stroke-width="2" opacity="0.6"/>
+    <circle cx="236" cy="115" r="10" fill="url(#accentGradient)" stroke="#06B6D4" stroke-width="1" filter="url(#softGlow)"/>
+    <circle cx="236" cy="115" r="5" fill="#06B6D4" opacity="0.4"/>
+  </g>
+
+  <!-- Bottom-left node -->
+  <g id="nodeBL">
+    <line x1="115" y1="160" x2="80" y2="206" stroke="#3B82F6" stroke-width="2" opacity="0.6"/>
+    <circle cx="70" cy="216" r="10" fill="url(#accentGradient)" stroke="#06B6D4" stroke-width="1" filter="url(#softGlow)"/>
+    <circle cx="70" cy="216" r="5" fill="#06B6D4" opacity="0.4"/>
+  </g>
+
+  <!-- Bottom node -->
+  <g id="nodeB">
+    <line x1="128" y1="160" x2="128" y2="226" stroke="#3B82F6" stroke-width="2" opacity="0.6"/>
+    <circle cx="128" cy="236" r="10" fill="url(#highlightGradient)" stroke="#8B5CF6" stroke-width="1" filter="url(#softGlow)"/>
+    <circle cx="128" cy="236" r="5" fill="#8B5CF6" opacity="0.4"/>
+  </g>
+
+  <!-- Bottom-right node -->
+  <g id="nodeBR">
+    <line x1="141" y1="160" x2="176" y2="206" stroke="#3B82F6" stroke-width="2" opacity="0.6"/>
+    <circle cx="186" cy="216" r="10" fill="url(#accentGradient)" stroke="#06B6D4" stroke-width="1" filter="url(#softGlow)"/>
+    <circle cx="186" cy="216" r="5" fill="#06B6D4" opacity="0.4"/>
+  </g>
+
+  <!-- Subtle grid background pattern -->
+  <g opacity="0.05" stroke="#06B6D4" stroke-width="0.5">
+    <line x1="20" y1="50" x2="236" y2="50"/>
+    <line x1="20" y1="100" x2="236" y2="100"/>
+    <line x1="20" y1="150" x2="236" y2="150"/>
+    <line x1="20" y1="200" x2="236" y2="200"/>
+    <line x1="50" y1="20" x2="50" y2="236"/>
+    <line x1="100" y1="20" x2="100" y2="236"/>
+    <line x1="150" y1="20" x2="150" y2="236"/>
+    <line x1="200" y1="20" x2="200" y2="236"/>
   </g>
 </svg>
