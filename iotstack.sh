@@ -2124,7 +2124,8 @@ _flash_recovery() {
 
     # Erase flash completely to handle devices with incompatible firmware (RCP, etc.)
     info "Erasing flash memory..."
-    esptool --chip esp32c6 --port "$tty_device" --baud 460800 erase_flash >/dev/null 2>&1 || err "Erase failed"
+    esptool --chip esp32c6 --port "$tty_device" --baud 460800 erase_flash || err "Erase failed"
+    sleep 2  # Wait for erase to complete and device to stabilize
 
     # Flash generic recovery firmware and capture MAC
     local build_dir="$YAMLS_DIR/.esphome/build/recovery/.pioenvs/recovery"
