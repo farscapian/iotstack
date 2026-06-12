@@ -126,10 +126,11 @@ export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
        THREAD_TLV="$THREAD_TLV" DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE"
 
 python3 << 'NVSPYTHON'
-import json
 import os
 import subprocess
+import sys
 
+# Get environment variables
 wifi_ssid = os.environ['WIFI_SSID']
 wifi_password = os.environ['WIFI_PASSWORD']
 ota_password = os.environ['OTA_PASSWORD']
@@ -138,47 +139,63 @@ thread_tlv = os.environ.get('THREAD_TLV', '')
 device_mac = os.environ['DEVICE_MAC']
 tty_device = os.environ['TTY_DEVICE']
 
-# Create NVS-format data (simplified key-value store)
-nvs_data = {
-    "wifi_ssid": wifi_ssid,
-    "wifi_password": wifi_password,
-    "ota_password": ota_password,
-    "api_encryption_key": api_key,
-}
+# Create CSV for NVS partition generator
+# Format: key,type,encoding,value
+nvs_csv_path = f"/tmp/nvs_{device_mac}.csv"
+with open(nvs_csv_path, 'w') as f:
+    f.write("key,type,encoding,value\n")
+    f.write(f"wifi_ssid,data,string,{wifi_ssid}\n")
+    f.write(f"wifi_password,data,string,{wifi_password}\n")
+    f.write(f"ota_password,data,string,{ota_password}\n")
+    f.write(f"api_encryption_key,data,string,{api_key}\n")
+    if thread_tlv:
+        f.write(f"thread_tlv,data,string,{thread_tlv}\n")
 
-# Add optional Thread TLV if present
-if thread_tlv:
-    nvs_data["thread_tlv"] = thread_tlv
+print(f"[OK] Created NVS CSV file for nvs_partition_gen")
 
-# Write to temporary file
-nvs_file = f"/tmp/nvs_{device_mac}.json"
-with open(nvs_file, 'w') as f:
-    json.dump(nvs_data, f, separators=(',', ':'))
+# Use ESP-IDF nvs_partition_gen to create proper NVS binary
+# The tool generates a binary in NVS format (not raw JSON)
+nvs_bin_path = f"/tmp/nvs_{device_mac}.bin"
 
-# Pad to 0x6000 (24KB NVS partition size)
-with open(nvs_file, 'r+b') as f:
-    current_size = f.seek(0, 2)
-    padding_needed = 0x6000 - current_size
-    if padding_needed > 0:
-        f.write(b'\xff' * padding_needed)
+try:
+    # Import the NVS partition generator from ESP-IDF
+    from esp_idf_nvs_partition_gen import nvs_partition_gen
 
-print(f"[OK] NVS partition prepared ({current_size} bytes)")
+    print(f"[OK] Using nvs_partition_gen to generate proper NVS partition")
 
-# Write to device at offset 0x9000 (NVS partition, size 0x4000)
+    # Generate the binary file
+    nvs_partition_gen.generate(
+        input_file=nvs_csv_path,
+        output_file=nvs_bin_path,
+        size=0x6000,  # 24KB NVS partition size
+        version=2  # Version 2 supports multipage blobs
+    )
+
+    print(f"[OK] NVS partition binary generated at {nvs_bin_path}")
+
+except Exception as e:
+    print(f"[ERROR] Failed to generate NVS partition: {e}")
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)
+
+# Write to device at offset 0x9000 (NVS partition)
 # Using 9600 baud for reliable writes (higher speeds cause corruption)
+print(f"[OK] Writing NVS partition to device at 0x9000...")
 result = subprocess.run([
     'esptool', '--chip', 'esp32c6', '--port', tty_device, '--baud', '9600',
-    'write_flash', '0x9000', nvs_file
+    'write_flash', '0x9000', nvs_bin_path
 ], capture_output=True, text=True)
 
 if result.returncode == 0:
-    print("[OK] NVS written to device")
+    print("[OK] NVS written to device successfully")
 else:
     print(f"[ERROR] Failed to write NVS: {result.stderr}")
-    exit(1)
+    sys.exit(1)
 
 # Cleanup
-os.remove(nvs_file)
+os.remove(nvs_csv_path)
+os.remove(nvs_bin_path)
 
 NVSPYTHON
 

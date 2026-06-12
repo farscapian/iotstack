@@ -29,7 +29,7 @@ esphome:
   name_add_mac_suffix: true
   project:
     name: "iotstack.${device_role}"
-    version: "1.0.0"
+    version: "1.0.1"
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -166,5 +166,32 @@ button:
             }
 
 logger:
-  level: INFO  # Minimal logging in recovery mode
+  level: DEBUG  # Enhanced logging to debug NVS issues
   hardware_uart: USB_SERIAL_JTAG
+  logs:
+    nvs_secrets: DEBUG
+    nvs_ota_password: DEBUG
+    nvs_writer: DEBUG
+    wifi: DEBUG
+    api: DEBUG
+
+# Debug script to log NVS values at startup
+script:
+  - id: debug_nvs_values
+    mode: single
+    then:
+      - logger.log:
+          format: "[DEBUG-NVS] Startup - checking if nvs_secrets loaded WiFi from NVS"
+          level: INFO
+      - logger.log:
+          format: "[DEBUG-NVS] WiFi SSID configured in YAML: 'configured-via-nvs' (this should be OVERRIDDEN by nvs_secrets)"
+          level: INFO
+      - logger.log:
+          format: "[DEBUG-NVS] If still seeing 'configured-via-nvs' in connection logs, nvs_secrets component failed to load NVS data"
+          level: INFO
+
+# Run debug script on startup
+on_boot:
+  - priority: 100
+    then:
+      - script.execute: debug_nvs_values
