@@ -125,7 +125,10 @@ export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
        OTA_PASSWORD="$DEVICE_OTA_PASSWORD" API_KEY="$DEVICE_API_KEY" \
        THREAD_TLV="$THREAD_TLV" DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE"
 
-python3 << 'NVSPYTHON'
+# Use ESP-IDF Python environment which has nvs_partition_gen installed
+ESP_IDF_PYTHON="${HOME}/.espressif/python_env/idf6.1_py3.14_env/bin/python3"
+
+$ESP_IDF_PYTHON << 'NVSPYTHON'
 import os
 import subprocess
 import sys
