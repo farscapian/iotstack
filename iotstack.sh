@@ -2217,6 +2217,12 @@ _flash_recovery() {
     "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "recovery" "$device_specific_ota_password" || \
       err "Failed to write NVS secrets"
 
+    # Verify flash checksums before proceeding
+    info "Verifying flash checksums..."
+    "$SCRIPT_DIR/scripts/verify-flash.sh" "$tty_device" "recovery" || \
+      err "Flash verification failed - device may be corrupted"
+    echo ""
+
     info "Device booting recovery firmware..."
     sleep 10
 
