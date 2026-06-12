@@ -28,6 +28,9 @@ esphome:
   project:
     name: "iotstack.${device_role}"
     version: "1.0.0"
+  # Include custom NVS secrets component
+  includes:
+    - custom_components/nvs_secrets/
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -36,8 +39,8 @@ esp32:
   flash_size: 4MB
   variant: esp32c6
   # PARTITION TABLE CONFIGURATION
-  # Custom partition table for dual-app OTA recovery
-  # Generated dynamically by scripts/generate-partitions.sh
+  # Includes: bootloader, app0 (recovery), app1 (production), nvs
+  # NVS partition at 0x3d000 (24KB) for device-specific secrets
   partitions: dual_app_recovery.csv
 
 wifi:
@@ -49,8 +52,13 @@ api:
   encryption:
     key: ${recovery_api_key}
 
+# Custom NVS secrets component - loads device-specific secrets from NVS partition
+# Reads: wifi_ssid, wifi_password, ota_password, api_encryption_key
+nvs_secrets:
+
 # OTA Configuration for recovery partition
-# Uses recovery_ota_password from secrets store (unique per installation)
+# Uses recovery_ota_password from secrets store (compiled version)
+# Also reads device-specific password from NVS at runtime
 ota:
   - platform: esphome
     password: !secret recovery_ota_password

@@ -6,3 +6,7 @@ secrets.yaml
 .esphome/
 yamls/.esphome/
 .iotstack/
+
+# Exception: allow custom_components and scripts (not secrets)
+!custom_components/
+!scripts/write-nvs-secrets.sh
