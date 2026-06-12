@@ -2165,7 +2165,12 @@ _flash_recovery() {
   done 2>/dev/null
 
   if [[ ${#tty_devices[@]} -eq 0 ]]; then
-    err "No USB serial devices found. Plug in device(s) and try again."
+    # Diagnostic: check if USB devices might be claimed by a VM
+    local vm_warning=""
+    if pgrep -l "VirtualBox|qemu|vboxheadless" >/dev/null 2>&1; then
+      vm_warning=$'\n\n⚠️  Virtual machine(s) detected. USB devices may be passed through to a VM.\n   Stop the VM or disconnect devices from it to use them on the host.'
+    fi
+    err "No USB serial devices found. Plug in device(s) and try again.${vm_warning}"
   fi
 
   info "Found ${#tty_devices[@]} USB device(s): ${tty_devices[*]}"
