@@ -2699,6 +2699,19 @@ main() {
     esac
   done
 
+  # Ensure symlink from yamls/.iotstack -> ~/.iotstack exists
+  local iotstack_link="${YAMLS_DIR}/.iotstack"
+  local iotstack_home="${HOME}/.iotstack"
+
+  if [[ ! -L "$iotstack_link" ]] || [[ "$(readlink "$iotstack_link")" != "$iotstack_home" ]]; then
+    # Remove broken/wrong symlink if it exists
+    [[ -e "$iotstack_link" || -L "$iotstack_link" ]] && rm -f "$iotstack_link"
+    # Create correct symlink
+    mkdir -p "$iotstack_home"
+    ln -s "$iotstack_home" "$iotstack_link"
+    debug "Restored .iotstack symlink: $iotstack_link -> $iotstack_home"
+  fi
+
   # Mount secrets store early - needed for all operations
   verify_secrets_mounted
 
