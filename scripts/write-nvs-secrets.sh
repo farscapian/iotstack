@@ -150,7 +150,7 @@ with open(nvs_csv_path, 'w') as f:
     f.write(f"wifi_ssid,data,string,{wifi_ssid}\n")
     f.write(f"wifi_password,data,string,{wifi_password}\n")
     f.write(f"ota_password,data,string,{ota_password}\n")
-    f.write(f"api_encryption_key,data,string,{api_key}\n")
+    f.write(f"api_key,data,string,{api_key}\n")
     if thread_tlv:
         f.write(f"thread_tlv,data,string,{thread_tlv}\n")
 

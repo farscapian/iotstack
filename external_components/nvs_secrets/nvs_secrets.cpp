@@ -48,7 +48,7 @@ void NVSSecrets::setup() {
   wifi_ssid_ = read_nvs_string("wifi_ssid");
   wifi_password_ = read_nvs_string("wifi_password");
   ota_password_ = read_nvs_string("ota_password");
-  api_encryption_key_ = read_nvs_string("api_encryption_key");
+  api_encryption_key_ = read_nvs_string("api_key");
 
   if (!wifi_ssid_.empty()) {
     ESP_LOGI(TAG, "WiFi SSID loaded from NVS");
@@ -70,11 +70,11 @@ void NVSSecrets::setup() {
 }
 
 void NVSSecrets::dump_config() {
-  ESP_LOGCONFIG(TAG, "NVS Secrets:");
-  ESP_LOGCONFIG(TAG, "  WiFi SSID: %s", wifi_ssid_.empty() ? "(not set)" : "(loaded)");
-  ESP_LOGCONFIG(TAG, "  WiFi Password: %s", wifi_password_.empty() ? "(not set)" : "(loaded)");
-  ESP_LOGCONFIG(TAG, "  OTA Password: %s", ota_password_.empty() ? "(not set)" : "(loaded)");
-  ESP_LOGCONFIG(TAG, "  API Key: %s", api_encryption_key_.empty() ? "(not set)" : "(loaded)");
+  ESP_LOGCONFIG(TAG, "NVS Secrets Component:");
+  ESP_LOGCONFIG(TAG, "  WiFi SSID: %s", wifi_ssid_.empty() ? "(not set)" : "(loaded from NVS)");
+  ESP_LOGCONFIG(TAG, "  WiFi Password: %s", wifi_password_.empty() ? "(not set)" : "(loaded from NVS)");
+  ESP_LOGCONFIG(TAG, "  OTA Password: %s", ota_password_.empty() ? "(not set)" : "(loaded from NVS)");
+  ESP_LOGCONFIG(TAG, "  API Key: %s", api_encryption_key_.empty() ? "(not set)" : "(loaded from NVS)");
 }
 
 }  // namespace nvs_secrets
