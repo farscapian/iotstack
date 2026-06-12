@@ -2186,7 +2186,11 @@ _flash_recovery() {
 
     # Erase flash completely to handle devices with incompatible firmware (RCP, etc.)
     info "Erasing flash memory..."
-    esptool --chip esp32c6 --port "$tty_device" --baud 9600 erase_flash || err "Erase failed"
+    if [[ $VERBOSE -eq 1 ]]; then
+      esptool --chip esp32c6 --port "$tty_device" --baud 9600 erase_flash || err "Erase failed"
+    else
+      esptool --chip esp32c6 --port "$tty_device" --baud 9600 erase_flash >/dev/null 2>&1 || err "Erase failed"
+    fi
     sleep 3  # Wait for erase to complete and device to stabilize
 
     # Flash generic recovery firmware and capture MAC
@@ -2194,11 +2198,19 @@ _flash_recovery() {
     [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
 
     local esptool_output
-    esptool_output=$(esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
-      write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
-      0x0 "$build_dir/bootloader.bin" \
-      0x8000 "$build_dir/partitions.bin" \
-      0x30000 "$build_dir/firmware.bin" 2>&1) || err "Flash failed"
+    if [[ $VERBOSE -eq 1 ]]; then
+      esptool_output=$(esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
+        write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
+        0x0 "$build_dir/bootloader.bin" \
+        0x8000 "$build_dir/partitions.bin" \
+        0x30000 "$build_dir/firmware.bin" 2>&1) || err "Flash failed"
+    else
+      esptool_output=$(esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
+        write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
+        0x0 "$build_dir/bootloader.bin" \
+        0x8000 "$build_dir/partitions.bin" \
+        0x30000 "$build_dir/firmware.bin" 2>&1 | grep -E "Wrote|Hash|BASE MAC") || err "Flash failed"
+    fi
 
     # Extract MAC address from esptool output
     local device_mac
