@@ -18,7 +18,9 @@ Think of these devices as **small computers** that run custom firmware and commu
 | **BLE Proxy** | `esp32c6-wifi-bleproxy.yaml` | Listens for Bluetooth signals and sends them to Home Assistant so you can track and control Bluetooth devices |
 | **Thread Router** | `c6-thread-router.yaml` | Creates a mesh network for Thread devices (like smart locks, sensors) and extends their range |
 | **Presence Sensor** | `esp32c6-wifi-mmwave.yaml` | Detects when people are in a room and their distance (great for automations like turning on lights) |
-| **Audio Speaker** | `wifi-sendspin.yaml` | Plays synced music across multiple rooms using Music Assistant |
+| **SendSpin Speaker** *(in development)* | `wifi-sendspin.yaml` | Plays synced music across multiple rooms using Music Assistant |
+| **LED Light Strip** *(in development)* | `esp32s3-wifi-led-strip.yaml` | Control addressable LED strips with colors and effects |
+| **LED Matrix Display** *(planned)* | — | Display text and animations on LED matrices |
 
 ---
 
@@ -40,17 +42,23 @@ which iotstack        # Shows: /home/user/.local/bin/iotstack
 iotstack help         # Works from any directory
 ```
 
-All device configurations are in YAML files organized by network type:
+### Device Configuration Files
+
+Device configurations are stored as YAML files:
 
 ```
-wifi/
-├── esp32c6-wifi-bleproxy.yaml    # Bluetooth relay (uses Wi-Fi)
-├── esp32c6-wifi-mmwave.yaml      # Motion/presence sensor (uses Wi-Fi)
-└── wifi-sendspin.yaml            # Multi-room audio speaker (uses Wi-Fi)
+wifi/                                    # WiFi-based devices
+├── esp32c6-wifi-bleproxy.yaml          # Bluetooth relay
+├── esp32c6-wifi-mmwave.yaml            # Presence sensor
+└── wifi-sendspin.yaml                  # Multi-room speaker
 
-thread/
-└── c6-thread-router.yaml         # Thread mesh router (low-power)
+thread/                                  # Thread network devices
+└── c6-thread-router.yaml               # Thread mesh router
+
+recovery.yaml                            # Dual-partition recovery mode
 ```
+
+Each device role is defined in `iotstack-roles.conf` and can have both WiFi and Thread variants.
 
 ---
 
@@ -96,99 +104,25 @@ Each device gets its own MAC address suffix, so Home Assistant keeps them organi
 
 ---
 
-## Multi-Room Audio Speaker (`wifi-sendspin.yaml`)
+## In-Development Projects
 
-### What It Does
+### SendSpin Speaker (Multi-Room Audio)
 
-This device plays synchronized music across multiple rooms. You tell [Music Assistant](https://music-assistant.io/) what to play, and it sends the audio to all your speakers at the same time.
+Synchronized audio across multiple rooms using Music Assistant. [Full documentation →](docs/sendspinspeaker.md)
 
-**In Home Assistant, you get:**
-- A "media player" you can control with play/pause/volume
-- Song information (title, artist, album)
-- The ability to group speakers and play the same music everywhere
+**Current status**: Basic functionality works; still in active development.
 
-### Hardware Setup
+### LED Light Strip Control ⚠️
 
-**What you need:**
-- Seeed XIAO ESP32-C6 microcontroller
-- PCM5102A DAC (sound card) module
-- Powered speaker or any speaker with an AUX (3.5mm) input
+WS2812B addressable LED strip controller with color and effect support. **⚠️ IN DEVELOPMENT & EXPERIMENTAL** — requires careful wiring and safety considerations.
 
-**Why PCM5102A?** It outputs normal line-level audio that 3.5mm speakers expect. It's cheap, reliable, and works great.
+[Full documentation & safety info →](docs/ledlightstrip.md)
 
-### Connecting It
+### LED Matrix Display 📋
 
-| PCM5102A | ESP32-C6 | Purpose |
-|---|---|---|
-| VCC | 3.3V | Power |
-| GND | GND | Ground |
-| BCK | GPIO3 | Audio timing |
-| LCK | GPIO4 | Audio timing |
-| DIN | GPIO5 | Audio data |
-| SCK | GND | Clock (usually hardwired to GND) |
+Planned support for LED matrix displays with text, animations, and graphics. Currently in planning phase.
 
-Then plug the 3.5mm output from the DAC into your speaker.
-
-**Note on SCK:** Most PCM5102A modules come with SCK already wired to GND (which is correct). If yours doesn't, uncomment the `i2s_mclk_pin` line in the YAML config.
-
-### Network Setup
-
-Make sure your home network allows port **8928** communication between Home Assistant (Music Assistant) and your speakers. Most home networks do this automatically, but check if you have strict firewall rules.
-
-> **Note:** Sendspin is still relatively new and the settings may change in future ESPHome updates.
-
----
-
-## LED Light Strip Control ⚠️ **EXPERIMENTAL — NOT FOR PRODUCTION USE**
-
-### ⚠️ SAFETY DISCLAIMER
-
-**This LED light strip implementation is IN DEVELOPMENT and NOT FULLY TESTED. Please read before using:**
-
-- **Electrical Safety**: LED strips require proper power management. Incorrect wiring can cause fire, electrical shock, or damage to your equipment.
-- **No Warranty**: This code is experimental and provided as-is with no safety guarantees.
-- **Test Carefully**: Only use with short test strips first. Verify all connections before powering on.
-- **Fire Risk**: Poorly regulated power supplies can overheat and damage LED strips. Use proper power supplies rated for your strip's power requirements.
-- **Overcurrent**: If wired incorrectly, the power supply can be damaged or overheat. Always double-check wiring before applying power.
-
-**If you experience any of the following, DISCONNECT POWER IMMEDIATELY:**
-- LED strip getting hot
-- Smell of burning plastic or electronics
-- Unusual buzzing or clicking sounds
-- Power supply getting hot
-
-### What It Does
-
-This is an experimental controller for WS2812B addressable LED light strips (commonly called "NeoPixel" or "RGB LED strips"). It allows you to control colors, brightness, and effects from Home Assistant.
-
-**Current Status**: Basic functionality works, but the implementation is still being tested and refined. Effects may not be stable. Power management is not optimized.
-
-### Hardware Requirements
-
-- Seeed XIAO ESP32-C6 microcontroller
-- WS2812B LED strip (5V or 12V version)
-- **Proper Power Supply**: A power supply rated for the LED strip's current draw (very important for safety)
-- **Capacitor**: A 470-1000µF capacitor across the power supply (protects against power spikes)
-- **Resistor**: A 470-1000Ω resistor on the data line (protects the GPIO pin)
-
-### ⚠️ Wiring Safety Notes
-
-- **Do NOT** connect the LED strip directly to the ESP32 GPIO. Always use a resistor on the data line.
-- **Do NOT** power the LED strip from the ESP32's 5V pin. Use a separate power supply.
-- **Do use** a capacitor across power and ground at the LED strip's input.
-- **Do verify** your power supply voltage matches your LED strip (5V or 12V).
-- **Do test** with just a few LEDs before connecting the full strip.
-
-**See the wiring diagram in the `resources/` folder for a reference schematic.**
-
-### Status
-
-- ✅ Basic LED control works
-- ⚠️ Effects are experimental
-- ❌ Power management not optimized
-- ❌ Not tested with high-power strips (>500mA)
-
-**Recommendation**: Only use this if you're comfortable with electrical troubleshooting and can safely test it.
+[Development notes →](docs/ledmatrixdisplay.md)
 
 ---
 
@@ -199,9 +133,6 @@ This is an experimental controller for WS2812B addressable LED light strips (com
 The easiest way to manage your devices is with the `iotstack` command:
 
 ```bash
-# See available device roles
-iotstack list shortcuts
-
 # Update a device by name (WiFi by default)
 iotstack update bleproxy
 
@@ -217,43 +148,17 @@ iotstack update --dry-run mmwave
 # Reassign devices to a different config
 iotstack reassign 8dfcac 0f4df4 to mmwave
 
-# Get help anytime
+# Get help anytime (lists all available commands and device shortcuts)
 iotstack help
-iotstack help reassign
 ```
 
-### Using Direct YAML Paths
-
-If you prefer to specify the YAML file directly:
+### Update All Device Types at Once
 
 ```bash
-# Update a specific config
-./update_devices.sh wifi/esp32c6-wifi-bleproxy.yaml
-
-# See what WOULD be updated without actually updating
-./update_devices.sh --dry-run wifi/esp32c6-wifi-bleproxy.yaml
-
-# Force update everything, even if it's already up-to-date
-./update_devices.sh --force-reflash wifi/esp32c6-wifi-bleproxy.yaml
-
-# Update 8 devices at the same time (default is 4)
-./update_devices.sh --jobs 8 wifi/esp32c6-wifi-bleproxy.yaml
-
-# Just check if devices are up-to-date (don't actually update)
-./update_devices.sh --verify wifi/esp32c6-wifi-bleproxy.yaml
-```
-
-### Update ALL Device Types at Once
-
-```bash
-# Using iotstack
 iotstack update all
-
-# Or using the script directly
-./update_all.sh
 ```
 
-Both run the update for every YAML config at the same time.
+This updates every YAML config on your network at the same time.
 
 ### How It Works Behind the Scenes
 
@@ -318,7 +223,7 @@ Format: `<shortcut>=<wifi-yaml>:<thread-yaml>`
 - Left of the colon: WiFi variant (or the only variant if no Thread version)
 - Right of the colon: Thread variant (optional)
 
-Use `iotstack list shortcuts` to see all available shortcuts.
+Run `iotstack help` to see all available shortcuts and commands.
 
 ---
 

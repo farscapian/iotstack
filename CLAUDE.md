@@ -360,7 +360,7 @@ echo "$password" | pass insert -f "iotstack/roles/bleproxy/ota_password"
 
 **This applies to:**
 - `setup.sh` — initial secret seeding
-- `iotstack-secrets` — manual secret updates
+- `scripts/iotstack-secrets` — manual secret updates
 - `scripts/ha-websocket-query.sh` — syncing secrets from YAML
 - Any script that uses `pass insert`
 

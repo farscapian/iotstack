@@ -1626,7 +1626,7 @@ cmd_secret() {
         help_secret
         exit 1
       fi
-      "$SCRIPT_DIR/iotstack-secrets" get "$role" "$secret_type" "$value"
+      "$SCRIPT_DIR/scripts/iotstack-secrets" get "$role" "$secret_type" "$value"
       ;;
     *)
       help_secret
@@ -1707,7 +1707,7 @@ cmd_rotate_secrets() {
 
       # Set it in pass as v00 so future rotations have it versioned
       echo "[INFO] Storing current password in pass as v00..."
-      "$SCRIPT_DIR/iotstack-secrets" set "$role" ota "$current_password"
+      "$SCRIPT_DIR/scripts/iotstack-secrets" set "$role" ota "$current_password"
       echo "[OK] Current password extracted and stored in pass"
     else
       err "Could not find OTA password secret in ${role}.yaml"
@@ -1818,7 +1818,7 @@ cmd_rotate_secrets() {
     echo
 
     echo "[INFO] Updating password manager with versioned secrets..."
-    "$SCRIPT_DIR/iotstack-secrets" set "$role" ota "$new_password"
+    "$SCRIPT_DIR/scripts/iotstack-secrets" set "$role" ota "$new_password"
 
     # Only rotate API key if HA is configured
     if [[ "$ha_configured" == true ]]; then
@@ -1839,7 +1839,7 @@ cmd_rotate_secrets() {
 
           if [[ -n "$current_api_key" ]]; then
             echo "[INFO] Storing current API key in pass as v00..."
-            "$SCRIPT_DIR/iotstack-secrets" set "$role" api "$current_api_key"
+            "$SCRIPT_DIR/scripts/iotstack-secrets" set "$role" api "$current_api_key"
             echo "[OK] Current API key stored in pass"
           fi
         fi
@@ -1849,7 +1849,7 @@ cmd_rotate_secrets() {
       local new_api_key
       echo "[INFO] Generating new API encryption key..."
       new_api_key=$(openssl rand -base64 32)
-      "$SCRIPT_DIR/iotstack-secrets" set "$role" api "$new_api_key"
+      "$SCRIPT_DIR/scripts/iotstack-secrets" set "$role" api "$new_api_key"
       echo "[OK] API encryption key rotated"
     fi
 
