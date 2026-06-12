@@ -2126,6 +2126,10 @@ _flash_recovery() {
     local build_dir="$YAMLS_DIR/.esphome/build/recovery/.pioenvs/recovery"
     [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
 
+    # Erase flash completely to handle devices with incompatible firmware (RCP, etc.)
+    info "Erasing flash memory (handles RCP firmware and corrupted partitions)..."
+    esptool --chip esp32c6 --port "$tty_device" --baud 460800 erase_flash >/dev/null 2>&1 || err "Erase failed"
+
     local esptool_output
     esptool_output=$(esptool --chip esp32c6 --port "$tty_device" --baud 460800 \
       write-flash --flash-mode dio --flash-size 4MB \
