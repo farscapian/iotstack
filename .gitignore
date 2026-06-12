@@ -11,3 +11,4 @@ yamls/.esphome/
 !custom_components/
 !scripts/write-nvs-secrets.sh
 !scripts/iotstack-secrets
+!scripts/rotate-secrets
