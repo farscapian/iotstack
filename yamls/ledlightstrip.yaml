@@ -6,7 +6,7 @@ esphome:
   name: ledstrip
   friendly_name: ${friendly_name}
   project:
-    name: farscapian.sk6812-led-strip
+    name: iotstack.sk6812-led-strip
     version: 1.0.0
   name_add_mac_suffix: true
 

@@ -193,9 +193,9 @@ This is used in the `--reassign` offline device warning and the websocket client
 The `project.name` field in YAML can be quoted or unquoted:
 ```yaml
 project:
-  name: "farscapian.${device_name}"    # quoted
+  name: "iotstack.${device_name}"    # quoted
   # or
-  name: farscapian.${device_name}      # unquoted
+  name: iotstack.${device_name}      # unquoted
 ```
 
 The regex must handle both:

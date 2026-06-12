@@ -236,7 +236,7 @@ else:
     )
 
 # Replace project.name to use device_new_name instead of device_name
-# Match: name: "farscapian.${device_name}" or name: farscapian.${device_name}
+# Match: name: "iotstack.${device_name}" or name: iotstack.${device_name}
 content = re.sub(
     r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)',
     lambda m: f'{m.group(1)}{m.group(2)}${{device_new_name}}{m.group(3)}',
