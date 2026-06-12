@@ -2184,41 +2184,32 @@ _flash_recovery() {
 
     info "Uploading recovery firmware to device..."
 
+    # Create flash log directory
+    local flash_log_dir="$HOME/.iotstack/logs/flash"
+    mkdir -p "$flash_log_dir"
+    local flash_log="$flash_log_dir/$(date +%Y%m%d_%H%M%S).log"
+
     # Erase flash completely to handle devices with incompatible firmware (RCP, etc.)
     info "Erasing flash memory..."
-    if [[ $VERBOSE -eq 1 ]]; then
-      esptool --chip esp32c6 --port "$tty_device" --baud 9600 erase_flash || err "Erase failed"
-    else
-      esptool --chip esp32c6 --port "$tty_device" --baud 9600 erase_flash >/dev/null 2>&1 || err "Erase failed"
-    fi
+    esptool --chip esp32c6 --port "$tty_device" --baud 9600 erase_flash 2>&1 | tee -a "$flash_log" >/dev/null || err "Erase failed"
     sleep 3  # Wait for erase to complete and device to stabilize
 
     # Flash generic recovery firmware and capture MAC
     local build_dir="$YAMLS_DIR/.esphome/build/recovery/.pioenvs/recovery"
     [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
 
-    # Use temp file for esptool output
-    local esptool_log=$(mktemp)
-    trap "rm -f $esptool_log" RETURN
-
+    info "Flashing recovery firmware..."
     if [[ $VERBOSE -eq 1 ]]; then
-      # Show all output: redirect both stdout and stderr to tee (display + file)
-      esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
-        write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
-        0x0 "$build_dir/bootloader.bin" \
-        0x8000 "$build_dir/partitions.bin" \
-        0x30000 "$build_dir/firmware.bin" 2>&1 | tee "$esptool_log" || err "Flash failed"
-    else
-      # Suppress output, capture silently
-      esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
-        write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
-        0x0 "$build_dir/bootloader.bin" \
-        0x8000 "$build_dir/partitions.bin" \
-        0x30000 "$build_dir/firmware.bin" > "$esptool_log" 2>&1 || err "Flash failed"
+      info "See detailed output in: $flash_log"
     fi
 
-    # Extract MAC address from output
-    local esptool_output=$(cat "$esptool_log")
+    # Flash and capture output
+    local esptool_output
+    esptool_output=$(esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
+      write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
+      0x0 "$build_dir/bootloader.bin" \
+      0x8000 "$build_dir/partitions.bin" \
+      0x30000 "$build_dir/firmware.bin" 2>&1 | tee -a "$flash_log") || err "Flash failed"
 
     # Extract MAC address from esptool output
     local device_mac
