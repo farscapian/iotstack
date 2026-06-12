@@ -7,6 +7,9 @@
 
 set -euo pipefail
 
+# Global configuration
+VERBOSE=0
+
 # Colors
 RED='\033[0;31m'
 GRN='\033[0;32m'
@@ -19,6 +22,7 @@ err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
 ok()   { echo -e "${GRN}[OK]${RST} $*"; }
 warn() { echo -e "${YLW}[WARN]${RST} $*"; }
 info() { echo -e "${BLU}[INFO]${RST} $*"; }
+debug() { [[ $VERBOSE -eq 1 ]] && echo -e "${DIM}[DEBUG]${RST} $*" || true; }
 
 # ── Compilation Cache ────────────────────────────────────────────────────────
 
@@ -117,7 +121,11 @@ smart_compile() {
 
   # YAML changed or first compile - need to rebuild
   info "Compiling firmware..."
-  esphome compile "$yaml_file" || return 1
+  if [[ $VERBOSE -eq 1 ]]; then
+    esphome compile "$yaml_file" || return 1
+  else
+    esphome compile "$yaml_file" >/dev/null 2>&1 || return 1
+  fi
 
   # Get binary SHA after successful compilation
   local binary_sha=$(_get_binary_sha "$device_name")
@@ -2254,7 +2262,11 @@ _flash_recovery() {
   confirm_multi_device ${#tty_devices[@]} "$(printf '%s\n' "${tty_devices[@]}")"
 
   info "Compiling recovery firmware..."
-  esphome compile "$recovery_yaml" || err "Compilation failed"
+  if [[ $VERBOSE -eq 1 ]]; then
+    esphome compile "$recovery_yaml" || err "Compilation failed"
+  else
+    esphome compile "$recovery_yaml" >/dev/null 2>&1 || err "Compilation failed"
+  fi
   ok "Recovery firmware compiled"
   echo ""
 
@@ -2653,6 +2665,19 @@ EOF
 }
 
 main() {
+  # Parse global flags (-v/--verbose)
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -v|--verbose)
+        VERBOSE=1
+        shift
+        ;;
+      *)
+        break
+        ;;
+    esac
+  done
+
   # Mount secrets store early - needed for all operations
   verify_secrets_mounted
 
