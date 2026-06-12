@@ -2152,7 +2152,13 @@ _flash_recovery() {
     local recovery_role_password
     recovery_role_password=$(pass show "iotstack/roles/recovery/ota_password" 2>/dev/null)
     if [[ -z "$recovery_role_password" ]]; then
-      err "Recovery role OTA password not in pass store. Run setup.sh to initialize."
+      info "Recovery role OTA password not found, generating..."
+      recovery_role_password=$(openssl rand -hex 16)
+      # Store it in pass
+      { echo "$recovery_role_password"; echo "$recovery_role_password"; } | \
+        pass insert -f "iotstack/roles/recovery/ota_password" 2>/dev/null || \
+        err "Failed to store recovery OTA password in pass"
+      ok "Recovery OTA password generated and stored"
     fi
 
     local device_specific_ota_password
@@ -2409,7 +2415,13 @@ _flash_production_smart() {
       local recovery_role_password
       recovery_role_password=$(pass show "iotstack/roles/recovery/ota_password" 2>/dev/null)
       if [[ -z "$recovery_role_password" ]]; then
-        err "Recovery role OTA password not in pass store. Run setup.sh to initialize."
+        info "Recovery role OTA password not found, generating..."
+        recovery_role_password=$(openssl rand -hex 16)
+        # Store it in pass
+        { echo "$recovery_role_password"; echo "$recovery_role_password"; } | \
+          pass insert -f "iotstack/roles/recovery/ota_password" 2>/dev/null || \
+          err "Failed to store recovery OTA password in pass"
+        ok "Recovery OTA password generated and stored"
       fi
 
       # Compute device-specific OTA password from role secret + MAC
