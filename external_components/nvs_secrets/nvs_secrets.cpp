@@ -50,22 +50,41 @@ void NVSSecrets::setup() {
   ota_password_ = read_nvs_string("ota_password");
   api_encryption_key_ = read_nvs_string("api_key");
 
-  if (!wifi_ssid_.empty()) {
-    ESP_LOGI(TAG, "WiFi SSID loaded from NVS");
+  // Apply WiFi credentials to WiFi component
+  if (!wifi_ssid_.empty() && !wifi_password_.empty()) {
+    auto* wifi = wifi::global_wifi_component;
+    if (wifi) {
+      wifi::WiFiNetwork network;
+      network.ssid = wifi_ssid_;
+      network.password = wifi_password_;
+      wifi->clear_networks();
+      wifi->add_network(network);
+      ESP_LOGI(TAG, "WiFi credentials applied from NVS: SSID='%s'", wifi_ssid_.c_str());
+    }
   } else {
-    ESP_LOGW(TAG, "WiFi SSID not found in NVS");
+    if (wifi_ssid_.empty()) {
+      ESP_LOGW(TAG, "WiFi SSID not found in NVS");
+    }
+    if (wifi_password_.empty()) {
+      ESP_LOGW(TAG, "WiFi password not found in NVS");
+    }
+  }
+
+  // Apply API encryption key if available
+  if (!api_encryption_key_.empty()) {
+    auto* api_server = api::global_api_server;
+    if (api_server) {
+      api_server->set_encryption_key(api_encryption_key_);
+      ESP_LOGI(TAG, "API encryption key applied from NVS");
+    }
+  } else {
+    ESP_LOGW(TAG, "API encryption key not found in NVS");
   }
 
   if (!ota_password_.empty()) {
     ESP_LOGI(TAG, "OTA password loaded from NVS");
   } else {
     ESP_LOGW(TAG, "OTA password not found in NVS");
-  }
-
-  if (!api_encryption_key_.empty()) {
-    ESP_LOGI(TAG, "API encryption key loaded from NVS");
-  } else {
-    ESP_LOGW(TAG, "API encryption key not found in NVS");
   }
 }
 

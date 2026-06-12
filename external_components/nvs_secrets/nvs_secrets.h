@@ -1,6 +1,8 @@
 #pragma once
 
 #include "esphome/core/component.h"
+#include "esphome/components/wifi/wifi_component.h"
+#include "esphome/components/api/api_server.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 #include <string>
