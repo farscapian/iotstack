@@ -45,17 +45,16 @@ declare -a offsets
 declare -a files
 declare -a sizes
 
-# Define what to verify (offset, file, size in hex)
+# Define what to verify (offset, file, actual file size - no padding)
+# Read actual file sizes to handle any firmware variants
 offsets=(0x0 0x8000 0x30000)
 files=(bootloader.bin partitions.bin firmware.bin)
-sizes=(0x5800 0x1000 0xc6000)  # bootloader: ~22KB, partitions: 4KB, firmware: ~792KB
 
 # Verify each region
 failed=0
 for i in {0..2}; do
   offset="${offsets[$i]}"
   file="${files[$i]}"
-  size="${sizes[$i]}"
   source_file="${BUILD_DIR}/${file}"
 
   if [[ ! -f "$source_file" ]]; then
@@ -63,26 +62,24 @@ for i in {0..2}; do
     continue
   fi
 
-  # Get checksum of original file
+  # Get actual file size and checksum
+  file_size=$(stat -f%z "$source_file" 2>/dev/null || stat -c%s "$source_file" 2>/dev/null || echo 0)
   original_md5=$(md5sum "$source_file" | awk '{print $1}')
 
-  # Read back from device
+  # Read back from device (read more to account for padding, then truncate)
   read_file="${VERIFY_DIR}/${file}.read"
-  info "Verifying $file at offset $offset..."
+  # Read with padding (round up to 256-byte boundary for safety)
+  read_size=$((($file_size + 255) / 256 * 256))
+  read_size=$((read_size > 0x10000 ? read_size : 0x10000))  # At least 64KB to be safe
+
+  info "Verifying $file at offset $offset (size: $file_size bytes)..."
 
   if esptool --chip esp32c6 --port "$TTY_DEVICE" --baud 57600 \
-    read_flash "$offset" "$size" "$read_file" >/dev/null 2>&1; then
+    read_flash "$offset" "$read_size" "$read_file" >/dev/null 2>&1; then
 
-    # Get checksum of read data (truncate to same size as original)
-    read_size=$(stat -f%z "$read_file" 2>/dev/null || stat -c%s "$read_file" 2>/dev/null || echo 0)
-
-    if [[ $read_size -ge $(printf "%d" "$size") ]]; then
-      # Truncate to expected size
-      dd if="$read_file" of="${read_file}.truncated" bs=1 count=$(printf "%d" "$size") 2>/dev/null
-      read_md5=$(md5sum "${read_file}.truncated" | awk '{print $1}')
-    else
-      read_md5=$(md5sum "$read_file" | awk '{print $1}')
-    fi
+    # Truncate read file to exact original size for comparison
+    dd if="$read_file" of="${read_file}.exact" bs=1 count="$file_size" 2>/dev/null
+    read_md5=$(md5sum "${read_file}.exact" | awk '{print $1}')
 
     if [[ "$original_md5" == "$read_md5" ]]; then
       ok "$file: checksum matches ✓"
