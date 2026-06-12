@@ -451,7 +451,7 @@ else
   warn "Logo not found at $LOGO_SRC"
 fi
 
-# Create .desktop file for taskbar
+# Create .desktop file for taskbar (with pinning support)
 cat > "$DESKTOP_FILE" << 'EOF'
 [Desktop Entry]
 Name=iotstack
@@ -461,10 +461,14 @@ Icon=iotstack-logo
 Type=Application
 Categories=Development;Utility;
 Terminal=false
+StartupNotify=true
+Keywords=iot;esp32;esphome;flashing;matter;
+X-GNOME-UsesNotifications=false
 EOF
 
 chmod 644 "$DESKTOP_FILE"
 ok "Created taskbar application: $DESKTOP_FILE"
+echo "   Right-click 'iotstack' in Activities to pin to taskbar"
 
 # Update desktop database
 if command -v update-desktop-database &>/dev/null; then
