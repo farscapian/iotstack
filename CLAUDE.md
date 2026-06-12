@@ -370,6 +370,140 @@ echo "$password" | pass insert -f "iotstack/roles/bleproxy/ota_password"
 - Hours of debugging to figure out why secrets won't sync
 - Wasted time investigating pass store, permissions, etc.
 
+## NVS (Non-Volatile Storage) Architecture - Detailed
+
+### What is NVS?
+
+**NVS = Simple key-value store on ESP32 flash memory (NOT encrypted by default)**
+
+NVS is NOT:
+- A TPM (Trusted Platform Module)
+- Hardware-encrypted storage
+- Protected from physical flash reads
+- Device-certificate based encryption
+
+NVS IS:
+- A key-value database on reserved flash partition (0x3d000, 24KB)
+- Persistent across power cycles and firmware updates
+- Simple plaintext storage of device-specific secrets
+- Readable if someone physically extracts the flash chip
+
+### Why We Use NVS Despite Limitations
+
+Our threat model protects against:
+- ✅ **Firmware binary extraction** → Attacker can't derive device passwords (not compiled in)
+- ✅ **Hardcoded secrets in code** → Eliminated, now device-specific in NVS
+- ✅ **Single password for all devices** → Each device has unique derived password
+- ❌ **Physical flash chip extraction** → NVS data is plaintext (not protected)
+
+### Device-Specific Secret Derivation
+
+```
+Role-based secret (in pass store):
+  iotstack/roles/recovery/ota_password = "base_secret_xyz"
+  
+Device-specific computation (in-memory during flash):
+  device_password = sha256("base_secret_xyz" | "1af95c")[0:32]
+  
+Stored in NVS only:
+  ota_password = "a1b2c3d4e5..." (unique to this device)
+  
+Firmware at startup:
+  nvs_ota_password component reads NVS
+  └─ Sets OTA service password from NVS value
+  └─ Enables device-specific OTA authentication
+```
+
+### Security Properties
+
+| Threat | Protection | Attack Cost |
+|--------|-----------|------------|
+| Firmware binary extraction | ✅ No compiled passwords | Can't derive from binary |
+| Firmware disassembly | ✅ No hardcoded secrets | Even reverse-engineers see nothing |
+| Device password reuse | ✅ Unique per device (derived) | Each device has different password |
+| Pass store compromise | ✅ Role secret stays encrypted | Still need device MAC to derive |
+| Physical flash read | ❌ NVS plaintext | Moderate (requires soldering programmer) |
+| Flash encryption bypass | ⚠️ Future enhancement (see TODO) | Would require eFuse key extraction |
+
+### Custom NVS Components
+
+Two custom ESPHome components read from NVS at runtime:
+
+1. **nvs_ota_password**: Reads `ota_password` from NVS, calls `OTA::set_auth_password()`
+   - No password in firmware binary
+   - Dynamically sets OTA authentication at startup
+   - Enables device-specific OTA without recompilation
+
+2. **nvs_secrets**: Reads WiFi and API credentials from NVS
+   - Fallback for WiFi SSID/password if not in YAML
+   - API encryption key derivation
+   - Makes firmware truly generic across devices
+
+## Flash Encryption & eFuses - Production Enhancement (TODO)
+
+### What are eFuses?
+
+**eFuse = Electronic Fuse (one-time programmable bit in ESP32 silicon)**
+
+- Burned directly into chip during manufacturing or first boot
+- Once written → **permanently locked** (cannot be unwritten or changed)
+- Hardware-protected by ROM bootloader (before your code runs)
+- Each chip has unique random key (per-device security)
+
+### Current State vs Production
+
+**Current (Development):**
+- NVS data is plaintext in flash
+- Acceptable for lab/testing environment
+- Easy to reflash and debug devices
+
+**Production (Future):**
+```
+Enable flash encryption:
+  1. Add to menuconfig: Security → Flash Encryption → Development Mode
+  2. First flash: ROM bootloader generates random key, burns to eFuses
+  3. Key is locked (read-protected)
+  4. All subsequent flash I/O transparently encrypted/decrypted
+  5. NVS data automatically encrypted with device-specific key
+```
+
+### Security Impact
+
+```
+Without Flash Encryption:
+  Attacker: "I'll read the flash directly with a programmer"
+  Result: Plaintext NVS data extracted (ota_password, api_key, etc.)
+
+With Flash Encryption (eFuse-protected key):
+  Attacker: "I'll read the flash directly with a programmer"
+  Device: "Here's encrypted data (looks like garbage)"
+  Attacker: "I'll extract the encryption key from eFuses"
+  Device: "Nope, eFuses are read-protected in release mode"
+  Attacker: "I'll physically extract the key from silicon"
+  Cost: $$$,$$$ and specialized equipment
+```
+
+### TODO: Flash Encryption Implementation
+
+- [ ] Test flash encryption on dev devices (Development Mode)
+- [ ] Verify transparent encryption/decryption of NVS works
+- [ ] Test device reflashing with encrypted flash
+- [ ] Document eFuse burn procedure and recovery
+- [ ] Implement release-mode lockdown for production deployment
+- [ ] Create per-device eFuse programming guide
+- [ ] Test that firmware updates preserve NVS encryption
+
+**Why not implemented yet:**
+- Development/testing friction (limited reflash capability)
+- Risk of bricking device if eFuse key is lost
+- Current threat model (firmware extraction) is addressed without it
+- Production-only feature (adds complexity for testing phases)
+
+**When to implement:**
+- Product hardening before production deployment
+- When shipping to untrusted locations (requires physical security)
+- As part of secure boot implementation (firmware signature verification)
+
 ## Testing Checklist
 
 Before requesting human approval:
