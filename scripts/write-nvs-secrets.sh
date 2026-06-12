@@ -164,9 +164,10 @@ with open(nvs_file, 'r+b') as f:
 
 print(f"[OK] NVS partition prepared ({current_size} bytes)")
 
-# Write to device at offset 0x3d000 (after firmware)
+# Write to device at offset 0x3d000 (NVS partition)
+# Using 9600 baud for reliable writes (higher speeds cause corruption)
 result = subprocess.run([
-    'esptool', '--chip', 'esp32c6', '--port', tty_device, '--baud', '460800',
+    'esptool', '--chip', 'esp32c6', '--port', tty_device, '--baud', '9600',
     'write_flash', '0x3d000', nvs_file
 ], capture_output=True, text=True)
 
