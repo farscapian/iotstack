@@ -26,6 +26,10 @@ esphome:
   project:
     name: "iotstack.${device_role}"
     version: "1.0.0"
+  # Include custom NVS components for reading device-specific secrets from flash
+  includes:
+    - custom_components/nvs_secrets/
+    - custom_components/nvs_ota_password/
   on_boot:
     priority: -100
     then:
@@ -59,17 +63,23 @@ logger:
   hardware_uart: USB_SERIAL_JTAG
   level: INFO
 
+# Custom NVS secrets component - loads device-specific API key from NVS
+nvs_secrets:
+
+# Custom NVS OTA Password component - loads OTA password from NVS at startup
+nvs_ota_password:
+
 api:
-  encryption:
-    key: !secret mmwave3led_api_encryption_key
+  # API encryption key is set dynamically by nvs_secrets component from NVS
   on_client_connected:
     - script.execute: update_network_status
   on_client_disconnected:
     - script.execute: update_network_status
 
+# OTA Configuration
+# Password is set dynamically by nvs_ota_password component from device NVS
 ota:
   - platform: esphome
-    password: !secret mmwave3led_ota_password
 
 safe_mode:
   num_attempts: 5

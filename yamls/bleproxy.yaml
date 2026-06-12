@@ -12,6 +12,10 @@ esphome:
   project:
     name: "iotstack.${device_role}"
     version: "1.5.0"
+  # Include custom NVS components for reading device-specific secrets from flash
+  includes:
+    - custom_components/nvs_secrets/
+    - custom_components/nvs_ota_password/
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -25,9 +29,15 @@ wifi:
   password: !secret wifi_password
   power_save_mode: none
 
+# Custom NVS secrets component - loads device-specific API key from NVS
+nvs_secrets:
+
+# Custom NVS OTA Password component - loads OTA password from NVS at startup
+nvs_ota_password:
+
 api:
-  encryption:
-    key: !secret bleproxy_api_encryption_key
+  # API encryption key is set dynamically by nvs_secrets component from NVS
+  # No hardcoded key in firmware binary
 
 esp32_ble:
   max_connections: 4
@@ -43,9 +53,10 @@ bluetooth_proxy:
   active: true
   connection_slots: 4
 
+# OTA Configuration
+# Password is set dynamically by nvs_ota_password component from device NVS
 ota:
   - platform: esphome
-    password: !secret bleproxy_ota_password
 
 safe_mode:
   num_attempts: 5

@@ -8,6 +8,10 @@ esphome:
   project:
     name: "iotstack.sendspin"
     version: "1.0.0"
+  # Include custom NVS components for reading device-specific secrets from flash
+  includes:
+    - custom_components/nvs_secrets/
+    - custom_components/nvs_ota_password/
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -22,13 +26,19 @@ logger:
   hardware_uart: USB_SERIAL_JTAG
   level: DEBUG
 
-api:
-  encryption:
-    key: !secret sendspin_api_encryption_key
+# Custom NVS secrets component - loads device-specific API key from NVS
+nvs_secrets:
 
+# Custom NVS OTA Password component - loads OTA password from NVS at startup
+nvs_ota_password:
+
+api:
+  # API encryption key is set dynamically by nvs_secrets component from NVS
+
+# OTA Configuration
+# Password is set dynamically by nvs_ota_password component from device NVS
 ota:
   - platform: esphome
-    password: !secret ota_password_01
 
 safe_mode:
   num_attempts: 5
