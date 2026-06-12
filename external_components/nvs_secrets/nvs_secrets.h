@@ -14,6 +14,7 @@ class NVSSecrets : public Component {
  public:
   void setup() override;
   void dump_config() override;
+  float get_setup_priority() const override { return setup_priority::EARLY; }
 
   std::string get_wifi_ssid() const { return wifi_ssid_; }
   std::string get_wifi_password() const { return wifi_password_; }

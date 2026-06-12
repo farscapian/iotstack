@@ -43,16 +43,25 @@ std::string NVSSecrets::read_nvs_string(const char* key) {
 }
 
 void NVSSecrets::setup() {
+  ESP_LOGI(TAG, "=== NVS SECRETS SETUP STARTING ===");
   ESP_LOGI(TAG, "Loading device-specific secrets from NVS...");
 
   wifi_ssid_ = read_nvs_string("wifi_ssid");
+  ESP_LOGI(TAG, "Read wifi_ssid from NVS: '%s' (len=%d)", wifi_ssid_.c_str(), wifi_ssid_.length());
+
   wifi_password_ = read_nvs_string("wifi_password");
+  ESP_LOGI(TAG, "Read wifi_password from NVS (len=%d)", wifi_password_.length());
+
   ota_password_ = read_nvs_string("ota_password");
+  ESP_LOGI(TAG, "Read ota_password from NVS (len=%d)", ota_password_.length());
+
   api_encryption_key_ = read_nvs_string("api_key");
+  ESP_LOGI(TAG, "Read api_key from NVS (len=%d)", api_encryption_key_.length());
 
   // Apply WiFi credentials to WiFi component
   if (!wifi_ssid_.empty() && !wifi_password_.empty()) {
     auto* wifi = wifi::global_wifi_component;
+    ESP_LOGI(TAG, "WiFi component pointer: %p", wifi);
     if (wifi) {
       wifi::WiFiNetwork network;
       network.ssid = wifi_ssid_;
@@ -60,6 +69,8 @@ void NVSSecrets::setup() {
       wifi->clear_networks();
       wifi->add_network(network);
       ESP_LOGI(TAG, "WiFi credentials applied from NVS: SSID='%s'", wifi_ssid_.c_str());
+    } else {
+      ESP_LOGW(TAG, "WiFi component not available!");
     }
   } else {
     if (wifi_ssid_.empty()) {
@@ -73,9 +84,12 @@ void NVSSecrets::setup() {
   // Apply API encryption key if available
   if (!api_encryption_key_.empty()) {
     auto* api_server = api::global_api_server;
+    ESP_LOGI(TAG, "API server pointer: %p", api_server);
     if (api_server) {
       api_server->set_encryption_key(api_encryption_key_);
       ESP_LOGI(TAG, "API encryption key applied from NVS");
+    } else {
+      ESP_LOGW(TAG, "API server not available!");
     }
   } else {
     ESP_LOGW(TAG, "API encryption key not found in NVS");
@@ -86,6 +100,8 @@ void NVSSecrets::setup() {
   } else {
     ESP_LOGW(TAG, "OTA password not found in NVS");
   }
+
+  ESP_LOGI(TAG, "=== NVS SECRETS SETUP COMPLETE ===");
 }
 
 void NVSSecrets::dump_config() {
