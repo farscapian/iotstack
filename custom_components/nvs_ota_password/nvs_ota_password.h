@@ -5,14 +5,6 @@
 #include "nvs.h"
 #include <string>
 
-// Forward declaration - OTA component is globally available
-namespace esphome {
-namespace ota {
-class OtaComponent;
-extern OtaComponent* global_ota_component;
-}
-}
-
 namespace esphome {
 namespace nvs_ota_password {
 

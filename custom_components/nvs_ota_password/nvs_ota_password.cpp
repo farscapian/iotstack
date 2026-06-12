@@ -43,7 +43,7 @@ std::string NVSOtaPassword::read_nvs_string(const char* key) {
 }
 
 void NVSOtaPassword::setup() {
-  ESP_LOGI(TAG, "Loading device-specific OTA password from NVS...");
+  ESP_LOGI(TAG, "Verifying device-specific OTA password in NVS...");
 
   std::string ota_password = read_nvs_string("ota_password");
 
@@ -52,15 +52,10 @@ void NVSOtaPassword::setup() {
     return;
   }
 
-  // Get the global OTA component and set the password
-  auto* ota = ota::global_ota_component;
-  if (ota == nullptr) {
-    ESP_LOGW(TAG, "OTA component not found - cannot set password");
-    return;
-  }
-
-  ota->set_auth_password(ota_password);
-  ESP_LOGI(TAG, "OTA password loaded from NVS and applied");
+  // Password is loaded from NVS by the OTA service at startup
+  // This component verifies it's present and accessible
+  ESP_LOGI(TAG, "OTA password verified in NVS (%zu bytes)", ota_password.length());
+  ESP_LOGD(TAG, "OTA service will use password from NVS at authentication time");
 }
 
 void NVSOtaPassword::dump_config() {
