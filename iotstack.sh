@@ -383,7 +383,11 @@ usage() {
   cat << 'EOF'
 iotstack — Manage IoT Stack ESPHome Devices
 
+Global Options:
+  -v, --verbose       Show all output (compiler, flashing, diagnostics)
+
 Usage:
+  iotstack [-v|--verbose] <command> [options]
   iotstack update [options] [<device>|<yaml>|all] [--thread]
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
@@ -394,6 +398,10 @@ Usage:
   iotstack secret get <role> <ota|api> [version]
   iotstack rotate-secrets <role> [new-password]
   iotstack help [command]
+
+Examples:
+  iotstack -v flash bleproxy /dev/ttyACM0    # Flash with verbose output
+  iotstack --verbose update all              # Update all devices, show details
 
 Commands:
 
