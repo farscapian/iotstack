@@ -1,6 +1,13 @@
 substitutions:
   friendly_name: "Sendspin Speaker"
 
+
+# External components (replaces deprecated custom_components folder)
+external_components:
+  - source:
+      type: local
+      path: ../custom_components
+    components: [nvs_secrets, nvs_ota_password]
 esphome:
   name: "sendspin"
   friendly_name: "${friendly_name}"
