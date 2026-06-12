@@ -2360,16 +2360,28 @@ _flash_production_smart() {
       local found=false
 
       while [[ $waited -lt $max_wait ]]; do
+        # Check if device is on network via mDNS
         if avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "recovery-$device_mac"; then
-          found=true
-          break
+          info "  Device found on mDNS, waiting for OTA service..."
+
+          # Verify OTA service is actually responding on port 3232
+          if timeout 2 bash -c "echo > /dev/tcp/recovery-$device_mac.local/3232" 2>/dev/null; then
+            found=true
+            break
+          fi
         fi
+
         sleep 1
         waited=$((waited + 1))
+
+        # Show progress every 10 seconds
+        if (( waited % 10 == 0 )); then
+          info "  Still waiting... ($waited/$max_wait seconds)"
+        fi
       done
 
       if [[ "$found" != "true" ]]; then
-        err "Recovery device (recovery-$device_mac) not found on network after $max_wait seconds. Check WiFi connection."
+        err "Recovery device (recovery-$device_mac) OTA service not ready after $max_wait seconds. Check WiFi connection or device logs."
       fi
 
       info "Device found on network! Waiting for OTA service to fully initialize..."
