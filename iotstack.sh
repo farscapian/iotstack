@@ -68,11 +68,24 @@ _check_serial_port_in_use() {
     local processes
     processes=$(lsof "$tty_device" 2>/dev/null | tail -n +2)  # Skip header
     if [[ -n "$processes" ]]; then
+      # Extract PID and command for better error message
+      local pid=$(echo "$processes" | awk '{print $2}' | head -1)
+      local cmd=$(echo "$processes" | awk '{print $1}' | head -1)
+
+      local kill_cmd=""
+      if [[ "$cmd" == "screen" ]]; then
+        kill_cmd="screen -X -S $pid quit"
+      else
+        kill_cmd="kill -9 $pid"
+      fi
+
       err "Serial port $tty_device is already in use:
 $processes
 
-Please close the terminal session (screen, minicom, etc.) before flashing.
-If using screen: press Ctrl+A then D to detach, then: screen -X -S <session> quit"
+Quick fix (copy/paste):
+  $kill_cmd
+
+Or manually: press Ctrl+A then D to detach screen, then run the command above."
     fi
     return 0
   fi
