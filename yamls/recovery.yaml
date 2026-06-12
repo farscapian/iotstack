@@ -15,10 +15,6 @@
 substitutions:
   device_role: "recovery"
   friendly_name: "Recovery Mode"
-  # Recovery credentials from secrets store (generated during setup)
-  # OTA password: randomly generated, unique per installation
-  # API key: base64 encoded 32-byte key (stable, never changes)
-  recovery_api_key: "9Cyl+abaIMyBmUyi326qO0W/ZuoO4ZNnLB7nuuJGjDg="
 
 esphome:
   name: ${device_role}
@@ -49,8 +45,8 @@ wifi:
   power_save_mode: none
 
 api:
-  encryption:
-    key: ${recovery_api_key}
+  # API encryption key is set dynamically by nvs_secrets component from NVS
+  # No hardcoded key in firmware binary
 
 # Custom NVS secrets component - loads device-specific secrets from NVS
 nvs_secrets:
