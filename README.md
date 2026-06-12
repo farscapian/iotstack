@@ -11,6 +11,17 @@ Think of these devices as **small computers** that run custom firmware and commu
 - **Presence Sensor**: Detect when people are in a room using mmWave radar
 - **Multi-room Audio**: Sync music across multiple rooms
 
+## The Devices Explained
+
+| What | File | What it does in Home Assistant |
+|------|------|------|
+| **BLE Proxy** | `esp32c6-wifi-bleproxy.yaml` | Listens for Bluetooth signals and sends them to Home Assistant so you can track and control Bluetooth devices |
+| **Thread Router** | `c6-thread-router.yaml` | Creates a mesh network for Thread devices (like smart locks, sensors) and extends their range |
+| **Presence Sensor** | `esp32c6-wifi-mmwave.yaml` | Detects when people are in a room and their distance (great for automations like turning on lights) |
+| **Audio Speaker** | `wifi-sendspin.yaml` | Plays synced music across multiple rooms using Music Assistant |
+
+---
+
 ## Getting Started
 
 ### Initial Setup
@@ -29,45 +40,6 @@ which iotstack        # Shows: /home/user/.local/bin/iotstack
 iotstack help         # Works from any directory
 ```
 
-## Architecture Overview
-
-### Secrets Management
-
-iotstack uses a **multi-layer secrets architecture** that keeps credentials secure without compiling them into firmware:
-
-```
-Layer 1: Role-Based Secrets (Encrypted Pass Store)
-  ~/.iotstack/.pass/iotstack/roles/bleproxy/ota_password
-  └─ Encrypted at rest, never written unencrypted to disk
-
-Layer 2: Device-Specific Derivation (In-Memory)
-  iotstack flash derives: sha256(role_secret | device_mac)
-  └─ Unique password per device, never stored on disk
-
-Layer 3: NVS Partition (Device Flash)
-  Device flash contains: ota_password, api_encryption_key (plaintext)
-  └─ Persists across firmware updates, read at device startup
-
-Layer 4: Firmware Components (Dynamic)
-  nvs_ota_password component reads NVS → sets OTA authentication
-  nvs_secrets component reads NVS → sets WiFi/API credentials
-  └─ No hardcoded secrets in compiled firmware binary
-```
-
-**Key benefit:** Single generic firmware binary works on all devices with device-specific secrets loaded from NVS at startup.
-
-### Device Flash Workflow
-
-1. **Compile**: Generic firmware (no device-specific secrets)
-2. **Flash**: Via USB serial to blank/recovery device
-3. **Write NVS**: Device-specific secrets derived and written to flash
-4. **Device boots**: Reads NVS, loads device-specific credentials
-5. **OTA updates**: Subsequent updates use device-specific OTA password from NVS
-
-For details on security properties and threat models, see `CLAUDE.md` → "Secrets Management" and "NVS Architecture".
-
-### Device Configuration
-
 All device configurations are in YAML files organized by network type:
 
 ```
@@ -79,15 +51,6 @@ wifi/
 thread/
 └── c6-thread-router.yaml         # Thread mesh router (low-power)
 ```
-
-## The Devices Explained
-
-| What | File | What it does in Home Assistant |
-|------|------|------|
-| **BLE Proxy** | `esp32c6-wifi-bleproxy.yaml` | Listens for Bluetooth signals and sends them to Home Assistant so you can track and control Bluetooth devices |
-| **Thread Router** | `c6-thread-router.yaml` | Creates a mesh network for Thread devices (like smart locks, sensors) and extends their range |
-| **Presence Sensor** | `esp32c6-wifi-mmwave.yaml` | Detects when people are in a room and their distance (great for automations like turning on lights) |
-| **Audio Speaker** | `wifi-sendspin.yaml` | Plays synced music across multiple rooms using Music Assistant |
 
 ---
 
@@ -372,3 +335,40 @@ bleproxy_api_encryption_key: "your-api-key-here"
 ```
 
 Refer to the [ESPHome documentation](https://esphome.io/) for a complete list of what each device needs.
+
+---
+
+## Technical Architecture: Secrets Management
+
+iotstack uses a **multi-layer secrets architecture** that keeps credentials secure without compiling them into firmware:
+
+```
+Layer 1: Role-Based Secrets (Encrypted Pass Store)
+  ~/.iotstack/.pass/iotstack/roles/bleproxy/ota_password
+  └─ Encrypted at rest, never written unencrypted to disk
+
+Layer 2: Device-Specific Derivation (In-Memory)
+  iotstack flash derives: sha256(role_secret | device_mac)
+  └─ Unique password per device, never stored on disk
+
+Layer 3: NVS Partition (Device Flash)
+  Device flash contains: ota_password, api_encryption_key (plaintext)
+  └─ Persists across firmware updates, read at device startup
+
+Layer 4: Firmware Components (Dynamic)
+  nvs_ota_password component reads NVS → sets OTA authentication
+  nvs_secrets component reads NVS → sets WiFi/API credentials
+  └─ No hardcoded secrets in compiled firmware binary
+```
+
+**Key benefit:** Single generic firmware binary works on all devices with device-specific secrets loaded from NVS at startup.
+
+### How Device Flashing Works
+
+1. **Compile**: Generic firmware (no device-specific secrets)
+2. **Flash**: Via USB serial to blank/recovery device
+3. **Write NVS**: Device-specific secrets derived and written to flash
+4. **Device boots**: Reads NVS, loads device-specific credentials
+5. **OTA updates**: Subsequent updates use device-specific OTA password from NVS
+
+For detailed security analysis, threat models, and production hardening plans (flash encryption, eFuses), see `CLAUDE.md` → "Secrets Management" and "NVS Architecture".
