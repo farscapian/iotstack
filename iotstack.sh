@@ -2186,7 +2186,7 @@ _flash_recovery() {
 
     # Erase flash completely to handle devices with incompatible firmware (RCP, etc.)
     info "Erasing flash memory..."
-    esptool --chip esp32c6 --port "$tty_device" --baud 57600 erase_flash || err "Erase failed"
+    esptool --chip esp32c6 --port "$tty_device" --baud 9600 erase_flash || err "Erase failed"
     sleep 3  # Wait for erase to complete and device to stabilize
 
     # Flash generic recovery firmware and capture MAC
@@ -2194,7 +2194,7 @@ _flash_recovery() {
     [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
 
     local esptool_output
-    esptool_output=$(esptool --chip esp32c6 --port "$tty_device" --baud 57600 \
+    esptool_output=$(esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
       write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
       0x0 "$build_dir/bootloader.bin" \
       0x8000 "$build_dir/partitions.bin" \
@@ -2289,7 +2289,7 @@ _flash_recovery() {
     info "Flashing $tty (log: $log_file)..."
     echo "════════════════════════════════════════════════════════"
 
-    if esptool --chip esp32c6 --port "$tty" --baud 57600 \
+    if esptool --chip esp32c6 --port "$tty" --baud 9600 \
       write-flash --flash-mode dio --flash-size 4MB \
       0x0 "$build_dir/bootloader.bin" \
       0x8000 "$build_dir/partitions.bin" \
