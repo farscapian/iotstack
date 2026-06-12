@@ -14,8 +14,7 @@
 substitutions:
   device_role: "recovery-thread"
   friendly_name: "Recovery Mode (Thread)"
-  # Well-known recovery credentials (NEVER CHANGE THESE - documented security)
-  recovery_ota_password: "IotstackRecovery2024"
+  # Recovery credentials from secrets store (generated during setup)
   recovery_api_key: "9Cyl+abaIMyBmUyi326qO0W/ZuoO4ZNnLB7nuuJGjDg="
 
 esphome:
@@ -50,7 +49,7 @@ api:
 
 ota:
   - platform: esphome
-    password: ${recovery_ota_password}
+    password: !secret recovery_ota_password
 
 safe_mode:
   num_attempts: 3

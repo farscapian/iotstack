@@ -2388,7 +2388,15 @@ _flash_production_smart() {
       sleep 30
 
       info "Reassigning recovery-$device_mac to $device firmware..."
-      if ! "$UPDATE_SCRIPT" --reassign "$device_mac" "$yaml_path" --ota-password "IotstackRecovery2024" --jobs 1; then
+
+      # Retrieve recovery OTA password from pass store
+      local recovery_ota_password
+      recovery_ota_password=$(pass show "iotstack/recovery/ota_password" 2>/dev/null)
+      if [[ -z "$recovery_ota_password" ]]; then
+        err "Recovery OTA password not found in pass store. Run setup.sh again to initialize it."
+      fi
+
+      if ! "$UPDATE_SCRIPT" --reassign "$device_mac" "$yaml_path" --ota-password "$recovery_ota_password" --jobs 1; then
         err "OTA update failed. Device may still be booting. Try again in a moment:
   iotstack update $device"
       fi

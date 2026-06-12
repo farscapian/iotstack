@@ -16,10 +16,9 @@
 substitutions:
   device_role: "recovery"
   friendly_name: "Recovery Mode"
-  # Well-known recovery credentials (NEVER CHANGE THESE - documented security)
-  # OTA password: IotstackRecovery2024 (base64: SW90c3RhY2tSZWNvdmVyeTIwMjQ=)
+  # Recovery credentials from secrets store (generated during setup)
+  # OTA password: randomly generated, unique per installation
   # API key: base64 encoded 32-byte key (stable, never changes)
-  recovery_ota_password: "IotstackRecovery2024"
   recovery_api_key: "9Cyl+abaIMyBmUyi326qO0W/ZuoO4ZNnLB7nuuJGjDg="
 
 esphome:
@@ -51,10 +50,10 @@ api:
     key: ${recovery_api_key}
 
 # OTA Configuration for recovery partition
-# Use recovery_ota_password to flash production firmware back
+# Uses recovery_ota_password from secrets store (unique per installation)
 ota:
   - platform: esphome
-    password: ${recovery_ota_password}
+    password: !secret recovery_ota_password
 
 safe_mode:
   num_attempts: 3

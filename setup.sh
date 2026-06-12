@@ -58,6 +58,7 @@ if [[ ! -f "$SECRETS_FILE" ]]; then
   threadrouter_key=$(openssl rand -base64 32 | tr -d '\n')
   ledstrip_key=$(openssl rand -base64 32 | tr -d '\n')
   sendspin_key=$(openssl rand -base64 32 | tr -d '\n')
+  recovery_key=$(openssl rand -base64 18 | tr -d '=' | tr '+/' '-_')
 
   cat > "$SECRETS_FILE" << EOF
 # secrets.yaml
@@ -69,6 +70,9 @@ if [[ ! -f "$SECRETS_FILE" ]]; then
 # WiFi credentials (for WiFi devices)
 # wifi_ssid: "YourWiFiName"
 # wifi_password: "YourWiFiPassword"
+
+# Recovery firmware OTA password (auto-generated, unique per installation)
+recovery_ota_password: "$recovery_key"
 
 # ESPHome device encryption keys (generated during setup)
 # bleproxy_api_encryption_key: "$bleproxy_key"
@@ -422,6 +426,27 @@ if [[ -f "$SECRETS_YAML" ]]; then
   done < "$SECRETS_YAML"
 else
   warn "secrets.yaml not found, skipping seeding"
+fi
+
+# ── Generate Recovery OTA Password ─────────────────────────────────────────
+echo
+echo "Setting up recovery firmware OTA password..."
+
+RECOVERY_OTA_PATH="iotstack/recovery/ota_password"
+
+# Generate secure random password if not already set
+if ! pass show "$RECOVERY_OTA_PATH" >/dev/null 2>&1; then
+  # Generate 24-character random password (mix of upper/lower/digits)
+  recovery_password=$(openssl rand -base64 18 | tr -d '=' | tr '+/' '-_')
+
+  # Store in pass (requires double-entry for confirmation)
+  if { echo "$recovery_password"; echo "$recovery_password"; } | pass insert -f "$RECOVERY_OTA_PATH" 2>&1 >/dev/null; then
+    ok "Generated and stored recovery OTA password"
+  else
+    warn "Failed to store recovery OTA password in pass"
+  fi
+else
+  dim "Recovery OTA password already set"
 fi
 
 # Mount secrets tmpfs so secrets are available immediately
