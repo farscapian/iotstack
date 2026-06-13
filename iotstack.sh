@@ -27,9 +27,32 @@ debug() { [[ $VERBOSE -eq 1 ]] && echo -e "${DIM}[DEBUG]${RST} $*" || true; }
 # ── Compilation Cache ────────────────────────────────────────────────────────
 
 _get_yaml_sha() {
-  # Get SHA256 of YAML file
+  # Get SHA256 of YAML file plus all external_components
+  # This ensures cache invalidation when any component changes
   local yaml_file="$1"
-  [[ -f "$yaml_file" ]] && sha256sum "$yaml_file" | awk '{print $1}' || echo ""
+
+  if [[ ! -f "$yaml_file" ]]; then
+    echo ""
+    return
+  fi
+
+  # Start with YAML file hash
+  local combined_hash
+  combined_hash=$(sha256sum "$yaml_file" | awk '{print $1}')
+
+  # Include external_components directory hash if it exists
+  local external_components_dir="${YAMLS_DIR}/external_components"
+  if [[ -d "$external_components_dir" ]]; then
+    # Find all files in external_components and hash them
+    # Sort by filename to ensure consistent ordering
+    local components_hash
+    components_hash=$(find "$external_components_dir" -type f | sort | xargs cat | sha256sum | awk '{print $1}')
+
+    # Combine both hashes
+    combined_hash=$(echo -n "${combined_hash}${components_hash}" | sha256sum | awk '{print $1}')
+  fi
+
+  echo "$combined_hash"
 }
 
 _get_binary_sha() {
@@ -67,10 +90,15 @@ _check_serial_port_in_use() {
   # Check if serial port is already open by screen, minicom, picocom, or other tools
   local tty_device="$1"
 
+  debug "_check_serial_port_in_use: checking $tty_device"
+
   # Try lsof first (most reliable)
   if command -v lsof &>/dev/null; then
+    debug "_check_serial_port_in_use: lsof found"
     local processes
-    processes=$(lsof "$tty_device" 2>/dev/null | tail -n +2)  # Skip header
+    debug "_check_serial_port_in_use: running lsof..."
+    processes=$(lsof "$tty_device" 2>/dev/null | tail -n +2 || true)  # Skip header, allow failure
+    debug "_check_serial_port_in_use: lsof completed, processes='$processes'"
     if [[ -n "$processes" ]]; then
       # Extract PID and command for better error message
       local pid=$(echo "$processes" | awk '{print $2}' | head -1)
@@ -103,8 +131,123 @@ Or manually: press Ctrl+A then D to detach screen, then run the command above."
   fi
 }
 
+_generate_initial_partition_table() {
+  # Generate initial partition table with safe defaults before compilation
+  # Uses 1.5MB for recovery/production (fits in 4MB with overhead)
+  # Will be recalculated after compilation to exact sizes
+
+  local output_file="${1:-${YAMLS_DIR}/dual_app_recovery.csv}"
+
+  debug "Generating initial partition table: $output_file"
+
+  cat > "$output_file" << 'EOF'
+# ESP32-C6 Partition Table for Dual App OTA Recovery
+# Initial defaults - will be recalculated after compilation
+# Bootloader: 0x0-0x8000 (32KB)
+# NVS: 0x9000 (16KB, fixed)
+# OTA Data: 0xd000 (8KB, fixed)
+# Recovery: ota_0 at 0x30000 (will be calculated)
+# Production: ota_1 (will be calculated)
+# Name,     Type,  SubType,    Offset,      Size,
+nvs,        data,  nvs,        0x9000,      0x4000,
+otadata,    data,  ota,        0xd000,      0x2000,
+recovery,   app,   ota_0,      0x30000,     0x180000,
+production, app,   ota_1,      0x1b0000,    0x180000,
+EOF
+}
+
+_calculate_partition_sizes() {
+  # Calculate partition sizes and offsets based on compiled firmware size
+  # Called after successful compilation to determine actual partition table
+  #
+  # Arguments:
+  #   $1 = device name (e.g., "recovery", "bleproxy")
+  #   $2 = yaml file (e.g., yamls/recovery.yaml)
+  #
+  # Sets global variables:
+  #   RECOVERY_SIZE, PRODUCTION_SIZE, PRODUCTION_OFFSET
+
+  local device_name="$1"
+  local yaml_file="$2"
+
+  # Get compiled firmware binary size
+  local firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
+
+  if [[ ! -f "$firmware_bin" ]]; then
+    err "Compiled firmware not found: $firmware_bin"
+  fi
+
+  local firmware_size=$(stat -f%z "$firmware_bin" 2>/dev/null || stat -c%s "$firmware_bin" 2>/dev/null || echo 0)
+
+  if [[ $firmware_size -eq 0 ]]; then
+    err "Could not determine firmware size: $firmware_bin"
+  fi
+
+  # Calculate recovery partition size: firmware_size rounded up to nearest 4KB boundary
+  # No safety margin - partition is exactly what firmware needs
+  local recovery_size_calc=$firmware_size
+
+  # Round up to nearest 4KB (0x1000 = 4096 bytes) for flash sector alignment
+  local remainder=$((recovery_size_calc % 0x1000))
+  if [[ $remainder -ne 0 ]]; then
+    recovery_size_calc=$(((recovery_size_calc / 0x1000 + 1) * 0x1000))
+  fi
+
+  # Convert to hex
+  local RECOVERY_SIZE_HEX=$(printf '0x%x' "$recovery_size_calc")
+
+  # Production size matches recovery for symmetry (both can be flashed)
+  local PRODUCTION_SIZE_HEX=$RECOVERY_SIZE_HEX
+
+  # Calculate production offset
+  # = RECOVERY_OFFSET + RECOVERY_SIZE (rounded to 4KB boundary)
+  local production_offset=$((0x30000 + recovery_size_calc))
+  local PRODUCTION_OFFSET_HEX=$(printf '0x%x' "$production_offset")
+
+  # Export for use in partition table generation
+  export RECOVERY_SIZE="$RECOVERY_SIZE_HEX"
+  export PRODUCTION_SIZE="$PRODUCTION_SIZE_HEX"
+  export PRODUCTION_OFFSET="$PRODUCTION_OFFSET_HEX"
+
+  # Log the calculated values
+  info "Partition sizes calculated from firmware ($firmware_size bytes):"
+  info "  Recovery partition: $RECOVERY_SIZE_HEX ($recovery_size_calc bytes)"
+  info "  Production partition: $PRODUCTION_SIZE_HEX"
+  info "  Production offset: $PRODUCTION_OFFSET_HEX"
+}
+
+_generate_partition_table() {
+  # Generate partition table CSV from calculated/loaded partition sizes
+  # Sources NVS, recovery, and production sizes (either from partition-config.sh or environment)
+
+  cat << EOF
+# ESP32-C6 Partition Table for Dual App OTA Recovery
+# Generated from compiled firmware sizes (recovery partition auto-sized)
+# Bootloader: 0x0-0x8000 (32KB)
+# NVS: 0x9000 (16KB, fixed)
+# OTA Data: 0xd000 (8KB, fixed)
+# Recovery: ota_0 at 0x30000 (sized to firmware + margin)
+# Production: ota_1 (sized to recovery, offset calculated)
+# Name,     Type,  SubType,    Offset,              Size,
+nvs,        data,  nvs,        0x9000,              0x4000,
+otadata,    data,  ota,        0xd000,              0x2000,
+recovery,   app,   ota_0,      0x30000,             ${RECOVERY_SIZE:-0x180000},
+production, app,   ota_1,      ${PRODUCTION_OFFSET:-0x1b0000}, ${PRODUCTION_SIZE:-0x240000},
+EOF
+}
+
+_update_partition_table_file() {
+  # Write generated partition table to yamls/dual_app_recovery.csv
+  local output_file="${1:-${YAMLS_DIR}/dual_app_recovery.csv}"
+
+  debug "Writing partition table: $output_file"
+  _generate_partition_table > "$output_file"
+  ok "Partition table generated and saved"
+}
+
 smart_compile() {
   # Smart compilation that uses cache to skip rebuilds
+  # After compilation, calculates partition sizes based on firmware size
   # Usage: smart_compile <yaml_file> [device_name_for_logging]
   local yaml_file="$1"
   local device_name="${2:-unknown}"
@@ -113,9 +256,15 @@ smart_compile() {
   local yaml_sha=$(_get_yaml_sha "$yaml_file")
   [[ -z "$yaml_sha" ]] && err "Failed to compute SHA256 of $yaml_file"
 
+  # Generate initial partition table (needed by ESPHome during compilation)
+  _generate_initial_partition_table
+
   # Check if we can skip compilation
   if _check_compilation_cache "$yaml_file"; then
     ok "Firmware already compiled (cached)"
+    # Even when using cache, recalculate partition sizes in case firmware size changed
+    _calculate_partition_sizes "$device_name" "$yaml_file" || return 1
+    _update_partition_table_file
     return 0
   fi
 
@@ -133,6 +282,10 @@ smart_compile() {
     _update_compilation_cache "$yaml_file" "$binary_sha"
     ok "Compilation cached"
   fi
+
+  # Calculate partition sizes based on actual compiled firmware size
+  _calculate_partition_sizes "$device_name" "$yaml_file" || return 1
+  _update_partition_table_file
 
   return 0
 }
@@ -179,7 +332,7 @@ _setup_worktree() {
 
   # Create and enter worktree
   cd "$SCRIPT_DIR"
-  git worktree add --no-checkout "$worktree_dir" HEAD 2>/dev/null || return 0
+  git worktree add "$worktree_dir" HEAD 2>/dev/null || return 0
 
   # Re-exec in worktree
   cd "$worktree_dir"
@@ -2165,18 +2318,25 @@ _flash_recovery() {
   echo ""
 
   local recovery_yaml="$YAMLS_DIR/recovery.yaml"
+  debug "recovery_yaml=$recovery_yaml"
   if [[ ! -f "$recovery_yaml" ]]; then
     err "Recovery firmware not found: $recovery_yaml"
   fi
+  debug "recovery.yaml file exists"
 
   # If specific TTY device, flash only that one
+  debug "tty_device=$tty_device"
   if [[ -n "$tty_device" ]]; then
+    debug "TTY device provided: $tty_device"
     if [[ ! -e "$tty_device" ]]; then
       err "TTY device not found: $tty_device"
     fi
+    debug "TTY device exists"
 
     # Check if serial port is already in use
+    debug "Checking if serial port is in use..."
     _check_serial_port_in_use "$tty_device"
+    debug "Serial port check completed"
 
     info "Flashing to: $tty_device"
     info "Compiling recovery firmware..."

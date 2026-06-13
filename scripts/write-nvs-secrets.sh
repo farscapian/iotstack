@@ -39,11 +39,11 @@ _get_or_prompt_credential() {
 
     if [[ "$is_secret" == "true" ]]; then
       # For secrets, read without echo
-      read -s value </dev/tty 2>/dev/null || value=""
+      read -rs value </dev/tty 2>/dev/null || value=""
       echo >&2
     else
       # For non-secrets, read normally
-      read value </dev/tty 2>/dev/null || value=""
+      read -r value </dev/tty 2>/dev/null || value=""
     fi
 
     if [[ -z "$value" ]]; then
@@ -72,6 +72,19 @@ DEVICE_OTA_PASSWORD="${4:-}"
 
 [[ ! -e "$TTY_DEVICE" ]] && err "TTY device not found: $TTY_DEVICE"
 
+# Read NVS size from the generated partition table
+PARTITION_TABLE="${PROJECT_DIR}/yamls/dual_app_recovery.csv"
+if [[ ! -f "$PARTITION_TABLE" ]]; then
+  err "Partition table not found: $PARTITION_TABLE\nMake sure to compile firmware first (which generates the partition table)"
+fi
+
+# Extract NVS size from partition table CSV
+# Format: nvs,        data,  nvs,        0x9000,   0x4000,
+NVS_SIZE=$(awk -F',' '/^nvs[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $5); print $5}' "$PARTITION_TABLE" | head -1)
+[[ -z "$NVS_SIZE" ]] && err "Could not find NVS partition size in: $PARTITION_TABLE"
+
+info "Using NVS partition size: $NVS_SIZE from generated partition table"
+
 # ── Retrieve role-based secrets from pass store (lazy-load on demand) ─────
 info "Retrieving secrets for role: $DEVICE_ROLE"
 
@@ -83,7 +96,7 @@ WIFI_PASSWORD=$(_get_or_prompt_credential "iotstack/common/wifi_password" "WiFi 
 THREAD_TLV=$(pass show "iotstack/common/thread_tlv" 2>/dev/null || echo "")
 if [[ -z "$THREAD_TLV" || "$THREAD_TLV" == "CONFIGURE_ME" ]]; then
   echo -ne "${YLW}[PROMPT]${RST} Thread TLV commissioning string (optional, press Enter to skip): " >&2
-  read -s THREAD_TLV_INPUT </dev/tty 2>/dev/null || THREAD_TLV_INPUT=""
+  read -rs THREAD_TLV_INPUT </dev/tty 2>/dev/null || THREAD_TLV_INPUT=""
   echo >&2
   if [[ -n "$THREAD_TLV_INPUT" ]]; then
     { echo "$THREAD_TLV_INPUT"; echo "$THREAD_TLV_INPUT"; } | pass insert -f "iotstack/common/thread_tlv" 2>/dev/null || true
@@ -123,7 +136,8 @@ info "Writing NVS partition to device..."
 
 export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
        OTA_PASSWORD="$DEVICE_OTA_PASSWORD" API_KEY="$DEVICE_API_KEY" \
-       THREAD_TLV="$THREAD_TLV" DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE"
+       THREAD_TLV="$THREAD_TLV" DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE" \
+       NVS_SIZE="$NVS_SIZE"
 
 # Use ESP-IDF Python environment which has nvs_partition_gen installed
 ESP_IDF_PYTHON="${HOME}/.espressif/python_env/idf6.1_py3.14_env/bin/python3"
@@ -141,6 +155,10 @@ api_key = os.environ['API_KEY']
 thread_tlv = os.environ.get('THREAD_TLV', '')
 device_mac = os.environ['DEVICE_MAC']
 tty_device = os.environ['TTY_DEVICE']
+nvs_size_str = os.environ['NVS_SIZE']  # e.g., "0x4000"
+
+# Convert hex size string to decimal
+nvs_size = int(nvs_size_str, 16)
 
 # Create CSV for NVS partition generator
 # Format: key,type,encoding,value
@@ -169,7 +187,7 @@ result = subprocess.run([
     idf_python, '-m', 'esp_idf_nvs_partition_gen', 'generate',
     nvs_csv_path,        # input CSV file
     nvs_bin_path,        # output binary file
-    '0x6000',            # partition size in bytes (24KB)
+    f'0x{nvs_size:x}',   # partition size in bytes (dynamically read from partition table)
     '--version', '2'     # Version 2 (multipage blob support)
 ], capture_output=True, text=True)
 

@@ -24,7 +24,7 @@ substitutions:
 external_components:
   - source:
       type: local
-      path: ../external_components
+      path: ./external_components
     components: [nvs_secrets, nvs_ota_password]
 esphome:
   name: ${device_role}

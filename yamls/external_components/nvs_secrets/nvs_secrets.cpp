@@ -49,28 +49,28 @@ void NVSSecrets::setup() {
 
   wifi_ssid_ = read_nvs_string("wifi_ssid");
   if (!wifi_ssid_.empty()) {
-    ESP_LOGI(TAG, "✓ WiFi SSID loaded from NVS (%d bytes)", wifi_ssid_.length());
+    ESP_LOGI(TAG, "✓ WiFi SSID loaded from NVS (%zu bytes)", wifi_ssid_.length());
   } else {
     ESP_LOGW(TAG, "✗ WiFi SSID not found in NVS - device will use YAML placeholder");
   }
 
   wifi_password_ = read_nvs_string("wifi_password");
   if (!wifi_password_.empty()) {
-    ESP_LOGI(TAG, "✓ WiFi password loaded from NVS (%d bytes)", wifi_password_.length());
+    ESP_LOGI(TAG, "✓ WiFi password loaded from NVS (%zu bytes)", wifi_password_.length());
   } else {
     ESP_LOGW(TAG, "✗ WiFi password not found in NVS");
   }
 
   ota_password_ = read_nvs_string("ota_password");
   if (!ota_password_.empty()) {
-    ESP_LOGI(TAG, "✓ OTA password loaded from NVS (%d bytes)", ota_password_.length());
+    ESP_LOGI(TAG, "✓ OTA password loaded from NVS (%zu bytes)", ota_password_.length());
   } else {
     ESP_LOGW(TAG, "✗ OTA password not found in NVS");
   }
 
   api_encryption_key_ = read_nvs_string("api_key");
   if (!api_encryption_key_.empty()) {
-    ESP_LOGI(TAG, "✓ API encryption key loaded from NVS (%d bytes)", api_encryption_key_.length());
+    ESP_LOGI(TAG, "✓ API encryption key loaded from NVS (%zu bytes)", api_encryption_key_.length());
   } else {
     ESP_LOGW(TAG, "✗ API encryption key not found in NVS");
   }

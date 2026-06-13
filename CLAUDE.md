@@ -167,6 +167,46 @@ iotstack help reassign
 - Internally calls `update_devices.sh` with resolved YAML paths
 - All underlying features (reassign, verify, etc.) work the same way
 
+## Partition Configuration — Dynamically Calculated
+
+**Partition sizes are calculated AFTER firmware compilation based on actual firmware binary sizes.**
+
+### Calculation Process
+
+1. **Compile recovery firmware** (`smart_compile`)
+   - Compiles `yamls/recovery.yaml` via `esphome compile`
+   - Output: `firmware.bin` in build directory
+
+2. **Calculate partition sizes** (`_calculate_partition_sizes`)
+   - Reads `firmware.bin` size
+   - Recovery partition = firmware_size (rounded up to 4KB boundary for flash alignment)
+   - Production partition = same size as recovery (for symmetry)
+   - Production offset = calculated from recovery offset + recovery size
+
+3. **Generate partition table** (`_generate_partition_table`)
+   - Creates `yamls/dual_app_recovery.csv` with calculated sizes/offsets
+   - NVS (16KB, fixed) and OTA data (8KB, fixed) unchanged
+   - Recovery and production partitions sized to actual firmware
+
+4. **Use partition table**
+   - `write-nvs-secrets.sh` reads NVS size from generated CSV
+   - Flash operations use the calculated offsets
+
+### Why This Approach?
+
+- ✅ **No hardcoded partition sizes** — All calculated from actual firmware
+- ✅ **Zero chance of misalignment** — Partition table always matches firmware reality
+- ✅ **Firmware changes auto-handled** — Larger firmware = larger partition, calculated automatically
+- ✅ **Audit-friendly** — Partition table shows exactly what firmware needs
+- ✅ **Exact fit** — Partitions are only as large as firmware needs (no wasted flash)
+
+### Files Involved
+
+- `smart_compile()`: Calls partition calculation after compilation
+- `_calculate_partition_sizes()`: Determines sizes from firmware binary
+- `_generate_partition_table()`: Creates CSV with calculated values
+- `yamls/dual_app_recovery.csv`: Generated output (checked into git for reference)
+
 ## Important Implementation Details
 
 ### Stdout/Stderr Redirection Issue
@@ -318,11 +358,12 @@ Architecture:
    - Generated during setup.sh, stored securely
    - Never written to disk unencrypted
 
-2. **NVS partition** (device flash at 0x3d000): Device-specific secrets
+2. **NVS partition** (device flash at 0x9000, see partition-config.sh): Device-specific secrets
    - Unique per device: `sha256(role_secret | device_mac)`
    - Written after firmware flash via `write-nvs-secrets.sh`
    - Persists across firmware updates
    - Separate from firmware binary
+   - Offset and size defined in `partition-config.sh` (not hardcoded)
 
 3. **secrets.yaml**: Placeholder values only
    - Checked into git (safe for repo)
@@ -429,7 +470,7 @@ NVS is NOT:
 - Device-certificate based encryption
 
 NVS IS:
-- A key-value database on reserved flash partition (0x3d000, 24KB)
+- A key-value database on reserved flash partition (see partition-config.sh for offset and size)
 - Persistent across power cycles and firmware updates
 - Simple plaintext storage of device-specific secrets
 - Readable if someone physically extracts the flash chip

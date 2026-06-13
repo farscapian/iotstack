@@ -1,8 +1,12 @@
 # ESP32-C6 Partition Table for Dual App OTA Recovery
-# Recovery: ota_0 at 0x30000 (192KB), 1.5MB size
-# Production: ota_1 at 0x1b0000 (1.625MB), 2.2MB size
-# Name,     Type,  SubType,    Offset,   Size,      Flags
-nvs,        data,  nvs,        0x9000,   0x4000,
-otadata,    data,  ota,        0xd000,   0x2000,
-recovery,   app,   ota_0,      0x30000,  0x180000,
-production, app,   ota_1,      0x1b0000, 0x240000,
+# Generated from compiled firmware sizes (recovery partition auto-sized)
+# Bootloader: 0x0-0x8000 (32KB)
+# NVS: 0x9000 (16KB, fixed)
+# OTA Data: 0xd000 (8KB, fixed)
+# Recovery: ota_0 at 0x30000 (sized to firmware + margin)
+# Production: ota_1 (sized to recovery, offset calculated)
+# Name,     Type,  SubType,    Offset,              Size,
+nvs,        data,  nvs,        0x9000,              0x4000,
+otadata,    data,  ota,        0xd000,              0x2000,
+recovery,   app,   ota_0,      0x30000,             0xc7000,
+production, app,   ota_1,      0xf7000, 0xc7000,
