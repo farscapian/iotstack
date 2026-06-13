@@ -1,0 +1,40 @@
+iotstack commission — Add Matter devices to your Thread network
+
+Commissions a Matter device to your Thread network using a QR code image file.
+Automatically decodes the QR code, validates the device credentials,
+commissions via chip-tool, opens a commissioning window in Home Assistant, and
+adds the device for adoption. Stores device IDs sequentially in pass for
+tracking. Requires Thread network dataset and Home Assistant credentials
+configured in pass.
+
+Required secrets (stored in pass):
+  iotstack/common/thread_tlv          Thread network TLV data (hex)
+  iotstack/common/ha_url              Home Assistant URL
+  iotstack/common/ha_token            Home Assistant long-lived token
+  iotstack/matter/next_node_id        Auto-increment node ID (auto-initialized)
+
+Set secrets with:
+  pass insert iotstack/common/thread_tlv
+  pass insert iotstack/common/ha_url
+  pass insert iotstack/common/ha_token
+
+Dependencies:
+  - zbar-tools (zbarimg): apt install zbar-tools
+  - chip-tool: https://github.com/project-chip/connectedhomeip
+  - curl, python3
+
+Usage:
+  iotstack commission <path-to-qr-image.jpg>
+
+How to use:
+  1. Take a photo of the Matter QR code (phone, screenshot, etc.)
+  2. Save the image (JPG, PNG, etc.)
+  3. Run: iotstack commission /path/to/image.jpg
+
+Examples:
+  iotstack commission ~/qr-code.jpg
+  iotstack commission ~/Downloads/device-qr.png
+  iotstack commission ./matter-qr.jpg
+
+For detailed help, see:
+  docs/help/iotstack-commission-detailed.txt

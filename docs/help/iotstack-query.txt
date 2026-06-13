@@ -1,0 +1,23 @@
+iotstack query — Query Home Assistant device and entity registry
+
+Lists all devices and entities registered in Home Assistant, optionally
+filtered to a specific device. Shows all buttons, sensors, switches, and other
+entities associated with a device. Connects to Home Assistant via WebSocket API
+(requires websocat). Useful for verifying device integration and checking what
+controls are available in Home Assistant.
+
+Usage:
+  iotstack query [<device-name>|--list]
+
+Arguments:
+  <device-name>  Device name to query (e.g., "Kitchen RoomRemote")
+  --list, -l     List all devices in Home Assistant
+
+Examples:
+  iotstack query --list
+                        # List all HA devices
+  iotstack query "Bilresa5 - Secondary RoomRemote"
+  iotstack query "Kitchen RoomRemote"
+
+For detailed help including setup and dependencies, see:
+  docs/help/iotstack-query-detailed.txt

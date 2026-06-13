@@ -1,0 +1,41 @@
+iotstack reassign — Flash specific devices to a different configuration
+
+Reassigns one or more devices (identified by MAC address) to a different role
+or YAML configuration. Flashes the target firmware to matched devices only,
+leaving others untouched. Automatically updates Home Assistant entity IDs to
+reflect the new device configuration. Useful for redeploying devices to
+different roles (e.g., WiFi BLE proxy → Thread router).
+
+Usage:
+  iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [options]
+
+Arguments:
+  <MAC1> [MAC2 ...]  MAC suffix(es) to reassign (e.g., 19b164 199ef4)
+  <device|yaml>      Target device role or YAML config
+
+Options:
+  --ota-password <pwd>
+                  Single OTA password for device authentication
+  --ota-password-list-path <file>
+                  File with list of passwords to try (one per line)
+
+Examples:
+  iotstack reassign 19b164 bleproxy                                # Reassign to bleproxy role
+  iotstack reassign 8dfcac 0f4df4 mmwave                           # Reassign multiple to mmwave
+  iotstack reassign 11cdc4 threadrouter                            # Reassign to thread device
+  iotstack reassign 19b164 yamls/custom.yaml                       # Reassign to custom YAML
+  iotstack reassign 19b164 mmwave --ota-password <password>        # With OTA password
+  iotstack reassign 19b164 threadrouter --ota-password-list-path ~/tmp/passwords.txt
+
+PASSWORD LIST FILE FORMAT:
+  - One password per line
+  - No spaces or quotes
+  - Empty lines and lines starting with # are ignored
+  - Example (passwords.txt):
+    myPassword123
+    anotherPassword456
+    # Old password, probably not used
+    oldPassword789
+
+For detailed help including security best practices, see:
+  docs/help/iotstack-reassign-detailed.txt

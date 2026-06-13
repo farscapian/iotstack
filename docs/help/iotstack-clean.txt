@@ -1,0 +1,20 @@
+iotstack clean — Clean build artifacts and compilation caches
+
+Removes build directories, compiler caches, and old log files to free disk
+space or reset the build environment. Safe to run repeatedly—only removes
+generated artifacts, never source files. Useful when experiencing strange
+compilation errors, forcing a complete rebuild, or managing disk space.
+
+Removes:
+  - ESPHome build directory (.esphome/build/)
+  - PlatformIO cache
+  - Compilation cache file
+  - Old logs (older than 7 days)
+  - Temporary artifact files
+
+Usage:
+  iotstack clean
+
+Examples:
+  iotstack clean                    # Clean all build artifacts
+  iotstack -v clean                 # Verbose output

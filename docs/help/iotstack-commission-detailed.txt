@@ -1,0 +1,141 @@
+iotstack commission — Additional Documentation
+
+Matter Protocol Overview
+========================
+
+Matter is a unified smart home standard that enables device-to-device
+communication over Thread (a mesh networking protocol based on IPv6).
+
+Differences from other protocols:
+  - WiFi: Direct connection to network, point-to-point
+  - Thread: Mesh network, relay-based, works without WiFi router
+  - Bluetooth: Pairing-based, short range
+  - Matter: Unified communication, works with Thread mesh
+
+Matter devices in this project:
+  - Communicate via Thread mesh
+  - Don't need WiFi (though gateway/border router needs it)
+  - Can operate independently if network is down
+  - Auto-heal and self-organize
+
+
+Thread Network Setup
+====================
+
+Before commissioning Matter devices, you need:
+  1. Thread border router (typically your iotstack router device)
+  2. Thread dataset (network credentials)
+  3. Home Assistant with Matter support
+  4. QR code from the Matter device
+
+Getting your Thread dataset:
+  - If you have an Apple Home setup with Thread:
+    export from Home.app
+  - If you have a Home Assistant setup:
+    Settings → Devices & Services → Thread
+  - Otherwise, generate one using chip-tool
+
+Storing Thread dataset in pass:
+  pass insert iotstack/common/thread_tlv
+  (paste the hex-encoded TLV data when prompted)
+
+
+Home Assistant Integration
+==========================
+
+Matter commissioning requires Home Assistant with:
+  - Matter add-on installed
+  - Long-lived access token
+  - Full network access to iotstack router
+
+Configuration steps:
+  1. Settings → Developer Tools → Long-Lived Access Tokens
+  2. Create token, copy it
+  3. pass insert iotstack/common/ha_token
+  4. pass insert iotstack/common/ha_url
+  5. Verify Home Assistant is reachable from flashing device
+
+
+QR Code Handling
+================
+
+The QR code must be in image format (JPG, PNG, JPEG, etc.).
+
+You can get QR codes by:
+  - Taking a photo with phone camera
+  - Taking a screenshot (if device shows QR code on screen)
+  - Printing the QR code from device manual
+  - Exporting from device provisioning tool
+
+The image can be:
+  - Any resolution (will be automatically decoded)
+  - Color or black-and-white
+  - Partially damaged (Reed-Solomon error correction may help)
+
+If commissioning fails, verify:
+  1. QR code is clear and not damaged
+  2. File path is correct: ls -l /path/to/image
+  3. Supported format: JPG, PNG, JPEG
+
+
+Commissioning Workflow
+======================
+
+Manual steps that 'iotstack commission' automates:
+
+1. chip-tool decode-bcd <qr-code-hex>
+   ↓ Decodes QR code to Matter onboarding information
+
+2. chip-tool pairing ble-wifi <node-id> <qr-code>
+   ↓ Pair device over Bluetooth, provision WiFi/Thread
+
+3. Home Assistant opens "Add Matter Device" window
+   ↓ Select device from list
+
+4. Device connects to Thread network
+   ↓ Device is adopted into Home Assistant
+
+The script handles all of this automatically based on the QR code image.
+
+
+Troubleshooting
+===============
+
+"zbarimg: not found"
+  → sudo apt install zbar-tools
+
+"chip-tool: command not found"
+  → Install from: https://github.com/project-chip/connectedhomeip
+  → Or: sudo snap install chip-tool
+
+"QR code decode failed"
+  → Image may be damaged or wrong format
+  → Check image file: file /path/to/image.jpg
+  → Try re-taking photo or screenshot
+
+"Device not found in Home Assistant"
+  → Thread border router may be offline
+  → Check router device: iotstack verify threadrouter
+  → Verify HA can reach router: iotstack query --list
+
+"Commission timeout"
+  → Device may not be in pairing mode
+  → Check device for pairing mode indicator
+  → Try again with fresh QR code read
+
+
+Node ID Management
+==================
+
+Each commissioned device gets a unique node ID (incremented automatically).
+
+Node IDs are stored in:
+  iotstack/matter/next_node_id (current counter)
+
+To check commissioned devices:
+  pass show iotstack/matter/next_node_id
+
+To manually set next ID:
+  pass edit iotstack/matter/next_node_id
+
+Node IDs start at 1 and increment with each commissioning.

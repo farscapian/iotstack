@@ -9,6 +9,10 @@ yamls/dual_app_recovery.csv  # Symlink to ~/.iotstack/dual_app_recovery.csv (gen
 
 # Exception: allow documentation and components (not actual secrets)
 !docs/secrets.md
+!docs/help/iotstack-secret.txt
+!docs/help/iotstack-secret-detailed.txt
+!docs/help/iotstack-rotate-secrets.txt
+!docs/help/iotstack-rotate-secrets-detailed.txt
 !scripts/iotstack-secrets
 !scripts/rotate-secrets
 

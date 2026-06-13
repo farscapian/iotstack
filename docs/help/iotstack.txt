@@ -1,0 +1,48 @@
+iotstack — Manage IoT Stack ESPHome Devices
+
+Global Options:
+  -v, --verbose       Show all output (compiler, flashing, diagnostics)
+  -q, --quiet         Suppress status messages (errors still shown)
+
+Usage:
+  iotstack [-v|--verbose] [-q|--quiet] <command> [options]
+  iotstack update [options] [<device>|<yaml>|all] [--thread]
+  iotstack verify [<device>|<yaml>|all] [--thread]
+  iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
+  iotstack flash <device|yaml> [tty-device]
+  iotstack set-boot <device> <recovery|production>
+  iotstack commission <path-to-qr-image>
+  iotstack list [devices|roles]
+  iotstack secret get <role> <ota|api> [version]
+  iotstack rotate-secrets <role> [new-password]
+  iotstack clean
+  iotstack help [command]
+
+Examples:
+  iotstack -v flash bleproxy /dev/ttyACM0    # Flash with verbose output
+  iotstack --verbose update all              # Update all devices, show details
+  iotstack -q list roles --id                # Quiet output (just role names)
+  iotstack --quiet clean                     # Silent cleanup
+
+Commands:
+
+  update              Compile and flash device(s) over-the-air (OTA)
+  reassign            Flash specific devices to a different configuration
+  verify              Check if devices match the current build hash
+  flash               Flash device via serial/USB (for bricked devices)
+  query               Query Home Assistant device and entity registry
+  list                Show devices and roles
+  secret              Retrieve secrets from encrypted pass store
+  commission          Commission a Matter device via QR code
+  rotate-secrets      Rotate device secrets (OTA password and API key)
+  clean               Clean build artifacts and compilation caches
+  help                Show help for a command
+
+Use 'iotstack <command> help' for detailed help on any command.
+
+Options:
+  --thread               Use Thread variant instead of WiFi (for devices with both)
+  --dry-run              Compile and show what would be flashed (no flashing)
+  --flash-anyway         Flash all devices regardless of version
+  --jobs N               Max concurrent flash jobs (default: 4)
+  -v, --verbose          Show compilation output

@@ -1,0 +1,47 @@
+iotstack update — Compile and flash device(s) over-the-air (OTA)
+
+Discovers devices on the network and flashes new firmware via OTA.
+Automatically detects which devices need updates by comparing build hashes
+(delta mode). Supports updating by role, specific devices by MAC address, all
+devices, or custom YAML configs. Compiles once and then flashes in parallel to
+multiple devices.
+
+Usage:
+  iotstack update [options] [<device>|<yaml>|all] [--thread]
+  iotstack update [options] [<MAC1> [MAC2 ...]] <device|yaml> [--thread]
+
+Arguments:
+  <device>      Device role (e.g., bleproxy, mmwave)
+  <yaml>        Path to device config (e.g., yamls/bleproxy.yaml)
+  all           Update all device configs in the project
+  <MAC1> [MAC2...]  MAC suffix(es) to update (6 hex digits each)
+
+Options:
+  --thread              Use Thread variant instead of WiFi
+  --ota-password <pwd>  OTA password for device authentication
+  --dry-run             Compile and show what would be flashed (no flash)
+  --force-reflash       Flash all devices regardless of version
+  --jobs N              Max concurrent OTA jobs (default: 4)
+  -v, --verbose         Show full compilation output
+
+Examples:
+  iotstack update bleproxy
+                        # Update all bleproxy devices
+  iotstack update threadrouter --thread
+                        # Update Thread device
+  iotstack update all   # Update all devices
+  iotstack update --dry-run mmwave
+                        # Preview without flashing
+  iotstack update --force-reflash bleproxy
+                        # Force flash all devices
+  iotstack update --jobs 8 bleproxy
+                        # Update 8 devices in parallel
+  iotstack update a1a7b0 8e1aa8 bleproxy
+                        # Update specific devices by MAC
+  iotstack update 135b60 1a7b00 1af95c threadrouter
+                        # Update 3 specific Thread devices
+  iotstack update bleproxy --ota-password <password>
+                        # Update with OTA password
+
+For detailed help including security best practices, see:
+  docs/help/iotstack-update-detailed.txt
