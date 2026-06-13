@@ -12,5 +12,5 @@ CONFIG_SCHEMA = cv.COMPONENT_SCHEMA
 
 
 async def to_code(config):
-    var = cg.new_Pvariable(NVSSecrets())
+    var = cg.new_Pvariable(NVSSecrets)
     await cg.register_component(var, config)
