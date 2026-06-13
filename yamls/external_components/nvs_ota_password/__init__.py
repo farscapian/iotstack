@@ -13,9 +13,11 @@ DEPENDENCIES = []
 nvs_ota_password_ns = cg.esphome_ns.namespace("nvs_ota_password")
 NVSOtaPassword = nvs_ota_password_ns.class_("NVSOtaPassword", cg.Component)
 
-CONFIG_SCHEMA = cv.COMPONENT_SCHEMA
+CONFIG_SCHEMA = cv.COMPONENT_SCHEMA.extend({
+    cv.GenerateID(): cv.declare_id(NVSOtaPassword),
+})
 
 
 async def to_code(config):
-    var = cg.new_Pvariable(NVSOtaPassword)
+    var = cg.new_Pvariable(config[CONF_ID], NVSOtaPassword)
     await cg.register_component(var, config)
