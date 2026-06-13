@@ -60,12 +60,12 @@ if [[ -n "$FILTER_DIR" ]]; then
   # Filter to specific directory
   while IFS= read -r f; do
     YAMLS+=("$f")
-    | xargs grep -l "^esphome:" 2>/dev/null | sort)
+  done < <(find "$SCRIPT_DIR/$FILTER_DIR" -maxdepth 1 -name "*.yaml" -type f | xargs grep -l "^esphome:" 2>/dev/null | sort)
 else
   # All configs in project
   while IFS= read -r f; do
     YAMLS+=("$f")
-    | xargs grep -l "^esphome:" 2>/dev/null | sort)
+  done < <(find "$SCRIPT_DIR" -maxdepth 2 -name "*.yaml" -type f | xargs grep -l "^esphome:" 2>/dev/null | sort)
 fi
 
 if [[ ${#YAMLS[@]} -eq 0 ]]; then

@@ -877,8 +877,7 @@ if [[ -f "$SECRETS_FILE" ]]; then
   HA_TOKEN=$(grep '^ha_token:' "$SECRETS_FILE" | cut -d' ' -f2- | tr -d '"')
 fi
 
-if [[ -z "$HA_URL" || -z "$HA_TOKEN" ]]; then
-else
+if [[ -n "$HA_URL" && -n "$HA_TOKEN" ]]; then
   log "Querying Home Assistant: ${HA_URL}..."
   HA_DEVICE_LIST=$(
     HA_URL="$HA_URL" HA_TOKEN="$HA_TOKEN" HOSTNAMES="$HOSTNAMES" \

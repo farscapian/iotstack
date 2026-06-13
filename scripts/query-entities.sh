@@ -35,9 +35,6 @@ sync_secret() {
     secrets_value=$(grep "^${secrets_key}:" "$SECRETS_YAML" | cut -d'"' -f2 || echo "")
   fi
 
-  if [[ -z "$secrets_value" ]]; then
-  fi
-
   # Check if pass has this secret
   local pass_value=""
   if pass show "$pass_path" &>/dev/null; then
