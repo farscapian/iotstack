@@ -15,6 +15,13 @@ yamls/.esphome/
 !external_components/nvs_ota_password/**
 !external_components/nvs_writer/
 !external_components/nvs_writer/**
+!yamls/external_components/
+!yamls/external_components/nvs_secrets/
+!yamls/external_components/nvs_secrets/**
+!yamls/external_components/nvs_ota_password/
+!yamls/external_components/nvs_ota_password/**
+!yamls/external_components/nvs_writer/
+!yamls/external_components/nvs_writer/**
 !scripts/write-nvs-secrets.sh
 !scripts/iotstack-secrets
 !scripts/rotate-secrets
