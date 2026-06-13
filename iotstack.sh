@@ -1411,37 +1411,31 @@ cmd_update() {
 
     found=0
     failed=0
-    # Only compile device roles from roles.conf, not random YAML files
-    while IFS='=' read -r role rest; do
+    # Parse roles from roles.conf (format: role=yamls/role.yaml)
+    while IFS='=' read -r role yaml_path; do
       # Skip empty lines and comments
       [[ -z "$role" ]] && continue
       [[ "$role" =~ ^[[:space:]]*# ]] && continue
+      [[ -z "$yaml_path" ]] && continue
 
-      # Extract WiFi YAML (before colon)
-      wifi_yaml="${rest%%:*}"
-      thread_yaml="${rest##*:}"
+      # Resolve full path
+      yaml="${SCRIPT_DIR}/$yaml_path"
 
-      # Try WiFi variant first, then Thread variant
-      for yaml_variant in "$wifi_yaml" "$thread_yaml"; do
-        [[ -z "$yaml_variant" ]] && continue
+      # Verify file exists and is valid ESPHome YAML
+      if [[ -f "$yaml" ]] && grep -q '^esphome:' "$yaml" 2>/dev/null; then
+        # Build update command with MACs and OTA password if specified
+        declare -a cmd=("$UPDATE_SCRIPT" "${update_args[@]}")
+        [[ -n "$ota_password" ]] && cmd+=("--ota-password" "$ota_password")
+        [[ ${#mac_suffixes[@]} -gt 0 ]] && cmd+=("--macs" "${mac_suffixes[@]}")
+        cmd+=("$yaml")
 
-        # yaml_variant already includes the path prefix (e.g., "yamls/bleproxy.yaml")
-        yaml="${SCRIPT_DIR}/$yaml_variant"
-        if [[ -f "$yaml" ]] && grep -q '^esphome:' "$yaml" 2>/dev/null; then
-          # Build update command with MACs and OTA password if specified
-          declare -a cmd=("$UPDATE_SCRIPT" "${update_args[@]}")
-          [[ -n "$ota_password" ]] && cmd+=("--ota-password" "$ota_password")
-          [[ ${#mac_suffixes[@]} -gt 0 ]] && cmd+=("--macs" "${mac_suffixes[@]}")
-          cmd+=("$yaml")
-
-          if "${cmd[@]}"; then
-            found=$((found + 1))
-          else
-            failed=$((failed + 1))
-          fi
-          echo
+        if "${cmd[@]}"; then
+          found=$((found + 1))
+        else
+          failed=$((failed + 1))
         fi
-      done
+        echo
+      fi
     done < <(cat "${SCRIPT_DIR}/roles.conf" 2>/dev/null || echo "")
 
     echo "────────────────────────────────────────────────────────────"

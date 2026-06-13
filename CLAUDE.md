@@ -210,44 +210,39 @@ Flash a target configuration only to specific devices:
 Users run `setup.sh` once to add the `iotstack` alias to their `~/.bashrc`, making the command available globally.
 
 ### Device Mapping (roles.conf)
-Device shortcuts are defined in `roles.conf`:
+Device roles are defined in `roles.conf`. Network type (WiFi or Thread) is automatically detected by introspecting the YAML file:
 ```
-bleproxy=wifi/esp32c6-wifi-bleproxy.yaml:
-mmwave=wifi/esp32c6-wifi-mmwave.yaml:
-ledstrip=wifi/esp32s3-wifi-led-strip.yaml:
-threadrouter=:thread/c6-thread-router.yaml
+bleproxy=yamls/bleproxy.yaml
+mmwave=yamls/mmwave.yaml
+sendspin=yamls/sendspin.yaml
+ledlightstrip=yamls/ledlightstrip.yaml
+threadrouter=yamls/threadrouter.yaml
 ```
 
-Format: `<shortcut>=<wifi-yaml>:<thread-yaml>`
-- Left of colon: WiFi device role (required unless only Thread device role exists)
-- Right of colon: Thread device role (optional, omit if no Thread version)
+Format: `<role>=<yaml-path>`
+- Network type determined from YAML content: `wifi:` section → WiFi, `openthread:` section → Thread
+- Each YAML file is introspected at runtime (no need to specify variant in config)
 
 ### Usage Examples
 ```bash
-# Update WiFi variant (default)
+# Update a device
 iotstack update bleproxy
-
-# Update Thread device role
 iotstack update threadrouter
 
-# Update all devices
+# Update all devices listed in roles.conf
 iotstack update all
 
-# Reassign devices to different config (simple flash)
-iotstack reassign 8dfcac 0f4df4 to mmwave
+# Reassign devices to different config
+iotstack reassign 8dfcac 0f4df4 mmwave
 
-# List available shortcuts
-iotstack list shortcuts
-
-# Show detailed help
-iotstack help
-iotstack help update
-iotstack help reassign
+# Or use direct YAML path
+iotstack update yamls/custom.yaml
 ```
 
 ### Implementation Details
-- `iotstack.sh` loads the device map from `roles.conf`
-- User can pass either a device role or a direct YAML path
+- `iotstack.sh` loads role list from `roles.conf`
+- Network type auto-detected: checks for `wifi:` or `openthread:` sections in YAML
+- User can pass either a device role or direct YAML path
 - Internally calls `update_devices.sh` with resolved YAML paths
 - All underlying features (reassign, verify, etc.) work the same way
 
