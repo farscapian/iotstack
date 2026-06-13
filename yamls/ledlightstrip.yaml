@@ -1,6 +1,6 @@
 substitutions:
-  device_name: "led-strip-01"
-  friendly_name: "LED Strip 01"
+  device_role: "ledstrip"
+  friendly_name: "LED Light Strip"
 
 
 # External components (replaces deprecated custom_components folder)
@@ -13,7 +13,7 @@ esphome:
   name: ledstrip
   friendly_name: ${friendly_name}
   project:
-    name: iotstack.sk6812-led-strip
+    name: "iotstack.${device_role}"
     version: 1.0.0
   name_add_mac_suffix: true
 

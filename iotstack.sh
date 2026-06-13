@@ -419,10 +419,24 @@ verify_secrets_mounted() {
 # If given "bleproxy", returns "yamls/bleproxy.yaml"
 resolve_device() {
   local role_name="$1"
+
+  # Check if role is defined in roles.conf
+  if ! is_valid_role "$role_name"; then
+    local available_roles
+    available_roles=$(list_roles_from_conf | tr '\n' ', ' | sed 's/,$//')
+    err "Unknown role: '$role_name'
+
+Available roles:
+  $available_roles
+
+Run 'iotstack list roles' for details."
+  fi
+
   local yaml_file="${YAMLS_DIR}/${role_name}.yaml"
 
+  # Verify YAML file exists
   if [[ ! -f "$yaml_file" ]]; then
-    err "Unknown role: $role_name (expected: $yaml_file)"
+    err "Role '$role_name' defined in roles.conf but YAML not found: $yaml_file"
   fi
 
   echo "$yaml_file"
@@ -450,7 +464,21 @@ get_yaml_device_info() {
   echo "${device_type}|${network_type}"
 }
 
+# List available role names from roles.conf
+# Returns: role names (one per line)
+list_roles_from_conf() {
+  grep -v "^#\|^$" "${SCRIPT_DIR}/roles.conf" | cut -d= -f1 | sort
+}
+
+# Validate that a role name exists in roles.conf
+# Returns: 0 if valid, 1 if invalid
+is_valid_role() {
+  local role_name="$1"
+  list_roles_from_conf | grep -q "^${role_name}$"
+}
+
 # List available role names (YAML filenames without extension, excluding secrets.yaml)
+# DEPRECATED: Use list_roles_from_conf() instead - this scans all YAML files, not official roles
 list_device_names() {
   for yaml_file in "$YAMLS_DIR"/*.yaml; do
     if [[ -f "$yaml_file" ]]; then
@@ -1832,7 +1860,7 @@ cmd_list() {
       list_devices "$output_format" "$filter_role" "$suffix_only"
       ;;
     roles)
-      list_roles "$output_format"
+      list_roles "$output_format" "$suffix_only"
       ;;
     *)
       err "Unknown subcommand: $subcommand. Try 'iotstack list devices' or 'iotstack list roles'"
@@ -2105,10 +2133,17 @@ cmd_rotate_secrets() {
 
 list_roles() {
   local output_format="${1:-text}"
+  local id_only="${2:-false}"
+
+  # If --id flag was used, just output role names (one per line, no formatting)
+  if [[ "$id_only" == "true" ]]; then
+    list_roles_from_conf
+    return 0
+  fi
 
   if [[ "$output_format" == "csv" ]]; then
     echo "Role,Type,Network,Config"
-    list_device_names | while read -r device; do
+    list_roles_from_conf | while read -r device; do
       yaml_file="${YAMLS_DIR}/${device}.yaml"
 
       if [[ -f "$yaml_file" ]]; then
@@ -2127,7 +2162,7 @@ list_roles() {
   elif [[ "$output_format" == "json" ]]; then
     echo "["
     first=true
-    list_device_names | while read -r device; do
+    list_roles_from_conf | while read -r device; do
       yaml_file="${YAMLS_DIR}/${device}.yaml"
 
       if [[ -f "$yaml_file" ]]; then
@@ -2172,7 +2207,7 @@ list_roles() {
       fi
 
       echo "$device|$device_type|$network_type|$config_display" >> "$temp_data"
-    done < <(list_device_names)
+    done < <(list_roles_from_conf)
 
     # Calculate column widths
     local header_role="Role"
