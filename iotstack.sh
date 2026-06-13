@@ -623,7 +623,11 @@ help_update() {
   cat << 'EOF'
 iotstack update — Compile and flash device(s) over-the-air (OTA)
 
-Discovers devices on the network and flashes new firmware via OTA. Automatically detects which devices need updates by comparing build hashes (delta mode). Supports updating individual devices by role, specific devices by MAC address, all devices at once, or custom YAML configs. Compiles once and then flashes in parallel to multiple devices.
+Discovers devices on the network and flashes new firmware via OTA.
+Automatically detects which devices need updates by comparing build hashes
+(delta mode). Supports updating by role, specific devices by MAC address, all
+devices, or custom YAML configs. Compiles once and then flashes in parallel to
+multiple devices.
 
 Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
@@ -634,27 +638,33 @@ Arguments:
   <yaml>        Path to device config (e.g., yamls/bleproxy.yaml)
   all           Update all device configs in the project
   <MAC1> [MAC2...]  MAC suffix(es) to update (6 hex digits each)
-                    Update only specific devices matching these MACs
 
 Options:
   --thread              Use Thread variant instead of WiFi
   --ota-password <pwd>  OTA password for device authentication
-  --dry-run             Compile and show what would be flashed (no flashing)
+  --dry-run             Compile and show what would be flashed (no flash)
   --force-reflash       Flash all devices regardless of version
   --jobs N              Max concurrent OTA jobs (default: 4)
   -v, --verbose         Show full compilation output
 
 Examples:
-  iotstack update bleproxy                                            # Update all bleproxy devices
-  iotstack update threadrouter --thread                               # Update Thread device
-  iotstack update all                                                 # Update all devices
-  iotstack update --dry-run mmwave                                    # Preview without flashing
-  iotstack update --force-reflash bleproxy                            # Force flash all devices
-  iotstack update --jobs 8 bleproxy                                   # Update 8 devices in parallel
-  iotstack update a1a7b0 8e1aa8 bleproxy                              # Update only specific devices by MAC
-  iotstack update 135b60 1a7b00 1af95c threadrouter                   # Update 3 specific Thread devices
-  iotstack update bleproxy --ota-password <password>                  # Update with OTA password
-  iotstack update a1a7b0 mmwave --ota-password <password>             # Update MAC subset with password
+  iotstack update bleproxy
+                        # Update all bleproxy devices
+  iotstack update threadrouter --thread
+                        # Update Thread device
+  iotstack update all   # Update all devices
+  iotstack update --dry-run mmwave
+                        # Preview without flashing
+  iotstack update --force-reflash bleproxy
+                        # Force flash all devices
+  iotstack update --jobs 8 bleproxy
+                        # Update 8 devices in parallel
+  iotstack update a1a7b0 8e1aa8 bleproxy
+                        # Update specific devices by MAC
+  iotstack update 135b60 1a7b00 1af95c threadrouter
+                        # Update 3 specific Thread devices
+  iotstack update bleproxy --ota-password <password>
+                        # Update with OTA password
 
 NOTE: Pass OTA password via environment variable to avoid shell history:
   export OTA_PWD=<password>
@@ -667,7 +677,10 @@ help_verify() {
   cat << 'EOF'
 iotstack verify — Check if devices match the current build hash
 
-Discovers devices on the network and compares their firmware hash against the compiled build. Shows which devices are up-to-date and which need updates. Does not flash anything—purely informational. Useful for auditing your fleet before running updates or checking if devices are synchronized.
+Discovers devices on the network and compares their firmware hash against the
+compiled build. Shows which devices are up-to-date and which need updates. Does
+not flash anything—purely informational. Useful for auditing your fleet before
+running updates or checking if devices are synchronized.
 
 Usage:
   iotstack verify [<yaml>|all]
@@ -677,8 +690,9 @@ Arguments:
   all        Verify all device configs
 
 Examples:
-  iotstack verify bleproxy                   # Check if devices are up-to-date
-  iotstack verify all                        # Check entire fleet
+  iotstack verify bleproxy
+                        # Check if devices are up-to-date
+  iotstack verify all   # Check entire fleet
 
 EOF
 }
@@ -687,7 +701,11 @@ help_list() {
   cat << 'EOF'
 iotstack list — Show discovered devices and available roles
 
-Lists all ESPHome devices discovered on the network via mDNS, optionally filtered by role or unmatched devices. Also shows all available device roles (WiFi and Thread variants) defined in the project with their YAML configurations. Supports machine-readable output for scripting (--id flag for device IDs only).
+Lists all ESPHome devices discovered on the network via mDNS, optionally
+filtered by role or unmatched devices. Also shows all available device roles
+(WiFi and Thread variants) defined in the project with their YAML
+configurations. Supports machine-readable output for scripting (--id flag for
+device IDs only).
 
 Usage:
   iotstack list [devices [role|other] [--id]|roles]
@@ -701,13 +719,19 @@ Options:
   --id             For devices: output only device IDs (space-separated)
 
 Examples:
-  iotstack list devices                      # Show all discovered devices
-  iotstack list devices bleproxy             # Show only bleproxy devices
-  iotstack list devices other                # Show devices not matching any role
-  iotstack list devices --id                 # Output all device IDs
-  iotstack list devices bleproxy --id        # Output bleproxy device IDs
-  iotstack list devices other --id           # Output IDs of unmatched devices
-  iotstack list roles                        # Show available device roles
+  iotstack list devices
+                        # Show all discovered devices
+  iotstack list devices bleproxy
+                        # Show only bleproxy devices
+  iotstack list devices other
+                        # Show devices not matching any role
+  iotstack list devices --id
+                        # Output all device IDs
+  iotstack list devices bleproxy --id
+                        # Output bleproxy device IDs
+  iotstack list devices other --id
+                        # Output IDs of unmatched devices
+  iotstack list roles   # Show available device roles
 
 EOF
 }
@@ -716,7 +740,11 @@ help_reassign() {
   cat << 'EOF'
 iotstack reassign — Flash specific devices to a different configuration
 
-Reassigns one or more devices (identified by MAC address) to a different role or YAML configuration. Flashes the target firmware to matched devices only, leaving others untouched. Automatically updates Home Assistant entity IDs to reflect the new device configuration. Useful for redeploying devices to different roles (e.g., WiFi BLE proxy → Thread router) or splitting devices between different configurations.
+Reassigns one or more devices (identified by MAC address) to a different role
+or YAML configuration. Flashes the target firmware to matched devices only,
+leaving others untouched. Automatically updates Home Assistant entity IDs to
+reflect the new device configuration. Useful for redeploying devices to
+different roles (e.g., WiFi BLE proxy → Thread router).
 
 Usage:
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [options]
@@ -726,8 +754,10 @@ Arguments:
   <device|yaml>      Target device role or YAML config
 
 Options:
-  --ota-password <pwd>              Single OTA password for device authentication
-  --ota-password-list-path <file>   File with list of passwords to try (one per line)
+  --ota-password <pwd>
+                  Single OTA password for device authentication
+  --ota-password-list-path <file>
+                  File with list of passwords to try (one per line)
 
 Examples:
   iotstack reassign 19b164 bleproxy                                # Reassign to bleproxy role
@@ -761,7 +791,11 @@ help_flash() {
   cat << 'EOF'
 iotstack flash — Serial flash tool for device setup and recovery
 
-Flash firmware to devices via USB/serial connection. Performs dual-partition setup on fresh devices (recovery + production) or OTA-only updates on existing devices. Auto-detects USB ports when multiple devices are connected. Supports recovery-only flashing for manual partition management. Use this command when OTA is unavailable (bricked devices, initial setup, recovery mode).
+Flash firmware to devices via USB/serial connection. Performs dual-partition
+setup on fresh devices (recovery + production) or OTA-only updates on existing
+devices. Auto-detects USB ports when multiple devices are connected. Supports
+recovery-only flashing for manual partition management. Use when OTA is
+unavailable (bricked devices, initial setup, recovery mode).
 
 Usage:
   iotstack flash <device> [tty-device] [options]
@@ -770,21 +804,28 @@ Usage:
 Arguments:
   <device>        Device role (e.g., bleproxy, mmwave, threadrouter)
   recovery        Flash recovery image via serial
-  [tty-device]    Serial device (e.g., /dev/ttyACM0). Auto-detected if omitted.
+  [tty-device]    Serial device (e.g., /dev/ttyACM0). Auto-detected if
+                  omitted.
   [role]          Production role for dual-flash (e.g., mmwave, bleproxy)
 
 Options:
-  --ota-only      Skip recovery flash, only OTA production (device already has recovery)
+  --ota-only      Skip recovery flash, only OTA production (device already
+                  has recovery)
 
 Examples:
-  iotstack flash bleproxy /dev/ttyUSB0         # Smart setup (recovery + production)
-  iotstack flash recovery mmwave               # Dual-flash: recovery + mmwave
-  iotstack flash recovery /dev/ttyUSB0         # Recovery image only
-  iotstack flash mmwave /dev/ttyACM0 --ota-only # Skip recovery, update production only
-  iotstack flash threadrouter                  # Auto-detect all USB devices
+  iotstack flash bleproxy /dev/ttyUSB0
+                          # Smart setup (recovery + production)
+  iotstack flash recovery mmwave
+                          # Dual-flash: recovery + mmwave
+  iotstack flash recovery /dev/ttyUSB0
+                          # Recovery image only
+  iotstack flash mmwave /dev/ttyACM0 --ota-only
+                          # Skip recovery, update production only
+  iotstack flash threadrouter
+                          # Auto-detect all USB devices
 
 Notes:
-  - Fresh device setup: 2-3 minutes total (recovery serial flash + production OTA)
+  - Fresh device setup: 2-3 minutes (recovery serial flash + production OTA)
   - Recovery image enables automatic fallback if production firmware fails
   - All devices share the same universal recovery.yaml firmware
   - OTA updates after setup use: iotstack update <device>
@@ -796,7 +837,11 @@ help_query() {
   cat << 'EOF'
 iotstack query — Query Home Assistant device and entity registry
 
-Lists all devices and entities registered in Home Assistant, optionally filtered to a specific device. Shows all buttons, sensors, switches, and other entities associated with a device. Connects to Home Assistant via WebSocket API (requires websocat). Useful for verifying device integration and checking what controls are available in Home Assistant.
+Lists all devices and entities registered in Home Assistant, optionally
+filtered to a specific device. Shows all buttons, sensors, switches, and other
+entities associated with a device. Connects to Home Assistant via WebSocket API
+(requires websocat). Useful for verifying device integration and checking what
+controls are available in Home Assistant.
 
 Usage:
   iotstack query [<device-name>|--list]
@@ -806,7 +851,8 @@ Arguments:
   --list, -l     List all devices in Home Assistant
 
 Examples:
-  iotstack query --list                          # List all HA devices
+  iotstack query --list
+                        # List all HA devices
   iotstack query "Bilresa5 - Secondary RoomRemote"
   iotstack query "Kitchen RoomRemote"
 
@@ -821,7 +867,10 @@ help_secret() {
   cat << 'EOF'
 iotstack secret — Retrieve encrypted secrets from pass store
 
-Reads secrets (OTA passwords and API encryption keys) from the encrypted pass store. Supports versioned secret retrieval to recover archived passwords. All secrets are stored encrypted with GPG and never written to disk unencrypted. Useful for manual password recovery or integration with external systems.
+Reads secrets (OTA passwords and API encryption keys) from the encrypted pass
+store. Supports versioned secret retrieval to recover archived passwords. All
+secrets are stored encrypted with GPG and never written to disk unencrypted.
+Useful for manual password recovery or integration with external systems.
 
 Usage:
   iotstack secret get <role> <ota|api> [version]
@@ -832,9 +881,12 @@ Arguments:
   [version]     Version number for historical secrets (default: current)
 
 Examples:
-  iotstack secret get bleproxy ota              # Get current OTA password
-  iotstack secret get bleproxy api              # Get current API key
-  iotstack secret get bleproxy ota 0            # Get archived OTA password v0
+  iotstack secret get bleproxy ota
+                        # Get current OTA password
+  iotstack secret get bleproxy api
+                        # Get current API key
+  iotstack secret get bleproxy ota 0
+                        # Get archived OTA password v0
 
 To rotate secrets, use:
   iotstack rotate-secrets <role>
@@ -851,19 +903,27 @@ help_rotate_secrets() {
   cat << 'EOF'
 iotstack rotate-secrets — Rotate device secrets for a role
 
-Generates new OTA passwords and API encryption keys for all devices in a role. Always rotates OTA passwords (required for firmware updates). Also rotates API keys if Home Assistant is configured. Keeps all previous secrets in version history for recovery and audit trails. Supports custom secrets or automatic cryptographically secure generation.
+Generates new OTA passwords and API encryption keys for all devices in a role.
+Always rotates OTA passwords (required for firmware updates). Also rotates API
+keys if Home Assistant is configured. Keeps all previous secrets in version
+history for recovery and audit trails. Supports custom secrets or automatic
+cryptographically secure generation.
 
 Usage:
   iotstack rotate-secrets <role> [new-secret]
 
 Arguments:
   <role>        Device role to rotate (e.g., bleproxy, mmwave)
-  [new-secret]  Specific secret to use. If omitted, generates cryptographically secure one.
+  [new-secret]  Specific secret to use. If omitted, generates cryptographically
+                secure one.
 
 Examples:
-  iotstack rotate-secrets bleproxy                    # Generate and use random secret
-  iotstack rotate-secrets bleproxy "mySecret123"      # Use specific secret
-  iotstack rotate-secrets mmwave                      # Rotate mmwave secrets
+  iotstack rotate-secrets bleproxy
+                        # Generate and use random secret
+  iotstack rotate-secrets bleproxy "mySecret123"
+                        # Use specific secret
+  iotstack rotate-secrets mmwave
+                        # Rotate mmwave secrets
 
 Features:
   - OTA password: Always rotated (required for device updates)
@@ -2700,7 +2760,12 @@ help_commission() {
   cat << 'EOF'
 iotstack commission — Add Matter devices to your Thread network
 
-Commissions a Matter device to your Thread network using a QR code image file. Automatically decodes the QR code, validates the device credentials, commissions via chip-tool, opens a commissioning window in Home Assistant, and adds the device for adoption. Stores device IDs sequentially in pass for tracking. Requires Thread network dataset and Home Assistant credentials configured in pass.
+Commissions a Matter device to your Thread network using a QR code image file.
+Automatically decodes the QR code, validates the device credentials,
+commissions via chip-tool, opens a commissioning window in Home Assistant, and
+adds the device for adoption. Stores device IDs sequentially in pass for
+tracking. Requires Thread network dataset and Home Assistant credentials
+configured in pass.
 
 Required secrets (stored in pass):
   iotstack/common/thread_tlv          Thread network TLV data (hex)
@@ -2781,7 +2846,10 @@ help_clean() {
   cat << 'EOF'
 iotstack clean — Clean build artifacts and compilation caches
 
-Removes build directories, compiler caches, and old log files to free disk space or reset the build environment. Safe to run repeatedly—only removes generated artifacts, never source files. Useful when experiencing strange compilation errors, forcing a complete rebuild, or managing disk space.
+Removes build directories, compiler caches, and old log files to free disk
+space or reset the build environment. Safe to run repeatedly—only removes
+generated artifacts, never source files. Useful when experiencing strange
+compilation errors, forcing a complete rebuild, or managing disk space.
 
 Removes:
   - ESPHome build directory (.esphome/build/)
