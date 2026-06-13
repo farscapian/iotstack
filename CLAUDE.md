@@ -446,7 +446,7 @@ Architecture:
    - Generated during setup.sh, stored securely
    - Never written to disk unencrypted
 
-2. **NVS partition** (device flash at 0x9000, see partition-config.sh): Device-specific secrets
+2. **NVS partition** (device flash at 0x9000): Device-specific secrets
    - Unique per device: `sha256(role_secret | device_mac)`
    - Written after firmware flash via `write-nvs-secrets.sh`
    - Persists across firmware updates
@@ -558,7 +558,7 @@ NVS is NOT:
 - Device-certificate based encryption
 
 NVS IS:
-- A key-value database on reserved flash partition (see partition-config.sh for offset and size)
+- A key-value database on reserved flash partition (see CLAUDE.md Partition Configuration section)
 - Persistent across power cycles and firmware updates
 - Simple plaintext storage of device-specific secrets
 - Readable if someone physically extracts the flash chip

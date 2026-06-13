@@ -231,7 +231,7 @@ _calculate_partition_sizes() {
 
 _generate_partition_table() {
   # Generate partition table CSV from calculated/loaded partition sizes
-  # Sources NVS, recovery, and production sizes (either from partition-config.sh or environment)
+  # Sources NVS, recovery, and production sizes from calculated values
 
   cat << EOF
 # ESP32-C6 Partition Table for Dual App OTA Recovery
