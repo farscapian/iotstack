@@ -566,6 +566,7 @@ Usage:
   iotstack list [devices|roles]
   iotstack secret get <role> <ota|api> [version]
   iotstack rotate-secrets <role> [new-password]
+  iotstack clean
   iotstack help [command]
 
 Examples:
@@ -650,6 +651,13 @@ Commands:
     Examples:
       iotstack rotate-secrets bleproxy                    # Generate strong secrets
       iotstack rotate-secrets bleproxy "newSecret123"     # Use specific secret
+
+  clean
+    Clean build artifacts and compilation caches.
+    Removes build directories, compiler caches, and old logs.
+    Safe to run—only removes build artifacts, not source files.
+    Examples:
+      iotstack clean                                      # Clean all artifacts
 
   help [command]
     Show help for a specific command.
@@ -2863,6 +2871,82 @@ Examples:
 EOF
 }
 
+cmd_clean() {
+  # Clean build artifacts and compilation caches
+  local verbose="${1:-}"
+
+  info "Cleaning build artifacts..."
+
+  # List of directories/files to clean
+  local items_to_clean=(
+    "${YAMLS_DIR}/.esphome/build"
+    "${HOME}/.platformio/.cache"
+    "${COMPILATION_CACHE}"
+  )
+
+  local cleaned_count=0
+
+  for item in "${items_to_clean[@]}"; do
+    if [[ -e "$item" ]]; then
+      if [[ -d "$item" ]]; then
+        local size
+        size=$(du -sh "$item" 2>/dev/null | awk '{print $1}' || echo "unknown")
+        info "Removing directory: $item ($size)"
+        rm -rf "$item"
+      else
+        info "Removing file: $item"
+        rm -f "$item"
+      fi
+      ((cleaned_count++))
+    fi
+  done
+
+  # Clean old logs (keep last 7 days)
+  if [[ -d "${HOME}/.iotstack/logs" ]]; then
+    info "Cleaning old logs (keeping last 7 days)..."
+    find "${HOME}/.iotstack/logs" -type f -mtime +7 -delete
+  fi
+
+  # Clean temp files
+  if [[ -d "${HOME}/.iotstack/artifacts" ]]; then
+    info "Removing temporary files..."
+    rm -rf "${HOME}/.iotstack/artifacts"/*
+  fi
+
+  ok "Clean complete. Removed $cleaned_count item(s)"
+  ok "Ready for next compilation"
+}
+
+help_clean() {
+  cat << 'EOF'
+Clean up build artifacts and compilation caches.
+
+Removes:
+  - ESPHome build directory (.esphome/build/)
+  - PlatformIO cache
+  - Compilation cache file
+  - Old logs (older than 7 days)
+  - Temporary artifact files
+
+This can help when:
+  - You're experiencing strange compilation errors
+  - You want to force a complete rebuild
+  - You're running low on disk space
+  - Build directories become corrupted
+
+Usage:
+  iotstack clean
+
+Examples:
+  iotstack clean                    # Clean all build artifacts
+  iotstack -v clean                 # Verbose output
+
+Note:
+  This is safe to run—it only removes build artifacts, not source files.
+  The next `iotstack update` or `iotstack flash` will rebuild as needed.
+EOF
+}
+
 main() {
   # Parse global flags (-v/--verbose, -env=filename)
   while [[ $# -gt 0 ]]; do
@@ -2951,6 +3035,10 @@ main() {
       shift
       cmd_commission "$@"
       ;;
+    clean)
+      shift
+      cmd_clean "$@"
+      ;;
     query)
       shift
       cmd_query "$@"
@@ -2965,6 +3053,7 @@ main() {
           flash)            help_flash ;;
           set-boot)         cmd_set_boot help ;;
           commission)       help_commission ;;
+          clean)            help_clean ;;
           query)            help_query ;;
           secret)           help_secret ;;
           rotate-secrets)   help_rotate_secrets ;;
