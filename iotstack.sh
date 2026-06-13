@@ -600,26 +600,6 @@ Global Options:
   -v, --verbose       Show all output (compiler, flashing, diagnostics)
   -q, --quiet         Suppress status messages (errors still shown)
 
-Usage:
-  iotstack [-v|--verbose] [-q|--quiet] <command> [options]
-  iotstack update [options] [<device>|<yaml>|all] [--thread]
-  iotstack verify [<device>|<yaml>|all] [--thread]
-  iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
-  iotstack flash <device|yaml> [tty-device]
-  iotstack set-boot <device> <recovery|production>
-  iotstack commission <path-to-qr-image>
-  iotstack list [devices|roles]
-  iotstack secret get <role> <ota|api> [version]
-  iotstack rotate-secrets <role> [new-password]
-  iotstack clean
-  iotstack help [command]
-
-Examples:
-  iotstack -v flash bleproxy /dev/ttyACM0    # Flash with verbose output
-  iotstack --verbose update all              # Update all devices, show details
-  iotstack -q list roles --id                # Quiet output (just role names)
-  iotstack --quiet clean                     # Silent cleanup
-
 Commands:
 
   update              Compile and flash device(s) over-the-air (OTA)
@@ -634,21 +614,16 @@ Commands:
   clean               Clean build artifacts and compilation caches
   help                Show help for a command
 
-Use 'iotstack <command> help' for detailed help on any command.
-
-Options:
-  --thread               Use Thread variant instead of WiFi (for devices with both)
-  --dry-run              Compile and show what would be flashed (no flashing)
-  --flash-anyway         Flash all devices regardless of version
-  --jobs N               Max concurrent flash jobs (default: 4)
-  -v, --verbose          Show compilation output
+Hint: Use 'iotstack <command> help' for detailed help on any command.
 
 EOF
 }
 
 help_update() {
   cat << 'EOF'
-iotstack update — Flash ESPHome devices
+iotstack update — Compile and flash device(s) over-the-air (OTA)
+
+Discovers devices on the network and flashes new firmware via OTA. Automatically detects which devices need updates by comparing build hashes (delta mode). Supports updating individual devices by role, specific devices by MAC address, all devices at once, or custom YAML configs. Compiles once and then flashes in parallel to multiple devices.
 
 Usage:
   iotstack update [options] [<device>|<yaml>|all] [--thread]
@@ -690,7 +665,9 @@ EOF
 
 help_verify() {
   cat << 'EOF'
-iotstack verify — Check if devices are up-to-date
+iotstack verify — Check if devices match the current build hash
+
+Discovers devices on the network and compares their firmware hash against the compiled build. Shows which devices are up-to-date and which need updates. Does not flash anything—purely informational. Useful for auditing your fleet before running updates or checking if devices are synchronized.
 
 Usage:
   iotstack verify [<yaml>|all]
@@ -708,7 +685,9 @@ EOF
 
 help_list() {
   cat << 'EOF'
-iotstack list — Show devices and roles
+iotstack list — Show discovered devices and available roles
+
+Lists all ESPHome devices discovered on the network via mDNS, optionally filtered by role or unmatched devices. Also shows all available device roles (WiFi and Thread variants) defined in the project with their YAML configurations. Supports machine-readable output for scripting (--id flag for device IDs only).
 
 Usage:
   iotstack list [devices [role|other] [--id]|roles]
@@ -736,6 +715,8 @@ EOF
 help_reassign() {
   cat << 'EOF'
 iotstack reassign — Flash specific devices to a different configuration
+
+Reassigns one or more devices (identified by MAC address) to a different role or YAML configuration. Flashes the target firmware to matched devices only, leaving others untouched. Automatically updates Home Assistant entity IDs to reflect the new device configuration. Useful for redeploying devices to different roles (e.g., WiFi BLE proxy → Thread router) or splitting devices between different configurations.
 
 Usage:
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [options]
@@ -778,7 +759,9 @@ EOF
 
 help_flash() {
   cat << 'EOF'
-iotstack flash — Initial device setup with dual-partition recovery
+iotstack flash — Serial flash tool for device setup and recovery
+
+Flash firmware to devices via USB/serial connection. Performs dual-partition setup on fresh devices (recovery + production) or OTA-only updates on existing devices. Auto-detects USB ports when multiple devices are connected. Supports recovery-only flashing for manual partition management. Use this command when OTA is unavailable (bricked devices, initial setup, recovery mode).
 
 Usage:
   iotstack flash <device> [tty-device] [options]
@@ -792,32 +775,6 @@ Arguments:
 
 Options:
   --ota-only      Skip recovery flash, only OTA production (device already has recovery)
-
-WORKFLOW:
-
-Fresh Device (brand new, never flashed):
-  iotstack flash bleproxy /dev/ttyUSB0
-  → Flashes recovery.yaml via serial (dual-partition setup)
-  → Waits 15s for device to boot
-  → Automatically OTA flashes bleproxy firmware
-  → Done! Device ready for production
-
-Existing Device (already has recovery):
-  iotstack flash bleproxy /dev/ttyUSB0 --ota-only
-  → Skips recovery, just OTA flashes production
-  → Faster than full setup
-
-Dual-Flash (recovery + production in one command):
-  iotstack flash recovery mmwave
-  → Flashes recovery via serial to all USB devices
-  → Waits for devices to boot
-  → OTA updates all devices to mmwave firmware
-  → Done! All devices ready with dual-partition setup
-
-Recovery Only:
-  iotstack flash recovery /dev/ttyUSB0
-  → Flashes just recovery image via serial
-  → Useful for manual recovery partition management
 
 Examples:
   iotstack flash bleproxy /dev/ttyUSB0         # Smart setup (recovery + production)
@@ -838,6 +795,8 @@ EOF
 help_query() {
   cat << 'EOF'
 iotstack query — Query Home Assistant device and entity registry
+
+Lists all devices and entities registered in Home Assistant, optionally filtered to a specific device. Shows all buttons, sensors, switches, and other entities associated with a device. Connects to Home Assistant via WebSocket API (requires websocat). Useful for verifying device integration and checking what controls are available in Home Assistant.
 
 Usage:
   iotstack query [<device-name>|--list]
@@ -861,6 +820,8 @@ EOF
 help_secret() {
   cat << 'EOF'
 iotstack secret — Retrieve encrypted secrets from pass store
+
+Reads secrets (OTA passwords and API encryption keys) from the encrypted pass store. Supports versioned secret retrieval to recover archived passwords. All secrets are stored encrypted with GPG and never written to disk unencrypted. Useful for manual password recovery or integration with external systems.
 
 Usage:
   iotstack secret get <role> <ota|api> [version]
@@ -888,7 +849,9 @@ EOF
 
 help_rotate_secrets() {
   cat << 'EOF'
-iotstack rotate-secrets — Rotate OTA passwords and API keys
+iotstack rotate-secrets — Rotate device secrets for a role
+
+Generates new OTA passwords and API encryption keys for all devices in a role. Always rotates OTA passwords (required for firmware updates). Also rotates API keys if Home Assistant is configured. Keeps all previous secrets in version history for recovery and audit trails. Supports custom secrets or automatic cryptographically secure generation.
 
 Usage:
   iotstack rotate-secrets <role> [new-secret]
@@ -2735,11 +2698,9 @@ cmd_commission() {
 
 help_commission() {
   cat << 'EOF'
-Commission a Matter device via QR code image.
+iotstack commission — Add Matter devices to your Thread network
 
-Decodes a Matter QR code from an image file, commissions the device via
-chip-tool (Thread), opens a commissioning window, and hands off to Home
-Assistant for adoption.
+Commissions a Matter device to your Thread network using a QR code image file. Automatically decodes the QR code, validates the device credentials, commissions via chip-tool, opens a commissioning window in Home Assistant, and adds the device for adoption. Stores device IDs sequentially in pass for tracking. Requires Thread network dataset and Home Assistant credentials configured in pass.
 
 Required secrets (stored in pass):
   iotstack/common/thread_tlv          Thread network TLV data (hex)
@@ -2818,7 +2779,9 @@ cmd_clean() {
 
 help_clean() {
   cat << 'EOF'
-Clean up build artifacts and compilation caches.
+iotstack clean — Clean build artifacts and compilation caches
+
+Removes build directories, compiler caches, and old log files to free disk space or reset the build environment. Safe to run repeatedly—only removes generated artifacts, never source files. Useful when experiencing strange compilation errors, forcing a complete rebuild, or managing disk space.
 
 Removes:
   - ESPHome build directory (.esphome/build/)
