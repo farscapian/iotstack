@@ -2777,30 +2777,61 @@ sync_common_secrets() {
 }
 
 verify_wifi_credentials() {
-  # Check if wifi_ssid and wifi_password exist in secrets.yaml
-  # If missing, prompt user to provide them
+  # Check if wifi_ssid and wifi_password exist in pass store or secrets.yaml
+  # Prioritizes pass store over secrets.yaml
+  # If missing from both, prompt user to provide them
   local secrets_yaml="$YAMLS_DIR/secrets.yaml"
 
   [[ ! -f "$secrets_yaml" ]] && return 0  # File doesn't exist yet, will be created
 
   local has_ssid=false
   local has_password=false
+  local wifi_ssid=""
+  local wifi_password=""
 
-  if grep -q "^wifi_ssid:" "$secrets_yaml"; then
-    has_ssid=true
+  # Check pass store first (preferred location)
+  if command -v pass &>/dev/null; then
+    if pass show iotstack/common/wifi_ssid >/dev/null 2>&1; then
+      wifi_ssid=$(pass show iotstack/common/wifi_ssid 2>/dev/null)
+      has_ssid=true
+      debug "Found WiFi SSID in pass store"
+    fi
+    if pass show iotstack/common/wifi_password >/dev/null 2>&1; then
+      wifi_password=$(pass show iotstack/common/wifi_password 2>/dev/null)
+      has_password=true
+      debug "Found WiFi password in pass store"
+    fi
   fi
 
-  if grep -q "^wifi_password:" "$secrets_yaml"; then
-    has_password=true
+  # Fall back to checking secrets.yaml
+  if [[ "$has_ssid" == false ]] && grep -q "^wifi_ssid:" "$secrets_yaml"; then
+    wifi_ssid=$(grep "^wifi_ssid:" "$secrets_yaml" | cut -d'"' -f2 | head -1)
+    if [[ -n "$wifi_ssid" ]]; then
+      has_ssid=true
+    fi
   fi
 
+  if [[ "$has_password" == false ]] && grep -q "^wifi_password:" "$secrets_yaml"; then
+    wifi_password=$(grep "^wifi_password:" "$secrets_yaml" | cut -d'"' -f2 | head -1)
+    if [[ -n "$wifi_password" ]]; then
+      has_password=true
+    fi
+  fi
+
+  # If still missing, prompt user
   if [[ "$has_ssid" == false ]] || [[ "$has_password" == false ]]; then
-    warn "Missing WiFi credentials in $secrets_yaml"
+    warn "Missing WiFi credentials"
     echo ""
 
     if [[ "$has_ssid" == false ]]; then
       read -p "Enter WiFi SSID: " wifi_ssid
       [[ -z "$wifi_ssid" ]] && err "WiFi SSID cannot be empty"
+
+      # Store in both pass and secrets.yaml
+      if command -v pass &>/dev/null; then
+        { echo "$wifi_ssid"; echo "$wifi_ssid"; } | pass insert -f iotstack/common/wifi_ssid 2>&1 | grep -v "^mkdir:" || true
+        debug "Stored WiFi SSID in pass store"
+      fi
       echo "wifi_ssid: \"$wifi_ssid\"" >> "$secrets_yaml"
     fi
 
@@ -2808,10 +2839,16 @@ verify_wifi_credentials() {
       read -sp "Enter WiFi password: " wifi_password
       echo ""
       [[ -z "$wifi_password" ]] && err "WiFi password cannot be empty"
+
+      # Store in both pass and secrets.yaml
+      if command -v pass &>/dev/null; then
+        { echo "$wifi_password"; echo "$wifi_password"; } | pass insert -f iotstack/common/wifi_password 2>&1 | grep -v "^mkdir:" || true
+        debug "Stored WiFi password in pass store"
+      fi
       echo "wifi_password: \"$wifi_password\"" >> "$secrets_yaml"
     fi
 
-    ok "WiFi credentials added to $secrets_yaml"
+    ok "WiFi credentials configured"
     echo ""
   fi
 }
