@@ -426,26 +426,6 @@ if [[ ! -d "$YAMLS_DIR" ]]; then
   err "yamls directory not found at $YAMLS_DIR"
 fi
 
-# ── Security: Auto-mount encrypted secrets if needed ──────────────────────
-# Secrets must be in user-land encrypted FUSE mount (gocryptfs)
-verify_secrets_mounted() {
-  local secrets_mount="${HOME}/.iotstack/secrets"
-
-  # Check if tmpfs mount exists
-  if mount | grep -q "tmpfs.*${secrets_mount}"; then
-    return 0
-  fi
-
-  # Not mounted - auto-mount (will prompt for sudo)
-  echo "[INFO] Mounting secrets tmpfs (requires sudo)..."
-  if ! "$SCRIPT_DIR/scripts/mount-secrets"; then
-    err "Failed to mount secrets tmpfs"
-  fi
-}
-
-# Note: tmpfs persists for the entire session until manual unmount or reboot
-# Users can unmount manually: sudo umount ~/.iotstack/secrets
-
 # ── Dynamic Role Discovery ──────────────────────────────────────────────────
 # Roles are discovered from YAML filenames in yamls/ directory
 # File: yamls/bleproxy.yaml → Role: bleproxy
@@ -1391,8 +1371,6 @@ cmd_update() {
     return 0
   fi
 
-  verify_secrets_mounted
-
   local device_or_yaml=""
   local use_thread=""
   local ota_password=""
@@ -1522,8 +1500,6 @@ cmd_reassign() {
     help_reassign
     return 0
   fi
-
-  verify_secrets_mounted
 
   local use_thread=""
   local api_key=""
@@ -1943,8 +1919,6 @@ cmd_rotate_secrets() {
     help_rotate_secrets
     return 0
   fi
-
-  verify_secrets_mounted
 
   local role="$1"
   local new_password="${2:-}"
@@ -2836,8 +2810,6 @@ cmd_commission() {
   [[ -z "$qr_image" ]] && err "Usage: iotstack commission <path-to-qr-image>"
   [[ ! -f "$qr_image" ]] && err "QR code image not found: $qr_image"
 
-  verify_secrets_mounted
-
   local matter_script="${SCRIPT_DIR}/scripts/matter-commission.sh"
   [[ ! -f "$matter_script" ]] && err "Matter commission script not found: $matter_script"
 
@@ -3003,8 +2975,6 @@ main() {
   fi
 
   # Mount secrets store early - needed for all operations
-  verify_secrets_mounted
-
   # Check WiFi credentials exist, prompt if missing
   verify_wifi_credentials
 
