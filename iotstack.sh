@@ -68,8 +68,10 @@ _check_compilation_cache() {
   # Check if we can skip compilation based on YAML SHA
   # Returns 0 (can skip) or 1 (must compile)
   local yaml_file="$1"
-  local yaml_name=$(basename "$yaml_file")
-  local yaml_sha=$(_get_yaml_sha "$yaml_file")
+  local yaml_name
+  yaml_name=$(basename "$yaml_file")
+  local yaml_sha
+  yaml_sha=$(_get_yaml_sha "$yaml_file")
 
   [[ ! -f "$COMPILATION_CACHE" ]] && return 1
 
@@ -82,8 +84,10 @@ _update_compilation_cache() {
   # Record compilation result in cache
   local yaml_file="$1"
   local binary_sha="$2"
-  local yaml_name=$(basename "$yaml_file")
-  local yaml_sha=$(_get_yaml_sha "$yaml_file")
+  local yaml_name
+  yaml_name=$(basename "$yaml_file")
+  local yaml_sha
+  yaml_sha=$(_get_yaml_sha "$yaml_file")
 
   # Add header if file doesn't exist
   if [[ ! -f "$COMPILATION_CACHE" ]]; then
@@ -108,8 +112,10 @@ _check_serial_port_in_use() {
     debug "_check_serial_port_in_use: lsof completed, processes='$processes'"
     if [[ -n "$processes" ]]; then
       # Extract PID and command for better error message
-      local pid=$(echo "$processes" | awk '{print $2}' | head -1)
-      local cmd=$(echo "$processes" | awk '{print $1}' | head -1)
+      local pid
+      pid=$(echo "$processes" | awk '{print $2}' | head -1)
+      local cmd
+      cmd=$(echo "$processes" | awk '{print $1}' | head -1)
 
       local kill_cmd=""
       if [[ "$cmd" == "screen" ]]; then
@@ -184,7 +190,8 @@ _calculate_partition_sizes() {
     err "Compiled firmware not found: $firmware_bin"
   fi
 
-  local firmware_size=$(stat -f%z "$firmware_bin" 2>/dev/null || stat -c%s "$firmware_bin" 2>/dev/null || echo 0)
+  local firmware_size
+  firmware_size=$(stat -f%z "$firmware_bin" 2>/dev/null || stat -c%s "$firmware_bin" 2>/dev/null || echo 0)
 
   if [[ $firmware_size -eq 0 ]]; then
     err "Could not determine firmware size: $firmware_bin"
@@ -201,7 +208,8 @@ _calculate_partition_sizes() {
   fi
 
   # Convert to hex
-  local RECOVERY_SIZE_HEX=$(printf '0x%x' "$recovery_size_calc")
+  local RECOVERY_SIZE_HEX
+  RECOVERY_SIZE_HEX=$(printf '0x%x' "$recovery_size_calc")
 
   # Production size matches recovery for symmetry (both can be flashed)
   local PRODUCTION_SIZE_HEX=$RECOVERY_SIZE_HEX
@@ -216,7 +224,8 @@ _calculate_partition_sizes() {
     production_offset=$(((production_offset / 0x10000 + 1) * 0x10000))
   fi
 
-  local PRODUCTION_OFFSET_HEX=$(printf '0x%x' "$production_offset")
+  local PRODUCTION_OFFSET_HEX
+  PRODUCTION_OFFSET_HEX=$(printf '0x%x' "$production_offset")
 
   # Export for use in partition table generation
   export RECOVERY_SIZE="$RECOVERY_SIZE_HEX"
@@ -279,7 +288,8 @@ smart_compile() {
   local device_name="${2:-unknown}"
 
   # Get YAML SHA before compilation
-  local yaml_sha=$(_get_yaml_sha "$yaml_file")
+  local yaml_sha
+  yaml_sha=$(_get_yaml_sha "$yaml_file")
   [[ -z "$yaml_sha" ]] && err "Failed to compute SHA256 of $yaml_file"
 
   # Generate initial partition table (needed by ESPHome during compilation)
@@ -305,7 +315,8 @@ smart_compile() {
   fi
 
   # Get binary SHA after successful compilation
-  local binary_sha=$(_get_binary_sha "$device_name")
+  local binary_sha
+  binary_sha=$(_get_binary_sha "$device_name")
   if [[ -n "$binary_sha" ]]; then
     _update_compilation_cache "$yaml_file" "$binary_sha"
     ok "Compilation cached"
@@ -506,7 +517,8 @@ is_valid_role() {
 list_device_names() {
   for yaml_file in "$YAMLS_DIR"/*.yaml; do
     if [[ -f "$yaml_file" ]]; then
-      local basename_only=$(basename "$yaml_file" .yaml)
+      local basename_only
+      basename_only=$(basename "$yaml_file" .yaml)
       [[ "$basename_only" == "secrets" ]] && continue
       echo "$basename_only"
     fi
@@ -517,20 +529,11 @@ list_device_names() {
 # Returns JSON with device_name -> area_name mapping
 get_ha_device_areas() {
 
-  # Try to get HA credentials from pass/secrets
-  local ha_token=""
-  local ha_url=""
-
-  if [[ -f "$secrets_yaml" ]]; then
-    ha_token=$(grep "^ha_token:" "$secrets_yaml" | cut -d'"' -f2 | xargs)
-    ha_url=$(grep "^ha_url:" "$secrets_yaml" | cut -d'"' -f2 | xargs)
-  fi
-
-  # Fallback to pass store
-  if [[ -z "$ha_token" ]] || [[ -z "$ha_url" ]]; then
-    ha_token=$(pass show "iotstack/common/ha_token" 2>/dev/null | xargs || echo "")
-    ha_url=$(pass show "iotstack/common/ha_url" 2>/dev/null | xargs || echo "")
-  fi
+  # Get HA credentials from pass store
+  local ha_token
+  ha_token=$(pass show "iotstack/common/ha_token" 2>/dev/null | xargs || echo "")
+  local ha_url
+  ha_url=$(pass show "iotstack/common/ha_url" 2>/dev/null | xargs || echo "")
 
   # If still no credentials, return empty
   if [[ -z "$ha_token" ]] || [[ -z "$ha_url" ]]; then
@@ -1024,7 +1027,7 @@ list_devices() {
   # Gather device data into temp buffer
   local device_data
   device_data=$(mktemp)
-  trap "rm -f $device_data" RETURN
+  trap 'rm -f "$device_data"' RETURN
 
   # Query mDNS and extract device data
   while IFS= read -r line; do
@@ -1256,7 +1259,7 @@ list_devices() {
       "ID" "Device" "Friendly Name" "Area" "Project" "Version" "Hash"
 
     # Print separator
-    printf "  ${DIM}"
+    printf '  %s' "$DIM"
     printf "%-${w_id}s " "$(printf '─%.0s' $(seq 1 $((w_id-1))))"
     printf "%-${w_device}s " "$(printf '─%.0s' $(seq 1 $((w_device-1))))"
     printf "%-${w_friendly}s " "$(printf '─%.0s' $(seq 1 $((w_friendly-1))))"
@@ -1264,7 +1267,7 @@ list_devices() {
     printf "%-${w_project}s " "$(printf '─%.0s' $(seq 1 $((w_project-1))))"
     printf "%-${w_version}s " "$(printf '─%.0s' $(seq 1 $((w_version-1))))"
     printf "%-${w_hash}s" "$(printf '─%.0s' $(seq 1 $((w_hash-1))))"
-    printf "${RST}\n"
+    printf '%s\n' "$RST"
 
     # Print data rows with calculated widths
     local found=0
@@ -1347,12 +1350,12 @@ list_yaml_configs() {
     "$header_device" "$header_type" "$header_network" "$header_config"
 
   # Print separator
-  printf "  ${DIM}"
+  printf '  %s' "$DIM"
   printf "%-${w_device}s " "$(printf '─%.0s' $(seq 1 $((w_device-1))))"
   printf "%-${w_type}s " "$(printf '─%.0s' $(seq 1 $((w_type-1))))"
   printf "%-${w_network}s " "$(printf '─%.0s' $(seq 1 $((w_network-1))))"
   printf "%-${w_config}s" "$(printf '─%.0s' $(seq 1 $((w_config-1))))"
-  printf "${RST}\n"
+  printf '%s\n' "$RST"
 
   # Print data rows
   local found=0
@@ -1586,10 +1589,12 @@ cmd_reassign() {
   # Early sanity check: verify devices aren't already the target role
   local target_role="$device_or_yaml"
   for mac in "${reassign_macs[@]}"; do
-    local device_info=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -i "$mac" | head -1)
+    local device_info
+    device_info=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -i "$mac" | head -1)
     if [[ -n "$device_info" ]]; then
-      local device_name=$(echo "$device_info" | awk -F' ' '{print $4}' | cut -d'.' -f1)
-      local current_role=$(echo "$device_name" | sed "s/-$mac\$//")
+      local device_name
+      device_name=$(echo "$device_info" | awk -F' ' '{print $4}' | cut -d'.' -f1)
+      local current_role="${device_name%-"$mac"}"
       if [[ "$current_role" == "$target_role" ]]; then
         ok "Device $device_name is already assigned to $target_role — no reassign needed."
         return 0
@@ -1657,6 +1662,7 @@ cmd_reassign() {
       return 0
     else
       err "No passwords from the list worked"
+      # shellcheck disable=SC2317
       return 1
     fi
   else
@@ -1669,12 +1675,14 @@ cmd_reassign() {
       # Try to auto-retrieve OTA password from pass for current device role
       for mac in "${reassign_macs[@]}"; do
         # Query mDNS to find device with this MAC suffix
-        local device_info=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -i "$mac" | head -1)
+        local device_info
+        device_info=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -i "$mac" | head -1)
         if [[ -n "$device_info" ]]; then
           # Extract device name (e.g., "bleproxy-137284" from the line)
-          local device_name=$(echo "$device_info" | awk -F' ' '{print $4}' | cut -d'.' -f1)
+          local device_name
+          device_name=$(echo "$device_info" | awk -F' ' '{print $4}' | cut -d'.' -f1)
           # Extract role (everything before the MAC suffix)
-          source_role=$(echo "$device_name" | sed "s/-$mac\$//")
+          source_role="${device_name%-"$mac"}"
 
           if [[ -n "$source_role" ]]; then
             # If device is running recovery firmware, use well-known recovery password
@@ -1702,7 +1710,8 @@ cmd_reassign() {
     echo
 
     # Suppress verbose esphome output, only show errors
-    local log_file="${HOME}/.iotstack/logs/reassign-$(date +%s).log"
+    local log_file
+    log_file="${HOME}/.iotstack/logs/reassign-$(date +%s).log"
     mkdir -p "$(dirname "$log_file")"
 
     # Build and invoke update_devices.sh with reassign flags
@@ -1952,10 +1961,8 @@ cmd_rotate_secrets() {
 
   local ha_url=""
   local ha_token=""
-  if [[ -f "$secrets_yaml" ]]; then
-    ha_url=$(grep '^ha_url:' "$secrets_yaml" | sed 's/ha_url:[[:space:]]*"\?//; s/"\?[[:space:]]*$//' || true)
-    ha_token=$(grep '^ha_token:' "$secrets_yaml" | sed 's/ha_token:[[:space:]]*"\?//; s/"\?[[:space:]]*$//' || true)
-  fi
+  ha_url=$(pass show "iotstack/common/ha_url" 2>/dev/null | xargs || echo "")
+  ha_token=$(pass show "iotstack/common/ha_token" 2>/dev/null | xargs || echo "")
 
   # Check if HA credentials are configured
   local ha_configured=false
@@ -1975,13 +1982,14 @@ cmd_rotate_secrets() {
   # Get current OTA password from password manager (versioned)
   local current_password
   echo "[INFO] Retrieving current OTA password from version history..."
-  current_password=$(cmd_secret get "$role" ota 2>/dev/null) || {
+  current_password=$(cmd_secret get "$role" ota 2>/dev/null)
+  if [[ -z "$current_password" ]]; then
     # Not in pass yet - extract from YAML's secret reference and set it as v00
     echo "[INFO] Not in version history yet - extracting from YAML and setting as v00..."
 
     # Extract the secret name from YAML (e.g., !secret mmwave_ota_password)
     local secret_name
-    secret_name=$(grep -oP '!secret\s+\K\S+(?=\s*$)' "${YAMLS_DIR}/${role}.yaml" | grep ota_password | head -1)
+    secret_name=$(grep -oP '!secret\s+\K\S+(?=\s*$)' "${YAMLS_DIR}/${role}.yaml" 2>/dev/null | grep ota_password | head -1)
 
     if [[ -n "$secret_name" ]]; then
       if [[ ! -f "$source_secrets" ]]; then
@@ -2001,7 +2009,7 @@ cmd_rotate_secrets() {
     else
       err "Could not find OTA password secret in ${role}.yaml"
     fi
-  }
+  fi
 
   if [[ -z "$current_password" ]]; then
     err "Current password is required"
@@ -2113,13 +2121,14 @@ cmd_rotate_secrets() {
     if [[ "$ha_configured" == true ]]; then
       # Check if API key is already versioned in pass
       local current_api_key
-      current_api_key=$(cmd_secret get "$role" api 2>/dev/null) || {
+      current_api_key=$(cmd_secret get "$role" api 2>/dev/null)
+      if [[ -z "$current_api_key" ]]; then
         # Not versioned yet - extract from YAML and set as v00
         echo "[INFO] API key not in version history - extracting from YAML..."
 
         # Extract the secret name from YAML (e.g., !secret mmwave_api_encryption_key)
         local api_secret_name
-        api_secret_name=$(grep -oP '!secret\s+\K\S+(?=\s*$)' "${YAMLS_DIR}/${role}.yaml" | grep api_encryption_key | head -1)
+        api_secret_name=$(grep -oP '!secret\s+\K\S+(?=\s*$)' "${YAMLS_DIR}/${role}.yaml" 2>/dev/null | grep api_encryption_key | head -1)
 
         if [[ -n "$api_secret_name" ]]; then
           current_api_key=$(grep "^${api_secret_name}:" "$source_secrets" | sed "s/${api_secret_name}:[[:space:]]*['\"]//; s/['\"][[:space:]]*$//" || true)
@@ -2130,12 +2139,12 @@ cmd_rotate_secrets() {
             echo "[OK] Current API key stored in pass"
           fi
         fi
-      }
+      fi
 
       # Generate and set new API key
       local new_api_key
       echo "[INFO] Generating new API encryption key..."
-      new_api_key=$(openssl rand -base64 32)
+      new_api_key=$(openssl rand -base64 32 | tr -d '=+/')
       "$SCRIPT_DIR/scripts/iotstack-secrets" set "$role" api "$new_api_key"
       echo "[OK] API encryption key rotated"
     fi
@@ -2165,9 +2174,11 @@ list_roles() {
       yaml_file="${YAMLS_DIR}/${device}.yaml"
 
       if [[ -f "$yaml_file" ]]; then
+        local device_info
         device_info=$(get_yaml_device_info "$yaml_file")
         device_type="${device_info%%|*}"
         network_type="${device_info##*|}"
+        local config_file
         config_file=$(basename "$yaml_file")
       else
         device_type=""
@@ -2184,9 +2195,11 @@ list_roles() {
       yaml_file="${YAMLS_DIR}/${device}.yaml"
 
       if [[ -f "$yaml_file" ]]; then
+        local device_info
         device_info=$(get_yaml_device_info "$yaml_file")
         device_type="${device_info%%|*}"
         network_type="${device_info##*|}"
+        local config_file
         config_file=$(basename "$yaml_file")
       else
         device_type=""
@@ -2207,7 +2220,7 @@ list_roles() {
     local temp_data
     temp_data=$(mktemp)
     # Capture temp_data in trap by expanding it now (double quotes), not at trap time
-    trap "rm -f '$temp_data'" RETURN
+    trap 'rm -f "$temp_data"' RETURN
 
     # Gather role data into temp file (using process substitution to avoid subshell)
     while IFS= read -r device; do
@@ -2253,12 +2266,12 @@ list_roles() {
       "$header_role" "$header_type" "$header_network" "$header_config"
 
     # Print separator
-    printf "  ${DIM}"
+    printf '%s' "  ${DIM}"
     printf "%-${w_role}s " "$(printf '─%.0s' $(seq 1 $((w_role-1))))"
     printf "%-${w_type}s " "$(printf '─%.0s' $(seq 1 $((w_type-1))))"
     printf "%-${w_network}s " "$(printf '─%.0s' $(seq 1 $((w_network-1))))"
     printf "%-${w_config}s" "$(printf '─%.0s' $(seq 1 $((w_config-1))))"
-    printf "${RST}\n"
+    printf '%s\n' "${RST}"
 
     # Print data rows
     while IFS='|' read -r device device_type network_type config_display; do
@@ -2429,7 +2442,8 @@ _flash_recovery() {
     # Create flash log directory
     local flash_log_dir="$HOME/.iotstack/logs/flash"
     mkdir -p "$flash_log_dir"
-    local flash_log="$flash_log_dir/$(date +%Y%m%d_%H%M%S).log"
+    local flash_log
+    flash_log="$flash_log_dir/$(date +%Y%m%d_%H%M%S).log"
 
     # Erase flash completely to handle devices with incompatible firmware (RCP, etc.)
     info "Erasing flash memory..."
@@ -2541,7 +2555,8 @@ _flash_recovery() {
 
   local failed=0
   for tty in "${tty_devices[@]}"; do
-    local log_file="/tmp/iotstack-flash-recovery-$(basename "$tty").log"
+    local log_file
+    log_file="/tmp/iotstack-flash-recovery-$(basename "$tty").log"
     echo ""
     info "Flashing $tty (log: $log_file)..."
     echo "════════════════════════════════════════════════════════"
@@ -2619,8 +2634,10 @@ _flash_recovery_dual() {
 
   if [[ ${#recovery_devices[@]} -gt 0 ]]; then
     # Try to toggle via Home Assistant first
-    local ha_url=$(pass show iotstack/common/ha_url 2>/dev/null || echo "")
-    local ha_token=$(pass show iotstack/common/ha_token 2>/dev/null || echo "")
+    local ha_url
+    ha_url=$(pass show iotstack/common/ha_url 2>/dev/null || echo "")
+    local ha_token
+    ha_token=$(pass show iotstack/common/ha_token 2>/dev/null || echo "")
 
     if [[ -n "$ha_url" && -n "$ha_token" ]]; then
       # Call the partition toggle button via Home Assistant
@@ -2629,12 +2646,14 @@ _flash_recovery_dual() {
         local entity_id="button.${device_name,,}_toggle_boot_partition"
 
         info "Toggling partition on $device_name (via HA)..."
-        curl -s -X POST "$ha_url/api/services/button/press" \
+        if curl -s -X POST "$ha_url/api/services/button/press" \
           -H "Authorization: Bearer $ha_token" \
           -H "Content-Type: application/json" \
-          -d "{\"entity_id\": \"$entity_id\"}" >/dev/null 2>&1 && \
-          ok "  Partition toggled, device rebooting..." || \
+          -d "{\"entity_id\": \"$entity_id\"}" >/dev/null 2>&1; then
+          ok "  Partition toggled, device rebooting..."
+        else
           warn "  Could not toggle partition via HA (continuing anyway)"
+        fi
       done
     else
       # Fallback: toggle via ESPHome API directly on device
@@ -2766,7 +2785,8 @@ _flash_production_smart() {
 
       # Wait for device to reboot and appear with correct firmware name
       info "OTA update complete! Waiting for device to reboot..."
-      local product_name="${device_role}"
+      # Extract product name from device name (everything before the MAC suffix)
+      local product_name="${device%-*}"
       local max_reboot_wait=45
       local reboot_waited=0
       local rebooted=false
@@ -2805,96 +2825,48 @@ Note: Use 'iotstack update $device' for OTA flashing to devices already on netwo
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
-sync_common_secrets() {
-  # Pass takes precedence: if a value exists in pass, it's never overridden
-
-  [[ ! -f "$secrets_yaml" ]] && return 0
-
-  # Setup pass environment
-  export GNUPGHOME="${HOME}/.iotstack/.gnupg"
-  export PASSWORD_STORE_DIR="${HOME}/.iotstack/.pass"
-
-  # Seed HA token only if pass doesn't have it yet
-  if ! pass show "iotstack/common/ha_token" >/dev/null 2>&1; then
-    local ha_token=$(grep "^ha_token:" "$secrets_yaml" 2>/dev/null | cut -d'"' -f2 | xargs || echo "")
-    if [[ -n "$ha_token" ]]; then
-      { echo "$ha_token"; echo "$ha_token"; } | pass insert -f "iotstack/common/ha_token" 2>&1 >/dev/null || true
-    fi
-  fi
-
-  # Seed HA URL only if pass doesn't have it yet
-  if ! pass show "iotstack/common/ha_url" >/dev/null 2>&1; then
-    local ha_url=$(grep "^ha_url:" "$secrets_yaml" 2>/dev/null | cut -d'"' -f2 | xargs || echo "")
-    if [[ -n "$ha_url" ]]; then
-      { echo "$ha_url"; echo "$ha_url"; } | pass insert -f "iotstack/common/ha_url" 2>&1 >/dev/null || true
-    fi
-  fi
-}
 
 verify_wifi_credentials() {
-  # If missing from both, prompt user to provide them
-
-  [[ ! -f "$secrets_yaml" ]] && return 0  # File doesn't exist yet, will be created
+  # Check pass store for WiFi credentials
+  # If missing, prompt user to provide them
 
   local has_ssid=false
   local has_password=false
   local wifi_ssid=""
   local wifi_password=""
 
-  # Check pass store first (preferred location)
-  if command -v pass &>/dev/null; then
-    if pass show iotstack/common/wifi_ssid >/dev/null 2>&1; then
-      wifi_ssid=$(pass show iotstack/common/wifi_ssid 2>/dev/null)
-      has_ssid=true
-      debug "Found WiFi SSID in pass store"
-    fi
-    if pass show iotstack/common/wifi_password >/dev/null 2>&1; then
-      wifi_password=$(pass show iotstack/common/wifi_password 2>/dev/null)
-      has_password=true
-      debug "Found WiFi password in pass store"
-    fi
+  # Check pass store for WiFi SSID
+  if pass show iotstack/common/wifi_ssid >/dev/null 2>&1; then
+    wifi_ssid=$(pass show iotstack/common/wifi_ssid 2>/dev/null)
+    has_ssid=true
+    debug "Found WiFi SSID in pass store"
   fi
 
-  if [[ "$has_ssid" == false ]] && grep -q "^wifi_ssid:" "$secrets_yaml"; then
-    wifi_ssid=$(grep "^wifi_ssid:" "$secrets_yaml" | cut -d'"' -f2 | head -1)
-    if [[ -n "$wifi_ssid" ]]; then
-      has_ssid=true
-    fi
+  # Check pass store for WiFi password
+  if pass show iotstack/common/wifi_password >/dev/null 2>&1; then
+    wifi_password=$(pass show iotstack/common/wifi_password 2>/dev/null)
+    has_password=true
+    debug "Found WiFi password in pass store"
   fi
 
-  if [[ "$has_password" == false ]] && grep -q "^wifi_password:" "$secrets_yaml"; then
-    wifi_password=$(grep "^wifi_password:" "$secrets_yaml" | cut -d'"' -f2 | head -1)
-    if [[ -n "$wifi_password" ]]; then
-      has_password=true
-    fi
-  fi
-
-  # If still missing, prompt user
+  # If missing, prompt user
   if [[ "$has_ssid" == false ]] || [[ "$has_password" == false ]]; then
     warn "Missing WiFi credentials"
     echo ""
 
     if [[ "$has_ssid" == false ]]; then
-      read -p "Enter WiFi SSID: " wifi_ssid
+      read -rp "Enter WiFi SSID: " wifi_ssid
       [[ -z "$wifi_ssid" ]] && err "WiFi SSID cannot be empty"
-
-      if command -v pass &>/dev/null; then
-        { echo "$wifi_ssid"; echo "$wifi_ssid"; } | pass insert -f iotstack/common/wifi_ssid 2>&1 | grep -v "^mkdir:" || true
-        debug "Stored WiFi SSID in pass store"
-      fi
-      echo "wifi_ssid: \"$wifi_ssid\"" >> "$secrets_yaml"
+      { echo "$wifi_ssid"; echo "$wifi_ssid"; } | pass insert -f iotstack/common/wifi_ssid 2>&1 | grep -v "^mkdir:" || true
+      debug "Stored WiFi SSID in pass store"
     fi
 
     if [[ "$has_password" == false ]]; then
-      read -sp "Enter WiFi password: " wifi_password
+      read -rsp "Enter WiFi password: " wifi_password
       echo ""
       [[ -z "$wifi_password" ]] && err "WiFi password cannot be empty"
-
-      if command -v pass &>/dev/null; then
-        { echo "$wifi_password"; echo "$wifi_password"; } | pass insert -f iotstack/common/wifi_password 2>&1 | grep -v "^mkdir:" || true
-        debug "Stored WiFi password in pass store"
-      fi
-      echo "wifi_password: \"$wifi_password\"" >> "$secrets_yaml"
+      { echo "$wifi_password"; echo "$wifi_password"; } | pass insert -f iotstack/common/wifi_password 2>&1 | grep -v "^mkdir:" || true
+      debug "Stored WiFi password in pass store"
     fi
 
     ok "WiFi credentials configured"
@@ -2959,8 +2931,6 @@ EOF
 
 cmd_clean() {
   # Clean build artifacts and compilation caches
-  local verbose="${1:-}"
-
   info "Cleaning build artifacts..."
 
   # List of directories/files to clean
@@ -3084,8 +3054,6 @@ main() {
   verify_wifi_credentials
 
   # Sync common secrets silently at startup
-  sync_common_secrets
-
   local command="${1:-help}"
 
   case "$command" in

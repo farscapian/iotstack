@@ -30,7 +30,8 @@ _get_or_prompt_credential() {
   local is_secret="${3:-true}"  # true for passwords, false for non-secret values
 
   # Try to get from pass store
-  local value=$(pass show "$pass_path" 2>/dev/null || echo "")
+  local value
+  value=$(pass show "$pass_path" 2>/dev/null || echo "")
 
   # If not set or is placeholder, prompt user
   if [[ -z "$value" || "$value" == "CONFIGURE_ME" ]]; then

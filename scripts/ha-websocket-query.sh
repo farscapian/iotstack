@@ -58,8 +58,11 @@ ensure_websocat() {
 
   # Download latest prebuilt binary from GitHub
   echo "[INFO] Downloading websocat from GitHub releases..." >&2
-  local arch=$(uname -m)
-  local os_type=$(uname -s | tr '[:upper:]' '[:lower:]')
+  local arch
+  arch=$(uname -m)
+  # os_type variable not used currently, can be removed if no future need
+  # local os_type
+  # os_type=$(uname -s | tr '[:upper:]' '[:lower:]')
 
   # Map architecture to GitHub release naming
   local binary_name=""
@@ -93,9 +96,8 @@ ensure_websocat() {
 }
 
 sync_secret() {
-  local secret_name="$1"
-  local secrets_key="$2"
-  local pass_path="$3"
+  local secrets_key="$1"
+  local pass_path="$2"
 
   local secrets_value=""
   if [[ -f "$SECRETS_YAML" ]]; then
@@ -119,9 +121,6 @@ sync_secret() {
 
   # Only sync and warn if values differ
   if [[ "$pass_value" != "$secrets_value" ]]; then
-    if [[ -z "$pass_value" ]]; then
-    else
-    fi
     # Pass requires password twice (for confirmation)
     if ! { echo "$secrets_value"; echo "$secrets_value"; } | pass insert -f "$pass_path" 2>&1; then
       warn "Failed to sync '$pass_path' to pass - may cause repeated warnings"
@@ -133,10 +132,10 @@ sync_secret() {
 }
 
 # Get secrets
-HA_TOKEN=$(sync_secret "HA Token" "ha_token" "iotstack/common/ha_token" || pass show "iotstack/common/ha_token" 2>/dev/null || echo "")
+HA_TOKEN=$(sync_secret "ha_token" "iotstack/common/ha_token" || pass show "iotstack/common/ha_token" 2>/dev/null || echo "")
 HA_TOKEN=$(printf '%s' "$HA_TOKEN" | xargs)
 
-HA_URL=$(sync_secret "HA URL" "ha_url" "iotstack/common/ha_url" || pass show "iotstack/common/ha_url" 2>/dev/null || echo "$HA_URL")
+HA_URL=$(sync_secret "ha_url" "iotstack/common/ha_url" || pass show "iotstack/common/ha_url" 2>/dev/null || echo "$HA_URL")
 HA_URL=$(printf '%s' "$HA_URL" | xargs)
 
 # Convert HTTP/HTTPS to WS/WSS

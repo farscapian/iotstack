@@ -1,13 +1,7 @@
 substitutions:
-  friendly_name: "Sendspin Speaker"
+  device_role: "sendspinspeaker"
+  friendly_name: "SendSpin Speaker"
 
-
-# External components (replaces deprecated custom_components folder)
-external_components:
-  - source:
-      type: local
-      path: ./external_components
-    components: [nvs_secrets]
 esphome:
   name: "sendspin"
   friendly_name: "${friendly_name}"
@@ -23,15 +17,19 @@ esp32:
   framework:
     type: esp-idf
 
-# 1. Core services
+external_components:
+  - source:
+      type: local
+      path: ./external_components
+    components: [nvs_secrets]
 
+# 1. Core services
 logger:
   hardware_uart: USB_SERIAL_JTAG
   level: DEBUG
 
 # Custom NVS secrets component - loads device-specific API key from NVS
 nvs_secrets:
-
 
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS

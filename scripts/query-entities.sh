@@ -26,9 +26,8 @@ err() { echo "ERROR: $*" >&2; exit 1; }
 warn() { echo "WARN: $*" >&2; }
 
 sync_secret() {
-  local secret_name="$1"
-  local secrets_key="$2"
-  local pass_path="$3"
+  local secrets_key="$1"
+  local pass_path="$2"
 
   local secrets_value
   if [[ -f "$SECRETS_YAML" ]]; then
@@ -43,20 +42,17 @@ sync_secret() {
 
   # If different or missing, update pass
   if [[ "$pass_value" != "$secrets_value" ]]; then
-    if [[ -z "$pass_value" ]]; then
-    else
-    fi
     echo "$secrets_value" | pass insert -f "$pass_path" 2>&1 || true
   fi
 
   echo "$secrets_value"
 }
 
-HA_TOKEN=$(sync_secret "HA Token" "ha_token" "iotstack/common/ha_token" || pass show "iotstack/common/ha_token" 2>/dev/null || echo "")
+HA_TOKEN=$(sync_secret "ha_token" "iotstack/common/ha_token" || pass show "iotstack/common/ha_token" 2>/dev/null || echo "")
 HA_TOKEN=$(printf '%s' "$HA_TOKEN" | xargs)  # Trim all whitespace
 
 
-HA_URL=$(sync_secret "HA URL" "ha_url" "iotstack/common/ha_url" || pass show "iotstack/common/ha_url" 2>/dev/null || echo "$HA_URL")
+HA_URL=$(sync_secret "ha_url" "iotstack/common/ha_url" || pass show "iotstack/common/ha_url" 2>/dev/null || echo "$HA_URL")
 HA_URL=$(printf '%s' "$HA_URL" | xargs)  # Trim all whitespace
 
 
@@ -65,13 +61,10 @@ echo "[DEBUG] HA_URL length: ${#HA_URL} chars" >&2
 
 # Step 1: Get device list and find matching device_id
 echo "[DEBUG] Fetching device registry from: $HA_URL/api/config/device_registry/list" >&2
-device_data=$(curl -v -m 10 -X GET \
+if ! device_data=$(curl -v -m 10 -X GET \
   -H "Authorization: Bearer $HA_TOKEN" \
   -H "Content-Type: application/json" \
-  "$HA_URL/api/config/device_registry/list" 2>&1)
-
-# Check for curl errors
-if [[ $? -ne 0 ]]; then
+  "$HA_URL/api/config/device_registry/list" 2>&1); then
   err "Failed to query device registry: $device_data"
 fi
 
@@ -110,12 +103,10 @@ echo "[DEBUG] Found device_id: $device_id" >&2
 
 # Step 2: Query entity registry for entities belonging to this device
 echo "[DEBUG] Fetching entity registry..." >&2
-entity_data=$(curl -s -m 10 -X GET \
+if ! entity_data=$(curl -s -m 10 -X GET \
   -H "Authorization: Bearer $HA_TOKEN" \
   -H "Content-Type: application/json" \
-  "$HA_URL/api/config/entity_registry/list" 2>&1)
-
-if [[ $? -ne 0 ]]; then
+  "$HA_URL/api/config/entity_registry/list" 2>&1); then
   err "Failed to query entity registry: $entity_data"
 fi
 

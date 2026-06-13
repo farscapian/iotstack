@@ -166,7 +166,9 @@ if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
 
     # zbar-tools
     if [[ " ${MISSING_DEPS[*]} " =~ " zbar-tools " ]]; then
-      sudo apt update && sudo apt install -y zbar-tools || warn "Failed to install zbar-tools"
+      if ! (sudo apt update && sudo apt install -y zbar-tools); then
+        warn "Failed to install zbar-tools"
+      fi
     fi
 
     # curl

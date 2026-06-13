@@ -21,8 +21,8 @@ NC='\033[0m' # No Color
 HA_URL="${HA_URL:-}"
 HA_TOKEN="${HA_TOKEN:-}"
 
-# Cache for device list
-DEVICE_CACHE=""
+# Cache for device list (currently unused, may be needed for future optimization)
+# DEVICE_CACHE=""
 
 #######################################
 # Utility Functions
@@ -169,12 +169,12 @@ get_thread_devices() {
   devices_json=$(query_ha_rest "config/device_registry/list" "GET")
 
   # Filter for OTBR and Thread-related devices
-  echo "$devices_json" | python3 << PYTHON
+  python3 << PYTHON
 import json
 import sys
 
 try:
-    devices = json.load(sys.stdin)
+    devices = json.loads('''$devices_json''')
     thread_devices = []
 
     for device in devices:
@@ -211,12 +211,12 @@ get_thread_entities() {
   local entities_json
   entities_json=$(query_ha_rest "states" "GET")
 
-  echo "$entities_json" | python3 << PYTHON
+  python3 << PYTHON
 import json
 import sys
 
 try:
-    entities = json.load(sys.stdin)
+    entities = json.loads('''$entities_json''')
 
     thread_entities = {
         "routers": [],
@@ -329,9 +329,9 @@ show_thread_stats() {
   # Show router details
   if [[ $router_count -gt 0 ]]; then
     echo -e "${YELLOW}Thread Routers:${NC}"
-    echo "$thread_entities" | python3 << PYTHON
+    python3 << PYTHON
 import json, sys
-data = json.load(sys.stdin)
+data = json.loads('''$thread_entities''')
 for router in data.get("routers", []):
     print(f"  • {router['entity_id']}: {router['state']}")
 PYTHON
@@ -341,9 +341,9 @@ PYTHON
   # Show sleepy devices
   if [[ $sleepy_count -gt 0 ]]; then
     echo -e "${YELLOW}Sleepy Devices:${NC}"
-    echo "$thread_entities" | python3 << PYTHON
+    python3 << PYTHON
 import json, sys
-data = json.load(sys.stdin)
+data = json.loads('''$thread_entities''')
 for device in data.get("sleepy_devices", []):
     print(f"  • {device['entity_id']}: {device['state']}")
 PYTHON

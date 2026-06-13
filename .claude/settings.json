@@ -8,8 +8,6 @@
       "WebFetch(domain:next.esphome.io)",
       "WebFetch(domain:www.amazon.com)",
       "WebFetch(domain:claude.ai)",
-      "Bash(ln -sf ../secrets.yaml wifi/secrets.yaml)",
-      "Bash(ln -sf ../secrets.yaml thread/secrets.yaml)",
       "Bash(bash -n /home/derek/Sync/mini_projects/esp32/esphome/update_all.sh)",
       "Bash(bash -n /home/derek/Sync/mini_projects/esp32/esphome/update_devices.sh)",
       "Bash(git add *)",
@@ -165,7 +163,6 @@
       "Bash(git commit -m 'fix: Device discovery in rotate-password counted only first MAC *)",
       "Bash(git commit -m 'refactor: Dynamic role discovery and add parallel flashing to rotate-password *)",
       "Bash(git commit -m 'refactor: Extract parallel job queue into reusable helper function *)",
-      "Bash(git commit -m 'fix: mount-secrets now falls back to yamls/secrets.yaml if secrets not in pass *)",
       "Bash(git commit -m 'security: Enforce tmpfs-only secrets, no unencrypted disk fallback *)",
       "Bash(git commit -m 'fix: Add detailed error messages for gocryptfs initialization/mounting *)",
       "Bash(git commit -m 'fix: Add pass initialization check and suppress output *)",
@@ -216,11 +213,9 @@
       "Bash(git commit -m 'CRITICAL FIX: Use esphome upload instead of run for OTA flashing *)",
       "Bash(git commit -m 'refactor: Remove USB serial flashing from '\\\\''iotstack update'\\\\'' *)",
       "Bash(git commit -m 'refactor: Rename rotate-password to rotate-secrets with conditional API key update *)",
-      "Bash(git commit -m 'fix: Read HA credentials from secrets.yaml in rotate-secrets command *)",
       "Bash(git commit -m 'fix: Define secrets_yaml variable in rotate-secrets command *)",
       "Bash(git commit -m 'feat: Auto-retrieve current OTA password from YAML secret reference *)",
       "Bash(git commit -m 'fix: Auto-extract and set current secrets from YAML if not versioned yet *)",
-      "Bash(git commit -m 'fix: Read current secrets from yamls/secrets.yaml \\(source file\\) *)",
       "Bash(git commit -m 'refactor: Remove config file dependency from iotstack-secrets *)",
       "Bash(git commit -m 'refactor: Remove config file creation from setup.sh *)",
       "Bash(git commit -m 'fix: Show pass errors instead of silencing them *)",
@@ -242,7 +237,6 @@
       "Bash(git commit -m 'refactor: Filter out mkdir messages from pass output *)",
       "Bash(git revert *)",
       "Bash(git commit -m 'debug: Show pass insert output for config items *)",
-      "Bash(git commit -m 'fix: Handle quoted values with special characters in secrets.yaml *)",
       "Bash(git commit -m 'fix: Correct indentation and remove extra fi statement *)"
     ]
   }

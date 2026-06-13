@@ -675,6 +675,7 @@ if [[ -n "$API_KEY" ]]; then
   YAML_FILE="$TEMP_YAML"
 
   # Clean up temp file on exit (expand $TEMP_YAML now, not at trap-run time)
+  # shellcheck disable=SC2064
   trap "rm -f '$TEMP_YAML' 2>/dev/null; cleanup" EXIT
 fi
 
@@ -867,7 +868,6 @@ done < <(awk '
 
 # ── Home Assistant registry check ───────────────────────────────────────────
 # Runs immediately after discovery so it always prints, even when no devices
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HA_URL=""
 HA_TOKEN=""
 API_KEY=""
@@ -1105,14 +1105,14 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
         NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG" \
           | tail -1 | sed 's/config_hash=0x//')
         COMPILED=true
-        printf "\r  ⚙ Compiling ${GRN}✓${RST}\n" >&2
+        printf '\r  ⚙ Compiling %s✓%s\n' "$GRN" "$RST" >&2
         # Persist cache for next run
         printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
           "$YAML_SHA256" "$ESPHOME_VERSION" "$NEW_CONFIG_HASH" > "$CACHE_FILE"
         setup_flash_logs "$NEW_CONFIG_HASH"
         [[ -n "$NEW_CONFIG_HASH" ]] && ok "Build config_hash: ${NEW_CONFIG_HASH}"
       else
-        printf "\r  ⚙ Compiling ${RED}✗${RST}\n" >&2
+        printf '\r  ⚙ Compiling %s✗%s\n' "$RED" "$RST" >&2
         err "Compilation failed:"
         echo
         cat "$COMPILE_LOG"
@@ -1288,9 +1288,9 @@ if [[ "$COMPILED" == false ]]; then
     trap 'rm -f "$COMPILE_LOG"' EXIT
 
     if "$ESPHOME_BIN" compile "$YAML_FILE" >> "$COMPILE_LOG" 2>&1; then
-      printf " ${GRN}✓${RST}\n" >&2
+      printf ' %s✓%s\n' "$GRN" "$RST" >&2
     else
-      printf " ${RED}✗${RST}\n" >&2
+      printf ' %s✗%s\n' "$RED" "$RST" >&2
       err "Compilation failed:"
       echo
       cat "$COMPILE_LOG"
@@ -1336,7 +1336,7 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
 
   # Fallback: search for most recently created firmware.ota.bin (in case name has variables)
   if [[ ! -f "$FIRMWARE_BIN" ]]; then
-    FIRMWARE_BIN=$(find "yamls/.esphome/build" -name "firmware.ota.bin" -type f 2>/dev/null | xargs ls -t 2>/dev/null | head -1)
+    FIRMWARE_BIN=$(find "yamls/.esphome/build" -name "firmware.ota.bin" -type f -print0 2>/dev/null | xargs -0 ls -t 2>/dev/null | head -1)
   fi
 
   (

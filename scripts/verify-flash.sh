@@ -38,12 +38,10 @@ echo ""
 
 # Temporary directory for verification files
 VERIFY_DIR=$(mktemp -d)
-trap "rm -rf $VERIFY_DIR" EXIT
+trap 'rm -rf "$VERIFY_DIR"' EXIT
 
-declare -A checksums
 declare -a offsets
 declare -a files
-declare -a sizes
 
 # Define what to verify (offset, file, actual file size - no padding)
 # Read actual file sizes to handle any firmware variants
@@ -69,8 +67,8 @@ for i in {0..2}; do
   # Read back from device (read more to account for padding, then truncate)
   read_file="${VERIFY_DIR}/${file}.read"
   # Read with padding (round up to 256-byte boundary for safety)
-  read_size=$((($file_size + 255) / 256 * 256))
-  read_size=$((read_size > 0x10000 ? read_size : 0x10000))  # At least 64KB to be safe
+  read_size=$(( (file_size + 255) / 256 * 256 ))
+  read_size=$(( read_size > 0x10000 ? read_size : 0x10000 ))  # At least 64KB to be safe
 
   info "Verifying $file at offset $offset (size: $file_size bytes)..."
 
@@ -98,8 +96,6 @@ done
 echo ""
 if [[ $failed -eq 0 ]]; then
   ok "All flash checksums verified successfully!"
-  exit 0
 else
   err "$failed checksum(s) failed verification"
-  exit 1
 fi

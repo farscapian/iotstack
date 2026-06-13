@@ -27,7 +27,7 @@ get_secret() {
 set_secret() {
     local key="$1"
     local value="$2"
-    { echo "$value"; echo "$value"; } | pass insert -f "$key" 2>&1 >/dev/null || return 1
+    { echo "$value"; echo "$value"; } | pass insert -f "$key" >/dev/null 2>&1 || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -157,7 +157,7 @@ fi
 echo "[info] Triggering HA Matter commission via WebSocket..."
 
 # Use Python to handle WebSocket connection and commissioning
-python3 << 'PYTHON_EOF'
+python3 << 'PYTHON_EOF' "${HA_URL}" "${HA_TOKEN}" "${WINDOW_CODE}"
 import sys
 import json
 import websocket
@@ -281,7 +281,6 @@ except Exception as e:
     sys.exit(1)
 
 PYTHON_EOF
-" ${HA_URL} "${HA_TOKEN}" "${WINDOW_CODE}"
 
 # ---------------------------------------------------------------------------
 # 9. Increment NEXT_NODE_ID in pass store
