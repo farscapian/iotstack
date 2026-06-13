@@ -8,11 +8,9 @@ DEPENDENCIES = []
 nvs_secrets_ns = cg.esphome_ns.namespace("nvs_secrets")
 NVSSecrets = nvs_secrets_ns.class_("NVSSecrets", cg.Component)
 
-CONFIG_SCHEMA = cv.COMPONENT_SCHEMA.extend({
-    cv.GenerateID(): cv.declare_id(NVSSecrets),
-})
+CONFIG_SCHEMA = cv.COMPONENT_SCHEMA
 
 
 async def to_code(config):
-    var = cg.new_Pvariable(config[CONF_ID])
+    var = cg.new_Pvariable(NVSSecrets())
     await cg.register_component(var, config)
