@@ -1,0 +1,85 @@
+iotstack query — Additional Documentation
+
+Dependencies
+=============
+
+iotstack query uses Home Assistant's WebSocket API to list devices and entities.
+
+Required:
+  - Home Assistant instance running and accessible
+  - Long-lived access token configured:
+    pass insert iotstack/common/ha_token
+  - Home Assistant URL configured:
+    pass insert iotstack/common/ha_url
+  - websocat (WebSocket client) installed
+
+Optional dependencies are auto-installed:
+  - python3 + websocket-client library (for fallback query)
+  - zbarimg (for QR code decoding, only needed for 'iotstack commission')
+
+Installation:
+  Setup script installs these automatically. If not:
+  - Ubuntu/Debian: sudo apt install websocat python3 python3-pip
+  - Then: pip3 install websocket-client
+
+
+Home Assistant Configuration
+=============================
+
+To enable iotstack query and other HA integration:
+
+1. Create a long-lived access token in Home Assistant:
+   - Settings → Developer Tools → Long-Lived Access Tokens
+   - Click "Create Token"
+   - Name it "iotstack"
+   - Copy the token
+
+2. Store in pass:
+   pass insert iotstack/common/ha_token
+   (paste the token when prompted)
+
+3. Store HA URL:
+   pass insert iotstack/common/ha_url
+   (example: http://192.168.1.100:8123 or https://home.example.com)
+
+4. Test:
+   iotstack query --list
+
+
+Entity Output Format
+====================
+
+Example output:
+  Device: Kitchen RoomRemote
+  ├─ button.kitchen_roomremote_stop (button)
+  ├─ climate.kitchen_roomremote (climate, no turn_on/turn_off)
+  ├─ light.kitchen_roomremote_status_led (light, turn_on, turn_off, toggle)
+  ├─ sensor.kitchen_roomremote_battery (sensor)
+  └─ sensor.kitchen_roomremote_action (sensor)
+
+Attributes shown:
+  - Entity ID (platform.domain_specific_name)
+  - Entity type (button, sensor, light, climate, etc.)
+  - Available actions for that entity type (turn_on, turn_off, toggle, etc.)
+
+Use cases:
+  - Check if a device was integrated properly in HA
+  - Find entity IDs for automations or scripts
+  - Verify which controls are available
+  - Troubleshoot missing entities (shouldn't happen with ESPHome)
+
+
+WebSocket API Details
+=====================
+
+iotstack query connects via WebSocket API (more efficient than REST):
+
+  WebSocket: ws://homeassistant.local:8123/api/websocket
+
+Commands used:
+  - auth (authenticate with token)
+  - config/device_registry/list (list devices)
+  - config/entity_registry/list (list entities)
+
+This is more reliable than REST API for querying device information and
+requires no special permissions—any long-lived token works.

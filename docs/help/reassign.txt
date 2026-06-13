@@ -1,0 +1,80 @@
+iotstack reassign — Additional Documentation
+
+SECURITY: Password Handling Best Practices
+===========================================
+
+NEVER pass passwords on the command line:
+  ✗ BAD:   iotstack reassign 19b164 mmwave --ota-password "mySecret"
+  ✗ WORSE: iotstack reassign 19b164 mmwave --ota-password "$SECRET"
+
+Instead, pass via environment variable:
+  ✓ GOOD:  export OTA_PWD="generated_password"
+           iotstack reassign 19b164 mmwave --ota-password "$OTA_PWD"
+           unset OTA_PWD
+
+
+Password List Mode
+==================
+
+For recovering devices with unknown or lost passwords, use a password list:
+
+  iotstack reassign 19b164 mmwave --ota-password-list-path ~/passwords.txt
+
+File format (one password per line):
+  myPassword123
+  anotherPassword456
+  # Lines starting with # are ignored (comments)
+  YetAnotherPassword789
+
+File security:
+  chmod 600 ~/passwords.txt        # Ensure only you can read it
+  rm ~/passwords.txt               # Delete after successful reassignment
+
+The command will try each password until one succeeds. This is useful when:
+  - A device has a password you no longer have
+  - You're trying multiple archived passwords
+  - You're rotating devices with unknown credentials
+
+
+Home Assistant Entity ID Updates
+================================
+
+After reassignment, entity IDs automatically update in Home Assistant:
+
+  Before reassignment:  "ble-proxy-19b164" (all buttons, sensors, etc.)
+  Reassign to mmwave →  "mmwave-19b164" (all entities updated)
+
+This happens automatically via WebSocket API when:
+  - HA_URL and HA_TOKEN are configured in pass:
+    pass insert iotstack/common/ha_url
+    pass insert iotstack/common/ha_token
+
+Entity ID format:
+  <device-friendly-name>-<mac-suffix>
+
+If HA is not configured, reassignment still works but you'll need to
+manually update automations and dashboards that reference the old entity IDs.
+
+
+Device Role Switching
+=====================
+
+Common reassignment scenarios:
+
+  1. Repurpose a device:
+     Old: WiFi BLE proxy
+     New: Thread router
+     Command: iotstack reassign a1a7b0 threadrouter
+
+  2. Split a fleet:
+     Update some devices to a new configuration
+     Command: iotstack reassign a1a7b0 8e1aa8 mmwave
+
+  3. Replace failed device:
+     Assign spare device to the failed device's role
+     Command: iotstack reassign 135b60 bleproxy
+
+All reassignments:
+  - Leave other devices untouched
+  - Update entity IDs in HA if configured
+  - Take effect immediately (no reboot needed)

@@ -1,0 +1,71 @@
+iotstack update — Additional Documentation
+
+SECURITY: OTA Password Best Practices
+======================================
+
+NEVER pass passwords on the command line:
+  ✗ BAD:   iotstack update bleproxy --ota-password "mySecret123"
+  ✗ WORSE: iotstack update bleproxy --ota-password "$SECRET"
+
+Instead, pass via environment variable:
+  ✓ GOOD:  export OTA_PWD="generated_password"
+           iotstack update bleproxy --ota-password "$OTA_PWD"
+           unset OTA_PWD
+
+Why this matters:
+  - Command line arguments are visible in:
+    • Shell history (~/.bash_history, ~/.zsh_history)
+    • Process listing (ps, top)
+    • Shell jobs
+  - Environment variables are slightly better but still not ideal
+  - Best: Use --ota-password flag with generated passwords from 'iotstack secret'
+
+For production: Use 'iotstack rotate-secrets' to generate strong passwords
+regularly. Secrets are stored encrypted in pass (GPG), never in files.
+
+
+Delta Mode and Build Hashing
+=============================
+
+By default, iotstack uses delta mode to skip updating devices that already
+have the correct firmware. This comparison works by checking config_hash:
+
+  1. Firmware is compiled
+  2. Config hash is calculated from the compiled binary
+  3. mDNS discovery finds all devices and reads their hash
+  4. Only devices with mismatched hashes are flashed
+
+This saves time and reduces network load when devices are already up-to-date.
+
+To force flashing all devices regardless of hash:
+  iotstack update bleproxy --force-reflash
+
+
+Parallel Flashing
+=================
+
+By default, iotstack flashes up to 4 devices in parallel:
+  iotstack update all              # Flashes up to 4 devices at once
+
+To change parallel jobs:
+  iotstack update all --jobs 8     # Up to 8 devices in parallel
+  iotstack update all --jobs 1     # Sequential (one at a time)
+
+Thread devices use --jobs 1 automatically (Thread OTA is slow and parallelism
+causes mesh contention). This is enforced transparently.
+
+
+MAC Address Targeting
+=====================
+
+Update only specific devices using their MAC address suffix:
+
+  iotstack update a1a7b0 8e1aa8 bleproxy
+
+This is useful when:
+  - You're testing on a few devices before rolling out to the fleet
+  - Specific devices need a different configuration
+  - You want to stagger updates across devices
+
+Format: 6 hex digits (last 6 chars of MAC address)
+Find MACs: iotstack list devices --id

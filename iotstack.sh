@@ -666,10 +666,6 @@ Examples:
   iotstack update bleproxy --ota-password <password>
                         # Update with OTA password
 
-NOTE: Pass OTA password via environment variable to avoid shell history:
-  export OTA_PWD=<password>
-  iotstack update bleproxy --ota-password \"\$OTA_PWD\"
-
 EOF
 }
 
@@ -777,13 +773,6 @@ PASSWORD LIST FILE FORMAT:
     # Old password, probably not used
     oldPassword789
 
-SECURITY: Pass single password via environment variable to avoid shell history:
-  export OTA_PWD=<password>
-  iotstack reassign 19b164 mmwave --ota-password \"\$OTA_PWD\"
-
-For password list mode, ensure the file permissions are restrictive:
-  chmod 600 ~/tmp/passwords.txt
-
 EOF
 }
 
@@ -824,12 +813,6 @@ Examples:
   iotstack flash threadrouter
                           # Auto-detect all USB devices
 
-Notes:
-  - Fresh device setup: 2-3 minutes (recovery serial flash + production OTA)
-  - Recovery image enables automatic fallback if production firmware fails
-  - All devices share the same universal recovery.yaml firmware
-  - OTA updates after setup use: iotstack update <device>
-
 EOF
 }
 
@@ -855,10 +838,6 @@ Examples:
                         # List all HA devices
   iotstack query "Bilresa5 - Secondary RoomRemote"
   iotstack query "Kitchen RoomRemote"
-
-Notes:
-  - Uses WebSocket API (requires websocat)
-  - Auto-installs websocat if needed
 
 EOF
 }
@@ -890,11 +869,6 @@ Examples:
 
 To rotate secrets, use:
   iotstack rotate-secrets <role>
-
-Notes:
-  - Secrets stored in encrypted pass store
-  - Old secrets are archived with version numbers
-  - Use rotate-secrets to generate new secrets securely
 
 EOF
 }
@@ -2870,10 +2844,6 @@ Usage:
 Examples:
   iotstack clean                    # Clean all build artifacts
   iotstack -v clean                 # Verbose output
-
-Note:
-  This is safe to run—it only removes build artifacts, not source files.
-  The next `iotstack update` or `iotstack flash` will rebuild as needed.
 EOF
 }
 
