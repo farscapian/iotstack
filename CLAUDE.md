@@ -448,7 +448,6 @@ Architecture:
    - Separate from firmware binary
    - Offset and size defined in `partition-config.sh` (not hardcoded)
 
-3. **secrets.yaml**: Placeholder values only
    - Checked into git (safe for repo)
    - Used only at compile time (fallback/default)
    - Actual secrets come from NVS at runtime
@@ -461,7 +460,6 @@ setup.sh (first run)
   ↓
 iotstack flash <device> <role>
   ↓
-  Firmware compiled with placeholder secrets.yaml
   ↓
   Firmware flashed to device via esptool
   ↓

@@ -1,13 +1,11 @@
 #!/bin/bash
 # Query Home Assistant WebSocket API for entities matching a device
-# Uses pass as operational source, secrets.yaml as authoritative source
 
 set -euo pipefail
 
 DEVICE_NAME="${1:-}"
 LIST_DEVICES="${LIST_DEVICES:-false}"
 HA_URL="${HA_URL:-http://localhost:8123}"
-SECRETS_YAML="${SECRETS_YAML:-$(dirname "$0")/../yamls/secrets.yaml}"
 
 if [[ "$DEVICE_NAME" == "--list" ]] || [[ "$DEVICE_NAME" == "-l" ]]; then
   LIST_DEVICES=true
@@ -27,20 +25,17 @@ export PASSWORD_STORE_DIR="${HOME}/.iotstack/.pass"
 err() { echo "ERROR: $*" >&2; exit 1; }
 warn() { echo "WARN: $*" >&2; }
 
-# Helper: sync secret from secrets.yaml to pass if different
 sync_secret() {
   local secret_name="$1"
   local secrets_key="$2"
   local pass_path="$3"
 
-  # Read from secrets.yaml (authoritative)
   local secrets_value
   if [[ -f "$SECRETS_YAML" ]]; then
     secrets_value=$(grep "^${secrets_key}:" "$SECRETS_YAML" | cut -d'"' -f2 || echo "")
   fi
 
   if [[ -z "$secrets_value" ]]; then
-    return 1  # Not in secrets.yaml
   fi
 
   # Check if pass has this secret
@@ -52,9 +47,7 @@ sync_secret() {
   # If different or missing, update pass
   if [[ "$pass_value" != "$secrets_value" ]]; then
     if [[ -z "$pass_value" ]]; then
-      warn "Secret '$pass_path' not in pass, syncing from secrets.yaml"
     else
-      warn "Secret '$pass_path' differs from secrets.yaml, updating pass"
     fi
     echo "$secrets_value" | pass insert -f "$pass_path" 2>&1 || true
   fi
@@ -62,17 +55,13 @@ sync_secret() {
   echo "$secrets_value"
 }
 
-# Get HA_TOKEN: sync from secrets.yaml if needed, then use pass
 HA_TOKEN=$(sync_secret "HA Token" "ha_token" "iotstack/common/ha_token" || pass show "iotstack/common/ha_token" 2>/dev/null || echo "")
 HA_TOKEN=$(printf '%s' "$HA_TOKEN" | xargs)  # Trim all whitespace
 
-[[ -z "$HA_TOKEN" ]] && err "HA_TOKEN not found in pass or secrets.yaml"
 
-# Get HA_URL: sync from secrets.yaml if needed, then use pass or default
 HA_URL=$(sync_secret "HA URL" "ha_url" "iotstack/common/ha_url" || pass show "iotstack/common/ha_url" 2>/dev/null || echo "$HA_URL")
 HA_URL=$(printf '%s' "$HA_URL" | xargs)  # Trim all whitespace
 
-[[ -z "$HA_URL" ]] && err "HA_URL not found in pass, secrets.yaml, or HA_URL env var"
 
 echo "[INFO] Using HA_URL: $HA_URL" >&2
 echo "[DEBUG] HA_URL length: ${#HA_URL} chars" >&2

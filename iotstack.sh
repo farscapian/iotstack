@@ -501,13 +501,12 @@ is_valid_role() {
   list_roles_from_conf | grep -q "^${role_name}$"
 }
 
-# List available role names (YAML filenames without extension, excluding secrets.yaml)
+# List available role names (YAML filenames without extension,)
 # DEPRECATED: Use list_roles_from_conf() instead - this scans all YAML files, not official roles
 list_device_names() {
   for yaml_file in "$YAMLS_DIR"/*.yaml; do
     if [[ -f "$yaml_file" ]]; then
       local basename_only=$(basename "$yaml_file" .yaml)
-      # Skip secrets.yaml (not a device role)
       [[ "$basename_only" == "secrets" ]] && continue
       echo "$basename_only"
     fi
@@ -517,7 +516,6 @@ list_device_names() {
 # Query Home Assistant for device areas via WebSocket
 # Returns JSON with device_name -> area_name mapping
 get_ha_device_areas() {
-  local secrets_yaml="$YAMLS_DIR/secrets.yaml"
 
   # Try to get HA credentials from pass/secrets
   local ha_token=""
@@ -954,7 +952,6 @@ Examples:
   iotstack query "Kitchen RoomRemote"
 
 Notes:
-  - Requires HA_URL and HA_TOKEN in secrets.yaml or pass store
   - Uses WebSocket API (requires websocat)
   - Auto-installs websocat if needed
 
@@ -1340,7 +1337,7 @@ list_yaml_configs() {
       (( ${#network_type} + margin > w_network )) && w_network=$(( ${#network_type} + margin ))
       (( ${#yaml_file} + margin > w_config )) && w_config=$(( ${#yaml_file} + margin ))
     fi
-  done < <(find "${SCRIPT_DIR}/yamls" -maxdepth 1 -name "*.yaml" -type f ! -name "secrets.yaml" | sort)
+  done < <(find "${SCRIPT_DIR}/yamls" -maxdepth 1 -name "*.yaml" -type f | sort)
 
   info "Available device configurations:"
   echo
@@ -1372,7 +1369,7 @@ list_yaml_configs() {
         "$friendly_name" "$device_type" "$network_type" "$yaml_file"
       found=$((found + 1))
     fi
-  done < <(find "${SCRIPT_DIR}/yamls" -maxdepth 1 -name "*.yaml" -type f ! -name "secrets.yaml" | sort)
+  done < <(find "${SCRIPT_DIR}/yamls" -maxdepth 1 -name "*.yaml" -type f | sort)
 
   if [[ $found -eq 0 ]]; then
     warn "No device configurations found"
@@ -1942,7 +1939,6 @@ cmd_rotate_secrets() {
 
   local role="$1"
   local new_password="${2:-}"
-  local secrets_yaml="${HOME}/.iotstack/secrets/secrets.yaml"
 
   if [[ -z "$role" ]]; then
     help_rotate_secrets
@@ -1954,7 +1950,6 @@ cmd_rotate_secrets() {
     err "Unknown role: $role (expected: ${YAMLS_DIR}/${role}.yaml)"
   fi
 
-  # Read HA credentials from secrets.yaml if they exist
   local ha_url=""
   local ha_token=""
   if [[ -f "$secrets_yaml" ]]; then
@@ -1989,8 +1984,6 @@ cmd_rotate_secrets() {
     secret_name=$(grep -oP '!secret\s+\K\S+(?=\s*$)' "${YAMLS_DIR}/${role}.yaml" | grep ota_password | head -1)
 
     if [[ -n "$secret_name" ]]; then
-      # Look up the value in yamls/secrets.yaml (source file)
-      local source_secrets="${YAMLS_DIR}/secrets.yaml"
       if [[ ! -f "$source_secrets" ]]; then
         err "Source secrets file not found: $source_secrets"
       fi
@@ -2129,8 +2122,6 @@ cmd_rotate_secrets() {
         api_secret_name=$(grep -oP '!secret\s+\K\S+(?=\s*$)' "${YAMLS_DIR}/${role}.yaml" | grep api_encryption_key | head -1)
 
         if [[ -n "$api_secret_name" ]]; then
-          # Look up the value in yamls/secrets.yaml (source file)
-          local source_secrets="${YAMLS_DIR}/secrets.yaml"
           current_api_key=$(grep "^${api_secret_name}:" "$source_secrets" | sed "s/${api_secret_name}:[[:space:]]*['\"]//; s/['\"][[:space:]]*$//" || true)
 
           if [[ -n "$current_api_key" ]]; then
@@ -2815,10 +2806,7 @@ Note: Use 'iotstack update $device' for OTA flashing to devices already on netwo
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 sync_common_secrets() {
-  # Seed common secrets from secrets.yaml ONLY if pass doesn't have them yet
   # Pass takes precedence: if a value exists in pass, it's never overridden
-  # secrets.yaml is only for initial seeding with well-known defaults (e.g., CHANGE_ME)
-  local secrets_yaml="$YAMLS_DIR/secrets.yaml"
 
   [[ ! -f "$secrets_yaml" ]] && return 0
 
@@ -2844,10 +2832,7 @@ sync_common_secrets() {
 }
 
 verify_wifi_credentials() {
-  # Check if wifi_ssid and wifi_password exist in pass store or secrets.yaml
-  # Prioritizes pass store over secrets.yaml
   # If missing from both, prompt user to provide them
-  local secrets_yaml="$YAMLS_DIR/secrets.yaml"
 
   [[ ! -f "$secrets_yaml" ]] && return 0  # File doesn't exist yet, will be created
 
@@ -2870,7 +2855,6 @@ verify_wifi_credentials() {
     fi
   fi
 
-  # Fall back to checking secrets.yaml
   if [[ "$has_ssid" == false ]] && grep -q "^wifi_ssid:" "$secrets_yaml"; then
     wifi_ssid=$(grep "^wifi_ssid:" "$secrets_yaml" | cut -d'"' -f2 | head -1)
     if [[ -n "$wifi_ssid" ]]; then
@@ -2894,7 +2878,6 @@ verify_wifi_credentials() {
       read -p "Enter WiFi SSID: " wifi_ssid
       [[ -z "$wifi_ssid" ]] && err "WiFi SSID cannot be empty"
 
-      # Store in both pass and secrets.yaml
       if command -v pass &>/dev/null; then
         { echo "$wifi_ssid"; echo "$wifi_ssid"; } | pass insert -f iotstack/common/wifi_ssid 2>&1 | grep -v "^mkdir:" || true
         debug "Stored WiFi SSID in pass store"
@@ -2907,7 +2890,6 @@ verify_wifi_credentials() {
       echo ""
       [[ -z "$wifi_password" ]] && err "WiFi password cannot be empty"
 
-      # Store in both pass and secrets.yaml
       if command -v pass &>/dev/null; then
         { echo "$wifi_password"; echo "$wifi_password"; } | pass insert -f iotstack/common/wifi_password 2>&1 | grep -v "^mkdir:" || true
         debug "Stored WiFi password in pass store"

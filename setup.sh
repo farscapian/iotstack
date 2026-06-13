@@ -47,49 +47,6 @@ if [[ ! -x "$IOTSTACK_SCRIPT" ]]; then
   err "iotstack.sh is not executable. Run: chmod +x $IOTSTACK_SCRIPT"
 fi
 
-# Create stub secrets.yaml in yamls/ directory if it doesn't exist
-SECRETS_FILE="${SCRIPT_DIR}/yamls/secrets.yaml"
-if [[ ! -f "$SECRETS_FILE" ]]; then
-  mkdir -p "${SCRIPT_DIR}/yamls"
-
-  # Generate random base64-encoded API keys (32 bytes → 44 chars base64)
-  bleproxy_key=$(openssl rand -base64 32 | tr -d '\n')
-  mmwave_key=$(openssl rand -base64 32 | tr -d '\n')
-  threadrouter_key=$(openssl rand -base64 32 | tr -d '\n')
-  ledstrip_key=$(openssl rand -base64 32 | tr -d '\n')
-  sendspin_key=$(openssl rand -base64 32 | tr -d '\n')
-  recovery_key=$(openssl rand -base64 18 | tr -d '=' | tr '+/' '-_')
-
-  cat > "$SECRETS_FILE" << EOF
-# secrets.yaml
-# All sensitive information (WiFi passwords, API keys, etc.) goes here.
-# This file is NOT checked into git, so your secrets stay private.
-#
-# Uncomment and fill in the values needed by your devices:
-
-# WiFi credentials (for WiFi devices)
-# wifi_ssid: "YourWiFiName"
-# wifi_password: "YourWiFiPassword"
-
-# Recovery firmware OTA password (auto-generated, unique per installation)
-recovery_ota_password: "$recovery_key"
-
-# ESPHome device encryption keys (generated during setup)
-# bleproxy_api_encryption_key: "$bleproxy_key"
-# mmwave_api_encryption_key: "$mmwave_key"
-# threadrouter_api_encryption_key: "$threadrouter_key"
-# ledstrip_api_encryption_key: "$ledstrip_key"
-# sendspin_api_encryption_key: "$sendspin_key"
-
-# Home Assistant integration (optional)
-# ha_url: "http://homeassistant.local:8123"
-# ha_token: "eyJ0eXAiOiJKV1QiLCJhbGc..."
-EOF
-  ok "Created stub secrets.yaml in yamls/ with generated API encryption keys"
-else
-  dim "yamls/secrets.yaml already exists"
-fi
-
 # Create default environment file ~/.iotstack/.env if it doesn't exist
 IOTSTACK_HOME="${HOME}/.iotstack"
 mkdir -p "$IOTSTACK_HOME"
@@ -379,31 +336,25 @@ else
   fi
 fi
 
-# Seed pass repository with secrets and config from secrets.yaml
+# Seed pass repository with configuration
 echo
-echo "Seeding pass repository with secrets and configuration..."
-SECRETS_YAML="${SCRIPT_DIR}/yamls/secrets.yaml"
+echo "Seeding pass repository with configuration..."
+export GNUPGHOME="${IOTSTACK_HOME}/.gnupg"
+export PASSWORD_STORE_DIR="$PASS_DIR"
 
-if [[ -f "$SECRETS_YAML" ]]; then
-  export GNUPGHOME="${IOTSTACK_HOME}/.gnupg"
-  export PASSWORD_STORE_DIR="$PASS_DIR"
+# Config items that should exist but can be empty (seeded with placeholder)
+declare -a config_items=("wifi_ssid" "wifi_password" "thread_tlv" "ha_url" "ha_token")
 
-  # Config items that should exist but can be empty (seeded with placeholder)
-  declare -a config_items=("wifi_ssid" "wifi_password" "thread_tlv" "ha_url" "ha_token")
-
-  # Seed config items under iotstack/common/ (user can update via: pass edit iotstack/common/wifi_ssid)
-  for config_key in "${config_items[@]}"; do
-    pass_path="iotstack/common/${config_key}"
-    if ! pass show "$pass_path" >/dev/null 2>&1; then
-      {
-        echo "CONFIGURE_ME"
-        echo "CONFIGURE_ME"
-      } | pass insert -f "$pass_path" 2>&1 | grep -v "^mkdir:" || true
-    fi
-  done
-else
-  warn "pass not initialized; skipping pass store setup"
-fi
+# Seed config items under iotstack/common/ (user can update via: pass edit iotstack/common/wifi_ssid)
+for config_key in "${config_items[@]}"; do
+  pass_path="iotstack/common/${config_key}"
+  if ! pass show "$pass_path" >/dev/null 2>&1; then
+    {
+      echo "CONFIGURE_ME"
+      echo "CONFIGURE_ME"
+    } | pass insert -f "$pass_path" 2>&1 | grep -v "^mkdir:" || true
+  fi
+done
 
 # ── Create Desktop Taskbar Application ────────────────────────────────────
 echo

@@ -29,7 +29,6 @@ set -euo pipefail
 cleanup() {
   # Kill all background jobs (OTA uploads)
   jobs -p | xargs -r kill 2>/dev/null || true
-  rm -f .esphome/secrets.yaml 2>/dev/null
   printf "\n" 2>/dev/null
   exit
 }
@@ -664,7 +663,6 @@ fi
 ORIGINAL_YAML_FILE="$YAML_FILE"
 
 if [[ -n "$API_KEY" ]]; then
-  # Create temp YAML in same directory as original so it can find secrets.yaml
   YAML_DIR="$(dirname "$YAML_FILE")"
   YAML_BASENAME="$(basename "$YAML_FILE")"
   TEMP_YAML="${YAML_DIR}/.temp-api-key-$$.${YAML_BASENAME}"
@@ -869,9 +867,7 @@ done < <(awk '
 
 # ── Home Assistant registry check ───────────────────────────────────────────
 # Runs immediately after discovery so it always prints, even when no devices
-# need flashing. Reads ha_url + ha_token + api_encryption_key from secrets.yaml (at project root).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SECRETS_FILE="${SCRIPT_DIR}/secrets.yaml"
 HA_URL=""
 HA_TOKEN=""
 API_KEY=""
@@ -879,11 +875,9 @@ API_KEY=""
 if [[ -f "$SECRETS_FILE" ]]; then
   HA_URL=$(grep '^ha_url:' "$SECRETS_FILE" | cut -d' ' -f2- | tr -d '"')
   HA_TOKEN=$(grep '^ha_token:' "$SECRETS_FILE" | cut -d' ' -f2- | tr -d '"')
-  API_KEY=""  # api_encryption_key is commented out in our secrets.yaml
 fi
 
 if [[ -z "$HA_URL" || -z "$HA_TOKEN" ]]; then
-  dim "(HA registry check skipped - add ha_url + ha_token to secrets.yaml to enable)"
 else
   log "Querying Home Assistant: ${HA_URL}..."
   HA_DEVICE_LIST=$(

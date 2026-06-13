@@ -7,7 +7,6 @@ set -euo pipefail
 DEVICE_NAME="${1:-}"
 LIST_DEVICES="${LIST_DEVICES:-false}"
 HA_URL="${HA_URL:-http://localhost:8123}"
-SECRETS_YAML="${SECRETS_YAML:-$(dirname "$0")/../yamls/secrets.yaml}"
 
 if [[ "$DEVICE_NAME" == "--list" ]] || [[ "$DEVICE_NAME" == "-l" ]]; then
   LIST_DEVICES=true
@@ -93,7 +92,6 @@ ensure_websocat() {
   fi
 }
 
-# Helper: sync secret from secrets.yaml to pass if different
 sync_secret() {
   local secret_name="$1"
   local secrets_key="$2"
@@ -122,9 +120,7 @@ sync_secret() {
   # Only sync and warn if values differ
   if [[ "$pass_value" != "$secrets_value" ]]; then
     if [[ -z "$pass_value" ]]; then
-      warn "Syncing '$pass_path' from secrets.yaml (first time)"
     else
-      warn "Secret '$pass_path' changed in secrets.yaml, updating pass"
     fi
     # Pass requires password twice (for confirmation)
     if ! { echo "$secrets_value"; echo "$secrets_value"; } | pass insert -f "$pass_path" 2>&1; then
@@ -139,11 +135,9 @@ sync_secret() {
 # Get secrets
 HA_TOKEN=$(sync_secret "HA Token" "ha_token" "iotstack/common/ha_token" || pass show "iotstack/common/ha_token" 2>/dev/null || echo "")
 HA_TOKEN=$(printf '%s' "$HA_TOKEN" | xargs)
-[[ -z "$HA_TOKEN" ]] && err "HA_TOKEN not found in pass or secrets.yaml"
 
 HA_URL=$(sync_secret "HA URL" "ha_url" "iotstack/common/ha_url" || pass show "iotstack/common/ha_url" 2>/dev/null || echo "$HA_URL")
 HA_URL=$(printf '%s' "$HA_URL" | xargs)
-[[ -z "$HA_URL" ]] && err "HA_URL not found in pass, secrets.yaml, or HA_URL env var"
 
 # Convert HTTP/HTTPS to WS/WSS
 WS_URL="${HA_URL//http:/ws:}"

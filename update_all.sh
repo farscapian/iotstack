@@ -54,20 +54,17 @@ fi
 # ── Discover device configs ──────────────────────────────────────────────────
 # Any yaml with a top-level 'esphome:' key is a device config.
 # Searches the project root and subdirectories (e.g., wifi/, thread/).
-# secrets.yaml is excluded explicitly; it has no esphome: block anyway.
 # If --wifi or --thread is specified, only configs in that directory are found.
 YAMLS=()
 if [[ -n "$FILTER_DIR" ]]; then
   # Filter to specific directory
   while IFS= read -r f; do
     YAMLS+=("$f")
-  done < <(find "$SCRIPT_DIR/$FILTER_DIR" -maxdepth 1 -name "*.yaml" ! -name "secrets.yaml" \
     | xargs grep -l "^esphome:" 2>/dev/null | sort)
 else
   # All configs in project
   while IFS= read -r f; do
     YAMLS+=("$f")
-  done < <(find "$SCRIPT_DIR" -maxdepth 2 -name "*.yaml" ! -name "secrets.yaml" \
     | xargs grep -l "^esphome:" 2>/dev/null | sort)
 fi
 
