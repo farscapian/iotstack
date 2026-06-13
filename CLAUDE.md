@@ -268,13 +268,15 @@ iotstack help reassign
    - Production offset = calculated from recovery offset + recovery size
 
 3. **Generate partition table** (`_generate_partition_table`)
-   - Creates `yamls/dual_app_recovery.csv` with calculated sizes/offsets
+   - Creates `~/.iotstack/dual_app_recovery.csv` with calculated sizes/offsets
+   - Accessed via symlink at `yamls/dual_app_recovery.csv` (for ESPHome compatibility)
    - NVS (16KB, fixed) and OTA data (8KB, fixed) unchanged
    - Recovery and production partitions sized to actual firmware
 
 4. **Use partition table**
    - `write-nvs-secrets.sh` reads NVS size from generated CSV
    - Flash operations use the calculated offsets
+   - ESPHome finds partition table via symlink
 
 ### Why This Approach?
 
@@ -283,13 +285,15 @@ iotstack help reassign
 - ✅ **Firmware changes auto-handled** — Larger firmware = larger partition, calculated automatically
 - ✅ **Audit-friendly** — Partition table shows exactly what firmware needs
 - ✅ **Exact fit** — Partitions are only as large as firmware needs (no wasted flash)
+- ✅ **Artifacts in ~/.iotstack** — Generated files stored in user home, not repo
 
 ### Files Involved
 
 - `smart_compile()`: Calls partition calculation after compilation
 - `_calculate_partition_sizes()`: Determines sizes from firmware binary
 - `_generate_partition_table()`: Creates CSV with calculated values
-- `yamls/dual_app_recovery.csv`: Generated output (checked into git for reference)
+- `~/.iotstack/dual_app_recovery.csv`: Generated output (actual file)
+- `yamls/dual_app_recovery.csv`: Symlink to ~/.iotstack/dual_app_recovery.csv (for ESPHome)
 
 ## Important Implementation Details
 

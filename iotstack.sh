@@ -250,12 +250,23 @@ EOF
 }
 
 _update_partition_table_file() {
-  # Write generated partition table to yamls/dual_app_recovery.csv
-  local output_file="${1:-${YAMLS_DIR}/dual_app_recovery.csv}"
+  # Write generated partition table to ~/.iotstack/dual_app_recovery.csv
+  # ESPHome accesses via symlink at yamls/dual_app_recovery.csv
+  local output_file="${1:-${HOME}/.iotstack/dual_app_recovery.csv}"
 
   debug "Writing partition table: $output_file"
+  mkdir -p "$(dirname "$output_file")"
   _generate_partition_table > "$output_file"
-  ok "Partition table generated and saved"
+
+  # Ensure symlink exists from yamls/ to ~/.iotstack/
+  local symlink_path="${YAMLS_DIR}/dual_app_recovery.csv"
+  if [[ ! -L "$symlink_path" ]] || [[ "$(readlink "$symlink_path")" != "$output_file" ]]; then
+    rm -f "$symlink_path"
+    ln -s "$output_file" "$symlink_path"
+    debug "Created symlink: $symlink_path -> $output_file"
+  fi
+
+  ok "Partition table generated and saved to $output_file"
 }
 
 smart_compile() {

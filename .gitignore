@@ -6,7 +6,8 @@ secrets.yaml
 **/.temp-rename-*.yaml
 .esphome/
 yamls/.esphome/
-.iotstack/
+yamls/dual_app_recovery.csv  # Symlink to ~/.iotstack/dual_app_recovery.csv (generated)
+.iotstack/  # Generated artifacts (partition tables, logs, caches)
 
 # Exception: allow documentation and components (not actual secrets)
 !docs/secrets.md
