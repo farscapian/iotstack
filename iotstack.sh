@@ -395,9 +395,12 @@ for arg in "$@"; do
   esac
 done
 
+# Set up cleanup trap to ensure worktree is removed on exit
+# This runs in both parent (before creating worktree) and child (after re-exec)
+trap _cleanup_worktree EXIT
+
 # Create isolated worktree for this invocation
 if [[ -z "${IOTSTACK_WORKTREE:-}" ]]; then
-  trap _cleanup_worktree EXIT
   _setup_worktree "$@"
 fi
 
