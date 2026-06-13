@@ -114,7 +114,7 @@ If you have **Thread-only** (no WiFi fallback):
 - [ ] Create `recovery-thread.yaml` (Thread-only)
 - [ ] Test with Thread border router
 - [ ] Document Thread recovery procedure
-- [ ] Add to `iotstack-roles.conf` as alternative
+- [ ] Add to `roles.conf` as alternative
 
 ### No Action Needed
 - ❌ Don't resize partitions (plenty of space)

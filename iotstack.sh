@@ -1411,7 +1411,7 @@ cmd_update() {
 
     found=0
     failed=0
-    # Only compile device roles from iotstack-roles.conf, not random YAML files
+    # Only compile device roles from roles.conf, not random YAML files
     while IFS='=' read -r role rest; do
       # Skip empty lines and comments
       [[ -z "$role" ]] && continue
@@ -1442,7 +1442,7 @@ cmd_update() {
           echo
         fi
       done
-    done < <(cat "${SCRIPT_DIR}/iotstack-roles.conf" 2>/dev/null || echo "")
+    done < <(cat "${SCRIPT_DIR}/roles.conf" 2>/dev/null || echo "")
 
     echo "────────────────────────────────────────────────────────────"
     if [[ $failed -eq 0 ]]; then

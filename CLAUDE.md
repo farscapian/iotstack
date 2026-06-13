@@ -78,7 +78,7 @@ iotstack update bleproxy  # Uses ~/.iotstack/.env
 
 The `update_devices.sh` script is a batch OTA flash tool for managing multiple ESPHome devices discovered via mDNS. It supports device renaming, role reassignment, and Home Assistant entity ID recreation.
 
-The `iotstack.sh` CLI tool provides a user-friendly wrapper around this script with device roles (defined in `iotstack-roles.conf`).
+The `iotstack.sh` CLI tool provides a user-friendly wrapper around this script with device roles (defined in `roles.conf`).
 
 ⚠️ **IMPORTANT: Development Process**
 - When assisting with changes, changes are staged but NOT committed until the human has tested and approved them
@@ -209,8 +209,8 @@ Flash a target configuration only to specific devices:
 
 Users run `setup.sh` once to add the `iotstack` alias to their `~/.bashrc`, making the command available globally.
 
-### Device Mapping (iotstack-roles.conf)
-Device shortcuts are defined in `iotstack-roles.conf`:
+### Device Mapping (roles.conf)
+Device shortcuts are defined in `roles.conf`:
 ```
 bleproxy=wifi/esp32c6-wifi-bleproxy.yaml:
 mmwave=wifi/esp32c6-wifi-mmwave.yaml:
@@ -246,7 +246,7 @@ iotstack help reassign
 ```
 
 ### Implementation Details
-- `iotstack.sh` loads the device map from `iotstack-roles.conf`
+- `iotstack.sh` loads the device map from `roles.conf`
 - User can pass either a device role or a direct YAML path
 - Internally calls `update_devices.sh` with resolved YAML paths
 - All underlying features (reassign, verify, etc.) work the same way
