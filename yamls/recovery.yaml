@@ -20,7 +20,7 @@ substitutions:
 external_components:
   - source:
       type: local
-      path: ../external_components
+      path: ./external_components
     components: [nvs_secrets, nvs_ota_password]
 
 esphome:
@@ -63,7 +63,8 @@ api:
   # No hardcoded key in firmware binary
 
 # Custom NVS secrets component - loads device-specific secrets from NVS
-nvs_secrets:
+# TODO: Debug memory access fault in nvs_open(NULL) - temporarily disabled
+# nvs_secrets:
 
 # Custom NVS OTA Password component - loads OTA password from NVS at startup
 # Sets the OTA service password dynamically from device flash
