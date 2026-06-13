@@ -1,0 +1,25 @@
+#!/bin/bash
+# Launch a terminal with iotstack styling
+
+# iotstack color scheme (blue/cyan theme)
+# Colors: Deep blue background with cyan/bright blue accents
+PROFILE_NAME="iotstack"
+IOTSTACK_DIR="$HOME/Sync/mini_projects/iotstack"
+
+# Create a temporary dconf profile if using GNOME Terminal
+if command -v gnome-terminal &>/dev/null; then
+  # Get current profile UUID
+  PROFILE_UUID=$(dconf list /org/gnome/terminal/legacy/profiles:/ | head -1 | tr -d "/'")
+
+  # Launch gnome-terminal with title
+  gnome-terminal --title="iotstack" -- bash -c "cd '$IOTSTACK_DIR'; exec bash"
+elif command -v tilix &>/dev/null; then
+  tilix --title="iotstack" -e "bash -c 'cd $IOTSTACK_DIR; exec bash'"
+elif command -v konsole &>/dev/null; then
+  konsole --title "iotstack" --workdir "$IOTSTACK_DIR"
+elif command -v xterm &>/dev/null; then
+  xterm -title "iotstack" -e "cd '$IOTSTACK_DIR'; exec bash"
+else
+  # Fallback: try to open any available terminal
+  x-terminal-emulator -e "cd '$IOTSTACK_DIR'; exec bash" &
+fi

@@ -365,41 +365,51 @@ APPLICATIONS_DIR="${HOME}/.local/share/applications"
 ICONS_DIR="${HOME}/.local/share/icons"
 DESKTOP_FILE="${APPLICATIONS_DIR}/iotstack.desktop"
 LOGO_SRC="${SCRIPT_DIR}/assets/iotstack-logo.svg"
+TERMINAL_LAUNCHER="${SCRIPT_DIR}/scripts/iotstack-terminal"
 
 mkdir -p "$APPLICATIONS_DIR" "$ICONS_DIR"
 
 # Copy logo to icons directory
 if [[ -f "$LOGO_SRC" ]]; then
-  cp "$LOGO_SRC" "$ICONS_DIR/iotstack-logo.svg"
-  ok "Installed logo to $ICONS_DIR/iotstack-logo.svg"
+  cp "$LOGO_SRC" "$ICONS_DIR/iotstack.svg"
+  ok "Installed logo to $ICONS_DIR/iotstack.svg"
 else
   warn "Logo not found at $LOGO_SRC"
 fi
 
+# Ensure terminal launcher is executable
+if [[ -f "$TERMINAL_LAUNCHER" ]]; then
+  chmod +x "$TERMINAL_LAUNCHER"
+fi
+
 # Create .desktop file for taskbar (with pinning support)
-# Use dynamic path so it works regardless of where repo is cloned
+# Opens a new terminal with iotstack styling when clicked
 cat > "$DESKTOP_FILE" << EOF
 [Desktop Entry]
-Name=iotstack
-Comment=IoT device management and flashing
-Exec=codium $SCRIPT_DIR
-Icon=iotstack-logo
 Type=Application
-Categories=Development;Utility;
+Name=iotstack
+Comment=ESP32 ESPHome Device Management
+Icon=iotstack
+Exec=$TERMINAL_LAUNCHER
 Terminal=false
+Categories=Development;System;Utility;
+Keywords=esp32;esphome;iot;firmware;
 StartupNotify=true
-Keywords=iot;esp32;esphome;flashing;matter;
-X-GNOME-UsesNotifications=false
 EOF
 
 chmod 644 "$DESKTOP_FILE"
 ok "Created taskbar application: $DESKTOP_FILE"
-echo "   Right-click 'iotstack' in Activities to pin to taskbar"
+echo "   You can now search for 'iotstack' in Activities or pin to taskbar"
 
 # Update desktop database
 if command -v update-desktop-database &>/dev/null; then
   update-desktop-database "$APPLICATIONS_DIR" >/dev/null 2>&1 || true
   ok "Updated desktop database"
+fi
+
+# Update icon cache
+if command -v gtk-update-icon-cache &>/dev/null; then
+  gtk-update-icon-cache "$ICONS_DIR" >/dev/null 2>&1 || true
 fi
 
 echo

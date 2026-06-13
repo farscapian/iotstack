@@ -1984,31 +1984,7 @@ cmd_rotate_secrets() {
   echo "[INFO] Retrieving current OTA password from version history..."
   current_password=$(cmd_secret get "$role" ota 2>/dev/null)
   if [[ -z "$current_password" ]]; then
-    # Not in pass yet - extract from YAML's secret reference and set it as v00
-    echo "[INFO] Not in version history yet - extracting from YAML and setting as v00..."
-
-    # Extract the secret name from YAML (e.g., !secret mmwave_ota_password)
-    local secret_name
-    secret_name=$(grep -oP '!secret\s+\K\S+(?=\s*$)' "${YAMLS_DIR}/${role}.yaml" 2>/dev/null | grep ota_password | head -1)
-
-    if [[ -n "$secret_name" ]]; then
-      if [[ ! -f "$source_secrets" ]]; then
-        err "Source secrets file not found: $source_secrets"
-      fi
-
-      current_password=$(grep "^${secret_name}:" "$source_secrets" | sed "s/${secret_name}:[[:space:]]*['\"]//; s/['\"][[:space:]]*$//" || true)
-
-      if [[ -z "$current_password" ]]; then
-        err "Could not find secret '${secret_name}' in $source_secrets"
-      fi
-
-      # Set it in pass as v00 so future rotations have it versioned
-      echo "[INFO] Storing current password in pass as v00..."
-      "$SCRIPT_DIR/scripts/iotstack-secrets" set "$role" ota "$current_password"
-      echo "[OK] Current password extracted and stored in pass"
-    else
-      err "Could not find OTA password secret in ${role}.yaml"
-    fi
+    err "No password found in pass. Ensure role '$role' has an OTA password configured."
   fi
 
   if [[ -z "$current_password" ]]; then
@@ -2119,28 +2095,6 @@ cmd_rotate_secrets() {
 
     # Only rotate API key if HA is configured
     if [[ "$ha_configured" == true ]]; then
-      # Check if API key is already versioned in pass
-      local current_api_key
-      current_api_key=$(cmd_secret get "$role" api 2>/dev/null)
-      if [[ -z "$current_api_key" ]]; then
-        # Not versioned yet - extract from YAML and set as v00
-        echo "[INFO] API key not in version history - extracting from YAML..."
-
-        # Extract the secret name from YAML (e.g., !secret mmwave_api_encryption_key)
-        local api_secret_name
-        api_secret_name=$(grep -oP '!secret\s+\K\S+(?=\s*$)' "${YAMLS_DIR}/${role}.yaml" 2>/dev/null | grep api_encryption_key | head -1)
-
-        if [[ -n "$api_secret_name" ]]; then
-          current_api_key=$(grep "^${api_secret_name}:" "$source_secrets" | sed "s/${api_secret_name}:[[:space:]]*['\"]//; s/['\"][[:space:]]*$//" || true)
-
-          if [[ -n "$current_api_key" ]]; then
-            echo "[INFO] Storing current API key in pass as v00..."
-            "$SCRIPT_DIR/scripts/iotstack-secrets" set "$role" api "$current_api_key"
-            echo "[OK] Current API key stored in pass"
-          fi
-        fi
-      fi
-
       # Generate and set new API key
       local new_api_key
       echo "[INFO] Generating new API encryption key..."
@@ -3030,6 +2984,7 @@ main() {
   if [[ -f "$ENV_FILE" ]]; then
     debug "Loading environment from: $ENV_FILE"
     set +u
+    # shellcheck source=/dev/null
     source "$ENV_FILE"
     set -u
   fi

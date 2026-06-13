@@ -169,7 +169,7 @@ if [[ "$LIST_DEVICES" == "true" ]]; then
   # Query and list devices
   echo "[DEBUG] Sending device registry query..." >&2
 
-  auth_cmd='{"type": "auth", "access_token": "$HA_TOKEN"}'
+  auth_cmd="{\"type\": \"auth\", \"access_token\": \"$HA_TOKEN\"}"
   device_cmd='{"id": 1, "type": "config/device_registry/list"}'
 
   ws_response=$({
@@ -177,7 +177,7 @@ if [[ "$LIST_DEVICES" == "true" ]]; then
     sleep 0.5
     echo "$device_cmd"
     sleep 2
-  } | sed "s|\$HA_TOKEN|$HA_TOKEN|g" | websocat -n "$WS_URL" 2>/dev/null)
+  } | websocat -n "$WS_URL" 2>/dev/null)
 
   echo "[DEBUG] WebSocket response:" >&2
   echo "$ws_response" | jq '.' >&2
@@ -187,7 +187,7 @@ else
   # Query entities for specific device
   echo "[INFO] Querying entities for device: $DEVICE_NAME" >&2
 
-  auth_cmd='{"type": "auth", "access_token": "$HA_TOKEN"}'
+  auth_cmd="{\"type\": \"auth\", \"access_token\": \"$HA_TOKEN\"}"
   device_cmd='{"id": 1, "type": "config/device_registry/list"}'
 
   # First get device ID
