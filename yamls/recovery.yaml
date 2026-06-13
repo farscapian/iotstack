@@ -21,7 +21,7 @@ external_components:
   - source:
       type: local
       path: ./external_components
-    components: [nvs_secrets, nvs_ota_password]
+    components: [nvs_secrets]
 
 esphome:
   name: ${device_role}
@@ -62,19 +62,14 @@ api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
   # No hardcoded key in firmware binary
 
-# Custom NVS secrets component - loads device-specific secrets from NVS
-# TODO: Debug memory access fault in nvs_open(NULL) - temporarily disabled
-# nvs_secrets:
-
-# Custom NVS OTA Password component - loads OTA password from NVS at startup
-# Sets the OTA service password dynamically from device flash
-# This allows unique OTA passwords per device without firmware recompilation
-# TODO: Debug memory access fault in nvs_open(NULL) - temporarily disabled
-# nvs_ota_password:
+# Custom NVS secrets component - loads device-specific secrets from NVS at startup
+# Handles: WiFi credentials, OTA password, API encryption key
+# All secrets are unique per device and stored in device flash (NVS partition)
+nvs_secrets:
 
 # OTA Configuration for recovery partition
-# Password is set dynamically by nvs_ota_password component from NVS
-# No hardcoded password in firmware binary
+# Password is dynamically set by nvs_secrets component from NVS
+# Each device has a unique OTA password derived at flash time
 ota:
   - platform: esphome
 

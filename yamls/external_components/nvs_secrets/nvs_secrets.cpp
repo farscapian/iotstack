@@ -1,18 +1,19 @@
 #include "nvs_secrets.h"
+#include "nvs_flash.h"
 #include "esphome/core/log.h"
 
 namespace esphome {
 namespace nvs_secrets {
 
 static const char* const TAG = "nvs_secrets";
+static const char* const NAMESPACE = "iotstack";
 
 std::string NVSSecrets::read_nvs_string(const char* key) {
   nvs_handle_t nvs_handle;
-  // Open the default NVS namespace where nvs_partition_gen writes data
-  esp_err_t err = nvs_open(NULL, NVS_READONLY, &nvs_handle);
+  esp_err_t err = nvs_open(NAMESPACE, NVS_READONLY, &nvs_handle);
 
   if (err != ESP_OK) {
-    ESP_LOGW(TAG, "Failed to open NVS namespace: %s", esp_err_to_name(err));
+    ESP_LOGW(TAG, "Failed to open NVS namespace '%s': %s", NAMESPACE, esp_err_to_name(err));
     return "";
   }
 
@@ -45,7 +46,21 @@ std::string NVSSecrets::read_nvs_string(const char* key) {
 
 void NVSSecrets::setup() {
   ESP_LOGI(TAG, "=== NVS SECRETS COMPONENT INITIALIZING ===");
-  ESP_LOGI(TAG, "Loading device-specific secrets from NVS partition...");
+
+  // Initialize NVS flash (required before any NVS operations)
+  esp_err_t err = nvs_flash_init();
+  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_LOGW(TAG, "NVS partition corrupted or version mismatch, erasing and reinitializing...");
+    nvs_flash_erase();
+    err = nvs_flash_init();
+  }
+
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to initialize NVS flash: %s", esp_err_to_name(err));
+    return;
+  }
+
+  ESP_LOGI(TAG, "NVS flash initialized, loading device-specific secrets...");
 
   wifi_ssid_ = read_nvs_string("wifi_ssid");
   if (!wifi_ssid_.empty()) {

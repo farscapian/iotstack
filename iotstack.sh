@@ -206,8 +206,15 @@ _calculate_partition_sizes() {
   local PRODUCTION_SIZE_HEX=$RECOVERY_SIZE_HEX
 
   # Calculate production offset
-  # = RECOVERY_OFFSET + RECOVERY_SIZE (rounded to 4KB boundary)
+  # = RECOVERY_OFFSET + RECOVERY_SIZE, then round up to 64KB boundary for app partition alignment
   local production_offset=$((0x30000 + recovery_size_calc))
+
+  # Round up to nearest 64KB (0x10000) for ESP32 app partition alignment requirement
+  local remainder=$((production_offset % 0x10000))
+  if [[ $remainder -ne 0 ]]; then
+    production_offset=$(((production_offset / 0x10000 + 1) * 0x10000))
+  fi
+
   local PRODUCTION_OFFSET_HEX=$(printf '0x%x' "$production_offset")
 
   # Export for use in partition table generation

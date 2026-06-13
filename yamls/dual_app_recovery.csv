@@ -9,4 +9,4 @@
 nvs,        data,  nvs,        0x9000,              0x4000,
 otadata,    data,  ota,        0xd000,              0x2000,
 recovery,   app,   ota_0,      0x30000,             0xc7000,
-production, app,   ota_1,      0xf7000, 0xc7000,
+production, app,   ota_1,      0x100000, 0xc7000,

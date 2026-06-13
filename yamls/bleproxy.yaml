@@ -11,7 +11,7 @@ external_components:
   - source:
       type: local
       path: ./external_components
-    components: [nvs_secrets, nvs_ota_password]
+    components: [nvs_secrets]
 esphome:
   name: ${device_role}
   friendly_name: ${friendly_name}
@@ -37,8 +37,6 @@ wifi:
 # Custom NVS secrets component - loads device-specific API key from NVS
 nvs_secrets:
 
-# Custom NVS OTA Password component - loads OTA password from NVS at startup
-nvs_ota_password:
 
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
@@ -59,7 +57,7 @@ bluetooth_proxy:
   connection_slots: 4
 
 # OTA Configuration
-# Password is set dynamically by nvs_ota_password component from device NVS
+# Password is dynamically set by nvs_secrets component from NVS
 ota:
   - platform: esphome
 

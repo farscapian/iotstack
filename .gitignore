@@ -1,6 +1,7 @@
 secrets.yaml
 *secret*
 archive/
+resources/esp32projects/  # Local clones of reference projects (not part of build)
 secrets.yaml
 **/.temp-rename-*.yaml
 .esphome/
@@ -29,4 +30,4 @@ yamls/.esphome/
 !yamls/external_components/nvs_writer/**
 !scripts/write-nvs-secrets.sh
 !scripts/iotstack-secrets
-!scripts/rotate-secrets
+!scripts/rotate-secrets__pycache__/
