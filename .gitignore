@@ -7,6 +7,11 @@ secrets.yaml
 yamls/.esphome/
 .iotstack/
 
+# Exception: allow documentation and components (not actual secrets)
+!docs/secrets.md
+!scripts/iotstack-secrets
+!scripts/rotate-secrets
+
 # Exception: allow external_components and scripts (not secrets)
 !external_components/
 !external_components/nvs_secrets/

@@ -9,6 +9,7 @@ set -euo pipefail
 
 # Global configuration
 VERBOSE=0
+ENV_FILE="${HOME}/.iotstack/.env"  # Default environment file
 
 # Colors
 RED='\033[0;31m'
@@ -71,8 +72,8 @@ _check_compilation_cache() {
 
   [[ ! -f "$COMPILATION_CACHE" ]] && return 1
 
-  # Look for matching YAML name and SHA in cache
-  grep "^${yaml_name},${yaml_sha}," "$COMPILATION_CACHE" >/dev/null 2>&1
+  # Look for matching YAML name and SHA in cache (skip header row)
+  tail -n +2 "$COMPILATION_CACHE" | grep "^${yaml_name},${yaml_sha}," >/dev/null 2>&1
   return $?
 }
 
@@ -82,6 +83,11 @@ _update_compilation_cache() {
   local binary_sha="$2"
   local yaml_name=$(basename "$yaml_file")
   local yaml_sha=$(_get_yaml_sha "$yaml_file")
+
+  # Add header if file doesn't exist
+  if [[ ! -f "$COMPILATION_CACHE" ]]; then
+    echo "yaml_name,yaml_sha,binary_sha" > "$COMPILATION_CACHE"
+  fi
 
   echo "${yaml_name},${yaml_sha},${binary_sha}" >> "$COMPILATION_CACHE"
 }
@@ -249,6 +255,7 @@ smart_compile() {
   # Smart compilation that uses cache to skip rebuilds
   # After compilation, calculates partition sizes based on firmware size
   # Usage: smart_compile <yaml_file> [device_name_for_logging]
+  # Environment variable: DISABLE_COMPILATION_CACHE=1 forces recompilation
   local yaml_file="$1"
   local device_name="${2:-unknown}"
 
@@ -259,14 +266,16 @@ smart_compile() {
   # Generate initial partition table (needed by ESPHome during compilation)
   _generate_initial_partition_table
 
-  # Check if we can skip compilation
-  if _check_compilation_cache "$yaml_file"; then
+  # Check if we can skip compilation (unless DISABLE_COMPILATION_CACHE is set)
+  if [[ "${DISABLE_COMPILATION_CACHE:-0}" != "1" ]] && _check_compilation_cache "$yaml_file"; then
     ok "Firmware already compiled (cached)"
     # Even when using cache, recalculate partition sizes in case firmware size changed
     _calculate_partition_sizes "$device_name" "$yaml_file" || return 1
     _update_partition_table_file
     return 0
   fi
+
+  [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]] && debug "Compilation cache disabled (DISABLE_COMPILATION_CACHE=1)"
 
   # YAML changed or first compile - need to rebuild
   info "Compiling firmware..."
@@ -2848,11 +2857,16 @@ EOF
 }
 
 main() {
-  # Parse global flags (-v/--verbose)
+  # Parse global flags (-v/--verbose, -env=filename)
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -v|--verbose)
         VERBOSE=1
+        shift
+        ;;
+      -env=*)
+        # Override environment file: -env=pangolin.env
+        ENV_FILE="${HOME}/.iotstack/${1#-env=}"
         shift
         ;;
       *)
@@ -2860,6 +2874,14 @@ main() {
         ;;
     esac
   done
+
+  # Load environment file if it exists
+  if [[ -f "$ENV_FILE" ]]; then
+    debug "Loading environment from: $ENV_FILE"
+    set +u
+    source "$ENV_FILE"
+    set -u
+  fi
 
   # Ensure symlink from yamls/.iotstack -> ~/.iotstack exists
   local iotstack_link="${YAMLS_DIR}/.iotstack"

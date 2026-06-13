@@ -11,6 +11,69 @@
 
 This applies in code comments, documentation, help text, and all user-facing messages.
 
+## Environment Variables
+
+### Environment File Configuration
+
+Environment variables are stored in `~/.iotstack/.env` and loaded automatically on every `iotstack` invocation.
+
+**Setup:**
+```bash
+# View available options
+cat resources/.env.example
+
+# Create default configuration (done automatically by setup.sh)
+cp resources/.env.example ~/.iotstack/.env
+
+# Edit to customize
+nano ~/.iotstack/.env
+```
+
+**Using Multiple Configurations:**
+```bash
+# Create alternate configuration
+cp ~/.iotstack/.env.example ~/.iotstack/pangolin.env
+# Edit pangolin.env with specific settings
+
+# Use alternate config for a command
+iotstack -env=pangolin.env flash recovery /dev/ttyACM0
+
+# Or combine with other flags
+iotstack -v -env=debug.env update bleproxy
+```
+
+### DISABLE_COMPILATION_CACHE
+**Purpose:** Force recompilation of firmware regardless of cache state
+
+**Values:**
+- `0` (default): Use compilation cache for faster builds
+- `1`: Always recompile, ignore cache
+
+**Usage:**
+```bash
+# Option 1: Set in ~/.iotstack/.env (persistent for all commands)
+echo "DISABLE_COMPILATION_CACHE=1" >> ~/.iotstack/.env
+
+# Option 2: Use alternate config file
+iotstack -env=debug.env flash recovery /dev/ttyACM0
+
+# Option 3: Set for single command
+DISABLE_COMPILATION_CACHE=1 iotstack flash recovery /dev/ttyACM0
+```
+
+**Examples:**
+```bash
+# Create debug configuration with caching disabled
+cp ~/.iotstack/.env.example ~/.iotstack/debug.env
+sed -i 's/DISABLE_COMPILATION_CACHE=0/DISABLE_COMPILATION_CACHE=1/' ~/.iotstack/debug.env
+
+# Use it
+iotstack -env=debug.env update bleproxy
+
+# Revert to default
+iotstack update bleproxy  # Uses ~/.iotstack/.env
+```
+
 ## Overview
 
 The `update_devices.sh` script is a batch OTA flash tool for managing multiple ESPHome devices discovered via mDNS. It supports device renaming, role reassignment, and Home Assistant entity ID recreation.
@@ -36,6 +99,27 @@ The `iotstack.sh` CLI tool provides a user-friendly wrapper around this script w
 - OTA flashing runs in parallel (default `--jobs 4`)
 - Uses `wait -n` for slot-based job queuing
 - Respects Thread device constraints: forces `--jobs 1` for Thread configs (Thread OTA is slow; parallelism causes mesh contention)
+
+### Compilation Cache
+
+Cache stored at `~/.iotstack/compilation-cache.csv` (CSV format with headers):
+
+**Columns:**
+- `yaml_name`: YAML filename (e.g., `recovery.yaml`)
+- `yaml_sha`: SHA256 hash of YAML + all `yamls/external_components/` files (cache key)
+- `binary_sha`: SHA256 of compiled `firmware.bin`
+
+**Cache invalidation:**
+- Changes to any YAML file automatically invalidate cache
+- Changes to any file in `yamls/external_components/` automatically invalidate cache
+- Set `DISABLE_COMPILATION_CACHE=1` to force recompilation
+
+**Example cache contents:**
+```
+yaml_name,yaml_sha,binary_sha
+recovery.yaml,75e67037f9e3fc23...,a183d757ba74cc50...
+bleproxy.yaml,8f3e2c9d4a1b5f...,c9d2a8e7f3b1c4...
+```
 
 ### Serial Flash Baud Rate: 9600 (Critical)
 **⚠️ IMPORTANT: All esptool flash operations use 9600 baud, NOT 57600 or 115200**

@@ -90,11 +90,35 @@ else
   dim "yamls/secrets.yaml already exists"
 fi
 
-# Create symlink from yamls/.iotstack -> ~/.iotstack for centralized artifacts
+# Create default environment file ~/.iotstack/.env if it doesn't exist
 IOTSTACK_HOME="${HOME}/.iotstack"
-IOTSTACK_LINK_IN_YAMLS="${SCRIPT_DIR}/yamls/.iotstack"
-
 mkdir -p "$IOTSTACK_HOME"
+
+ENV_FILE="${IOTSTACK_HOME}/.env"
+ENV_TEMPLATE="${SCRIPT_DIR}/resources/.env.example"
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  if [[ -f "$ENV_TEMPLATE" ]]; then
+    cp "$ENV_TEMPLATE" "$ENV_FILE"
+    ok "Created default environment file: $ENV_FILE"
+  else
+    # Fallback if template doesn't exist
+    cat > "$ENV_FILE" << 'EOF'
+# iotstack Environment Configuration
+# Location: ~/.iotstack/.env (loaded by default on every invocation)
+
+# Force recompilation of firmware on every build (disables compilation cache)
+# Values: 0 (default, use cache) or 1 (always recompile)
+DISABLE_COMPILATION_CACHE=0
+EOF
+    ok "Created default environment file: $ENV_FILE (from fallback)"
+  fi
+else
+  dim "$ENV_FILE already exists"
+fi
+
+# Create symlink from yamls/.iotstack -> ~/.iotstack for centralized artifacts
+IOTSTACK_LINK_IN_YAMLS="${SCRIPT_DIR}/yamls/.iotstack"
 
 # Remove old symlink if it exists
 if [[ -L "$IOTSTACK_LINK_IN_YAMLS" ]]; then

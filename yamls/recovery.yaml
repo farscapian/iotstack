@@ -69,7 +69,8 @@ api:
 # Custom NVS OTA Password component - loads OTA password from NVS at startup
 # Sets the OTA service password dynamically from device flash
 # This allows unique OTA passwords per device without firmware recompilation
-nvs_ota_password:
+# TODO: Debug memory access fault in nvs_open(NULL) - temporarily disabled
+# nvs_ota_password:
 
 # OTA Configuration for recovery partition
 # Password is set dynamically by nvs_ota_password component from NVS
