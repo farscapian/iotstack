@@ -382,6 +382,19 @@ _cleanup_worktree() {
   fi
 }
 
+# Parse global flags early (before worktree setup) so they apply to git commands
+# Only parse -q/--quiet, -v/--verbose, and -env= flags here
+for arg in "$@"; do
+  case "$arg" in
+    -q|--quiet)
+      QUIET=1
+      ;;
+    -v|--verbose)
+      VERBOSE=1
+      ;;
+  esac
+done
+
 # Create isolated worktree for this invocation
 if [[ -z "${IOTSTACK_WORKTREE:-}" ]]; then
   trap _cleanup_worktree EXIT
