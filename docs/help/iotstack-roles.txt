@@ -1,0 +1,17 @@
+iotstack roles — Show available device roles and their configurations
+
+Lists all device roles defined in the project with their YAML configurations.
+Shows both WiFi and Thread variants. Useful for understanding what device
+types are available and what configuration each uses.
+
+Usage:
+  iotstack roles
+
+Examples:
+  iotstack roles        # Show all available device roles
+
+Output shows:
+  - Role name (e.g., bleproxy, mmwave, threadrouter)
+  - Network type (WiFi or Thread)
+  - YAML configuration path
+  - Number of devices currently running each role

@@ -1,0 +1,27 @@
+iotstack devices — Show discovered ESPHome devices on network
+
+Lists all ESPHome devices discovered on the network via mDNS, optionally
+filtered by role or showing unmatched devices. Useful for checking which
+devices are currently online and what roles they're running.
+
+Usage:
+  iotstack devices [role|other] [--id]
+
+Arguments:
+  [role]        Show only devices matching this role (e.g., bleproxy, mmwave)
+  [other]       Show only devices that don't match any defined role
+  [--id]        Output only device IDs (space-separated, useful for scripts)
+
+Examples:
+  iotstack devices
+                        # Show all discovered devices
+  iotstack devices bleproxy
+                        # Show only bleproxy devices
+  iotstack devices other
+                        # Show devices not matching any role
+  iotstack devices --id
+                        # Output all device IDs
+  iotstack devices bleproxy --id
+                        # Output bleproxy device IDs
+  iotstack devices other --id
+                        # Output IDs of unmatched devices

@@ -608,6 +608,14 @@ help_list() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-list.txt"
 }
 
+help_devices() {
+  cat "${SCRIPT_DIR}/docs/help/iotstack-devices.txt"
+}
+
+help_roles() {
+  cat "${SCRIPT_DIR}/docs/help/iotstack-roles.txt"
+}
+
 help_reassign() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-reassign.txt"
 }
@@ -2577,6 +2585,14 @@ main() {
       shift
       cmd_list "$@"
       ;;
+    devices)
+      shift
+      cmd_list devices "$@"
+      ;;
+    roles)
+      shift
+      cmd_list roles "$@"
+      ;;
     secret)
       shift
       cmd_secret "$@"
@@ -2612,6 +2628,8 @@ main() {
           verify)           help_verify ;;
           reassign)         help_reassign ;;
           list)             help_list ;;
+          devices)          help_devices ;;
+          roles)            help_roles ;;
           flash)            help_flash ;;
           set-boot)         cmd_set_boot help ;;
           commission)       help_commission ;;
