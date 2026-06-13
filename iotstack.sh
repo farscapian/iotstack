@@ -9,6 +9,7 @@ set -euo pipefail
 
 # Global configuration
 VERBOSE=0
+QUIET=0
 ENV_FILE="${HOME}/.iotstack/.env"  # Default environment file
 
 # Colors
@@ -20,10 +21,10 @@ DIM='\033[2m'
 RST='\033[0m'
 
 err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
-ok()   { echo -e "${GRN}[OK]${RST} $*"; }
-warn() { echo -e "${YLW}[WARN]${RST} $*"; }
-info() { echo -e "${BLU}[INFO]${RST} $*"; }
-debug() { [[ $VERBOSE -eq 1 ]] && echo -e "${DIM}[DEBUG]${RST} $*" || true; }
+ok()   { [[ $QUIET -eq 0 ]] && echo -e "${GRN}[OK]${RST} $*"; }
+warn() { [[ $QUIET -eq 0 ]] && echo -e "${YLW}[WARN]${RST} $*"; }
+info() { [[ $QUIET -eq 0 ]] && echo -e "${BLU}[INFO]${RST} $*"; }
+debug() { [[ $VERBOSE -eq 1 ]] && [[ $QUIET -eq 0 ]] && echo -e "${DIM}[DEBUG]${RST} $*" || true; }
 
 # ── Compilation Cache ────────────────────────────────────────────────────────
 
@@ -359,11 +360,18 @@ _setup_worktree() {
 
   # Create and enter worktree
   cd "$SCRIPT_DIR"
-  git worktree add "$worktree_dir" HEAD >/dev/null 2>&1 || return 0
+
+  # Suppress git worktree output if QUIET is set
+  if [[ $QUIET -eq 1 ]]; then
+    git worktree add "$worktree_dir" HEAD >/dev/null 2>&1 || return 0
+  else
+    git worktree add "$worktree_dir" HEAD 2>/dev/null || return 0
+  fi
 
   # Re-exec in worktree
   cd "$worktree_dir"
   export IOTSTACK_WORKTREE="$worktree_dir"
+  export QUIET="$QUIET"  # Preserve QUIET flag in worktree
   exec bash "$SCRIPT_PATH" "$@"
 }
 
@@ -593,9 +601,10 @@ iotstack — Manage IoT Stack ESPHome Devices
 
 Global Options:
   -v, --verbose       Show all output (compiler, flashing, diagnostics)
+  -q, --quiet         Suppress status messages (errors still shown)
 
 Usage:
-  iotstack [-v|--verbose] <command> [options]
+  iotstack [-v|--verbose] [-q|--quiet] <command> [options]
   iotstack update [options] [<device>|<yaml>|all] [--thread]
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
@@ -611,6 +620,8 @@ Usage:
 Examples:
   iotstack -v flash bleproxy /dev/ttyACM0    # Flash with verbose output
   iotstack --verbose update all              # Update all devices, show details
+  iotstack -q list roles --id                # Quiet output (just role names)
+  iotstack --quiet clean                     # Silent cleanup
 
 Commands:
 
@@ -3025,11 +3036,15 @@ EOF
 }
 
 main() {
-  # Parse global flags (-v/--verbose, -env=filename)
+  # Parse global flags (-v/--verbose, -q/--quiet, -env=filename)
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -v|--verbose)
         VERBOSE=1
+        shift
+        ;;
+      -q|--quiet)
+        QUIET=1
         shift
         ;;
       -env=*)
