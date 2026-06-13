@@ -359,7 +359,7 @@ _setup_worktree() {
 
   # Create and enter worktree
   cd "$SCRIPT_DIR"
-  git worktree add "$worktree_dir" HEAD 2>/dev/null || return 0
+  git worktree add "$worktree_dir" HEAD >/dev/null 2>&1 || return 0
 
   # Re-exec in worktree
   cd "$worktree_dir"
