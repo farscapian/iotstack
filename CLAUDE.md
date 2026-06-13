@@ -430,7 +430,7 @@ Example: Baud rate issues with ESP32 flash corruption
 |-----------|--------|-------|
 | NVS partition write | ✅ Working | Writes proper NVS binary format to 0x9000 |
 | NVS key-value format | ✅ Working | Uses esp_idf_nvs_partition_gen for correct binary format |
-| OTA password from NVS | ✅ Working | nvs_ota_password component loads and applies password |
+| OTA password from NVS | ✅ Working | nvs_secrets component loads and applies password |
 | WiFi credentials from NVS | ⏳ Partial | nvs_secrets reads credentials but WiFi component doesn't support runtime changes |
 | API encryption key | ✅ Stored | Safely written to NVS, awaiting API component support |
 | Flash encryption | ⏳ TODO | Planned for production hardening with eFuses |
@@ -579,8 +579,9 @@ Stored in NVS only:
   ota_password = "a1b2c3d4e5..." (unique to this device)
   
 Firmware at startup:
-  nvs_ota_password component reads NVS
+  nvs_secrets component reads NVS
   └─ Sets OTA service password from NVS value
+  └─ Loads WiFi and API credentials
   └─ Enables device-specific OTA authentication
 ```
 
@@ -595,22 +596,18 @@ Firmware at startup:
 | Physical flash read | ❌ NVS plaintext | Moderate (requires soldering programmer) |
 | Flash encryption bypass | ⚠️ Future enhancement (see TODO) | Would require eFuse key extraction |
 
-### Custom NVS Components
+### Custom NVS Component
 
-Two custom ESPHome components read from NVS at runtime:
+One custom ESPHome component reads from NVS at runtime:
 
-1. **nvs_ota_password**: Reads `ota_password` from NVS, sets OTA authentication
-   - No password in firmware binary
-   - Dynamically sets OTA authentication at startup
-   - Enables device-specific OTA without recompilation
-   - Status: ✅ Working
-
-2. **nvs_secrets**: Reads WiFi and API credentials from NVS
-   - Reads `wifi_ssid`, `wifi_password`, `api_key` from NVS partition
-   - Logs what was found (for debugging)
-   - **⚠️ LIMITATION**: ESPHome WiFi component does NOT support dynamic credential changes after initialization
-   - Makes values available for future use (e.g., config portal)
-   - Status: ✅ Reads from NVS, ⏳ WiFi update requires different approach
+**nvs_secrets**: Reads all device-specific secrets from NVS
+- Reads `ota_password`, `wifi_ssid`, `wifi_password`, `api_key` from NVS partition
+- No secrets in firmware binary (all come from device flash at runtime)
+- Dynamically sets OTA authentication password from NVS
+- Logs what was found (for debugging)
+- **⚠️ LIMITATION**: ESPHome WiFi component does NOT support dynamic credential changes after initialization
+- Makes WiFi/API values available for future use (e.g., config portal)
+- Status: ✅ OTA password working, ⏳ WiFi credentials stored but WiFi component requires runtime changes
 
 ### WiFi Credential Challenge (Technical Limitation)
 

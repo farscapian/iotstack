@@ -76,8 +76,6 @@ yamls/
 ├── sendspin.yaml                    # Multi-room speaker (WiFi)
 └── external_components/             # Custom ESPHome components
     ├── nvs_secrets/                 # Reads device credentials from NVS
-    ├── nvs_ota_password/            # Reads OTA password from NVS
-    └── nvs_writer/                  # Writes NVS partition to device
 ```
 
 ---

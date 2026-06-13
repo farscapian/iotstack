@@ -176,7 +176,5 @@ logger:
   hardware_uart: USB_SERIAL_JTAG
   logs:
     nvs_secrets: DEBUG
-    nvs_ota_password: DEBUG
-    nvs_writer: DEBUG
     wifi: DEBUG
     api: DEBUG
