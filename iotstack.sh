@@ -643,16 +643,6 @@ Options:
   --jobs N               Max concurrent flash jobs (default: 4)
   -v, --verbose          Show compilation output
 
-Examples:
-  iotstack update bleproxy                   # Update WiFi device
-  iotstack update router --thread            # Update Thread device
-  iotstack update all                        # Update all devices
-  iotstack update --dry-run mmwave           # Preview without flashing
-  iotstack verify all                        # Verify entire fleet
-  iotstack reassign 8dfcac 0f4df4 bleproxy                         # Reassign devices
-  iotstack reassign 11cdc4 bleproxy --ota-password "ZAD818dH7t..."     # With OTA password
-  iotstack list roles                        # Show available roles
-
 EOF
 }
 
