@@ -2254,6 +2254,7 @@ _flash_recovery() {
     echo ""
 
     info "Device booting recovery firmware..."
+    info "(Recovery firmware at 0x30000 - recovery partition)"
     sleep 10
 
     # Return the MAC suffix for later reassignment
