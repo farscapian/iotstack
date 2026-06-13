@@ -622,92 +622,19 @@ Examples:
 
 Commands:
 
-  update [<device>|<yaml>|all]
-    Compile and flash device(s) over-the-air (OTA).
-    - Detects devices on network automatically
-    - Only flashes devices that need updates (delta mode)
-    Examples:
-      iotstack update bleproxy              # update WiFi variant (default)
-      iotstack update bleproxy --thread     # update Thread variant
-      iotstack update all
-      iotstack update --dry-run mmwave
+  update              Compile and flash device(s) over-the-air (OTA)
+  reassign            Flash specific devices to a different configuration
+  verify              Check if devices match the current build hash
+  flash               Flash device via serial/USB (for bricked devices)
+  query               Query Home Assistant device and entity registry
+  list                Show devices and roles
+  secret              Retrieve secrets from encrypted pass store
+  commission          Commission a Matter device via QR code
+  rotate-secrets      Rotate device secrets (OTA password and API key)
+  clean               Clean build artifacts and compilation caches
+  help                Show help for a command
 
-  reassign <MAC1> [MAC2 ...] <device|yaml>
-    Flash specific devices to a different configuration.
-    Options:
-      --ota-password <password>    Use specific OTA password for device authentication
-    Examples:
-      iotstack reassign 8dfcac 0f4df4 bleproxy
-      iotstack reassign 11cdc4 threadrouter --ota-password "kOKuNAPXcbSdYch5AJFtrcoZPr3RyljAkN5Yu9n9oA"
-      iotstack reassign 8dfcac yamls/mmwave.yaml
-
-  verify [<device>|<yaml>|all]
-    Check if devices match the current build hash (no flashing).
-    Examples:
-      iotstack verify bleproxy
-      iotstack verify all
-      iotstack verify thread_router --thread
-
-  flash <device|yaml> [tty-device]
-    Flash device via serial/USB (for bricked devices).
-    Use when OTA is not available.
-    Auto-detects USB device if only one is connected.
-    Examples:
-      iotstack flash bleproxy                 # auto-detect device
-      iotstack flash bleproxy /dev/ttyACM0    # specify device
-      iotstack flash mmwave /dev/ttyUSB0
-      iotstack flash yamls/custom.yaml
-
-  query [<device-name>|--list]
-    Query Home Assistant device and entity registry via WebSocket API.
-    Shows all entities (buttons, sensors, etc.) for a device.
-    Examples:
-      iotstack query --list                          # List all devices in HA
-      iotstack query "Bilresa5 - Secondary RoomRemote"
-      iotstack query "Kitchen RoomRemote"
-
-  list [devices|roles]
-    Show devices and roles.
-    Subcommands:
-      devices   Show discovered ESPHome devices on network (default)
-      roles     Show available device roles with their configurations
-
-  secret get <role> <ota|api> [version]
-    Retrieve a secret from encrypted pass store.
-    Examples:
-      iotstack secret get bleproxy ota              # Current OTA password
-      iotstack secret get bleproxy api              # Current API key
-      iotstack secret get bleproxy ota 0            # Archived version (v0)
-
-  commission <path-to-qr-image>
-    Commission a Matter device via QR code image file.
-    - Decodes Matter QR code from JPG/PNG/etc.
-    - Commissions device via chip-tool (Thread network)
-    - Opens commissioning window and hands off to Home Assistant
-    - Requires Thread dataset configured in pass store
-    Examples:
-      iotstack commission ~/qr-code.jpg
-      iotstack commission ~/Downloads/device-qr.png
-
-  rotate-secrets <role> [new-secret]
-    Rotate secrets (OTA password and API encryption key) for all devices in a role.
-    - OTA password: Always rotated (required for device updates)
-    - API key: Only rotated if Home Assistant credentials are configured
-    - Keeps historical passwords for recovery and audit trails
-    - If secret not provided, generates a cryptographically secure one
-    Examples:
-      iotstack rotate-secrets bleproxy                    # Generate strong secrets
-      iotstack rotate-secrets bleproxy "newSecret123"     # Use specific secret
-
-  clean
-    Clean build artifacts and compilation caches.
-    Removes build directories, compiler caches, and old logs.
-    Safe to run—only removes build artifacts, not source files.
-    Examples:
-      iotstack clean                                      # Clean all artifacts
-
-  help [command]
-    Show help for a specific command.
+Use 'iotstack <command> help' for detailed help on any command.
 
 Options:
   --thread               Use Thread variant instead of WiFi (for devices with both)
@@ -2974,12 +2901,18 @@ main() {
     debug "Restored .iotstack symlink: $iotstack_link -> $iotstack_home"
   fi
 
-  # Mount secrets store early - needed for all operations
-  # Check WiFi credentials exist, prompt if missing
-  verify_wifi_credentials
-
   # Sync common secrets silently at startup
   local command="${1:-help}"
+
+  # Only verify WiFi credentials if it's an actual operation (not help)
+  if [[ "${2:-}" != "help" ]]; then
+    case "$command" in
+      update|reassign|flash)
+        # Check WiFi credentials exist, prompt if missing (needed for device flashing)
+        verify_wifi_credentials
+        ;;
+    esac
+  fi
 
   case "$command" in
     update)
