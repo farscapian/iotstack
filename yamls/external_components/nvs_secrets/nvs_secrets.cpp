@@ -1,6 +1,11 @@
 #include "nvs_secrets.h"
 #include "nvs_flash.h"
+#include "esphome/core/defines.h"
 #include "esphome/core/log.h"
+
+#ifdef USE_WIFI
+#include "esphome/components/wifi/wifi_component.h"
+#endif
 
 namespace esphome {
 namespace nvs_secrets {
@@ -72,6 +77,22 @@ void NVSSecrets::setup() {
   } else {
     ESP_LOGW(TAG, "[NVS] WiFi SSID NOT in NVS");
   }
+
+  // Apply WiFi credentials from NVS to the WiFi component.
+  // nvs_secrets runs at setup_priority AFTER_WIFI (200), so the WiFi component
+  // (priority 250) is already initialized here. save_wifi_sta() replaces the
+  // STA config with the NVS values and triggers an immediate reconnect, which
+  // overrides the YAML placeholder ("configured-via-nvs").
+#ifdef USE_WIFI
+  if (!wifi_ssid_.empty()) {
+    if (wifi::global_wifi_component != nullptr) {
+      ESP_LOGI(TAG, "[NVS] Applying WiFi credentials from NVS to WiFi component (SSID: %s)", wifi_ssid_.c_str());
+      wifi::global_wifi_component->save_wifi_sta(wifi_ssid_, wifi_password_);
+    } else {
+      ESP_LOGW(TAG, "[NVS] WiFi component unavailable; cannot apply NVS credentials");
+    }
+  }
+#endif
 
   ESP_LOGI(TAG, "[NVS] Setup complete");
 }

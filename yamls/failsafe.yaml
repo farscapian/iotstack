@@ -39,7 +39,7 @@ esphome:
     # the NVS boot summary below is easy to catch instead of scrolling past.
     priority: -100
     then:
-      - delay: 5s
+      - delay: 10s
       - logger.log:
           format: "[NVS-DEBUG] Boot summary follows. Device secrets are read from NVS at startup; see the [nvs_secrets] lines above for what loaded."
           level: INFO
@@ -148,10 +148,6 @@ sensor:
 button:
   - platform: restart
     name: "Restart"
-  - platform: factory_reset
-    name: "Reset Device"
-    entity_category: config
-    disabled_by_default: true
 
   # Manual partition toggle button for HA integration
   - platform: template
