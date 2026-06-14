@@ -41,5 +41,8 @@ export GNUPG_HOME="${GNUPG_HOME:-${IOTSTACK_HOME}/.gnupg}"
 # ESPHome build directories (for verification scripts)
 export ESPHOME_BUILD_DIR="${ESPHOME_BUILD_DIR:-${YAMLS_DIR}/.esphome/build}"
 
+# Build behavior flags — allow user override via environment variable or .env file
+export CLEAN_BUILD_DIRECTORY="${CLEAN_BUILD_DIRECTORY:-0}"
+
 # Ensure directories exist
 mkdir -p "$IOTSTACK_HOME" "$LOGS_DIR" "$ARTIFACTS_DIR" "$PASS_STORE_DIR" 2>/dev/null || true

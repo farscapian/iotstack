@@ -2055,6 +2055,14 @@ _flash_recovery() {
     debug "Serial port check completed"
 
     info "Flashing to: $tty_device"
+
+    # Clean build directory if requested
+    if [[ $CLEAN_BUILD_DIRECTORY -eq 1 ]]; then
+      info "Cleaning build directory (CLEAN_BUILD_DIRECTORY=1)..."
+      rm -rf "$ESPHOME_BUILD_DIR"
+      ok "Build directory cleaned"
+    fi
+
     info "Compiling failsafe firmware..."
     smart_compile "$failsafe_yaml" "failsafe" || err "Compilation failed"
 
