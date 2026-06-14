@@ -22,7 +22,7 @@ Usage:
 Examples:
   iotstack -v flash bleproxy /dev/ttyACM0    # Flash with verbose output
   iotstack --verbose update all              # Update all devices, show details
-  iotstack -q list roles --id                # Quiet output (just role names)
+  iotstack -q roles                          # Quiet output (just role names)
   iotstack --quiet clean                     # Silent cleanup
 
 Commands:
