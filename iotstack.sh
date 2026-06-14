@@ -1300,7 +1300,7 @@ cmd_reassign() {
           source_role="${device_name%-"$mac"}"
 
           if [[ -n "$source_role" ]]; then
-            # If device is running recovery firmware, use well-known recovery password
+            # If device is running failsafe firmware, use well-known recovery password
             if [[ "$source_role" =~ ^recovery ]]; then
               api_key="IotstackRecovery2024"
               echo "  OTA Password: (well-known recovery password)"
@@ -1953,7 +1953,7 @@ _boot_partition_usb() {
   local device="$1"
   local partition="$2"
 
-  # Device must be running recovery firmware for this to work
+  # Device must be running failsafe firmware for this to work
   info "Toggling boot partition..."
   if timeout 5 curl -s -X POST "http://localhost:6053/api/services/button/press" \
     -H "Content-Type: application/json" \
@@ -2023,7 +2023,7 @@ _flash_recovery() {
   # Flash recovery image via serial and return the device's MAC suffix
   local tty_device="$1"
 
-  info "Flashing recovery firmware (dual-partition setup)"
+  info "Flashing failsafe firmware (dual-partition setup)"
   echo ""
 
   local failsafe_yaml="$YAMLS_DIR/failsafe.yaml"
@@ -2048,10 +2048,10 @@ _flash_recovery() {
     debug "Serial port check completed"
 
     info "Flashing to: $tty_device"
-    info "Compiling recovery firmware..."
+    info "Compiling failsafe firmware..."
     smart_compile "$failsafe_yaml" "recovery" || err "Compilation failed"
 
-    info "Uploading recovery firmware to device..."
+    info "Uploading failsafe firmware to device..."
 
     # Create flash log directory
     local flash_log_dir="$HOME/.iotstack/logs/flash"
@@ -2064,11 +2064,11 @@ _flash_recovery() {
     esptool --chip esp32c6 --port "$tty_device" --baud 9600 erase_flash 2>&1 | tee -a "$flash_log" >/dev/null || err "Erase failed"
     sleep 3  # Wait for erase to complete and device to stabilize
 
-    # Flash generic recovery firmware and capture MAC
+    # Flash generic failsafe firmware and capture MAC
     local build_dir="$YAMLS_DIR/.esphome/build/recovery/.pioenvs/recovery"
     [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
 
-    info "Flashing recovery firmware..."
+    info "Flashing failsafe firmware..."
     if [[ $VERBOSE -eq 1 ]]; then
       info "Detailed output:"
       info "tail -f $flash_log"
@@ -2123,7 +2123,7 @@ _flash_recovery() {
       err "Flash verification failed - device may be corrupted"
     echo ""
 
-    info "Device booting recovery firmware..."
+    info "Device booting failsafe firmware..."
     info "(Failsafe firmware at 0x30000 - failsafe partition)"
     sleep 10
 
@@ -2154,7 +2154,7 @@ _flash_recovery() {
   # Confirm before flashing multiple devices
   confirm_multi_device ${#tty_devices[@]} "$(printf '%s\n' "${tty_devices[@]}")"
 
-  info "Compiling recovery firmware..."
+  info "Compiling failsafe firmware..."
   if [[ $VERBOSE -eq 1 ]]; then
     esphome compile "$failsafe_yaml" || err "Compilation failed"
   else
@@ -2194,7 +2194,7 @@ _flash_recovery() {
   else
     ok "Failsafe firmware flashed to all ${#tty_devices[@]} device(s)"
     echo ""
-    info "Devices booting recovery firmware..."
+    info "Devices booting failsafe firmware..."
     info "Waiting 15 seconds for devices to stabilize and connect..."
     sleep 15
   fi
@@ -2323,7 +2323,7 @@ _flash_production_smart() {
     local device_mac=""
     if [[ "$skip_recovery" != "--ota-only" ]]; then
       info "Fresh device detected (serial connection)"
-      info "Step 1: Flashing recovery firmware..."
+      info "Step 1: Flashing failsafe firmware..."
       echo ""
       device_mac=$(_flash_recovery "$tty_device")
       echo ""
