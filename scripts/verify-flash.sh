@@ -11,6 +11,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Source config for partition table location
+# shellcheck source=/dev/null
+source "${PROJECT_DIR}/config.sh"
+
 # Colors
 RED='\033[0;31m'
 GRN='\033[0;32m'
@@ -55,8 +59,13 @@ for i in {0..2}; do
   file="${files[$i]}"
   source_file="${BUILD_DIR}/${file}"
 
+  # For partitions.bin, use the dynamically generated version (not the BUILD_DIR one)
+  if [[ "$file" == "partitions.bin" ]]; then
+    source_file="${PARTITION_TABLE}"
+  fi
+
   if [[ ! -f "$source_file" ]]; then
-    warn "Skipping $file (not found)"
+    warn "Skipping $file (not found at $source_file)"
     continue
   fi
 
