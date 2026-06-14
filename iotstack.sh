@@ -1747,32 +1747,9 @@ list_roles() {
 
   if [[ "$output_format" == "csv" ]]; then
     echo "Role,Board,Variant,Network,Status,Config"
-    list_roles_from_conf | while read -r device; do
-      local yaml_file board variant network_type dev_status config_file device_info
-      yaml_file="${YAMLS_DIR}/${device}.yaml"
-
-      if [[ -f "$yaml_file" ]]; then
-        device_info=$(get_yaml_device_info "$yaml_file")
-        board=$(echo "$device_info" | cut -d'|' -f1)
-        variant=$(echo "$device_info" | cut -d'|' -f2)
-        network_type=$(echo "$device_info" | cut -d'|' -f3)
-        dev_status=$(echo "$device_info" | cut -d'|' -f4)
-        config_file=$(basename "$yaml_file")
-      else
-        board=""
-        variant=""
-        network_type=""
-        dev_status=""
-        config_file=""
-      fi
-
-      echo "$device,$board,$variant,$network_type,$dev_status,$config_file"
-    done
-  elif [[ "$output_format" == "json" ]]; then
-    echo "["
-    list_roles_from_conf | {
-      first=true
-      while read -r device; do
+    # Collect and sort roles by status (prod first) then by name
+    {
+      list_roles_from_conf | while read -r device; do
         local yaml_file board variant network_type dev_status config_file device_info
         yaml_file="${YAMLS_DIR}/${device}.yaml"
 
@@ -1791,6 +1768,49 @@ list_roles() {
           config_file=""
         fi
 
+        # Add sort key: prod=0, dev=1, then role name
+        local sort_key
+        case "$dev_status" in
+          prod) sort_key="0" ;;
+          *) sort_key="1" ;;
+        esac
+        printf "%s_%s|%s,%s,%s,%s,%s,%s\n" "$sort_key" "$device" "$device" "$board" "$variant" "$network_type" "$dev_status" "$config_file"
+      done
+    } | sort -t_ -k1,1 -k2 | cut -d'|' -f2-
+  elif [[ "$output_format" == "json" ]]; then
+    echo "["
+    # Collect, sort, and format JSON entries
+    {
+      list_roles_from_conf | while read -r device; do
+        local yaml_file board variant network_type dev_status config_file device_info
+        yaml_file="${YAMLS_DIR}/${device}.yaml"
+
+        if [[ -f "$yaml_file" ]]; then
+          device_info=$(get_yaml_device_info "$yaml_file")
+          board=$(echo "$device_info" | cut -d'|' -f1)
+          variant=$(echo "$device_info" | cut -d'|' -f2)
+          network_type=$(echo "$device_info" | cut -d'|' -f3)
+          dev_status=$(echo "$device_info" | cut -d'|' -f4)
+          config_file=$(basename "$yaml_file")
+        else
+          board=""
+          variant=""
+          network_type=""
+          dev_status=""
+          config_file=""
+        fi
+
+        # Add sort key: prod=0, dev=1, then role name
+        local sort_key
+        case "$dev_status" in
+          prod) sort_key="0" ;;
+          *) sort_key="1" ;;
+        esac
+        printf "%s_%s|%s|%s|%s|%s|%s|%s\n" "$sort_key" "$device" "$device" "$board" "$variant" "$network_type" "$dev_status" "$config_file"
+      done
+    } | sort -t_ -k1,1 -k2 | cut -d'|' -f2- | {
+      first=true
+      while IFS='|' read -r device board variant network_type dev_status config_file; do
         [[ "$first" != true ]] && echo ","
         printf '  {"role": "%s", "board": "%s", "variant": "%s", "network": "%s", "status": "%s", "config": "%s"}' \
           "$device" "$board" "$variant" "$network_type" "$dev_status" "$config_file"
@@ -1802,12 +1822,12 @@ list_roles() {
   else
     # Text format - gather data first
     local margin=2
-    local temp_data
+    local temp_data temp_unsorted
     temp_data=$(mktemp)
+    temp_unsorted=$(mktemp)
     # shellcheck disable=SC2064
-    trap "rm -f '$temp_data'" RETURN
+    trap "rm -f '$temp_data' '$temp_unsorted'" RETURN
 
-    # Gather role data into temp file (using process substitution to avoid subshell)
     while IFS= read -r device; do
       local yaml_file board variant network_type dev_status config_display device_info
       yaml_file="${YAMLS_DIR}/${device}.yaml"
@@ -1827,8 +1847,17 @@ list_roles() {
         config_display=""
       fi
 
-      echo "$device|$board|$variant|$network_type|$dev_status|$config_display" >> "$temp_data"
+      # Add sort key: prod=0, dev=1, then role name
+      local sort_key
+      case "$dev_status" in
+        prod) sort_key="0" ;;
+        *) sort_key="1" ;;
+      esac
+      printf "%s_%s|%s|%s|%s|%s|%s|%s\n" "$sort_key" "$device" "$device" "$board" "$variant" "$network_type" "$dev_status" "$config_display" >> "$temp_unsorted"
     done < <(list_roles_from_conf)
+
+    # Sort by status (prod first) then by role name
+    sort -t_ -k1,1 -k2 "$temp_unsorted" | cut -d'|' -f2- > "$temp_data"
 
     # Calculate column widths
     local header_role="Role"
