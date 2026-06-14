@@ -13,6 +13,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Source centralized configuration
+# shellcheck source=/dev/null
+source "${PROJECT_DIR}/config.sh"
+
 # Colors
 RED='\033[0;31m'
 GRN='\033[0;32m'
@@ -74,7 +78,6 @@ DEVICE_OTA_PASSWORD="${4:-}"
 [[ ! -e "$TTY_DEVICE" ]] && err "TTY device not found: $TTY_DEVICE"
 
 # Read NVS size from the generated partition table
-PARTITION_TABLE="${PROJECT_DIR}/yamls/iotstack_partition_table.csv"
 if [[ ! -f "$PARTITION_TABLE" ]]; then
   err "Partition table not found: $PARTITION_TABLE\nMake sure to compile firmware first (which generates the partition table)"
 fi

@@ -10,7 +10,7 @@ set -euo pipefail
 # Global configuration
 VERBOSE=0
 QUIET=0
-ENV_FILE="${HOME}/.iotstack/.env"  # Default environment file
+# ENV_FILE is defined in config.sh
 
 # Colors (using ANSI-C quoting to properly interpret escape sequences)
 RED=$'\033[0;31m'
@@ -362,12 +362,12 @@ confirm_multi_device() {
 
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
-UPDATE_SCRIPT="${SCRIPT_DIR}/update_devices.sh"
-YAMLS_DIR="${SCRIPT_DIR}/yamls"
 
-# Compilation cache
-COMPILATION_CACHE="${HOME}/.iotstack/compilation-cache.csv"
-mkdir -p "$(dirname "$COMPILATION_CACHE")"
+# Source centralized configuration
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/config.sh"
+
+UPDATE_SCRIPT="${SCRIPT_DIR}/update_devices.sh"
 
 # ── Worktree Isolation ────────────────────────────────────────────────────────
 # Each iotstack invocation gets its own isolated worktree to prevent code
