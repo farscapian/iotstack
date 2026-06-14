@@ -6,8 +6,8 @@ Global Options:
 
 Usage:
   iotstack [-v|--verbose] [-q|--quiet] <command> [options]
-  iotstack update [options] [<device>|<yaml>|all] [--thread]
-  iotstack verify [<device>|<yaml>|all] [--thread]
+  iotstack update [options] [<device>|<yaml>|all]
+  iotstack verify [<device>|<yaml>|all]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
   iotstack flash <device|yaml> [tty-device]
   iotstack set-boot <device> <failsafe|production>
@@ -43,7 +43,6 @@ Commands:
 Use 'iotstack <command> help' for detailed help on any command.
 
 Options:
-  --thread               Use Thread variant instead of WiFi (for devices with both)
   --dry-run              Compile and show what would be flashed (no flashing)
   --flash-anyway         Flash all devices regardless of version
   --jobs N               Max concurrent flash jobs (default: 4)

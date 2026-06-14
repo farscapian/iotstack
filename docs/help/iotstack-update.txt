@@ -7,8 +7,8 @@ devices, or custom YAML configs. Compiles once and then flashes in parallel to
 multiple devices.
 
 Usage:
-  iotstack update [options] [<device>|<yaml>|all] [--thread]
-  iotstack update [options] [<MAC1> [MAC2 ...]] <device|yaml> [--thread]
+  iotstack update [options] [<device>|<yaml>|all]
+  iotstack update [options] [<MAC1> [MAC2 ...]] <device|yaml>
 
 Arguments:
   <device>      Device role (e.g., bleproxy, mmwave)
@@ -17,7 +17,6 @@ Arguments:
   <MAC1> [MAC2...]  MAC suffix(es) to update (6 hex digits each)
 
 Options:
-  --thread              Use Thread variant instead of WiFi
   --ota-password <pwd>  OTA password for device authentication
   --dry-run             Compile and show what would be flashed (no flash)
   --force-reflash       Flash all devices regardless of version
@@ -27,7 +26,6 @@ Options:
 Examples:
   iotstack update bleproxy
                         # Update all bleproxy devices
-  iotstack update threadrouter --thread
                         # Update Thread device
   iotstack update all   # Update all devices
   iotstack update --dry-run mmwave

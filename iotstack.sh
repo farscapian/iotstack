@@ -1021,7 +1021,6 @@ cmd_update() {
   fi
 
   local device_or_yaml=""
-  local use_thread=""
   local ota_password=""
   declare -a update_args=()
   declare -a mac_suffixes=()
@@ -1029,10 +1028,6 @@ cmd_update() {
   # Parse arguments - collect MACs (6-digit hex), options, and device name
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --thread)
-        use_thread="--thread"
-        shift
-        ;;
       --ota-password)
         ota_password="$2"
         shift 2
@@ -1083,7 +1078,7 @@ cmd_update() {
     yaml_file="$device_or_yaml"
   else
     # Try to resolve as device name
-    yaml_file=$(resolve_device "$device_or_yaml" "$use_thread")
+    yaml_file=$(resolve_device "$device_or_yaml")
   fi
 
   # Handle normal update mode
@@ -1150,7 +1145,6 @@ cmd_reassign() {
     return 0
   fi
 
-  local use_thread=""
   local api_key=""
   local password_list_file=""
   declare -a update_args=()
@@ -1159,10 +1153,6 @@ cmd_reassign() {
   # Separate options from positional arguments
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --thread)
-        use_thread="--thread"
-        shift
-        ;;
       --ota-password)
         api_key="$2"
         shift 2
@@ -1208,7 +1198,7 @@ cmd_reassign() {
   if [[ -f "$device_or_yaml" ]]; then
     yaml_file="$device_or_yaml"
   else
-    yaml_file=$(resolve_device "$device_or_yaml" "$use_thread")
+    yaml_file=$(resolve_device "$device_or_yaml")
   fi
 
   # Early sanity check: verify devices aren't already the target role
@@ -1367,15 +1357,10 @@ cmd_verify() {
   fi
 
   local device_or_yaml=""
-  local use_thread=""
 
   # Parse arguments
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --thread)
-        use_thread="--thread"
-        shift
-        ;;
       all)
         device_or_yaml="all"
         shift
@@ -1401,7 +1386,7 @@ cmd_verify() {
   elif [[ -f "$device_or_yaml" ]]; then
     yaml_file="$device_or_yaml"
   else
-    yaml_file=$(resolve_device "$device_or_yaml" "$use_thread")
+    yaml_file=$(resolve_device "$device_or_yaml")
   fi
 
   if [[ "$yaml_file" == "all" ]]; then
