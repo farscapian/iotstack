@@ -67,7 +67,7 @@ api:
 # Custom NVS secrets component - loads device-specific secrets from NVS at startup
 # Handles: WiFi credentials, OTA password, API encryption key
 # All secrets are unique per device and stored in device flash (NVS partition)
-nvs_secrets:
+nvs_secrets: {}
 
 # OTA Configuration for failsafe partition
 # Password is dynamically set by nvs_secrets component from NVS

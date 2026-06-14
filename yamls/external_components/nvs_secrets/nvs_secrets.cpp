@@ -45,7 +45,7 @@ std::string NVSSecrets::read_nvs_string(const char* key) {
 }
 
 void NVSSecrets::setup() {
-  ESP_LOGI(TAG, "=== NVS SECRETS COMPONENT INITIALIZING ===");
+  ESP_LOGI(TAG, "=== NVS SECRETS COMPONENT INITIALIZING (setup priority 200) ===");
 
   // Initialize NVS flash (required before any NVS operations)
   esp_err_t err = nvs_flash_init();
@@ -64,9 +64,9 @@ void NVSSecrets::setup() {
 
   wifi_ssid_ = read_nvs_string("wifi_ssid");
   if (!wifi_ssid_.empty()) {
-    ESP_LOGI(TAG, "✓ WiFi SSID loaded from NVS (%zu bytes)", wifi_ssid_.length());
+    ESP_LOGI(TAG, "[CRITICAL] WiFi SSID loaded from NVS: %s (%zu bytes)", wifi_ssid_.c_str(), wifi_ssid_.length());
   } else {
-    ESP_LOGW(TAG, "✗ WiFi SSID not found in NVS - device will use YAML placeholder");
+    ESP_LOGW(TAG, "[CRITICAL] WiFi SSID NOT found in NVS - device will use YAML placeholder");
   }
 
   wifi_password_ = read_nvs_string("wifi_password");
