@@ -12,16 +12,22 @@ if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
   _sourced=1
 fi
 
-# Early exit if sourced - just set environment variables
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Source centralized configuration (resolves IOTSTACK_HOME, GNUPG_HOME,
+# PASS_STORE_DIR, ENV_FILE and loads ~/.iotstack/.env)
+# shellcheck source=config.sh
+source "${SCRIPT_DIR}/config.sh"
+
+# Early exit if sourced - just export the variables the gpg/pass tools expect
 if [[ $_sourced -eq 1 ]]; then
-  export GNUPGHOME="${HOME}/.iotstack/.gnupg"
-  export PASSWORD_STORE_DIR="${HOME}/.iotstack/.pass"
+  export GNUPGHOME="$GNUPG_HOME"
+  export PASSWORD_STORE_DIR="$PASS_STORE_DIR"
   return 0
 fi
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IOTSTACK_SCRIPT="${SCRIPT_DIR}/iotstack.sh"
 LOCAL_BIN="${HOME}/.local/bin"
 IOTSTACK_LINK="${LOCAL_BIN}/iotstack"
@@ -47,11 +53,8 @@ if [[ ! -x "$IOTSTACK_SCRIPT" ]]; then
   err "iotstack.sh is not executable. Run: chmod +x $IOTSTACK_SCRIPT"
 fi
 
-# Create default environment file ~/.iotstack/.env if it doesn't exist
-IOTSTACK_HOME="${HOME}/.iotstack"
-mkdir -p "$IOTSTACK_HOME"
-
-ENV_FILE="${IOTSTACK_HOME}/.env"
+# Create default environment file if it doesn't exist
+# (IOTSTACK_HOME and ENV_FILE come from config.sh, which also created the dir)
 ENV_TEMPLATE="${SCRIPT_DIR}/resources/.env.example"
 
 if [[ ! -f "$ENV_FILE" ]]; then
