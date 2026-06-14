@@ -2,6 +2,7 @@
 # ESPHome 2026.5.x compatible
 
 substitutions:
+  development_status: "prod"
   device_role: "bleproxy"
   friendly_name: "Bluetooth Proxy"
 

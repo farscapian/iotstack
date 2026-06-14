@@ -13,6 +13,7 @@
 # WARNING: Do NOT use this as production firmware!
 
 substitutions:
+  development_status: "prod"
   device_role: "failsafe"
   friendly_name: "Failsafe Mode"
 
@@ -28,7 +29,7 @@ esphome:
   friendly_name: ${friendly_name}
   name_add_mac_suffix: true
   project:
-    name: "iotstack.${device_role}"
+    name: "iotstack.${device_role}-${dev_status}"
     version: "1.0.1"
   on_boot:
     priority: 100

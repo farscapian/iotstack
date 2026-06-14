@@ -1,4 +1,5 @@
 substitutions:
+  development_status: "dev"
   device_role: "sendspinspeaker"
   friendly_name: "SendSpin Speaker"
 

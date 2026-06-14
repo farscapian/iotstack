@@ -13,6 +13,7 @@
 # In config mode, pressing slave buttons reassigns which LED they control.
 
 substitutions:
+  development_status: "dev"
   device_role: "mmwave3led"
   friendly_name: "mmWave 3-LED"
   role_color_r: "100"  # mmWave = red/orange (100%, 50%, 0%)

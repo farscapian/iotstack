@@ -1,5 +1,6 @@
 # ESP32-C6 Thread Router
 substitutions:
+  development_status: "dev"
   device_role: "threadrouter"
   friendly_name: "Thread Router"
 

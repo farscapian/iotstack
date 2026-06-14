@@ -1,0 +1,40 @@
+substitutions:
+  development_status: "dev"
+  device_role: "silentnotify"
+  friendly_name: "Silent Notify"
+
+esphome:
+  name: "${device_role}"
+  friendly_name: "${friendly_name}"
+  name_add_mac_suffix: true
+  project:
+    name: "iotstack.${device_role}"
+    version: "1.0.0"
+
+esp32:
+  board: seeed_xiao_esp32c6
+  variant: esp32c6
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+external_components:
+  - source:
+      type: local
+      path: ./external_components
+    components: [nvs_secrets]
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+  level: DEBUG
+
+wifi:
+  ssid: "configured-via-nvs"
+  password: "placeholder"
+
+api:
+
+ota:
+  - platform: esphome
+
+nvs_secrets:

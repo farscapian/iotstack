@@ -1,6 +1,7 @@
 # ESP32-C6 WiFi mmWave Sensor
 
 substitutions:
+  development_status: "prod"
   device_role: "mmwave"
   friendly_name: "mmWave Presense Detector"
 
