@@ -55,7 +55,7 @@ fi
 
 # Create default environment file if it doesn't exist
 # (IOTSTACK_HOME and ENV_FILE come from config.sh, which also created the dir)
-ENV_TEMPLATE="${SCRIPT_DIR}/resources/.env.example"
+ENV_TEMPLATE="${SCRIPT_DIR}/docs/.env.example"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   if [[ -f "$ENV_TEMPLATE" ]]; then
@@ -367,7 +367,7 @@ echo "Creating taskbar application..."
 APPLICATIONS_DIR="${HOME}/.local/share/applications"
 ICONS_DIR="${HOME}/.local/share/icons"
 DESKTOP_FILE="${APPLICATIONS_DIR}/iotstack.desktop"
-LOGO_SRC="${SCRIPT_DIR}/assets/iotstack-logo.svg"
+LOGO_SRC="${SCRIPT_DIR}/docs/iotstack-logo.svg"
 TERMINAL_LAUNCHER="${SCRIPT_DIR}/scripts/iotstack-terminal"
 
 mkdir -p "$APPLICATIONS_DIR" "$ICONS_DIR"

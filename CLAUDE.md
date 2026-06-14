@@ -20,10 +20,10 @@ Environment variables are stored in `~/.iotstack/.env` and loaded automatically 
 **Setup:**
 ```bash
 # View available options
-cat resources/.env.example
+cat docs/.env.example
 
 # Create default configuration (done automatically by setup.sh)
-cp resources/.env.example ~/.iotstack/.env
+cp docs/.env.example ~/.iotstack/.env
 
 # Edit to customize
 nano ~/.iotstack/.env
