@@ -94,6 +94,13 @@ _update_compilation_cache() {
     echo "yaml_name,yaml_sha,binary_sha" > "$COMPILATION_CACHE"
   fi
 
+  # Check if this yaml_sha already exists in cache
+  if tail -n +2 "$COMPILATION_CACHE" | grep -q "^${yaml_name},${yaml_sha},"; then
+    # Entry already exists - don't add a duplicate
+    return 0
+  fi
+
+  # Append new entry only if it doesn't already exist
   echo "${yaml_name},${yaml_sha},${binary_sha}" >> "$COMPILATION_CACHE"
 }
 
