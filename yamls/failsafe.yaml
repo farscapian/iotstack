@@ -32,13 +32,11 @@ esphome:
     name: "iotstack.${device_role}-${dev_status}"
     version: "1.0.1"
   on_boot:
-    priority: 100
+    priority: -100  # Run AFTER setup() so logs appear in stream
     then:
+      - delay: 3s  # Wait for logger to fully initialize and for user to connect
       - logger.log:
-          format: "[DEBUG-NVS] Startup - nvs_secrets component should have loaded WiFi from NVS"
-          level: INFO
-      - logger.log:
-          format: "[DEBUG-NVS] If connection still uses 'configured-via-nvs', nvs_secrets failed to read NVS data"
+          format: "[NVS-DEBUG] Component setup complete - WiFi credentials loaded from NVS (if present)"
           level: INFO
 
 
@@ -47,8 +45,8 @@ logger:
   hardware_uart: USB_SERIAL_JTAG
   logs:
     nvs_secrets: DEBUG
-    wifi: DEBUG
-    api: DEBUG
+    #wifi: DEBUG
+    #api: DEBUG
 
 
 esp32:
@@ -78,4 +76,14 @@ button:
     name: "Reset Device"
     entity_category: config
     disabled_by_default: true
+
+  # Debug button to check NVS status
+  - platform: template
+    name: "Check NVS Status"
+    entity_category: diagnostic
+    on_press:
+      then:
+        - logger.log:
+            format: "[NVS-STATUS-CHECK] Triggering diagnostic output"
+            level: INFO
 
