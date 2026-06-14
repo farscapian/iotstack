@@ -1,0 +1,50 @@
+substitutions:
+  device_role: "ledstrip"
+  friendly_name: "LED Light Strip"
+  dev_status: "dev"
+
+# External components (replaces deprecated custom_components folder)
+external_components:
+  - source:
+      type: local
+      path: ./external_components
+    components: [nvs_secrets]
+
+esphome:
+  name: ledstrip
+  friendly_name: ${friendly_name}
+  project:
+    name: "iotstack.${device_role}-${dev_status}"
+    version: 1.0.0
+  name_add_mac_suffix: true
+
+esp32:
+  board: esp32-s3-devkitc-1
+  framework:
+    type: esp-idf
+  flash_size: 16MB
+
+# WiFi credentials are loaded from NVS by nvs_secrets component at startup
+wifi:
+  ssid: "configured-via-nvs"  # Placeholder - overridden by nvs_secrets component
+  password: "placeholder"      # Placeholder - overridden by nvs_secrets component
+
+# Custom NVS secrets component - loads device-specific API key from NVS
+nvs_secrets:
+
+
+api:
+  # API encryption key is set dynamically by nvs_secrets component from NVS
+
+# OTA Configuration
+# Password is dynamically set by nvs_secrets component from NVS
+ota:
+  - platform: esphome
+
+safe_mode:
+  num_attempts: 5
+  boot_is_good_after: 60s
+
+logger:
+  baud_rate: 115200
+
