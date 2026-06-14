@@ -147,7 +147,7 @@ iotstack reassign 8dfcac 0f4df4 to mmwave
 
 ### Dual-Partition OTA & Recovery Mode
 
-iotstack uses a dual-partition architecture where devices can boot into either recovery firmware or production firmware. This enables safe updates even if production firmware becomes corrupted.
+iotstack uses a dual-partition... firmware or production firmware. This enables safe updates even if production firmware becomes corrupted.
 
 For detailed information, see [Dual-Partition OTA](docs/DUAL_PARTITION_OTA.md).
 

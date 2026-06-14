@@ -1,20 +1,20 @@
-# Universal Recovery Firmware - All ESP32-C6 Device Roles
-# This is the RECOVERY image - deployed to a separate partition on all devices
-# Use ONLY when production firmware is unavailable/broken
+# Thread-Only Failsafe Firmware - All ESP32-C6 Device Roles
+# This is the FAILSAFE image for Thread networks (no WiFi)
+# Use when you have a Thread mesh network and want OTA via Thread
 #
-# Key features:
-# - Works for ALL device roles (bleproxy, mmwave, threadrouter, etc.)
-# - Device-specific OTA password from NVS (unique per device)
-# - Device-specific API encryption key from NVS (unique per device)
-# - Minimal functionality to save flash space
-# - Single firmware binary for all devices (secrets from NVS)
-# - Can OTA flash any production firmware back
+# Size Benefits:
+# - Removes WiFi stack (significant space savings)
+# - Smaller firmware = faster initial deployment
+# - OTA updates via Thread mesh (slower but resilient)
+# - Thread mesh redundancy = more reliable recovery
 #
-# WARNING: Do NOT use this as production firmware!
+# WARNING: Only use this if you have a Thread network!
+# WARNING: Failsafe credentials are well-known - only use this to recover!
 
 substitutions:
-  device_role: "recovery"
-  friendly_name: "Recovery Mode"
+  device_role: "failsafe-thread"
+  friendly_name: "Failsafe Mode (Thread)"
+
 
 # External components (replaces deprecated custom_components folder)
 external_components:
@@ -22,23 +22,13 @@ external_components:
       type: local
       path: ./external_components
     components: [nvs_secrets]
-
 esphome:
   name: ${device_role}
   friendly_name: ${friendly_name}
   name_add_mac_suffix: true
   project:
     name: "iotstack.${device_role}"
-    version: "1.0.1"
-  on_boot:
-    priority: 100
-    then:
-      - logger.log:
-          format: "[DEBUG-NVS] Startup - nvs_secrets component should have loaded WiFi from NVS"
-          level: INFO
-      - logger.log:
-          format: "[DEBUG-NVS] If connection still uses 'configured-via-nvs', nvs_secrets failed to read NVS data"
-          level: INFO
+    version: "1.0.0"
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -46,30 +36,28 @@ esp32:
     type: esp-idf
   flash_size: 4MB
   variant: esp32c6
-  # PARTITION TABLE CONFIGURATION
-  # Includes: bootloader, app0 (recovery), app1 (production), nvs
-  # NVS partition at 0x3d000 (24KB) for device-specific secrets
-  partitions: dual_app_recovery.csv
+  partitions: iotstack_partition_table.csv
 
-# WiFi credentials are loaded from NVS by nvs_secrets component at startup
-# YAML does not contain any secrets - all come from device flash (NVS)
-wifi:
-  ssid: "configured-via-nvs"  # Placeholder - overridden by nvs_secrets component
-  password: "placeholder"      # Placeholder - overridden by nvs_secrets component
-  power_save_mode: none
+# Thread networking (no WiFi)
+# Thread TLV is loaded from NVS by nvs_secrets component at startup
+openthread:
+  device_type: FTD
+  force_dataset: true
+
+# IPv6 required for Thread
+network:
+  enable_ipv6: true
+
+# Custom NVS secrets component - loads device-specific secrets from NVS
+nvs_secrets:
+
 
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
   # No hardcoded key in firmware binary
 
-# Custom NVS secrets component - loads device-specific secrets from NVS at startup
-# Handles: WiFi credentials, OTA password, API encryption key
-# All secrets are unique per device and stored in device flash (NVS partition)
-nvs_secrets:
-
 # OTA Configuration for recovery partition
-# Password is dynamically set by nvs_secrets component from NVS
-# Each device has a unique OTA password derived at flash time
+# Password is set dynamically by nvs_ota_password component from NVS
 ota:
   - platform: esphome
 
@@ -89,7 +77,6 @@ binary_sensor:
     name: "Connection Status"
 
   # Boot button (GPIO9) on Seeed XIAO ESP32-C6
-  # Hold for 3+ seconds to toggle between recovery/production partitions
   - platform: gpio
     pin:
       number: GPIO9
@@ -111,35 +98,22 @@ binary_sensor:
             uint32_t hold_time = millis() - id(boot_button_pressed_time);
             if (hold_time >= 3000) {
               ESP_LOGI("PARTITION", "Long press detected (%.1fs) - switching partition", hold_time/1000.0f);
-
-              // Write OTA flags to switch partition
-              // This tells bootloader to use alternate partition on next boot
-              esp_ota_get_boot_partition();  // Get current partition info
               const esp_partition_t* running = esp_ota_get_running_partition();
-
-              // Toggle to alternate partition
               const esp_partition_t* next;
               if (running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
                 next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
               } else {
                 next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
               }
-
               if (next != NULL) {
                 esp_ota_set_boot_partition(next);
                 ESP_LOGI("PARTITION", "Boot partition switched to: %s", next->label);
-              } else {
-                ESP_LOGE("PARTITION", "Failed to find alternate partition");
               }
             }
 
 sensor:
   - platform: uptime
     name: "Uptime"
-  - platform: wifi_signal
-    name: "WiFi RSSI (dBm)"
-    update_interval: 60s
-    entity_category: diagnostic
 
 button:
   - platform: restart
@@ -149,32 +123,24 @@ button:
     entity_category: config
     disabled_by_default: true
 
-  # Manual partition toggle button for HA integration
   - platform: template
     name: "Toggle Boot Partition"
     icon: "mdi:swap-horizontal"
     on_press:
       then:
         - lambda: |-
-            // Manually toggle partition without holding physical button
             const esp_partition_t* running = esp_ota_get_running_partition();
             const esp_partition_t* next;
-
             if (running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
               next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
             } else {
               next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
             }
-
             if (next != NULL) {
               esp_ota_set_boot_partition(next);
               ESP_LOGI("PARTITION", "Boot partition toggled to: %s", next->label);
             }
 
 logger:
-  level: DEBUG  # Enhanced logging to debug NVS issues
+  level: INFO
   hardware_uart: USB_SERIAL_JTAG
-  logs:
-    nvs_secrets: DEBUG
-    wifi: DEBUG
-    api: DEBUG

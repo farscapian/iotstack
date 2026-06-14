@@ -10,7 +10,7 @@ Usage:
   iotstack verify [<device>|<yaml>|all] [--thread]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
   iotstack flash <device|yaml> [tty-device]
-  iotstack set-boot <device> <recovery|production>
+  iotstack set-boot <device> <failsafe|production>
   iotstack commission <path-to-qr-image>
   iotstack devices [role|other] [--id]
   iotstack roles

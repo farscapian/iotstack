@@ -149,7 +149,7 @@ _generate_initial_partition_table() {
   # Uses 1.5MB for recovery/production (fits in 4MB with overhead)
   # Will be recalculated after compilation to exact sizes
 
-  local output_file="${1:-${YAMLS_DIR}/dual_app_recovery.csv}"
+  local output_file="${1:-${YAMLS_DIR}/iotstack_partition_table.csv}"
 
   debug "Generating initial partition table: $output_file"
 
@@ -175,7 +175,7 @@ _calculate_partition_sizes() {
   #
   # Arguments:
   #   $1 = device name (e.g., "recovery", "bleproxy")
-  #   $2 = yaml file (e.g., yamls/recovery.yaml)
+  #   $2 = yaml file (e.g., yamls/failsafe.yaml)
   #
   # Sets global variables:
   #   RECOVERY_SIZE, PRODUCTION_SIZE, PRODUCTION_OFFSET
@@ -197,7 +197,7 @@ _calculate_partition_sizes() {
     err "Could not determine firmware size: $firmware_bin"
   fi
 
-  # Calculate recovery partition size: firmware_size rounded up to nearest 4KB boundary
+  # Calculate failsafe partition size: firmware_size rounded up to nearest 4KB boundary
   # No safety margin - partition is exactly what firmware needs
   local recovery_size_calc=$firmware_size
 
@@ -245,7 +245,7 @@ _generate_partition_table() {
 
   cat << EOF
 # ESP32-C6 Partition Table for Dual App OTA Recovery
-# Generated from compiled firmware sizes (recovery partition auto-sized)
+# Generated from compiled firmware sizes (failsafe partition auto-sized)
 # Bootloader: 0x0-0x8000 (32KB)
 # NVS: 0x9000 (16KB, fixed)
 # OTA Data: 0xd000 (8KB, fixed)
@@ -260,16 +260,16 @@ EOF
 }
 
 _update_partition_table_file() {
-  # Write generated partition table to ~/.iotstack/dual_app_recovery.csv
-  # ESPHome accesses via symlink at yamls/dual_app_recovery.csv
-  local output_file="${1:-${HOME}/.iotstack/dual_app_recovery.csv}"
+  # Write generated partition table to ~/.iotstack/iotstack_partition_table.csv
+  # ESPHome accesses via symlink at yamls/iotstack_partition_table.csv
+  local output_file="${1:-${HOME}/.iotstack/iotstack_partition_table.csv}"
 
   debug "Writing partition table: $output_file"
   mkdir -p "$(dirname "$output_file")"
   _generate_partition_table > "$output_file"
 
   # Ensure symlink exists from yamls/ to ~/.iotstack/
-  local symlink_path="${YAMLS_DIR}/dual_app_recovery.csv"
+  local symlink_path="${YAMLS_DIR}/iotstack_partition_table.csv"
   if [[ ! -L "$symlink_path" ]] || [[ "$(readlink "$symlink_path")" != "$output_file" ]]; then
     rm -f "$symlink_path"
     ln -s "$output_file" "$symlink_path"
@@ -1924,28 +1924,28 @@ cmd_set_boot() {
 
   if [[ -z "$device" || -z "$partition" ]]; then
     cat << 'EOF'
-Usage: iotstack set-boot <device> <recovery|production>
+Usage: iotstack set-boot <device> <failsafe|production>
 
-Set which partition a recovery device boots into.
+Set which partition a failsafe device boots into.
 
 Arguments:
   <device>      MAC suffix (e.g., 1af95c) OR serial device (e.g., /dev/ttyACM0)
-  <partition>   recovery or production
+  <partition>   failsafe or production
 
 Examples:
   Network device (by MAC):
-    iotstack set-boot 1af95c recovery          # Set recovery-1af95c → recovery
-    iotstack set-boot 9019c8 production        # Set recovery-9019c8 → production
+    iotstack set-boot 1af95c failsafe          # Set failsafe-1af95c → failsafe
+    iotstack set-boot 9019c8 production        # Set failsafe-9019c8 → production
 
   USB-connected device:
-    iotstack set-boot /dev/ttyACM0 recovery    # Set /dev/ttyACM0 → recovery
+    iotstack set-boot /dev/ttyACM0 failsafe    # Set /dev/ttyACM0 → failsafe
     iotstack set-boot /dev/ttyUSB0 production  # Set /dev/ttyUSB0 → production
 EOF
     exit 1
   fi
 
-  if [[ ! "$partition" =~ ^(recovery|production)$ ]]; then
-    err "Partition must be 'recovery' or 'production'"
+  if [[ ! "$partition" =~ ^(failsafe|production)$ ]]; then
+    err "Partition must be 'failsafe' or 'production'"
   fi
 
   # Determine if device is serial (USB) or MAC (network)
@@ -2041,12 +2041,12 @@ _flash_recovery() {
   info "Flashing recovery firmware (dual-partition setup)"
   echo ""
 
-  local recovery_yaml="$YAMLS_DIR/recovery.yaml"
-  debug "recovery_yaml=$recovery_yaml"
-  if [[ ! -f "$recovery_yaml" ]]; then
-    err "Recovery firmware not found: $recovery_yaml"
+  local failsafe_yaml="$YAMLS_DIR/failsafe.yaml"
+  debug "failsafe_yaml=$failsafe_yaml"
+  if [[ ! -f "$failsafe_yaml" ]]; then
+    err "Failsafe firmware not found: $failsafe_yaml"
   fi
-  debug "recovery.yaml file exists"
+  debug "failsafe.yaml file exists"
 
   # If specific TTY device, flash only that one
   debug "tty_device=$tty_device"
@@ -2064,7 +2064,7 @@ _flash_recovery() {
 
     info "Flashing to: $tty_device"
     info "Compiling recovery firmware..."
-    smart_compile "$recovery_yaml" "recovery" || err "Compilation failed"
+    smart_compile "$failsafe_yaml" "recovery" || err "Compilation failed"
 
     info "Uploading recovery firmware to device..."
 
@@ -2104,7 +2104,7 @@ _flash_recovery() {
 
     [[ -z "$device_mac" || ! "$device_mac" =~ ^[0-9a-f]{6}$ ]] && err "Failed to extract MAC address from device"
 
-    ok "Recovery firmware flashed to: $device_mac"
+    ok "Failsafe firmware flashed to: $device_mac"
     echo ""
 
     # Compute device-specific OTA password from role-based secret
@@ -2139,7 +2139,7 @@ _flash_recovery() {
     echo ""
 
     info "Device booting recovery firmware..."
-    info "(Recovery firmware at 0x30000 - recovery partition)"
+    info "(Failsafe firmware at 0x30000 - failsafe partition)"
     sleep 10
 
     # Return the MAC suffix for later reassignment
@@ -2171,11 +2171,11 @@ _flash_recovery() {
 
   info "Compiling recovery firmware..."
   if [[ $VERBOSE -eq 1 ]]; then
-    esphome compile "$recovery_yaml" || err "Compilation failed"
+    esphome compile "$failsafe_yaml" || err "Compilation failed"
   else
-    esphome compile "$recovery_yaml" >/dev/null 2>&1 || err "Compilation failed"
+    esphome compile "$failsafe_yaml" >/dev/null 2>&1 || err "Compilation failed"
   fi
-  ok "Recovery firmware compiled"
+  ok "Failsafe firmware compiled"
   echo ""
 
   # Flash to all devices sequentially (one at a time)
@@ -2195,7 +2195,7 @@ _flash_recovery() {
       0x0 "$build_dir/bootloader.bin" \
       0x8000 "$build_dir/partitions.bin" \
       0x30000 "$build_dir/firmware.bin" 2>&1 | tee "$log_file"; then
-      ok "Recovery firmware flashed on $tty"
+      ok "Failsafe firmware flashed on $tty"
     else
       warn "Recovery flash FAILED on $tty"
       failed=$((failed + 1))
@@ -2207,7 +2207,7 @@ _flash_recovery() {
   if [[ $failed -gt 0 ]]; then
     err "Failed to flash recovery to $failed device(s)"
   else
-    ok "Recovery firmware flashed to all ${#tty_devices[@]} device(s)"
+    ok "Failsafe firmware flashed to all ${#tty_devices[@]} device(s)"
     echo ""
     info "Devices booting recovery firmware..."
     info "Waiting 15 seconds for devices to stabilize and connect..."

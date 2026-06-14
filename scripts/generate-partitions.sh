@@ -4,7 +4,7 @@
 # Production partition gets all remaining space
 #
 # Usage:
-#   ./scripts/generate-partitions.sh recovery.bin production.bin [--output partitions/dual_app_recovery.csv]
+#   ./scripts/generate-partitions.sh recovery.bin production.bin [--output partitions/iotstack_partition_table.csv]
 
 set -euo pipefail
 
@@ -15,7 +15,7 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 RECOVERY_BIN="${1:-}"
 PRODUCTION_BIN="${2:-}"
 OUTPUT_FILE="${3:---output}"
-OUTPUT_PATH="${4:-$PROJECT_DIR/partitions/dual_app_recovery.csv}"
+OUTPUT_PATH="${4:-$PROJECT_DIR/partitions/iotstack_partition_table.csv}"
 
 # Handle --output flag
 if [[ "$OUTPUT_FILE" != "--output" ]]; then
@@ -115,4 +115,4 @@ echo "[OK] Partition table generated: $OUTPUT_PATH"
 echo ""
 echo "[INFO] Use in YAML:"
 echo "  esp32:"
-echo "    partitions: custom:partitions/dual_app_recovery.csv"
+echo "    partitions: custom:partitions/iotstack_partition_table.csv"

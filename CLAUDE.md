@@ -252,7 +252,7 @@ iotstack update yamls/custom.yaml
 
 ### Calculation Process
 
-1. **Compile recovery firmware** (`smart_compile`)
+1. **Compile failsafe firmware** (`smart_compile`)
    - Compiles `yamls/recovery.yaml` via `esphome compile`
    - Output: `firmware.bin` in build directory
 
@@ -263,8 +263,8 @@ iotstack update yamls/custom.yaml
    - Production offset = calculated from recovery offset + recovery size
 
 3. **Generate partition table** (`_generate_partition_table`)
-   - Creates `~/.iotstack/dual_app_recovery.csv` with calculated sizes/offsets
-   - Accessed via symlink at `yamls/dual_app_recovery.csv` (for ESPHome compatibility)
+   - Creates `~/.iotstack/iotstack_partition_table.csv` with calculated sizes/offsets
+   - Accessed via symlink at `yamls/iotstack_partition_table.csv` (for ESPHome compatibility)
    - NVS (16KB, fixed) and OTA data (8KB, fixed) unchanged
    - Recovery and production partitions sized to actual firmware
 
@@ -287,8 +287,8 @@ iotstack update yamls/custom.yaml
 - `smart_compile()`: Calls partition calculation after compilation
 - `_calculate_partition_sizes()`: Determines sizes from firmware binary
 - `_generate_partition_table()`: Creates CSV with calculated values
-- `~/.iotstack/dual_app_recovery.csv`: Generated output (actual file)
-- `yamls/dual_app_recovery.csv`: Symlink to ~/.iotstack/dual_app_recovery.csv (for ESPHome)
+- `~/.iotstack/iotstack_partition_table.csv`: Generated output (actual file)
+- `yamls/iotstack_partition_table.csv`: Symlink to ~/.iotstack/iotstack_partition_table.csv (for ESPHome)
 
 ## Important Implementation Details
 

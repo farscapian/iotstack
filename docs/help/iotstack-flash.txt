@@ -4,29 +4,29 @@ Flash firmware to devices via USB/serial connection. Performs dual-partition
 setup on fresh devices (recovery + production) or OTA-only updates on existing
 devices. Auto-detects USB ports when multiple devices are connected. Supports
 recovery-only flashing for manual partition management. Use when OTA is
-unavailable (bricked devices, initial setup, recovery mode).
+unavailable (bricked devices, initial setup, failsafe mode).
 
 Usage:
   iotstack flash <device> [tty-device] [options]
-  iotstack flash recovery [tty-device|role]
+  iotstack flash failsafe [tty-device|role]
 
 Arguments:
   <device>        Device role (e.g., bleproxy, mmwave, threadrouter)
-  recovery        Flash recovery image via serial
+  failsafe        Flash failsafe image via serial
   [tty-device]    Serial device (e.g., /dev/ttyACM0). Auto-detected if
                   omitted.
   [role]          Production role for dual-flash (e.g., mmwave, bleproxy)
 
 Options:
-  --ota-only      Skip recovery flash, only OTA production (device already
+  --ota-only      Skip failsafe flash, only OTA production (device already
                   has recovery)
 
 Examples:
   iotstack flash bleproxy /dev/ttyUSB0
                           # Smart setup (recovery + production)
-  iotstack flash recovery mmwave
-                          # Dual-flash: recovery + mmwave
-  iotstack flash recovery /dev/ttyUSB0
+  iotstack flash failsafe mmwave
+                          # Dual-flash: failsafe + mmwave
+  iotstack flash failsafe /dev/ttyUSB0
                           # Recovery image only
   iotstack flash mmwave /dev/ttyACM0 --ota-only
                           # Skip recovery, update production only
