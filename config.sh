@@ -18,9 +18,13 @@ export PARTITION_TABLE_SYMLINK="${YAMLS_DIR}/${PARTITION_TABLE_CSV}"
 export LOGS_DIR="${IOTSTACK_HOME}/logs"
 export ARTIFACTS_DIR="${IOTSTACK_HOME}/artifacts"
 export PASS_STORE_DIR="${IOTSTACK_HOME}/.pass"
+export GNUPG_HOME="${IOTSTACK_HOME}/.gnupg"
 
 # Environment file for user configuration
 export ENV_FILE="${IOTSTACK_HOME}/.env"
+
+# ESPHome build directories (for verification scripts)
+export ESPHOME_BUILD_DIR="${YAMLS_DIR}/.esphome/build"
 
 # Ensure directories exist
 mkdir -p "$IOTSTACK_HOME" "$LOGS_DIR" "$ARTIFACTS_DIR" "$PASS_STORE_DIR" 2>/dev/null || true

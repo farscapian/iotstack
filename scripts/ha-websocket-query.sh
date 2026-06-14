@@ -4,6 +4,12 @@
 
 set -euo pipefail
 
+# Source centralized configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=/dev/null
+source "${PROJECT_DIR}/config.sh"
+
 DEVICE_NAME="${1:-}"
 LIST_DEVICES="${LIST_DEVICES:-false}"
 HA_URL="${HA_URL:-http://localhost:8123}"
@@ -19,9 +25,9 @@ if [[ -z "$DEVICE_NAME" && "$LIST_DEVICES" != "true" ]]; then
   exit 1
 fi
 
-# Setup pass environment
-export GNUPGHOME="${HOME}/.iotstack/.gnupg"
-export PASSWORD_STORE_DIR="${HOME}/.iotstack/.pass"
+# Export pass environment (from config.sh)
+export GNUPGHOME
+export PASSWORD_STORE_DIR
 
 err() { echo "ERROR: $*" >&2; exit 1; }
 warn() { echo "WARN: $*" >&2; }
