@@ -12,13 +12,13 @@ VERBOSE=0
 QUIET=0
 ENV_FILE="${HOME}/.iotstack/.env"  # Default environment file
 
-# Colors
-RED='\033[0;31m'
-GRN='\033[0;32m'
-YLW='\033[0;33m'
-BLU='\033[0;34m'
-DIM='\033[2m'
-RST='\033[0m'
+# Colors (using ANSI-C quoting to properly interpret escape sequences)
+RED=$'\033[0;31m'
+GRN=$'\033[0;32m'
+YLW=$'\033[0;33m'
+BLU=$'\033[0;34m'
+DIM=$'\033[2m'
+RST=$'\033[0m'
 
 err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
 ok()   { [[ $QUIET -eq 0 ]] && echo -e "${GRN}[OK]${RST} $*"; return 0; }
