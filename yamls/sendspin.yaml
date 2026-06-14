@@ -13,8 +13,8 @@ esphome:
     version: "1.0.0"
 
 esp32:
-  board: seeed_xiao_esp32c6
-  variant: esp32c6
+  board: esp32-s3-devkitc-1
+  variant: esp32s6
   flash_size: 4MB
   framework:
     type: esp-idf

@@ -20,7 +20,8 @@ esphome:
   name_add_mac_suffix: true
 
 esp32:
-  board: seeed_xiao_esp32s3
+  board: esp32-s3-devkitc-1
+  variant: esp32s6
   framework:
     type: arduino
   flash_size: 16MB
