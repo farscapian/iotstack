@@ -464,11 +464,15 @@ get_yaml_device_info() {
   local board=""
   local variant=""
   local network_type=""
+  local dev_status=""
 
   if [[ -f "$yaml_file" ]]; then
     # Extract board and variant from esp32 section
     board=$(grep -A5 "^esp32:" "$yaml_file" | grep -E "^\s*board:\s*" | head -1 | sed 's/.*board:\s*//; s/\s*$//')
     variant=$(grep -A5 "^esp32:" "$yaml_file" | grep -E "^\s*variant:\s*" | head -1 | sed 's/.*variant:\s*//; s/\s*$//')
+
+    # Extract development_status from substitutions section
+    dev_status=$(grep -E "^\s*development_status:\s*" "$yaml_file" | head -1 | sed 's/.*development_status:\s*//; s/"//g; s/\s*$//')
 
     # Determine network_type from presence of wifi or openthread sections
     if grep -q "^wifi:" "$yaml_file" 2>/dev/null; then
@@ -478,7 +482,7 @@ get_yaml_device_info() {
     fi
   fi
 
-  echo "${board}|${variant}|${network_type}"
+  echo "${board}|${variant}|${network_type}|${dev_status}"
 }
 
 # List available role names from roles.conf
@@ -1742,9 +1746,9 @@ list_roles() {
   fi
 
   if [[ "$output_format" == "csv" ]]; then
-    echo "Role,Board,Variant,Network,Config"
+    echo "Role,Board,Variant,Network,Status,Config"
     list_roles_from_conf | while read -r device; do
-      local yaml_file board variant network_type config_file device_info
+      local yaml_file board variant network_type dev_status config_file device_info
       yaml_file="${YAMLS_DIR}/${device}.yaml"
 
       if [[ -f "$yaml_file" ]]; then
@@ -1752,22 +1756,24 @@ list_roles() {
         board=$(echo "$device_info" | cut -d'|' -f1)
         variant=$(echo "$device_info" | cut -d'|' -f2)
         network_type=$(echo "$device_info" | cut -d'|' -f3)
+        dev_status=$(echo "$device_info" | cut -d'|' -f4)
         config_file=$(basename "$yaml_file")
       else
         board=""
         variant=""
         network_type=""
+        dev_status=""
         config_file=""
       fi
 
-      echo "$device,$board,$variant,$network_type,$config_file"
+      echo "$device,$board,$variant,$network_type,$dev_status,$config_file"
     done
   elif [[ "$output_format" == "json" ]]; then
     echo "["
     list_roles_from_conf | {
       first=true
       while read -r device; do
-        local yaml_file board variant network_type config_file device_info
+        local yaml_file board variant network_type dev_status config_file device_info
         yaml_file="${YAMLS_DIR}/${device}.yaml"
 
         if [[ -f "$yaml_file" ]]; then
@@ -1775,17 +1781,19 @@ list_roles() {
           board=$(echo "$device_info" | cut -d'|' -f1)
           variant=$(echo "$device_info" | cut -d'|' -f2)
           network_type=$(echo "$device_info" | cut -d'|' -f3)
+          dev_status=$(echo "$device_info" | cut -d'|' -f4)
           config_file=$(basename "$yaml_file")
         else
           board=""
           variant=""
           network_type=""
+          dev_status=""
           config_file=""
         fi
 
         [[ "$first" != true ]] && echo ","
-        printf '  {"role": "%s", "board": "%s", "variant": "%s", "network": "%s", "config": "%s"}' \
-          "$device" "$board" "$variant" "$network_type" "$config_file"
+        printf '  {"role": "%s", "board": "%s", "variant": "%s", "network": "%s", "status": "%s", "config": "%s"}' \
+          "$device" "$board" "$variant" "$network_type" "$dev_status" "$config_file"
         first=false
       done
     }
@@ -1801,7 +1809,7 @@ list_roles() {
 
     # Gather role data into temp file (using process substitution to avoid subshell)
     while IFS= read -r device; do
-      local yaml_file board variant network_type config_display device_info
+      local yaml_file board variant network_type dev_status config_display device_info
       yaml_file="${YAMLS_DIR}/${device}.yaml"
 
       if [[ -f "$yaml_file" ]]; then
@@ -1809,15 +1817,17 @@ list_roles() {
         board=$(echo "$device_info" | cut -d'|' -f1)
         variant=$(echo "$device_info" | cut -d'|' -f2)
         network_type=$(echo "$device_info" | cut -d'|' -f3)
+        dev_status=$(echo "$device_info" | cut -d'|' -f4)
         config_display=$(basename "$yaml_file")
       else
         board=""
         variant=""
         network_type=""
+        dev_status=""
         config_display=""
       fi
 
-      echo "$device|$board|$variant|$network_type|$config_display" >> "$temp_data"
+      echo "$device|$board|$variant|$network_type|$dev_status|$config_display" >> "$temp_data"
     done < <(list_roles_from_conf)
 
     # Calculate column widths
@@ -1825,19 +1835,22 @@ list_roles() {
     local header_board="Board"
     local header_variant="Variant"
     local header_network="Network"
+    local header_status="Status"
     local header_config="Config"
 
     local w_role=$(( ${#header_role} + margin ))
     local w_board=$(( ${#header_board} + margin ))
     local w_variant=$(( ${#header_variant} + margin ))
     local w_network=$(( ${#header_network} + margin ))
+    local w_status=$(( ${#header_status} + margin ))
     local w_config=$(( ${#header_config} + margin ))
 
-    while IFS='|' read -r device board variant network_type config_display; do
+    while IFS='|' read -r device board variant network_type dev_status config_display; do
       (( ${#device} + margin > w_role )) && w_role=$(( ${#device} + margin ))
       (( ${#board} + margin > w_board )) && w_board=$(( ${#board} + margin ))
       (( ${#variant} + margin > w_variant )) && w_variant=$(( ${#variant} + margin ))
       (( ${#network_type} + margin > w_network )) && w_network=$(( ${#network_type} + margin ))
+      (( ${#dev_status} + margin > w_status )) && w_status=$(( ${#dev_status} + margin ))
       (( ${#config_display} + margin > w_config )) && w_config=$(( ${#config_display} + margin ))
     done < "$temp_data"
 
@@ -1845,8 +1858,8 @@ list_roles() {
     echo
 
     # Print headers
-    printf "  ${GRN}%-${w_role}s %-${w_board}s %-${w_variant}s %-${w_network}s %-${w_config}s${RST}\n" \
-      "$header_role" "$header_board" "$header_variant" "$header_network" "$header_config"
+    printf "  ${GRN}%-${w_role}s %-${w_board}s %-${w_variant}s %-${w_network}s %-${w_status}s %-${w_config}s${RST}\n" \
+      "$header_role" "$header_board" "$header_variant" "$header_network" "$header_status" "$header_config"
 
     # Print separator
     printf '%s' "  ${DIM}"
@@ -1854,17 +1867,20 @@ list_roles() {
     printf "%-${w_board}s " "$(printf '─%.0s' $(seq 1 $((w_board-1))))"
     printf "%-${w_variant}s " "$(printf '─%.0s' $(seq 1 $((w_variant-1))))"
     printf "%-${w_network}s " "$(printf '─%.0s' $(seq 1 $((w_network-1))))"
+    printf "%-${w_status}s " "$(printf '─%.0s' $(seq 1 $((w_status-1))))"
     printf "%-${w_config}s" "$(printf '─%.0s' $(seq 1 $((w_config-1))))"
     printf '%s\n' "${RST}"
 
     # Print data rows
-    while IFS='|' read -r device board variant network_type config_display; do
-      printf "  ${GRN}%-${w_role}s${RST} %-${w_board}s %-${w_variant}s %-${w_network}s %-${w_config}s\n" \
-        "$device" "$board" "$variant" "$network_type" "$config_display"
+    while IFS='|' read -r device board variant network_type dev_status config_display; do
+      printf "  ${GRN}%-${w_role}s${RST} %-${w_board}s %-${w_variant}s %-${w_network}s %-${w_status}s %-${w_config}s\n" \
+        "$device" "$board" "$variant" "$network_type" "$dev_status" "$config_display"
     done < "$temp_data"
 
+
     echo
-    ok "Use 'iotstack help' for more information"
+    ok Consider running 'iotstack devices' next.
+    echo
   fi
 }
 
