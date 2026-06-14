@@ -11,6 +11,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Source centralized configuration
+# shellcheck source=/dev/null
+source "${PROJECT_DIR}/config.sh"
+
 # Colors
 RED='\033[0;31m'
 GRN='\033[0;32m'
@@ -40,13 +44,17 @@ echo ""
 VERIFY_DIR=$(mktemp -d)
 trap 'rm -rf "$VERIFY_DIR"' EXIT
 
+# Extract failsafe (ota_0) firmware offset from generated partition table
+failsafe_offset=$(awk -F',' '/^failsafe[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
+[[ -z "$failsafe_offset" ]] && err "Could not find failsafe partition offset in: $PARTITION_TABLE"
+
 declare -a offsets
 declare -a files
 
 # Define what to verify (offset, file, actual file size - no padding)
 # Note: partitions.bin is dynamically generated and already verified by esptool,
 # so we only verify bootloader and firmware
-offsets=(0x0 0x30000)
+offsets=(0x0 "$failsafe_offset")
 files=(bootloader.bin firmware.bin)
 
 # Verify each region

@@ -171,7 +171,7 @@ _generate_initial_partition_table() {
 # Name,     Type,  SubType,    Offset,      Size,
 nvs,        data,  nvs,        0x9000,      0x4000,
 otadata,    data,  ota,        0xd000,      0x2000,
-recovery,   app,   ota_0,      0x30000,     0x180000,
+failsafe,   app,   ota_0,      0x30000,     0x180000,
 production, app,   ota_1,      0x1b0000,    0x180000,
 EOF
 }
@@ -261,7 +261,7 @@ _generate_partition_table() {
 # Name,     Type,  SubType,    Offset,              Size,
 nvs,        data,  nvs,        0x9000,              0x4000,
 otadata,    data,  ota,        0xd000,              0x2000,
-recovery,   app,   ota_0,      0x30000,             ${RECOVERY_SIZE:-0x180000},
+failsafe,   app,   ota_0,      0x30000,             ${RECOVERY_SIZE:-0x180000},
 production, app,   ota_1,      ${PRODUCTION_OFFSET:-0x1b0000}, ${PRODUCTION_SIZE:-0x240000},
 EOF
 }
@@ -2056,7 +2056,7 @@ _flash_recovery() {
 
     info "Flashing to: $tty_device"
     info "Compiling failsafe firmware..."
-    smart_compile "$failsafe_yaml" "recovery" || err "Compilation failed"
+    smart_compile "$failsafe_yaml" "failsafe" || err "Compilation failed"
 
     info "Uploading failsafe firmware to device..."
 
@@ -2072,8 +2072,13 @@ _flash_recovery() {
     sleep 3  # Wait for erase to complete and device to stabilize
 
     # Flash generic failsafe firmware and capture MAC
-    local build_dir="$YAMLS_DIR/.esphome/build/recovery/.pioenvs/recovery"
+    local build_dir="$YAMLS_DIR/.esphome/build/failsafe/.pioenvs/failsafe"
     [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
+
+    # Extract failsafe (ota_0) firmware offset from generated partition table
+    local failsafe_offset
+    failsafe_offset=$(awk -F',' '/^failsafe[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
+    [[ -z "$failsafe_offset" ]] && err "Could not find failsafe partition offset in: $PARTITION_TABLE"
 
     info "Flashing failsafe firmware..."
     if [[ $VERBOSE -eq 1 ]]; then
@@ -2087,7 +2092,7 @@ _flash_recovery() {
       write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
       0x0 "$build_dir/bootloader.bin" \
       0x8000 "$build_dir/partitions.bin" \
-      0x30000 "$build_dir/firmware.bin" 2>&1 | tee -a "$flash_log") || err "Flash failed"
+      "$failsafe_offset" "$build_dir/firmware.bin" 2>&1 | tee -a "$flash_log") || err "Flash failed"
 
     # Extract MAC address from esptool output
     local device_mac
@@ -2169,22 +2174,27 @@ _flash_recovery() {
   echo ""
 
   # Flash to all devices sequentially (one at a time)
-  local build_dir="$YAMLS_DIR/.esphome/build/recovery/.pioenvs/recovery"
+  local build_dir="$YAMLS_DIR/.esphome/build/failsafe/.pioenvs/failsafe"
   [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
+
+  # Extract failsafe (ota_0) firmware offset from generated partition table
+  local failsafe_offset
+  failsafe_offset=$(awk -F',' '/^failsafe[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
+  [[ -z "$failsafe_offset" ]] && err "Could not find failsafe partition offset in: $PARTITION_TABLE"
 
   local failed=0
   for tty in "${tty_devices[@]}"; do
     local log_file
-    log_file="/tmp/iotstack-flash-recovery-$(basename "$tty").log"
+    log_file="/tmp/iotstack-flash-failsafe-$(basename "$tty").log"
     echo ""
     info "Flashing $tty (log: $log_file)..."
     echo "════════════════════════════════════════════════════════"
 
-    if esptool --chip esp32c6 --port "$tty" --baud 9600 \
+    if python3 -m esptool --chip esp32c6 --port "$tty" --baud 9600 \
       write-flash --flash-mode dio --flash-size 4MB \
       0x0 "$build_dir/bootloader.bin" \
       0x8000 "$build_dir/partitions.bin" \
-      0x30000 "$build_dir/firmware.bin" 2>&1 | tee "$log_file"; then
+      "$failsafe_offset" "$build_dir/firmware.bin" 2>&1 | tee "$log_file"; then
       ok "Failsafe firmware flashed on $tty"
     else
       warn "Recovery flash FAILED on $tty"
