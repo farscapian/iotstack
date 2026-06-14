@@ -13,6 +13,7 @@ class NVSSecrets : public Component {
   float get_setup_priority() const override { return 200.0f; }  // Hardware initialization priority
   void setup() override;
   void dump_config() override;
+  void loop() override;
 
   std::string get_wifi_ssid() const { return wifi_ssid_; }
   std::string get_wifi_password() const { return wifi_password_; }
@@ -24,6 +25,7 @@ class NVSSecrets : public Component {
   std::string wifi_password_;
   std::string ota_password_;
   std::string api_encryption_key_;
+  bool logged_status_ = false;
 
   std::string read_nvs_string(const char* key);
 };

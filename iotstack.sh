@@ -2068,7 +2068,7 @@ _flash_recovery() {
 
     # Erase flash completely to handle devices with incompatible firmware (RCP, etc.)
     info "Erasing flash memory..."
-    esptool --chip esp32c6 --port "$tty_device" --baud 9600 erase_flash 2>&1 | tee -a "$flash_log" >/dev/null || err "Erase failed"
+    python3 -m esptool --chip esp32c6 --port "$tty_device" --baud 9600 erase-flash 2>&1 | tee -a "$flash_log" >/dev/null || err "Erase failed"
     sleep 3  # Wait for erase to complete and device to stabilize
 
     # Flash generic failsafe firmware and capture MAC
@@ -2083,7 +2083,7 @@ _flash_recovery() {
 
     # Flash and capture output
     local esptool_output
-    esptool_output=$(esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
+    esptool_output=$(python3 -m esptool --chip esp32c6 --port "$tty_device" --baud 9600 \
       write-flash --flash-mode dio --flash-size 4MB --flash-freq 40m \
       0x0 "$build_dir/bootloader.bin" \
       0x8000 "$build_dir/partitions.bin" \

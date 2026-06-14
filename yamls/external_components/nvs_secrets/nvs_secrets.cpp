@@ -101,5 +101,16 @@ void NVSSecrets::dump_config() {
   ESP_LOGCONFIG(TAG, "  API Key: %s", api_encryption_key_.empty() ? "(not set)" : "(loaded from NVS)");
 }
 
+void NVSSecrets::loop() {
+  if (!logged_status_) {
+    logged_status_ = true;
+    if (!wifi_ssid_.empty()) {
+      ESP_LOGI(TAG, "[NVS-STATUS] WiFi SSID successfully loaded from NVS: %s", wifi_ssid_.c_str());
+    } else {
+      ESP_LOGW(TAG, "[NVS-STATUS] WiFi SSID NOT FOUND in NVS - device using YAML placeholder");
+    }
+  }
+}
+
 }  // namespace nvs_secrets
 }  // namespace esphome

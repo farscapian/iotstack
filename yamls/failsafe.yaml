@@ -180,3 +180,4 @@ logger:
     nvs_secrets: DEBUG
     wifi: DEBUG
     api: DEBUG
+
