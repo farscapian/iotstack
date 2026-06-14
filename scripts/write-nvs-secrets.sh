@@ -172,6 +172,10 @@ nvs_size = int(nvs_size_str, 16)
 nvs_csv_path = f"/tmp/nvs_{device_mac}.csv"
 with open(nvs_csv_path, 'w') as f:
     f.write("key,type,encoding,value\n")
+    # Namespace row is REQUIRED — without it nvs_partition_gen writes keys to
+    # ns_index 0 (the reserved registry), making them unreachable via nvs_open().
+    # Must match the NAMESPACE constant in external_components/nvs_secrets/nvs_secrets.cpp
+    f.write("iotstack,namespace,,\n")
     f.write(f"wifi_ssid,data,string,{wifi_ssid}\n")
     f.write(f"wifi_password,data,string,{wifi_password}\n")
     f.write(f"ota_password,data,string,{ota_password}\n")
