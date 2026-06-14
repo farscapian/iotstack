@@ -424,16 +424,59 @@ Example: Baud rate issues with ESP32 flash corruption
 
 **Secrets are stored in device flash (NVS partition), not in firmware binary or YAML files.**
 
-### Implementation Status (2026-06-12)
+### Implementation Status (updated 2026-06-14)
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| NVS partition write | ✅ Working | Writes proper NVS binary format to 0x9000 |
-| NVS key-value format | ✅ Working | Uses esp_idf_nvs_partition_gen for correct binary format |
+| NVS partition write | ✅ Working | Writes proper NVS binary format to the `nvs` partition offset read from the generated partition table |
+| NVS key-value format | ✅ Working | Uses esp_idf_nvs_partition_gen; keys written under the **`iotstack` namespace** (see "NVS Namespace" pitfall below) |
 | OTA password from NVS | ✅ Working | nvs_secrets component loads and applies password |
-| WiFi credentials from NVS | ⏳ Partial | nvs_secrets reads credentials but WiFi component doesn't support runtime changes |
+| WiFi credentials from NVS | ✅ Working | nvs_secrets reads SSID+password from NVS and applies them at runtime via `wifi::global_wifi_component->save_wifi_sta()` (see "WiFi Credentials From NVS" below) |
 | API encryption key | ✅ Stored | Safely written to NVS, awaiting API component support |
 | Flash encryption | ⏳ TODO | Planned for production hardening with eFuses |
+
+### 🚨 CRITICAL PITFALL: NVS keys must be written under a named namespace
+
+`esp_idf_nvs_partition_gen` accepts a CSV with **no `namespace` row without erroring** (exit 0), but it then writes every key into reserved namespace-index 0 (the internal namespace registry). No named namespace exists on the chip, so at runtime `nvs_open(<any name>, NVS_READONLY, ...)` returns `ESP_ERR_NVS_NOT_FOUND` and the keys are **unreachable** — even though they are physically present in flash.
+
+**The CSV fed to `nvs_partition_gen` MUST start with a namespace row, and that name MUST match the `NAMESPACE` constant the C++ opens.** Both sides currently use `iotstack`:
+
+```
+key,type,encoding,value
+iotstack,namespace,,          # <-- REQUIRED first data row
+wifi_ssid,data,string,...
+wifi_password,data,string,...
+ota_password,data,string,...
+api_key,data,string,...
+```
+
+- Write side: `scripts/write-nvs-secrets.sh` (emits the `iotstack,namespace,,` row)
+- Read side: `NAMESPACE = "iotstack"` in `yamls/external_components/nvs_secrets/nvs_secrets.cpp`
+
+**How to verify** what landed on the chip (read flash back and decode NVS entry namespace indices):
+
+```bash
+python3 -m esptool --chip esp32c6 --port /dev/ttyACM0 --baud 921600 \
+  read-flash 0x9000 0x4000 /tmp/nvs.bin
+# Decode: keys should be in ns_index >= 1 with a matching namespace-def entry.
+# If keys are in ns_index 0 with no namespace-def entry, the namespace row is missing.
+```
+
+### WiFi Credentials From NVS (✅ Solved)
+
+The earlier limitation — "ESPHome's WiFi component can't take credentials at runtime" — is **solved**. The trick is the public WiFi API plus correct setup ordering:
+
+- `nvs_secrets` runs at `setup_priority::AFTER_WIFI` (200.0f). The WiFi component runs at `setup_priority::WIFI` (250.0f), so WiFi is already initialized when `nvs_secrets::setup()` executes.
+- In `setup()`, after reading the credentials, nvs_secrets calls:
+  ```cpp
+  #ifdef USE_WIFI
+    wifi::global_wifi_component->save_wifi_sta(wifi_ssid_, wifi_password_);
+  #endif
+  ```
+- `save_wifi_sta()` replaces the STA config with the NVS values, persists them to ESPHome preferences, and calls `connect_soon_()` to trigger an immediate reconnect (the same path the `improv` provisioning components use). This overrides the YAML placeholder (`configured-via-nvs`).
+- The `#ifdef USE_WIFI` guard keeps the component compiling on thread-only configs that have no WiFi component.
+
+Verified on hardware: boot log shows `[NVS] Applying WiFi credentials from NVS to WiFi component (SSID: ...)` followed by `[wifi] Connecting to '<real-ssid>'` and a DHCP-assigned IP.
 
 Architecture:
 1. **Pass store** (`~/.iotstack/.pass/`): Role-based master secrets (encrypted)
@@ -603,29 +646,27 @@ One custom ESPHome component reads from NVS at runtime:
 - No secrets in firmware binary (all come from device flash at runtime)
 - Dynamically sets OTA authentication password from NVS
 - Logs what was found (for debugging)
-- **⚠️ LIMITATION**: ESPHome WiFi component does NOT support dynamic credential changes after initialization
-- Makes WiFi/API values available for future use (e.g., config portal)
-- Status: ✅ OTA password working, ⏳ WiFi credentials stored but WiFi component requires runtime changes
+- Applies WiFi SSID/password from NVS to the WiFi component at runtime (see below)
+- Status: ✅ OTA password working, ✅ WiFi credentials read from NVS and applied to the WiFi component
 
-### WiFi Credential Challenge (Technical Limitation)
+### WiFi Credential Challenge (✅ Solved)
 
-**Problem:** ESPHome's WiFi component initializes during setup phase using YAML values. Once initialized, credentials cannot be changed dynamically at runtime. This means:
-- ❌ Cannot apply WiFi SSID/password from NVS to WiFi component
-- ❌ Device uses YAML placeholder ('configured-via-nvs') instead of real credentials
-- ❌ Cannot connect to network without recompilation for each device
+**Former problem:** It was believed ESPHome's WiFi component initializes from YAML during setup and cannot be changed at runtime, so the device was stuck on the YAML placeholder (`configured-via-nvs`).
 
-**Possible Solutions (TODO):**
-1. **Device-specific firmware**: Build separate firmware for each device with YAML containing real WiFi credentials
-   - Pro: Clean separation, minimal code changes
-   - Con: Requires build per device, increases complexity
-2. **WiFi provisioning portal**: Add web/BLE portal to configure WiFi at first boot
-   - Pro: Generic firmware for all devices
-   - Con: More complex, requires additional hardware interaction
-3. **Modify ESPHome WiFi component**: Fork ESPHome to support runtime WiFi changes
-   - Pro: Clean solution
-   - Con: Maintenance burden, diverges from upstream
+**Solution (implemented):** ESPHome exposes a public runtime API, and the `improv` provisioning components use it. `nvs_secrets` calls it after reading NVS:
 
-**Current Status:** NVS write works correctly, credentials stored safely, but WiFi connection requires alternative approach.
+```cpp
+#ifdef USE_WIFI
+  wifi::global_wifi_component->save_wifi_sta(wifi_ssid_, wifi_password_);
+#endif
+```
+
+Why it works:
+- `save_wifi_sta()` replaces the STA config with the given credentials, persists them to ESPHome preferences, and calls `connect_soon_()` for an immediate reconnect.
+- Setup ordering is correct by construction: `nvs_secrets` is at `setup_priority::AFTER_WIFI` (200.0f) and the WiFi component is at `setup_priority::WIFI` (250.0f), so `global_wifi_component` is already initialized when `nvs_secrets::setup()` runs.
+- The call is guarded by `#ifdef USE_WIFI` so thread-only configs (no WiFi component) still compile.
+
+**Result:** a single generic firmware binary connects every device to the real network using per-device credentials from NVS — no per-device recompilation, no provisioning portal needed.
 
 ## Flash Encryption & eFuses - Production Enhancement (TODO)
 
