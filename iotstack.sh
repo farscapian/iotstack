@@ -26,6 +26,23 @@ warn() { [[ $QUIET -eq 0 ]] && echo -e "${YLW}[WARN]${RST} $*"; return 0; }
 info() { [[ $QUIET -eq 0 ]] && echo -e "${BLU}[INFO]${RST} $*"; return 0; }
 debug() { [[ $VERBOSE -eq 1 ]] && [[ $QUIET -eq 0 ]] && echo -e "${DIM}[DEBUG]${RST} $*"; return 0; }
 
+# Print a table separator rule aligned to the header columns. Each argument is
+# a column width; prints that many '─' per column with single-space gaps,
+# wrapped in DIM. Dashes are built by space-padding then substitution so the
+# width is correct — printf '%-Ns' counts bytes and would mis-pad the
+# multibyte '─' (U+2500) characters.
+_print_table_rule() {
+  local first=1 w dashes
+  printf '  %s' "$DIM"
+  for w in "$@"; do
+    (( first )) || printf ' '
+    printf -v dashes '%*s' "$w" ''
+    printf '%s' "${dashes// /─}"
+    first=0
+  done
+  printf '%s\n' "$RST"
+}
+
 # ── Compilation Cache ────────────────────────────────────────────────────────
 
 _get_yaml_sha() {
@@ -690,10 +707,15 @@ list_devices() {
   # Sort and deduplicate
   sort -u "$device_data" > "${device_data}.sorted"
 
-  # Try to get Home Assistant area info
+  # Try to get Home Assistant area info.
+  # Normalize to a single JSON object: get_ha_device_areas can emit more than
+  # one document (e.g. an empty "{}" plus a fallback "{}"), and a multi-doc
+  # input makes the per-row `jq -r` lookups emit one line per document — which
+  # would put an embedded newline into the area value and break table rows.
   local ha_areas="{}"
   if get_ha_device_areas > /tmp/ha_areas.json 2>/dev/null; then
-    ha_areas=$(cat /tmp/ha_areas.json)
+    ha_areas=$(jq -cs 'reduce .[] as $o ({}; . * $o)' /tmp/ha_areas.json 2>/dev/null || echo '{}')
+    [[ -z "$ha_areas" ]] && ha_areas="{}"
   fi
 
   # If ID-only mode, output device IDs in requested format
@@ -891,15 +913,7 @@ list_devices() {
       "ID" "Device" "Friendly Name" "Area" "Project" "Version" "Hash"
 
     # Print separator
-    printf '  %s' "$DIM"
-    printf "%-${w_id}s " "$(printf '─%.0s' $(seq 1 $((w_id-1))))"
-    printf "%-${w_device}s " "$(printf '─%.0s' $(seq 1 $((w_device-1))))"
-    printf "%-${w_friendly}s " "$(printf '─%.0s' $(seq 1 $((w_friendly-1))))"
-    printf "%-${w_area}s " "$(printf '─%.0s' $(seq 1 $((w_area-1))))"
-    printf "%-${w_project}s " "$(printf '─%.0s' $(seq 1 $((w_project-1))))"
-    printf "%-${w_version}s " "$(printf '─%.0s' $(seq 1 $((w_version-1))))"
-    printf "%-${w_hash}s" "$(printf '─%.0s' $(seq 1 $((w_hash-1))))"
-    printf '%s\n' "$RST"
+    _print_table_rule "$w_id" "$w_device" "$w_friendly" "$w_area" "$w_project" "$w_version" "$w_hash"
 
     # Print data rows with calculated widths
     local found=0
@@ -982,12 +996,7 @@ list_yaml_configs() {
     "$header_device" "$header_type" "$header_network" "$header_config"
 
   # Print separator
-  printf '  %s' "$DIM"
-  printf "%-${w_device}s " "$(printf '─%.0s' $(seq 1 $((w_device-1))))"
-  printf "%-${w_type}s " "$(printf '─%.0s' $(seq 1 $((w_type-1))))"
-  printf "%-${w_network}s " "$(printf '─%.0s' $(seq 1 $((w_network-1))))"
-  printf "%-${w_config}s" "$(printf '─%.0s' $(seq 1 $((w_config-1))))"
-  printf '%s\n' "$RST"
+  _print_table_rule "$w_device" "$w_type" "$w_network" "$w_config"
 
   # Print data rows
   local found=0
@@ -1877,14 +1886,7 @@ list_roles() {
       "$header_role" "$header_board" "$header_variant" "$header_network" "$header_status" "$header_config"
 
     # Print separator
-    printf '%s' "  ${DIM}"
-    printf "%-${w_role}s " "$(printf '─%.0s' $(seq 1 $((w_role-1))))"
-    printf "%-${w_board}s " "$(printf '─%.0s' $(seq 1 $((w_board-1))))"
-    printf "%-${w_variant}s " "$(printf '─%.0s' $(seq 1 $((w_variant-1))))"
-    printf "%-${w_network}s " "$(printf '─%.0s' $(seq 1 $((w_network-1))))"
-    printf "%-${w_status}s " "$(printf '─%.0s' $(seq 1 $((w_status-1))))"
-    printf "%-${w_config}s" "$(printf '─%.0s' $(seq 1 $((w_config-1))))"
-    printf '%s\n' "${RST}"
+    _print_table_rule "$w_role" "$w_board" "$w_variant" "$w_network" "$w_status" "$w_config"
 
     # Print data rows
     while IFS='|' read -r device board variant network_type dev_status config_display; do
