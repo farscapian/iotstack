@@ -2,3 +2,8 @@
 # This is an example and may include too much for your use-case.
 # You can modify this file to suit your needs.
 /.esphome/
+
+# Runtime-generated symlinks into ~/.iotstack (machine-specific absolute
+# paths; recreated by setup.sh / iotstack.sh — must not be committed)
+/.iotstack
+/iotstack_partition_table.csv
