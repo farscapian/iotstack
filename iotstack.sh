@@ -1999,15 +1999,15 @@ cmd_flash() {
     exit 1
   fi
 
-  # Special handling for "recovery" role
-  if [[ "$device" == "recovery" ]]; then
+  # Special handling for "failsafe" role
+  if [[ "$device" == "failsafe" ]]; then
     # Check if second arg is a production role (dual-flash mode)
     if [[ -n "$tty_device_or_role" && ! "$tty_device_or_role" =~ ^/dev/ ]]; then
-      # Dual-flash: recovery + production role
+      # Dual-flash: failsafe + production role
       local production_role="$tty_device_or_role"
       _flash_recovery_dual "$production_role"
     else
-      # Single flash: recovery only
+      # Single flash: failsafe only
       _flash_recovery "$tty_device_or_role"
     fi
     return
