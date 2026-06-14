@@ -6,7 +6,7 @@ namespace esphome {
 namespace nvs_secrets {
 
 static const char* const TAG = "nvs_secrets";
-static const char* const NAMESPACE = "iotstack";
+static const char* const NAMESPACE = "";  // Keys stored in default NVS namespace by nvs_partition_gen
 
 std::string NVSSecrets::read_nvs_string(const char* key) {
   nvs_handle_t nvs_handle;

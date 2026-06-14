@@ -2101,32 +2101,32 @@ _flash_recovery() {
 
     # Compute device-specific OTA password from role-based secret
     # sha256(role_secret | device_mac) - never stored, computed in-memory only
-    local recovery_role_password
-    recovery_role_password=$(pass show "iotstack/roles/recovery/ota_password" 2>/dev/null)
-    if [[ -z "$recovery_role_password" ]]; then
-      info "Recovery role OTA password not found, generating..."
-      recovery_role_password=$(openssl rand -hex 16)
+    local failsafe_role_password
+    failsafe_role_password=$(pass show "iotstack/roles/failsafe/ota_password" 2>/dev/null)
+    if [[ -z "$failsafe_role_password" ]]; then
+      info "Failsafe role OTA password not found, generating..."
+      failsafe_role_password=$(openssl rand -hex 16)
       # Store it in pass
-      { echo "$recovery_role_password"; echo "$recovery_role_password"; } | \
-        pass insert -f "iotstack/roles/recovery/ota_password" 2>/dev/null || \
-        err "Failed to store recovery OTA password in pass"
-      ok "Recovery OTA password generated and stored"
+      { echo "$failsafe_role_password"; echo "$failsafe_role_password"; } | \
+        pass insert -f "iotstack/roles/failsafe/ota_password" 2>/dev/null || \
+        err "Failed to store failsafe OTA password in pass"
+      ok "Failsafe OTA password generated and stored"
     fi
 
     local device_specific_ota_password
-    device_specific_ota_password=$(echo -n "${recovery_role_password}|${device_mac}" | sha256sum | cut -c1-32)
+    device_specific_ota_password=$(echo -n "${failsafe_role_password}|${device_mac}" | sha256sum | cut -c1-32)
 
     # Write device-specific secrets to NVS partition
     # Firmware reads these via custom NVS components
     info "Writing device-specific secrets to NVS..."
-    "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "recovery" "$device_specific_ota_password" || \
+    "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "failsafe" "$device_specific_ota_password" || \
       err "Failed to write NVS secrets"
     sleep 2  # Let device stabilize after NVS write
 
     # Verify flash checksums before proceeding
     info "Verifying flash checksums..."
     sleep 1  # Brief pause before verification to ensure flash is readable
-    "$SCRIPT_DIR/scripts/verify-flash.sh" "$tty_device" "recovery" || \
+    "$SCRIPT_DIR/scripts/verify-flash.sh" "$tty_device" "failsafe" || \
       err "Flash verification failed - device may be corrupted"
     echo ""
 

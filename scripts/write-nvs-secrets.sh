@@ -6,7 +6,7 @@
 # Usage:
 #   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 device_mac device_role ota_password
 # Example:
-#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c recovery a1b2c3d4e5f6
+#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c failsafe a1b2c3d4e5f6
 
 set -euo pipefail
 
@@ -135,7 +135,7 @@ info "Device secrets ready"
 ok "OTA Password: (from parameter)"
 ok "API Key: (derived)"
 
-# ── Use Python to generate and write NVS data ────────────────────────────
+# ── Use Python to generate NVS data ────────────────────────────────────────
 info "Writing NVS partition to device..."
 
 export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
@@ -146,7 +146,8 @@ export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
 # Use ESP-IDF Python environment which has nvs_partition_gen installed
 ESP_IDF_PYTHON="${HOME}/.espressif/python_env/idf6.1_py3.14_env/bin/python3"
 
-$ESP_IDF_PYTHON << 'NVSPYTHON'
+# Generate NVS binary (store output to parse paths)
+python_output=$($ESP_IDF_PYTHON << 'NVSPYTHON'
 import os
 import subprocess
 import sys
@@ -158,7 +159,6 @@ ota_password = os.environ['OTA_PASSWORD']
 api_key = os.environ['API_KEY']
 thread_tlv = os.environ.get('THREAD_TLV', '')
 device_mac = os.environ['DEVICE_MAC']
-tty_device = os.environ['TTY_DEVICE']
 nvs_size_str = os.environ['NVS_SIZE']  # e.g., "0x4000"
 
 # Convert hex size string to decimal
@@ -179,13 +179,10 @@ with open(nvs_csv_path, 'w') as f:
 print(f"[OK] Created NVS CSV file for nvs_partition_gen")
 
 # Use ESP-IDF nvs_partition_gen to create proper NVS binary
-# The tool generates a binary in NVS format (not raw JSON)
 nvs_bin_path = f"/tmp/nvs_{device_mac}.bin"
 
-# Use command-line nvs_partition_gen tool to create proper NVS binary
 print(f"[OK] Generating NVS partition binary using esp_idf_nvs_partition_gen")
 
-# Use the same Python environment that has esp_idf_nvs_partition_gen
 idf_python = os.path.expanduser('~/.espressif/python_env/idf6.1_py3.14_env/bin/python3')
 result = subprocess.run([
     idf_python, '-m', 'esp_idf_nvs_partition_gen', 'generate',
@@ -202,25 +199,41 @@ if result.returncode != 0:
     sys.exit(1)
 
 print(f"[OK] NVS partition binary generated at {nvs_bin_path}")
-
-# Write to device at offset 0x9000 (NVS partition)
-# Using 9600 baud for reliable writes (higher speeds cause corruption)
-print(f"[OK] Writing NVS partition to device at 0x9000...")
-result = subprocess.run([
-    'esptool', '--chip', 'esp32c6', '--port', tty_device, '--baud', '9600',
-    'write_flash', '0x9000', nvs_bin_path
-], capture_output=True, text=True)
-
-if result.returncode == 0:
-    print("[OK] NVS written to device successfully")
-else:
-    print(f"[ERROR] Failed to write NVS: {result.stderr}")
-    sys.exit(1)
-
-# Cleanup
-os.remove(nvs_csv_path)
-os.remove(nvs_bin_path)
-
+print(f"NVS_BIN_PATH={nvs_bin_path}")
+print(f"NVS_CSV_PATH={nvs_csv_path}")
 NVSPYTHON
+)
+
+# Show Python output (except the path lines)
+while IFS= read -r line; do
+  [[ "$line" =~ ^NVS_BIN_PATH= ]] || [[ "$line" =~ ^NVS_CSV_PATH= ]] || echo "$line"
+done <<< "$python_output"
+
+# Parse paths from Python output
+NVS_BIN_PATH=""
+NVS_CSV_PATH=""
+while IFS= read -r line; do
+  if [[ "$line" =~ ^NVS_BIN_PATH= ]]; then
+    NVS_BIN_PATH="${line#NVS_BIN_PATH=}"
+  elif [[ "$line" =~ ^NVS_CSV_PATH= ]]; then
+    NVS_CSV_PATH="${line#NVS_CSV_PATH=}"
+  fi
+done <<< "$python_output"
+
+if [[ -z "$NVS_BIN_PATH" ]] || [[ ! -f "$NVS_BIN_PATH" ]]; then
+  err "NVS binary generation failed - file not found at: $NVS_BIN_PATH"
+fi
+
+# Write to device using esptool via Python
+# Using 9600 baud for reliable writes (higher speeds cause corruption)
+info "Writing NVS partition to device at 0x9000..."
+if python3 -m esptool --chip esp32c6 --port "$TTY_DEVICE" --baud 9600 write-flash 0x9000 "$NVS_BIN_PATH"; then
+  ok "NVS written to device successfully"
+else
+  err "Failed to write NVS partition to device"
+fi
+
+# Cleanup temp files
+rm -f "$NVS_CSV_PATH" "$NVS_BIN_PATH"
 
 ok "Device configured with device-specific secrets"
