@@ -114,14 +114,10 @@ binary_sensor:
         - lambda: |-
             uint32_t hold_time = millis() - id(boot_button_pressed_time);
             if (hold_time >= 3000) {
-              ESP_LOGI("PARTITION", "Long press detected (%.1fs) - switching partition", hold_time/1000.0f);
+              ESP_LOGI("PARTITION", "Long press detected (%.1fs) - attempting partition switch", hold_time/1000.0f);
 
-              // Write OTA flags to switch partition
-              // This tells bootloader to use alternate partition on next boot
-              esp_ota_get_boot_partition();  // Get current partition info
+              // Determine the alternate (target) partition
               const esp_partition_t* running = esp_ota_get_running_partition();
-
-              // Toggle to alternate partition
               const esp_partition_t* next;
               if (running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
                 next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
@@ -129,11 +125,22 @@ binary_sensor:
                 next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
               }
 
-              if (next != NULL) {
-                esp_ota_set_boot_partition(next);
-                ESP_LOGI("PARTITION", "Boot partition switched to: %s", next->label);
-              } else {
+              if (next == NULL) {
                 ESP_LOGE("PARTITION", "Failed to find alternate partition");
+              } else {
+                // Verify the target holds a valid app image first. Without this
+                // check esp_ota_set_boot_partition() "succeeds", but the
+                // bootloader rejects the empty/invalid image and silently falls
+                // back to failsafe - so report accurately instead.
+                esp_app_desc_t app_desc;
+                esp_err_t img_err = esp_ota_get_partition_description(next, &app_desc);
+                if (img_err != ESP_OK) {
+                  ESP_LOGW("PARTITION", "No valid image on '%s' (%s) - NOT switching", next->label, esp_err_to_name(img_err));
+                  ESP_LOGW("PARTITION", "Boot partition remains in FAILSAFE mode. Flash production firmware first.");
+                } else {
+                  esp_ota_set_boot_partition(next);
+                  ESP_LOGI("PARTITION", "Boot partition switched to: %s (v%s) - reboot to apply", next->label, app_desc.version);
+                }
               }
             }
 
@@ -156,7 +163,7 @@ button:
     on_press:
       then:
         - lambda: |-
-            // Manually toggle partition without holding physical button
+            // Manually toggle partition without holding the physical button
             const esp_partition_t* running = esp_ota_get_running_partition();
             const esp_partition_t* next;
 
@@ -166,9 +173,20 @@ button:
               next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
             }
 
-            if (next != NULL) {
-              esp_ota_set_boot_partition(next);
-              ESP_LOGI("PARTITION", "Boot partition toggled to: %s", next->label);
+            if (next == NULL) {
+              ESP_LOGE("PARTITION", "Failed to find alternate partition");
+            } else {
+              // Only switch if the target actually has a valid app image,
+              // otherwise the bootloader falls back to failsafe anyway.
+              esp_app_desc_t app_desc;
+              esp_err_t img_err = esp_ota_get_partition_description(next, &app_desc);
+              if (img_err != ESP_OK) {
+                ESP_LOGW("PARTITION", "No valid image on '%s' (%s) - NOT switching", next->label, esp_err_to_name(img_err));
+                ESP_LOGW("PARTITION", "Boot partition remains in FAILSAFE mode. Flash production firmware first.");
+              } else {
+                esp_ota_set_boot_partition(next);
+                ESP_LOGI("PARTITION", "Boot partition toggled to: %s (v%s) - reboot to apply", next->label, app_desc.version);
+              }
             }
 
 logger:
