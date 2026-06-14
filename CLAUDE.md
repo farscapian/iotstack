@@ -4,7 +4,7 @@
 
 **Always use lowercase "iotstack"** — never "IoT Stack" or "iotStack". Examples:
 - ✓ `iotstack update bleproxy`
-- ✓ `iotstack list devices`
+- ✓ `iotstack devices`
 - ✗ ~~IoT Stack~~
 - ✗ ~~iotStack~~
 - ✗ ~~IOTSTACK~~

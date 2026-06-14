@@ -451,7 +451,7 @@ resolve_device() {
 Available roles:
   $available_roles
 
-Run 'iotstack list roles' for details."
+Run 'iotstack roles' for details."
   fi
 
   local yaml_file="${YAMLS_DIR}/${role_name}.yaml"
@@ -615,10 +615,6 @@ help_update() {
 
 help_verify() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-verify.txt"
-}
-
-help_list() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-list.txt"
 }
 
 help_devices() {
@@ -1452,12 +1448,8 @@ cmd_query() {
 }
 
 cmd_list() {
-  # Handle help request
-  if [[ "${1:-}" == "help" ]]; then
-    help_list
-    return 0
-  fi
-
+  # Shared implementation for the top-level `devices` and `roles` commands.
+  # Always invoked as `cmd_list devices [...]` or `cmd_list roles [...]`.
   local output_format="text"
   local subcommand=""
   local filter_role=""
@@ -1484,11 +1476,19 @@ cmd_list() {
         suffix_only=true
         shift
         ;;
+      help)
+        # Support `iotstack devices help` / `iotstack roles help`
+        case "$subcommand" in
+          roles) help_roles ;;
+          *)     help_devices ;;
+        esac
+        return 0
+        ;;
       devices|roles)
         subcommand="$1"
         shift
         # For devices subcommand, next argument might be a role filter
-        if [[ "$subcommand" == "devices" && $# -gt 0 && "$1" != --* ]]; then
+        if [[ "$subcommand" == "devices" && $# -gt 0 && "$1" != --* && "$1" != "help" ]]; then
           filter_role="$1"
           shift
         fi
@@ -1499,12 +1499,6 @@ cmd_list() {
     esac
   done
 
-  # Show help if no subcommand provided
-  if [[ -z "$subcommand" ]]; then
-    help_list
-    return
-  fi
-
   case "$subcommand" in
     devices)
       list_devices "$output_format" "$filter_role" "$suffix_only"
@@ -1513,7 +1507,7 @@ cmd_list() {
       list_roles "$output_format" "$suffix_only"
       ;;
     *)
-      err "Unknown subcommand: $subcommand. Try 'iotstack list devices' or 'iotstack list roles'"
+      err "Unknown subcommand: $subcommand. Try 'iotstack devices' or 'iotstack roles'"
       ;;
   esac
 }
@@ -1631,7 +1625,7 @@ cmd_rotate_secrets() {
   local mac_line
 
   # Discover all MACs for this role (--id outputs space-separated on one line)
-  mac_line=$(iotstack list devices "$role" --id 2>/dev/null)
+  mac_line=$(iotstack devices "$role" --id 2>/dev/null)
   read -ra mac_suffixes <<< "$mac_line"
 
   if [[ ${#mac_suffixes[@]} -eq 0 ]]; then
@@ -2491,7 +2485,7 @@ _flash_production_smart() {
 
       if [[ "$rebooted" != "true" ]]; then
         warn "Device did not appear as $product_name-$device_mac after $max_reboot_wait seconds."
-        warn "It may still be booting. Check with: iotstack list devices"
+        warn "It may still be booting. Check with: iotstack devices"
       fi
     fi
 
@@ -2694,10 +2688,6 @@ main() {
       shift
       cmd_reassign "$@"
       ;;
-    list)
-      shift
-      cmd_list "$@"
-      ;;
     devices)
       shift
       cmd_list devices "$@"
@@ -2740,7 +2730,6 @@ main() {
           update)           help_update ;;
           verify)           help_verify ;;
           reassign)         help_reassign ;;
-          list)             help_list ;;
           devices)          help_devices ;;
           roles)            help_roles ;;
           flash)            help_flash ;;
