@@ -22,16 +22,11 @@ Options:
                   has recovery)
 
 Examples:
-  iotstack flash bleproxy /dev/ttyUSB0
-                          # Smart setup (recovery + production)
-  iotstack flash failsafe mmwave
-                          # Dual-flash: failsafe + mmwave
-  iotstack flash failsafe /dev/ttyUSB0
-                          # Recovery image only
-  iotstack flash mmwave /dev/ttyACM0 --ota-only
-                          # Skip recovery, update production only
-  iotstack flash threadrouter
-                          # Auto-detect all USB devices
+  iotstack flash bleproxy /dev/ttyUSB0           # Smart setup (recovery + prod)
+  iotstack flash failsafe mmwave                 # Dual-flash: failsafe + mmwave
+  iotstack flash failsafe /dev/ttyUSB0           # Failsafe image only
+  iotstack flash mmwave /dev/ttyACM0 --ota-only  # Skip recovery, OTA prod only
+  iotstack flash threadrouter                    # Auto-detect all USB devices
 
 For detailed help including architecture and timing, see:
   docs/help/iotstack-flash-detailed.txt

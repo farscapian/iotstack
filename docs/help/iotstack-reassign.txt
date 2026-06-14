@@ -20,12 +20,16 @@ Options:
                   File with list of passwords to try (one per line)
 
 Examples:
-  iotstack reassign 19b164 bleproxy                                # Reassign to bleproxy role
-  iotstack reassign 8dfcac 0f4df4 mmwave                           # Reassign multiple to mmwave
-  iotstack reassign 11cdc4 threadrouter                            # Reassign to thread device
-  iotstack reassign 19b164 yamls/custom.yaml                       # Reassign to custom YAML
-  iotstack reassign 19b164 mmwave --ota-password <password>        # With OTA password
-  iotstack reassign 19b164 threadrouter --ota-password-list-path ~/tmp/passwords.txt
+  iotstack reassign 19b164 bleproxy           # Reassign to bleproxy role
+  iotstack reassign 8dfcac 0f4df4 mmwave      # Reassign several to mmwave
+  iotstack reassign 11cdc4 threadrouter       # Reassign to a Thread device
+  iotstack reassign 19b164 yamls/custom.yaml  # Reassign to a custom YAML
+
+  # With an explicit OTA password:
+  iotstack reassign 19b164 mmwave --ota-password <pwd>
+
+  # Try multiple passwords (one per line) when the current one is unknown:
+  iotstack reassign 19b164 threadrouter --ota-password-list-path passwords.txt
 
 PASSWORD LIST FILE FORMAT:
   - One password per line

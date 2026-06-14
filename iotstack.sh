@@ -1,5 +1,5 @@
 #!/bin/bash
-# iotstack.sh — CLI tool for managing IoT Stack ESPHome devices
+# iotstack.sh — CLI tool for managing iotstack ESPHome devices
 # Wrapper around update_devices.sh with a cleaner interface
 #
 # Each invocation runs in an isolated git worktree to prevent code changes

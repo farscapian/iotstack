@@ -1,4 +1,4 @@
-iotstack — Manage IoT Stack ESPHome Devices
+iotstack — Manage ESPHome devices
 
 Global Options:
   -v, --verbose       Show all output (compiler, flashing, diagnostics)

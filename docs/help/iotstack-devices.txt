@@ -13,15 +13,9 @@ Arguments:
   [--id]        Output only device IDs (space-separated, useful for scripts)
 
 Examples:
-  iotstack devices
-                        # Show all discovered devices
-  iotstack devices bleproxy
-                        # Show only bleproxy devices
-  iotstack devices other
-                        # Show devices not matching any role
-  iotstack devices --id
-                        # Output all device IDs
-  iotstack devices bleproxy --id
-                        # Output bleproxy device IDs
-  iotstack devices other --id
-                        # Output IDs of unmatched devices
+  iotstack devices                # Show all discovered devices
+  iotstack devices bleproxy       # Show only bleproxy devices
+  iotstack devices other          # Devices not matching any role
+  iotstack devices --id           # Output all device IDs
+  iotstack devices bleproxy --id  # Output bleproxy device IDs
+  iotstack devices other --id     # Output IDs of unmatched devices

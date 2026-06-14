@@ -14,10 +14,9 @@ Arguments:
   --list, -l     List all devices in Home Assistant
 
 Examples:
-  iotstack query --list
-                        # List all HA devices
-  iotstack query "Bilresa5 - Secondary RoomRemote"
-  iotstack query "Kitchen RoomRemote"
+  iotstack query --list                             # List all HA devices
+  iotstack query "Kitchen RoomRemote"               # Query one device by name
+  iotstack query "Bilresa5 - Secondary RoomRemote"  # Quote names with spaces
 
 For detailed help including setup and dependencies, see:
   docs/help/iotstack-query-detailed.txt
