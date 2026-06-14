@@ -82,12 +82,15 @@ if [[ ! -f "$PARTITION_TABLE" ]]; then
   err "Partition table not found: $PARTITION_TABLE\nMake sure to compile firmware first (which generates the partition table)"
 fi
 
-# Extract NVS size from partition table CSV
+# Extract NVS offset and size from partition table CSV
 # Format: nvs,        data,  nvs,        0x9000,   0x4000,
+NVS_OFFSET=$(awk -F',' '/^nvs[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
+[[ -z "$NVS_OFFSET" ]] && err "Could not find NVS partition offset in: $PARTITION_TABLE"
+
 NVS_SIZE=$(awk -F',' '/^nvs[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $5); print $5}' "$PARTITION_TABLE" | head -1)
 [[ -z "$NVS_SIZE" ]] && err "Could not find NVS partition size in: $PARTITION_TABLE"
 
-info "Using NVS partition size: $NVS_SIZE from generated partition table"
+info "Using NVS partition offset: $NVS_OFFSET, size: $NVS_SIZE from generated partition table"
 
 # ── Retrieve role-based secrets from pass store (lazy-load on demand) ─────
 info "Retrieving secrets for role: $DEVICE_ROLE"
@@ -226,8 +229,8 @@ fi
 
 # Write to device using esptool via Python
 # Using 9600 baud for reliable writes (higher speeds cause corruption)
-info "Writing NVS partition to device at 0x9000..."
-if python3 -m esptool --chip esp32c6 --port "$TTY_DEVICE" --baud 9600 write-flash 0x9000 "$NVS_BIN_PATH"; then
+info "Writing NVS partition to device at $NVS_OFFSET..."
+if python3 -m esptool --chip esp32c6 --port "$TTY_DEVICE" --baud 9600 write-flash "$NVS_OFFSET" "$NVS_BIN_PATH"; then
   ok "NVS written to device successfully"
 else
   err "Failed to write NVS partition to device"
