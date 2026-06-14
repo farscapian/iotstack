@@ -62,24 +62,10 @@ esp32:
   # NVS partition at 0x3d000 (24KB) for device-specific secrets
   partitions: iotstack_partition_table.csv
 
-# WiFi disabled in failsafe firmware for faster boot
-# (Focus on NVS debugging without WiFi connection delays)
-# Production firmware will have WiFi enabled with credentials from NVS
-
-api:
-  # API encryption key is set dynamically by nvs_secrets component from NVS
-  # No hardcoded key in firmware binary
-
 # Custom NVS secrets component - loads device-specific secrets from NVS at startup
 # Handles: WiFi credentials, OTA password, API encryption key
 # All secrets are unique per device and stored in device flash (NVS partition)
 nvs_secrets: {}
-
-# OTA Configuration for failsafe partition
-# Password is dynamically set by nvs_secrets component from NVS
-# Each device has a unique OTA password derived at flash time
-ota:
-  - platform: esphome
 
 safe_mode:
   num_attempts: 3
@@ -93,8 +79,8 @@ globals:
     restore_value: no
 
 binary_sensor:
-  - platform: status
-    name: "Connection Status"
+  # - platform: status
+  #   name: "Connection Status"
 
   # Boot button (GPIO9) on Seeed XIAO ESP32-C6
   # Hold for 3+ seconds to toggle between recovery/production partitions
@@ -141,13 +127,13 @@ binary_sensor:
               }
             }
 
-sensor:
-  - platform: uptime
-    name: "Uptime"
-  - platform: wifi_signal
-    name: "WiFi RSSI (dBm)"
-    update_interval: 60s
-    entity_category: diagnostic
+# sensor:
+#   - platform: uptime
+#     name: "Uptime"
+#   - platform: wifi_signal
+#     name: "WiFi RSSI (dBm)"
+#     update_interval: 60s
+#     entity_category: diagnostic
 
 button:
   - platform: restart
