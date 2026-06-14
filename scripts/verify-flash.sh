@@ -72,8 +72,8 @@ for i in {0..2}; do
 
   info "Verifying $file at offset $offset (size: $file_size bytes)..."
 
-  if esptool --chip esp32c6 --port "$TTY_DEVICE" --baud 57600 \
-    read_flash "$offset" "$read_size" "$read_file" >/dev/null 2>&1; then
+  if python3 -m esptool --chip esp32c6 --port "$TTY_DEVICE" --baud 9600 \
+    read-flash "$offset" "$read_size" "$read_file" >/dev/null 2>&1; then
 
     # Truncate read file to exact original size for comparison
     dd if="$read_file" of="${read_file}.exact" bs=1 count="$file_size" 2>/dev/null
