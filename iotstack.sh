@@ -2129,11 +2129,17 @@ _flash_recovery() {
     local device_specific_ota_password
     device_specific_ota_password=$(echo -n "${failsafe_role_password}|${device_mac}" | sha256sum | cut -c1-32)
 
+    # Wait for device to fully boot before writing NVS
+    info "Waiting for device to boot..."
+    sleep 5
+
     # Write device-specific secrets to NVS partition
     # Firmware reads these via custom NVS components
     info "Writing device-specific secrets to NVS..."
-    "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "failsafe" "$device_specific_ota_password" || \
-      err "Failed to write NVS secrets"
+    if ! "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "failsafe" "$device_specific_ota_password"; then
+      err "Failed to write NVS secrets to device"
+    fi
+    ok "NVS secrets written successfully"
     sleep 2  # Let device stabilize after NVS write
 
     # Note: Flash verification skipped - esptool already verified write integrity
@@ -2190,6 +2196,18 @@ _flash_recovery() {
   failsafe_offset=$(awk -F',' '/^failsafe[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
   [[ -z "$failsafe_offset" ]] && err "Could not find failsafe partition offset in: $PARTITION_TABLE"
 
+  # Get failsafe OTA password (needed for all devices)
+  local failsafe_role_password
+  failsafe_role_password=$(pass show "iotstack/roles/failsafe/ota_password" 2>/dev/null)
+  if [[ -z "$failsafe_role_password" ]]; then
+    info "Failsafe role OTA password not found, generating..."
+    failsafe_role_password=$(openssl rand -hex 16)
+    { echo "$failsafe_role_password"; echo "$failsafe_role_password"; } | \
+      pass insert -f "iotstack/roles/failsafe/ota_password" 2>/dev/null || \
+      err "Failed to store failsafe OTA password in pass"
+    ok "Failsafe OTA password generated and stored"
+  fi
+
   local failed=0
   for tty in "${tty_devices[@]}"; do
     local log_file
@@ -2198,12 +2216,40 @@ _flash_recovery() {
     info "Flashing $tty (log: $log_file)..."
     echo "════════════════════════════════════════════════════════"
 
-    if python3 -m esptool --chip esp32c6 --port "$tty" --baud 9600 \
+    # Flash firmware and capture output to extract MAC
+    local esptool_output
+    if esptool_output=$(python3 -m esptool --chip esp32c6 --port "$tty" --baud 9600 \
       write-flash --flash-mode dio --flash-size 4MB \
       0x0 "$build_dir/bootloader.bin" \
       0x8000 "$build_dir/partitions.bin" \
-      "$failsafe_offset" "$build_dir/firmware.bin" 2>&1 | tee "$log_file"; then
+      "$failsafe_offset" "$build_dir/firmware.bin" 2>&1 | tee "$log_file"); then
+
       ok "Failsafe firmware flashed on $tty"
+
+      # Extract MAC address from esptool output
+      local device_mac
+      device_mac=$(echo "$esptool_output" | grep "BASE MAC:" | awk '{print $NF}' | sed 's/://g' | tr -d '[:space:]')
+      device_mac="${device_mac: -6}"
+
+      if [[ -z "$device_mac" || ! "$device_mac" =~ ^[0-9a-f]{6}$ ]]; then
+        warn "Could not extract MAC from device on $tty (skipping NVS write)"
+      else
+        # Wait for device to boot
+        sleep 5
+
+        # Compute device-specific OTA password
+        local device_specific_ota_password
+        device_specific_ota_password=$(echo -n "${failsafe_role_password}|${device_mac}" | sha256sum | cut -c1-32)
+
+        # Write NVS secrets
+        info "Writing NVS secrets to $tty ($device_mac)..."
+        if "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty" "$device_mac" "failsafe" "$device_specific_ota_password"; then
+          ok "NVS secrets written to $device_mac"
+        else
+          warn "Failed to write NVS secrets to $device_mac (continuing anyway)"
+        fi
+        sleep 2
+      fi
     else
       warn "Recovery flash FAILED on $tty"
       failed=$((failed + 1))
