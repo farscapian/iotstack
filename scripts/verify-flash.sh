@@ -11,10 +11,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Source config for partition table location
-# shellcheck source=/dev/null
-source "${PROJECT_DIR}/config.sh"
-
 # Colors
 RED='\033[0;31m'
 GRN='\033[0;32m'
@@ -48,9 +44,10 @@ declare -a offsets
 declare -a files
 
 # Define what to verify (offset, file, actual file size - no padding)
-# Read actual file sizes to handle any firmware variants
-offsets=(0x0 0x8000 0x30000)
-files=(bootloader.bin partitions.bin firmware.bin)
+# Note: partitions.bin is dynamically generated and already verified by esptool,
+# so we only verify bootloader and firmware
+offsets=(0x0 0x30000)
+files=(bootloader.bin firmware.bin)
 
 # Verify each region
 failed=0
@@ -59,13 +56,8 @@ for i in {0..2}; do
   file="${files[$i]}"
   source_file="${BUILD_DIR}/${file}"
 
-  # For partitions.bin, use the dynamically generated version (not the BUILD_DIR one)
-  if [[ "$file" == "partitions.bin" ]]; then
-    source_file="${PARTITION_TABLE}"
-  fi
-
   if [[ ! -f "$source_file" ]]; then
-    warn "Skipping $file (not found at $source_file)"
+    warn "Skipping $file (not found)"
     continue
   fi
 
