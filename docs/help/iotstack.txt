@@ -41,9 +41,3 @@ Commands:
   help                Show help for a command
 
 Use 'iotstack <command> help' for detailed help on any command.
-
-Options:
-  --dry-run              Compile and show what would be flashed (no flashing)
-  --flash-anyway         Flash all devices regardless of version
-  --jobs N               Max concurrent flash jobs (default: 4)
-  -v, --verbose          Show compilation output

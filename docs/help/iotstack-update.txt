@@ -26,7 +26,6 @@ Options:
 Examples:
   iotstack update bleproxy
                         # Update all bleproxy devices
-                        # Update Thread device
   iotstack update all   # Update all devices
   iotstack update --dry-run mmwave
                         # Preview without flashing
