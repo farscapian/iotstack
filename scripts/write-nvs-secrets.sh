@@ -74,7 +74,7 @@ DEVICE_OTA_PASSWORD="${4:-}"
 [[ ! -e "$TTY_DEVICE" ]] && err "TTY device not found: $TTY_DEVICE"
 
 # Read NVS size from the generated partition table
-PARTITION_TABLE="${PROJECT_DIR}/yamls/dual_app_recovery.csv"
+PARTITION_TABLE="${PROJECT_DIR}/yamls/iotstack_partition_table.csv"
 if [[ ! -f "$PARTITION_TABLE" ]]; then
   err "Partition table not found: $PARTITION_TABLE\nMake sure to compile firmware first (which generates the partition table)"
 fi

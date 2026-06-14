@@ -42,7 +42,7 @@ production, app, ota_1,  0x224000, 0x200000,
 
 ### 1. Create Partition Table
 
-Create `partitions/dual_app_recovery.csv`:
+Create `partitions/iotstack_partition_table.csv`:
 ```csv
 # Name,   Type, SubType, Offset,   Size,    Flags
 nvs,      data, nvs,     0x9000,   0x4000,  
@@ -59,7 +59,7 @@ esp32:
   board: seeed_xiao_esp32c6
   framework:
     type: esp-idf
-  partitions: custom:partitions/dual_app_recovery.csv
+  partitions: custom:partitions/iotstack_partition_table.csv
 ```
 
 ### 3. OTA Configuration
@@ -294,7 +294,7 @@ Before rolling out to other device roles, validate bleproxy-recovery on real har
 ## Next Steps (After BLE Proxy Validation)
 
 1. ✅ Create recovery YAML (bleproxy-recovery.yaml)
-2. ✅ Create partition table (partitions/dual_app_recovery.csv)
+2. ✅ Create partition table (partitions/iotstack_partition_table.csv)
 3. ⏳ **TEST on real bleproxy device** (above checklist)
 4. ⏳ Create mmwave-recovery.yaml, threadrouter-recovery.yaml (copy pattern)
 5. ⏳ Update iotstack-roles.conf for recovery variants

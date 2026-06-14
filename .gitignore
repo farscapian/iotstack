@@ -4,7 +4,7 @@ resources/esp32projects/  # Local clones of reference projects (not part of buil
 **/.temp-rename-*.yaml
 .esphome/
 yamls/.esphome/
-yamls/dual_app_recovery.csv  # Symlink to ~/.iotstack/dual_app_recovery.csv (generated)
+yamls/iotstack_partition_table.csv  # Symlink to ~/.iotstack/iotstack_partition_table.csv (generated)
 .iotstack/  # Generated artifacts (partition tables, logs, caches)
 
 # Exception: allow documentation and components (not actual secrets)
