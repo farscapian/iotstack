@@ -108,7 +108,7 @@ binary_sensor:
       then:
         - lambda: |-
             id(boot_button_pressed_time) = millis();
-            ESP_LOGI("PARTITION", "Boot button pressed - hold 3+ seconds to toggle partition");
+            ESP_LOGI("PARTITION", "Boot button pressed - release to restart, or hold 3s to toggle boot partition");
     on_release:
       then:
         - lambda: |-
@@ -139,9 +139,14 @@ binary_sensor:
                   ESP_LOGW("PARTITION", "Boot partition remains in FAILSAFE mode. Flash production firmware first.");
                 } else {
                   esp_ota_set_boot_partition(next);
-                  ESP_LOGI("PARTITION", "Boot partition switched to: %s (v%s) - reboot to apply", next->label, app_desc.version);
+                  ESP_LOGI("PARTITION", "Boot partition switched to: %s (v%s) - press boot again to restart and apply", next->label, app_desc.version);
                 }
               }
+            } else if (hold_time >= 50) {
+              // Short press: restart the device (does not change the boot
+              // partition; the 3s hold above handles that separately).
+              ESP_LOGI("PARTITION", "Short press (%ums) - restarting device", (unsigned) hold_time);
+              App.safe_reboot();
             }
 
 sensor:
