@@ -14,6 +14,7 @@
 
 substitutions:
   development_status: "dev"
+  dev_status: "${development_status}"
   device_role: "mmwave3led"
   friendly_name: "mmWave 3-LED"
   role_color_r: "100"  # mmWave = red/orange (100%, 50%, 0%)
@@ -32,7 +33,7 @@ esphome:
   friendly_name: ${friendly_name}
   name_add_mac_suffix: true
   project:
-    name: "iotstack.${device_role}"
+    name: "iotstack.${device_role}-${dev_status}"
     version: "1.0.0"
   on_boot:
     priority: -100

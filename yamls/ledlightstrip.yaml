@@ -1,5 +1,6 @@
 substitutions:
   development_status: "dev"
+  dev_status: "${development_status}"
   device_role: "ledstrip"
   friendly_name: "LED Light Strip"
 
@@ -14,7 +15,7 @@ esphome:
   name: ledstrip
   friendly_name: ${friendly_name}
   project:
-    name: "iotstack.${device_role}"
+    name: "iotstack.${device_role}-${dev_status}"
     version: 1.0.0
   name_add_mac_suffix: true
 

@@ -1,5 +1,6 @@
 substitutions:
   development_status: "dev"
+  dev_status: "${development_status}"
   device_role: "sendspinspeaker"
   friendly_name: "SendSpin Speaker"
 
@@ -8,7 +9,7 @@ esphome:
   friendly_name: "${friendly_name}"
   name_add_mac_suffix: true
   project:
-    name: "iotstack.sendspin"
+    name: "iotstack.${device_role}-${dev_status}"
     version: "1.0.0"
 
 esp32:

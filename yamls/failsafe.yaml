@@ -14,6 +14,7 @@
 
 substitutions:
   development_status: "prod"
+  dev_status: "${development_status}"
   device_role: "failsafe"
   friendly_name: "Failsafe Mode"
 
