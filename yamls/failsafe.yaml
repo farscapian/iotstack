@@ -71,70 +71,6 @@ safe_mode:
   num_attempts: 3
   reboot_timeout: 2min
 
-# Global variables for partition toggle
-globals:
-  - id: boot_button_pressed_time
-    type: uint32_t
-    initial_value: '0'
-    restore_value: no
-
-binary_sensor:
-  # - platform: status
-  #   name: "Connection Status"
-
-  # Boot button (GPIO9) on Seeed XIAO ESP32-C6
-  # Hold for 3+ seconds to toggle between recovery/production partitions
-  - platform: gpio
-    pin:
-      number: GPIO9
-      inverted: true
-      mode:
-        input: true
-        pullup: true
-      ignore_strapping_warning: true
-    name: "Partition Toggle Button"
-    internal: true
-    on_press:
-      then:
-        - lambda: |-
-            id(boot_button_pressed_time) = millis();
-            ESP_LOGI("PARTITION", "Boot button pressed - hold 3+ seconds to toggle partition");
-    on_release:
-      then:
-        - lambda: |-
-            uint32_t hold_time = millis() - id(boot_button_pressed_time);
-            if (hold_time >= 3000) {
-              ESP_LOGI("PARTITION", "Long press detected (%.1fs) - switching partition", hold_time/1000.0f);
-
-              // Write OTA flags to switch partition
-              // This tells bootloader to use alternate partition on next boot
-              esp_ota_get_boot_partition();  // Get current partition info
-              const esp_partition_t* running = esp_ota_get_running_partition();
-
-              // Toggle to alternate partition
-              const esp_partition_t* next;
-              if (running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
-                next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
-              } else {
-                next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
-              }
-
-              if (next != NULL) {
-                esp_ota_set_boot_partition(next);
-                ESP_LOGI("PARTITION", "Boot partition switched to: %s", next->label);
-              } else {
-                ESP_LOGE("PARTITION", "Failed to find alternate partition");
-              }
-            }
-
-# sensor:
-#   - platform: uptime
-#     name: "Uptime"
-#   - platform: wifi_signal
-#     name: "WiFi RSSI (dBm)"
-#     update_interval: 60s
-#     entity_category: diagnostic
-
 button:
   - platform: restart
     name: "Restart"
@@ -142,27 +78,4 @@ button:
     name: "Reset Device"
     entity_category: config
     disabled_by_default: true
-
-  # Manual partition toggle button for HA integration
-  - platform: template
-    name: "Toggle Boot Partition"
-    icon: "mdi:swap-horizontal"
-    on_press:
-      then:
-        - lambda: |-
-            // Manually toggle partition without holding physical button
-            const esp_partition_t* running = esp_ota_get_running_partition();
-            const esp_partition_t* next;
-
-            if (running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
-              next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
-            } else {
-              next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
-            }
-
-            if (next != NULL) {
-              esp_ota_set_boot_partition(next);
-              ESP_LOGI("PARTITION", "Boot partition toggled to: %s", next->label);
-            }
-
 
