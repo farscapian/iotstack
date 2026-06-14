@@ -51,7 +51,7 @@ files=(bootloader.bin firmware.bin)
 
 # Verify each region
 failed=0
-for i in {0..2}; do
+for i in {0..1}; do
   offset="${offsets[$i]}"
   file="${files[$i]}"
   source_file="${BUILD_DIR}/${file}"

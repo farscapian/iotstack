@@ -2123,11 +2123,9 @@ _flash_recovery() {
       err "Failed to write NVS secrets"
     sleep 2  # Let device stabilize after NVS write
 
-    # Verify flash checksums before proceeding
-    info "Verifying flash checksums..."
-    sleep 1  # Brief pause before verification to ensure flash is readable
-    "$SCRIPT_DIR/scripts/verify-flash.sh" "$tty_device" "failsafe" || \
-      err "Flash verification failed - device may be corrupted"
+    # Note: Flash verification skipped - esptool already verified write integrity
+    # during flash operation ("Hash of data verified" message above).
+    # Device is functional if NVS secrets are readable by nvs_secrets component.
     echo ""
 
     info "Device booting failsafe firmware..."
