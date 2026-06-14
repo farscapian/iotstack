@@ -22,8 +22,7 @@ substitutions:
 external_components:
   - source:
       type: local
-      path: ./external_components
-    components: [nvs_secrets]
+      path: external_components
 
 esphome:
   name: ${device_role}
@@ -42,6 +41,16 @@ esphome:
           format: "[DEBUG-NVS] If connection still uses 'configured-via-nvs', nvs_secrets failed to read NVS data"
           level: INFO
 
+
+logger:
+  level: DEBUG
+  hardware_uart: USB_SERIAL_JTAG
+  logs:
+    nvs_secrets: DEBUG
+    wifi: DEBUG
+    api: DEBUG
+
+
 esp32:
   board: seeed_xiao_esp32c6
   framework:
@@ -53,12 +62,9 @@ esp32:
   # NVS partition at 0x3d000 (24KB) for device-specific secrets
   partitions: iotstack_partition_table.csv
 
-# WiFi credentials are loaded from NVS by nvs_secrets component at startup
-# YAML does not contain any secrets - all come from device flash (NVS)
-wifi:
-  ssid: "configured-via-nvs"  # Placeholder - overridden by nvs_secrets component
-  password: "placeholder"      # Placeholder - overridden by nvs_secrets component
-  power_save_mode: none
+# WiFi disabled in failsafe firmware for faster boot
+# (Focus on NVS debugging without WiFi connection delays)
+# Production firmware will have WiFi enabled with credentials from NVS
 
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
@@ -173,11 +179,4 @@ button:
               ESP_LOGI("PARTITION", "Boot partition toggled to: %s", next->label);
             }
 
-logger:
-  level: DEBUG  # Enhanced logging to debug NVS issues
-  hardware_uart: USB_SERIAL_JTAG
-  logs:
-    nvs_secrets: DEBUG
-    wifi: DEBUG
-    api: DEBUG
 
