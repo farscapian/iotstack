@@ -1312,11 +1312,17 @@ cmd_reassign() {
           source_role="${device_name%-"$mac"}"
 
           if [[ -n "$source_role" ]]; then
-            # If device is running failsafe firmware, use well-known recovery password
-            if [[ "$source_role" =~ ^recovery ]]; then
-              api_key="IotstackRecovery2024"
-              echo "  OTA Password: (well-known recovery password)"
-              break
+            # NVS-provisioned devices (failsafe or any production role) authenticate
+            # OTA with a device-specific password derived from the failsafe role
+            # secret + MAC (written to NVS at provisioning time).
+            if [[ "$source_role" =~ ^failsafe ]]; then
+              local fs_secret
+              fs_secret=$(pass show "iotstack/roles/failsafe/ota_password" 2>/dev/null)
+              if [[ -n "$fs_secret" ]]; then
+                api_key=$(echo -n "${fs_secret}|${mac}" | sha256sum | cut -c1-32)
+                echo "  OTA Password: (derived from failsafe role secret)"
+                break
+              fi
             fi
 
             # Try to retrieve OTA password for this role
@@ -1946,7 +1952,7 @@ EOF
     _boot_partition_usb "$device" "$partition"
   else
     # MAC suffix
-    info "Setting recovery-$device to boot: $partition"
+    info "Setting failsafe-$device to boot: $partition"
     _boot_partition_network "$partition" "$device"
   fi
 }
@@ -1960,7 +1966,7 @@ _boot_partition_usb() {
   info "Toggling boot partition..."
   if timeout 5 curl -s -X POST "http://localhost:6053/api/services/button/press" \
     -H "Content-Type: application/json" \
-    -d '{"entity_id": "button.recovery_toggle_boot_partition"}' >/dev/null 2>&1; then
+    -d '{"entity_id": "button.failsafe_toggle_boot_partition"}' >/dev/null 2>&1; then
     ok "Boot partition toggled to: $partition"
   else
     err "Could not communicate with device. Ensure it's running and connected."
@@ -1971,7 +1977,7 @@ _boot_partition_single() {
   # Set boot partition on a single device
   local target_partition="$1"
   local mac="$2"
-  local device_name="recovery-$mac"
+  local device_name="failsafe-$mac"
   local device_host="${device_name}.local"
 
   info "Setting $device_name to boot: $target_partition..."
@@ -2280,7 +2286,7 @@ _flash_recovery_dual() {
   # Discover recovery devices
   local recovery_macs=()
   while IFS= read -r line; do
-    if [[ "$line" =~ recovery-([0-9a-f]+) ]]; then
+    if [[ "$line" =~ failsafe-([0-9a-f]+) ]]; then
       recovery_macs+=("${BASH_REMATCH[1]}")
     fi
   done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
@@ -2306,7 +2312,7 @@ _flash_recovery_dual() {
   # Discover recovery devices and toggle them
   local recovery_devices=()
   while IFS= read -r line; do
-    if [[ "$line" =~ recovery-([0-9a-f]+) ]]; then
+    if [[ "$line" =~ failsafe-([0-9a-f]+) ]]; then
       recovery_devices+=("${BASH_REMATCH[1]}")
     fi
   done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
@@ -2321,7 +2327,7 @@ _flash_recovery_dual() {
     if [[ -n "$ha_url" && -n "$ha_token" ]]; then
       # Call the partition toggle button via Home Assistant
       for mac in "${recovery_devices[@]}"; do
-        local device_name="recovery-$mac"
+        local device_name="failsafe-$mac"
         local entity_id="button.${device_name,,}_toggle_boot_partition"
 
         info "Toggling partition on $device_name (via HA)..."
@@ -2337,7 +2343,7 @@ _flash_recovery_dual() {
     else
       # Fallback: toggle via ESPHome API directly on device
       for mac in "${recovery_devices[@]}"; do
-        local device_name="recovery-$mac"
+        local device_name="failsafe-$mac"
         local device_host="${device_name}.local"
 
         info "Toggling partition on $device_name (via ESPHome API)..."
@@ -2399,23 +2405,23 @@ _flash_production_smart() {
       echo ""
     fi
 
-    # Reassign recovery device to production
+    # Reassign failsafe device to production
     if [[ -n "$device_mac" ]]; then
       # Extract only the MAC suffix (last 6 chars) from captured output
       device_mac=$(echo "$device_mac" | tail -1 | tr -d '[:space:]')
 
-      info "Waiting for recovery device ($device_mac) to connect to network..."
+      info "Waiting for failsafe device ($device_mac) to connect to network..."
       local max_wait=60
       local waited=0
       local found=false
 
       while [[ $waited -lt $max_wait ]]; do
         # Check if device is on network via mDNS
-        if avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "recovery-$device_mac"; then
+        if avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "failsafe-$device_mac"; then
           info "  Device found on mDNS, waiting for OTA service..."
 
           # Verify OTA service is actually responding on port 3232
-          if timeout 2 bash -c "echo > /dev/tcp/recovery-$device_mac.local/3232" 2>/dev/null; then
+          if timeout 2 bash -c "echo > /dev/tcp/failsafe-$device_mac.local/3232" 2>/dev/null; then
             found=true
             break
           fi
@@ -2431,31 +2437,33 @@ _flash_production_smart() {
       done
 
       if [[ "$found" != "true" ]]; then
-        err "Recovery device (recovery-$device_mac) OTA service not ready after $max_wait seconds. Check WiFi connection or device logs."
+        err "Failsafe device (failsafe-$device_mac) OTA service not ready after $max_wait seconds. Check WiFi connection or device logs."
       fi
 
       info "Device found on network! Waiting for OTA service to fully initialize..."
       sleep 30
 
-      info "Reassigning recovery-$device_mac to $device firmware..."
+      info "Reassigning failsafe-$device_mac to $device firmware..."
 
-      # Retrieve recovery role-based OTA password from pass store
-      local recovery_role_password
-      recovery_role_password=$(pass show "iotstack/roles/recovery/ota_password" 2>/dev/null)
-      if [[ -z "$recovery_role_password" ]]; then
-        info "Recovery role OTA password not found, generating..."
-        recovery_role_password=$(openssl rand -hex 16)
+      # Retrieve failsafe role-based OTA password from pass store. The failsafe
+      # device authenticates OTA with its device-specific password derived from
+      # this role secret + MAC (the same value written to its NVS at flash time).
+      local failsafe_role_password
+      failsafe_role_password=$(pass show "iotstack/roles/failsafe/ota_password" 2>/dev/null)
+      if [[ -z "$failsafe_role_password" ]]; then
+        info "Failsafe role OTA password not found, generating..."
+        failsafe_role_password=$(openssl rand -hex 16)
         # Store it in pass
-        { echo "$recovery_role_password"; echo "$recovery_role_password"; } | \
-          pass insert -f "iotstack/roles/recovery/ota_password" 2>/dev/null || \
-          err "Failed to store recovery OTA password in pass"
-        ok "Recovery OTA password generated and stored"
+        { echo "$failsafe_role_password"; echo "$failsafe_role_password"; } | \
+          pass insert -f "iotstack/roles/failsafe/ota_password" 2>/dev/null || \
+          err "Failed to store failsafe OTA password in pass"
+        ok "Failsafe OTA password generated and stored"
       fi
 
       # Compute device-specific OTA password from role secret + MAC
       # sha256(role_secret | device_mac) - computed in-memory only
       local device_ota_password
-      device_ota_password=$(echo -n "${recovery_role_password}|${device_mac}" | sha256sum | cut -c1-32)
+      device_ota_password=$(echo -n "${failsafe_role_password}|${device_mac}" | sha256sum | cut -c1-32)
 
       if ! "$UPDATE_SCRIPT" --reassign "$device_mac" "$yaml_path" --ota-password "$device_ota_password" --jobs 1; then
         err "OTA update failed. Device may still be booting. Try again in a moment:
