@@ -6,6 +6,7 @@ resources/esp32projects/  # Local clones of reference projects (not part of buil
 yamls/.esphome/
 yamls/iotstack_partition_table.csv  # Symlink to ~/.iotstack/iotstack_partition_table.csv (generated)
 .iotstack/  # Generated artifacts (partition tables, logs, caches)
+legacy/ # old yamls and other stuff that is useful but no longer considered modern
 
 # Exception: allow documentation and components (not actual secrets)
 !docs/secrets.md
@@ -34,3 +35,7 @@ yamls/iotstack_partition_table.csv  # Symlink to ~/.iotstack/iotstack_partition_
 !scripts/write-nvs-secrets.sh
 !scripts/iotstack-secrets
 !scripts/rotate-secrets__pycache__/
+
+# Python bytecode caches (ESPHome external_components codegen)
+__pycache__/
+*.pyc
