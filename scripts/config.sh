@@ -49,7 +49,12 @@ export PARTITION_TABLE_SYMLINK="${PARTITION_TABLE_SYMLINK:-${YAMLS_DIR}/${PARTIT
 # on 4MB flash production is ~2.8MB; on 8MB it is ~6.8MB.
 export IOTSTACK_FLASH_SIZE="${IOTSTACK_FLASH_SIZE:-0x400000}"        # total flash (4MB default)
 export IOTSTACK_APP_OFFSET="${IOTSTACK_APP_OFFSET:-0x30000}"         # first app partition offset
-export IOTSTACK_FAILSAFE_PART_SIZE="${IOTSTACK_FAILSAFE_PART_SIZE:-0x100000}"  # failsafe (ota_0) size (1MB)
+# Failsafe (ota_0) is sized dynamically to the compiled failsafe firmware plus
+# IOTSTACK_FAILSAFE_MARGIN (rounded up to 64KB); production (ota_1) gets the
+# rest. IOTSTACK_FAILSAFE_PART_SIZE is the fallback/initial size used for the
+# first compile pass and if the firmware can't be measured.
+export IOTSTACK_FAILSAFE_PART_SIZE="${IOTSTACK_FAILSAFE_PART_SIZE:-0x180000}"  # initial/fallback (1.5MB)
+export IOTSTACK_FAILSAFE_MARGIN="${IOTSTACK_FAILSAFE_MARGIN:-0x10000}"         # headroom above firmware (64KB)
 
 # Directories — allow user override
 export LOGS_DIR="${LOGS_DIR:-${IOTSTACK_HOME}/logs}"

@@ -224,50 +224,95 @@ _update_partition_table_file() {
   ok "Partition table (failsafe + production) written to $output_file"
 }
 
-smart_compile() {
-  # Smart compilation that uses cache to skip rebuilds
-  # After compilation, calculates partition sizes based on firmware size
-  # Usage: smart_compile <yaml_file> [device_name_for_logging]
-  # Environment variable: DISABLE_COMPILATION_CACHE=1 forces recompilation
-  local yaml_file="$1"
-  local device_name="${2:-unknown}"
-
-  # Get YAML SHA before compilation
-  local yaml_sha
-  yaml_sha=$(_get_yaml_sha "$yaml_file")
-  [[ -z "$yaml_sha" ]] && err "Failed to compute SHA256 of $yaml_file"
-
-  # Write the fixed partition table before compiling so ESPHome's partitions.bin
-  # matches what gets flashed. The table is deterministic (no post-compile
-  # recalculation), which also fixes the prior bug where the recalculated table
-  # never reached the device. ESPHome's own build-size check then enforces that
-  # failsafe fits its ota_0 partition.
-  _update_partition_table_file
-
-  # Check if we can skip compilation (unless DISABLE_COMPILATION_CACHE is set)
-  if [[ "${DISABLE_COMPILATION_CACHE:-0}" != "1" ]] && _check_compilation_cache "$yaml_file"; then
-    ok "Firmware already compiled (cached)"
-    return 0
+_failsafe_part_size() {
+  # Echo the failsafe (ota_0) partition size as hex for a given firmware.bin:
+  # round_up_64KB(firmware_size + IOTSTACK_FAILSAFE_MARGIN). Falls back to
+  # IOTSTACK_FAILSAFE_PART_SIZE if the binary cannot be measured.
+  local bin="$1"
+  local margin="${IOTSTACK_FAILSAFE_MARGIN:-0x10000}"
+  local sz
+  sz=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin" 2>/dev/null || echo 0)
+  if (( sz <= 0 )); then
+    printf '%s' "${IOTSTACK_FAILSAFE_PART_SIZE:-0x180000}"
+    return
   fi
+  local total=$(( sz + margin ))
+  (( total % 0x10000 != 0 )) && total=$(( (total / 0x10000 + 1) * 0x10000 ))
+  printf '0x%x' "$total"
+}
 
-  [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]] && debug "Compilation cache disabled (DISABLE_COMPILATION_CACHE=1)"
-
-  # YAML changed or first compile - need to rebuild
-  info "Compiling firmware..."
+_esphome_compile() {
+  # Run esphome compile, honoring VERBOSE
+  local yaml_file="$1"
   if [[ $VERBOSE -eq 1 ]]; then
     esphome compile "$yaml_file" || return 1
   else
     esphome compile "$yaml_file" >/dev/null 2>&1 || return 1
   fi
+}
 
-  # Get binary SHA after successful compilation
-  local binary_sha
-  binary_sha=$(_get_binary_sha "$device_name")
-  if [[ -n "$binary_sha" ]]; then
-    _update_compilation_cache "$yaml_file" "$binary_sha"
-    ok "Compilation cached"
+smart_compile() {
+  # Smart compilation that uses cache to skip rebuilds.
+  # Usage: smart_compile <yaml_file> [device_name_for_logging]
+  # Environment variable: DISABLE_COMPILATION_CACHE=1 forces recompilation
+  local yaml_file="$1"
+  local device_name="${2:-unknown}"
+
+  local yaml_sha
+  yaml_sha=$(_get_yaml_sha "$yaml_file")
+  [[ -z "$yaml_sha" ]] && err "Failed to compute SHA256 of $yaml_file"
+
+  local firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
+  local cached=0
+  [[ "${DISABLE_COMPILATION_CACHE:-0}" != "1" ]] && _check_compilation_cache "$yaml_file" && cached=1
+  [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]] && debug "Compilation cache disabled (DISABLE_COMPILATION_CACHE=1)"
+
+  # ── Non-failsafe builds ────────────────────────────────────────────────────
+  # Production firmware is OTA'd into the production partition and uses ESPHome's
+  # default partition table for its build-size check, so the custom table size
+  # is irrelevant to it. Just make sure a table exists, then compile.
+  if [[ "$device_name" != "failsafe" ]]; then
+    _update_partition_table_file
+    if [[ $cached -eq 1 ]]; then ok "Firmware already compiled (cached)"; return 0; fi
+    info "Compiling firmware..."
+    _esphome_compile "$yaml_file" || return 1
+    local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
+    [[ -n "$binary_sha" ]] && { _update_compilation_cache "$yaml_file" "$binary_sha"; ok "Compilation cached"; }
+    return 0
   fi
 
+  # ── Failsafe: size its partition dynamically to the actual firmware ─────────
+  # The failsafe partition is sized to exactly what failsafe needs (+ margin);
+  # production absorbs the rest. The partition size affects the flashed
+  # partitions.bin (not the position-independent app image), so we compile,
+  # measure, regenerate the table, then recompile so partitions.bin matches.
+  if [[ $cached -eq 1 && -f "$firmware_bin" ]]; then
+    ok "Firmware already compiled (cached)"
+    local fs_size; fs_size=$(_failsafe_part_size "$firmware_bin")
+    IOTSTACK_FAILSAFE_PART_SIZE="$fs_size" _update_partition_table_file
+    return 0
+  fi
+
+  # Pass 1: compile against a generous failsafe partition so it definitely fits
+  IOTSTACK_FAILSAFE_PART_SIZE="${IOTSTACK_FAILSAFE_PART_SIZE:-0x180000}" _update_partition_table_file
+  info "Compiling failsafe firmware (pass 1/2: measuring size)..."
+  _esphome_compile "$yaml_file" || return 1
+
+  # Size the failsafe partition to the measured firmware, regenerate the table
+  local fs_size fw_bytes
+  fs_size=$(_failsafe_part_size "$firmware_bin")
+  fw_bytes=$(stat -c%s "$firmware_bin" 2>/dev/null || echo "?")
+  info "Failsafe firmware ${fw_bytes} bytes -> failsafe partition ${fs_size}"
+  export IOTSTACK_FAILSAFE_PART_SIZE="$fs_size"
+  _update_partition_table_file
+
+  # Pass 2: recompile so partitions.bin reflects the exact table (app image is
+  # cached/unchanged, so this only regenerates the partition binary)
+  info "Compiling failsafe firmware (pass 2/2: applying exact partition table)..."
+  _esphome_compile "$yaml_file" || return 1
+
+  local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
+  [[ -n "$binary_sha" ]] && { _update_compilation_cache "$yaml_file" "$binary_sha"; ok "Compilation cached"; }
   return 0
 }
 
