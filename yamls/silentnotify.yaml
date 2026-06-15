@@ -3,6 +3,7 @@ substitutions:
   dev_status: "${development_status}"
   device_role: "silentnotify"
   friendly_name: "Silent Notify"
+  boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
 
 esphome:
   name: "${device_role}"
@@ -14,7 +15,7 @@ esphome:
 
 esp32:
   board: esp32-s3-devkitc-1
-  variant: esp32s6
+  variant: esp32s3
   flash_size: 4MB
   framework:
     type: esp-idf
@@ -23,7 +24,12 @@ external_components:
   - source:
       type: local
       path: ./external_components
-    components: [nvs_secrets]
+    components: [nvs_secrets, partition_manager]
+
+# Shared boot-button / restart / partition-toggle behavior (same on every device)
+packages:
+  partition_mgmt: !include common/partition_manager.yaml
+  boot_button: !include common/boot_button.yaml
 
 logger:
   hardware_uart: USB_SERIAL_JTAG
@@ -38,4 +44,5 @@ api:
 ota:
   - platform: esphome
 
-nvs_secrets:
+# (empty dict {} is required to instantiate the component)
+nvs_secrets: {}

@@ -32,11 +32,21 @@ packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
 
-# Thread configuration
-# Thread TLV is loaded from NVS by nvs_secrets component at startup
+# Thread configuration.
+# ESPHome bakes the Thread dataset in at compile time, so the config must
+# supply exactly one of network_key/tlv. The value below is a PLACEHOLDER only
+# (the Thread analog of the wifi "configured-via-nvs" placeholder). The real
+# dataset is provisioned at commissioning time and stored by the OpenThread
+# stack; with force_dataset: false the device uses that stored dataset and
+# ignores this placeholder.
+#
+# TODO: apply the NVS `thread_tlv` at runtime from nvs_secrets (the Thread
+# analog of the solved WiFi-from-NVS path) so a fresh device joins the real
+# network without commissioning. nvs_secrets does not do this yet.
 openthread:
   device_type: FTD
-  force_dataset: true
+  force_dataset: false
+  network_key: 0x00112233445566778899aabbccddeeff  # placeholder — see note above
 
 # 3. Network — required for IPv6/Thread
 network:

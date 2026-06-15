@@ -3,13 +3,19 @@ substitutions:
   device_role: "ledstrip"
   friendly_name: "LED Light Strip"
   dev_status: "dev"
+  boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
 
 # External components (replaces deprecated custom_components folder)
 external_components:
   - source:
       type: local
       path: ./external_components
-    components: [nvs_secrets]
+    components: [nvs_secrets, partition_manager]
+
+# Shared boot-button / restart / partition-toggle behavior (same on every device)
+packages:
+  partition_mgmt: !include common/partition_manager.yaml
+  boot_button: !include common/boot_button.yaml
 
 esphome:
   name: ledstrip
@@ -31,9 +37,9 @@ wifi:
   ssid: "configured-via-nvs"  # Placeholder - overridden by nvs_secrets component
   password: "placeholder"      # Placeholder - overridden by nvs_secrets component
 
-# Custom NVS secrets component - loads device-specific API key from NVS
-nvs_secrets:
-
+# Custom NVS secrets component - loads device-specific secrets from NVS
+# (empty dict {} is required to instantiate the component)
+nvs_secrets: {}
 
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS

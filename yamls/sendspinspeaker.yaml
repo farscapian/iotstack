@@ -3,6 +3,7 @@ substitutions:
   dev_status: "${development_status}"
   device_role: "sendspinspeaker"
   friendly_name: "SendSpin Speaker"
+  boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
 
 esphome:
   name: "sendspin"
@@ -14,7 +15,7 @@ esphome:
 
 esp32:
   board: esp32-s3-devkitc-1
-  variant: esp32s6
+  variant: esp32s3
   flash_size: 4MB
   framework:
     type: esp-idf
@@ -23,15 +24,21 @@ external_components:
   - source:
       type: local
       path: ./external_components
-    components: [nvs_secrets]
+    components: [nvs_secrets, partition_manager]
+
+# Shared boot-button / restart / partition-toggle behavior (same on every device)
+packages:
+  partition_mgmt: !include common/partition_manager.yaml
+  boot_button: !include common/boot_button.yaml
 
 # 1. Core services
 logger:
   hardware_uart: USB_SERIAL_JTAG
   level: DEBUG
 
-# Custom NVS secrets component - loads device-specific API key from NVS
-nvs_secrets:
+# Custom NVS secrets component - loads device-specific secrets from NVS
+# (empty dict {} is required to instantiate the component)
+nvs_secrets: {}
 
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
@@ -88,7 +95,8 @@ speaker:
   - platform: i2s_audio
     id: i2s_speaker
     i2s_audio_id: i2s_bus
-    dout_pin: GPIO5
+    dac_type: external   # separate I2S DAC chip wired to dout/bclk/lrclk
+    i2s_dout_pin: GPIO5
     sample_rate: 48000
     bits_per_sample: 16bit
     channel: stereo
@@ -101,8 +109,8 @@ media_player:
   - platform: speaker
     id: sendspin_player
     name: "Speaker"
-    speaker: i2s_speaker
     announcement_pipeline:
+      speaker: i2s_speaker
       sample_rate: 16000
 
 media_source:
@@ -141,9 +149,7 @@ sensor:
 # 8. Buttons
 
 button:
-  - platform: restart
-    name: "Restart"
-    entity_category: config
+  # "Restart" and "Toggle Boot Partition" buttons come from partition_mgmt package
   - platform: safe_mode
     name: "Safe Mode"
     entity_category: config
