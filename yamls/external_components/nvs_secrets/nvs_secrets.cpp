@@ -74,7 +74,7 @@ void NVSSecrets::setup() {
     return;
   }
 
-  ESP_LOGI(TAG, "[NVS] Loading secrets from NVS...");
+  ESP_LOGI(TAG, "[NVS] Loading runtime data from NVS...");
 
   wifi_ssid_ = read_nvs_string("wifi_ssid");
   wifi_password_ = read_nvs_string("wifi_password");
@@ -163,12 +163,16 @@ void NVSSecrets::apply_thread_dataset_() {
 }
 
 void NVSSecrets::dump_config() {
-  ESP_LOGCONFIG(TAG, "NVS Secrets Component:");
+  ESP_LOGCONFIG(TAG, "NVS Runtime Data:");
+#ifdef USE_WIFI
   ESP_LOGCONFIG(TAG, "  WiFi SSID: %s", wifi_ssid_.empty() ? "(not set)" : "(loaded from NVS)");
   ESP_LOGCONFIG(TAG, "  WiFi Password: %s", wifi_password_.empty() ? "(not set)" : "(loaded from NVS)");
+#endif
   ESP_LOGCONFIG(TAG, "  OTA Password: %s", ota_password_.empty() ? "(not set)" : "(loaded from NVS)");
   ESP_LOGCONFIG(TAG, "  API Key: %s", api_encryption_key_.empty() ? "(not set)" : "(loaded from NVS)");
+#ifdef USE_OPENTHREAD
   ESP_LOGCONFIG(TAG, "  Thread TLV: %s", thread_tlv_.empty() ? "(not set)" : "(loaded from NVS)");
+#endif
 }
 
 void NVSSecrets::loop() {
