@@ -30,9 +30,9 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
   RST=$'\033[0m'
 
   err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
-  ok()   { echo -e "${GRN}[OK]${RST} $*"; }
-  info() { echo -e "${BLU}[INFO]${RST} $*"; }
-  warn() { echo -e "${YLW}[WARN]${RST} $*"; }
+  ok()   { echo -e "${GRN}[OK]${RST} $*" >&2; }
+  info() { echo -e "${BLU}[INFO]${RST} $*" >&2; }
+  warn() { echo -e "${YLW}[WARN]${RST} $*" >&2; }
 
   is_unconfigured() {
     local value="${1:-}"

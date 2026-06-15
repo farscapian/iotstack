@@ -18,8 +18,8 @@ source "${SCRIPT_DIR}/ensure-integration-secrets.sh"
 # 1. Helper functions
 # ---------------------------------------------------------------------------
 die() { echo "[error] $*" >&2; exit 1; }
-info() { echo "[info] $*"; }
-warn() { echo "[warn] $*"; }
+info() { echo "[info] $*" >&2; }
+warn() { echo "[warn] $*" >&2; }
 
 # Get secret from pass store
 get_secret() {
