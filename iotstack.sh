@@ -2453,38 +2453,36 @@ _flash_production_smart() {
       # Extract only the MAC suffix (last 6 chars) from captured output
       device_mac=$(echo "$device_mac" | tail -1 | tr -d '[:space:]')
 
-      info "Waiting for failsafe device ($device_mac) to connect to network..."
-      local max_wait=60
+      info "Waiting for failsafe-$device_mac OTA service to come online..."
+      # The device is ready once its OTA service (port 3232) accepts a
+      # connection. Probe the mDNS name directly: this confirms exactly what the
+      # OTA needs and is far more reliable than polling 'avahi-browse -t' in a
+      # tight loop (a fresh browse can terminate before the device replies, so
+      # the device can be online yet never matched). Allow a generous window —
+      # a fresh failsafe must flash, boot, apply WiFi creds from NVS, reconnect,
+      # and announce over mDNS before this succeeds.
+      local max_wait=180
       local waited=0
       local found=false
 
-      while [[ $waited -lt $max_wait ]]; do
-        # Check if device is on network via mDNS
-        if avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "failsafe-$device_mac"; then
-          info "  Device found on mDNS, waiting for OTA service..."
-
-          # Verify OTA service is actually responding on port 3232
-          if timeout 2 bash -c "echo > /dev/tcp/failsafe-$device_mac.local/3232" 2>/dev/null; then
-            found=true
-            break
-          fi
+      while (( waited < max_wait )); do
+        if timeout 3 bash -c "echo > /dev/tcp/failsafe-${device_mac}.local/3232" 2>/dev/null; then
+          found=true
+          break
         fi
-
-        sleep 1
-        waited=$((waited + 1))
-
-        # Show progress every 10 seconds
-        if (( waited % 10 == 0 )); then
-          info "  Still waiting... ($waited/$max_wait seconds)"
+        sleep 3
+        waited=$((waited + 3))
+        if (( waited % 15 == 0 )); then
+          info "  Still waiting for failsafe-$device_mac OTA service ($waited/${max_wait}s)..."
         fi
       done
 
       if [[ "$found" != "true" ]]; then
-        err "Failsafe device (failsafe-$device_mac) OTA service not ready after $max_wait seconds. Check WiFi connection or device logs."
+        err "Failsafe device (failsafe-$device_mac) OTA service not reachable after ${max_wait}s.
+Check 'iotstack devices' (is failsafe-$device_mac listed?) and 'iotstack logs /dev/ttyACM0'."
       fi
 
-      info "Device found on network! Waiting for OTA service to fully initialize..."
-      sleep 30
+      ok "failsafe-$device_mac OTA service is up; starting production OTA..."
 
       info "Reassigning failsafe-$device_mac to $device firmware..."
 
