@@ -46,8 +46,10 @@ _print_table_rule() {
 # ── Compilation Cache ────────────────────────────────────────────────────────
 
 _get_yaml_sha() {
-  # Get SHA256 of YAML file plus all external_components
-  # This ensures cache invalidation when any component changes
+  # SHA256 of the YAML plus the shared external_components and common/ package
+  # includes, so a change to any of them invalidates the compile cache — the
+  # device YAML may reference them only via !include / packages:, so hashing the
+  # YAML text alone would miss those changes and reuse a stale build.
   local yaml_file="$1"
 
   if [[ ! -f "$yaml_file" ]]; then
@@ -55,21 +57,17 @@ _get_yaml_sha() {
     return
   fi
 
-  # Start with YAML file hash
   local combined_hash
   combined_hash=$(sha256sum "$yaml_file" | awk '{print $1}')
 
-  # Include external_components directory hash if it exists
-  local external_components_dir="${YAMLS_DIR}/external_components"
-  if [[ -d "$external_components_dir" ]]; then
-    # Find all files in external_components and hash them
-    # Sort by filename to ensure consistent ordering
-    local components_hash
-    components_hash=$(find "$external_components_dir" -type f | sort | xargs cat | sha256sum | awk '{print $1}')
-
-    # Combine both hashes
-    combined_hash=$(echo -n "${combined_hash}${components_hash}" | sha256sum | awk '{print $1}')
-  fi
+  # Fold in every file under external_components/ and common/ (sorted for a
+  # stable order; __pycache__ excluded so regenerated .pyc don't churn the key).
+  local dir dir_hash
+  for dir in "${YAMLS_DIR}/external_components" "${YAMLS_DIR}/common"; do
+    [[ -d "$dir" ]] || continue
+    dir_hash=$(find "$dir" -type f ! -path '*__pycache__*' -print0 | sort -z | xargs -0 cat 2>/dev/null | sha256sum | awk '{print $1}')
+    combined_hash=$(echo -n "${combined_hash}${dir_hash}" | sha256sum | awk '{print $1}')
+  done
 
   echo "$combined_hash"
 }
