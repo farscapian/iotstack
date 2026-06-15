@@ -42,6 +42,15 @@ export PARTITION_TABLE_CSV="${PARTITION_TABLE_CSV:-iotstack_partition_table.csv}
 export PARTITION_TABLE="${PARTITION_TABLE:-${IOTSTACK_HOME}/${PARTITION_TABLE_CSV}}"
 export PARTITION_TABLE_SYMLINK="${PARTITION_TABLE_SYMLINK:-${YAMLS_DIR}/${PARTITION_TABLE_CSV}}"
 
+# Partition layout (2-partition scheme: permanent failsafe ota_0 + production
+# ota_1). All OTA updates run from failsafe, so production (ota_1) is always the
+# OTA target and failsafe is never overwritten. Production absorbs all flash
+# left after the (fixed-size) failsafe partition — so these adapt to the board:
+# on 4MB flash production is ~2.8MB; on 8MB it is ~6.8MB.
+export IOTSTACK_FLASH_SIZE="${IOTSTACK_FLASH_SIZE:-0x400000}"        # total flash (4MB default)
+export IOTSTACK_APP_OFFSET="${IOTSTACK_APP_OFFSET:-0x30000}"         # first app partition offset
+export IOTSTACK_FAILSAFE_PART_SIZE="${IOTSTACK_FAILSAFE_PART_SIZE:-0x100000}"  # failsafe (ota_0) size (1MB)
+
 # Directories — allow user override
 export LOGS_DIR="${LOGS_DIR:-${IOTSTACK_HOME}/logs}"
 export ARTIFACTS_DIR="${ARTIFACTS_DIR:-${IOTSTACK_HOME}/artifacts}"

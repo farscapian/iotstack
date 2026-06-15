@@ -168,139 +168,60 @@ Or manually: press Ctrl+A then D to detach screen, then run the command above."
   fi
 }
 
-_generate_initial_partition_table() {
-  # Generate initial partition table with safe defaults before compilation
-  # Uses 1.5MB for recovery/production (fits in 4MB with overhead)
-  # Will be recalculated after compilation to exact sizes
-
-  local output_file="${1:-${YAMLS_DIR}/iotstack_partition_table.csv}"
-
-  debug "Generating initial partition table: $output_file"
-
-  cat > "$output_file" << 'EOF'
-# ESP32-C6 Partition Table for Dual App OTA Recovery
-# Initial defaults - will be recalculated after compilation
-# Bootloader: 0x0-0x8000 (32KB)
-# NVS: 0x9000 (16KB, fixed)
-# OTA Data: 0xd000 (8KB, fixed)
-# Recovery: ota_0 at 0x30000 (will be calculated)
-# Production: ota_1 (will be calculated)
-# Name,     Type,  SubType,    Offset,      Size,
-nvs,        data,  nvs,        0x9000,      0x4000,
-otadata,    data,  ota,        0xd000,      0x2000,
-failsafe,   app,   ota_0,      0x30000,     0x180000,
-production, app,   ota_1,      0x1b0000,    0x180000,
-EOF
-}
-
-_calculate_partition_sizes() {
-  # Calculate partition sizes and offsets based on compiled firmware size
-  # Called after successful compilation to determine actual partition table
-  #
-  # Arguments:
-  #   $1 = device name (e.g., "recovery", "bleproxy")
-  #   $2 = yaml file (e.g., yamls/failsafe.yaml)
-  #
-  # Sets global variables:
-  #   RECOVERY_SIZE, PRODUCTION_SIZE, PRODUCTION_OFFSET
-
-  local device_name="$1"
-  local yaml_file="$2"
-
-  # Get compiled firmware binary size
-  local firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
-
-  if [[ ! -f "$firmware_bin" ]]; then
-    err "Compiled firmware not found: $firmware_bin"
-  fi
-
-  local firmware_size
-  firmware_size=$(stat -f%z "$firmware_bin" 2>/dev/null || stat -c%s "$firmware_bin" 2>/dev/null || echo 0)
-
-  if [[ $firmware_size -eq 0 ]]; then
-    err "Could not determine firmware size: $firmware_bin"
-  fi
-
-  # Calculate failsafe partition size: firmware_size rounded up to nearest 4KB boundary
-  # No safety margin - partition is exactly what firmware needs
-  local recovery_size_calc=$firmware_size
-
-  # Round up to nearest 4KB (0x1000 = 4096 bytes) for flash sector alignment
-  local remainder=$((recovery_size_calc % 0x1000))
-  if [[ $remainder -ne 0 ]]; then
-    recovery_size_calc=$(((recovery_size_calc / 0x1000 + 1) * 0x1000))
-  fi
-
-  # Convert to hex
-  local RECOVERY_SIZE_HEX
-  RECOVERY_SIZE_HEX=$(printf '0x%x' "$recovery_size_calc")
-
-  # Production size matches recovery for symmetry (both can be flashed)
-  local PRODUCTION_SIZE_HEX=$RECOVERY_SIZE_HEX
-
-  # Calculate production offset
-  # = RECOVERY_OFFSET + RECOVERY_SIZE, then round up to 64KB boundary for app partition alignment
-  local production_offset=$((0x30000 + recovery_size_calc))
-
-  # Round up to nearest 64KB (0x10000) for ESP32 app partition alignment requirement
-  local remainder=$((production_offset % 0x10000))
-  if [[ $remainder -ne 0 ]]; then
-    production_offset=$(((production_offset / 0x10000 + 1) * 0x10000))
-  fi
-
-  local PRODUCTION_OFFSET_HEX
-  PRODUCTION_OFFSET_HEX=$(printf '0x%x' "$production_offset")
-
-  # Export for use in partition table generation
-  export RECOVERY_SIZE="$RECOVERY_SIZE_HEX"
-  export PRODUCTION_SIZE="$PRODUCTION_SIZE_HEX"
-  export PRODUCTION_OFFSET="$PRODUCTION_OFFSET_HEX"
-
-  # Log the calculated values
-  info "Partition sizes calculated from firmware ($firmware_size bytes):"
-  info "  Recovery partition: $RECOVERY_SIZE_HEX ($recovery_size_calc bytes)"
-  info "  Production partition: $PRODUCTION_SIZE_HEX"
-  info "  Production offset: $PRODUCTION_OFFSET_HEX"
-}
-
 _generate_partition_table() {
-  # Generate partition table CSV from calculated/loaded partition sizes
-  # Sources NVS, recovery, and production sizes from calculated values
+  # Emit the fixed 2-partition table to stdout.
+  #
+  # Layout (permanent):
+  #   ota_0 = failsafe   (fixed size: IOTSTACK_FAILSAFE_PART_SIZE)
+  #   ota_1 = production (absorbs all remaining flash)
+  #
+  # Every OTA update runs from failsafe, and OTA never writes the *running*
+  # partition, so production (ota_1) is always the OTA target and failsafe
+  # (ota_0) can never be overwritten. The table is deterministic (derived from
+  # flash size, not from compiled firmware), so it is generated once up front
+  # and the flashed partitions.bin always matches it.
+  local flash_size="${IOTSTACK_FLASH_SIZE:-0x400000}"
+  local app_offset="${IOTSTACK_APP_OFFSET:-0x30000}"
+  local failsafe_size="${IOTSTACK_FAILSAFE_PART_SIZE:-0x100000}"
 
-  cat << EOF
-# ESP32-C6 Partition Table for Dual App OTA Recovery
-# Generated from compiled firmware sizes (failsafe partition auto-sized)
-# Bootloader: 0x0-0x8000 (32KB)
-# NVS: 0x9000 (16KB, fixed)
-# OTA Data: 0xd000 (8KB, fixed)
-# Recovery: ota_0 at 0x30000 (sized to firmware + margin)
-# Production: ota_1 (sized to recovery, offset calculated)
-# Name,     Type,  SubType,    Offset,              Size,
-nvs,        data,  nvs,        0x9000,              0x4000,
-otadata,    data,  ota,        0xd000,              0x2000,
-failsafe,   app,   ota_0,      0x30000,             ${RECOVERY_SIZE:-0x180000},
-production, app,   ota_1,      ${PRODUCTION_OFFSET:-0x1b0000}, ${PRODUCTION_SIZE:-0x240000},
-EOF
+  # Production starts right after failsafe, 64KB-aligned (ESP32 app alignment).
+  local prod_offset=$(( app_offset + failsafe_size ))
+  if (( prod_offset % 0x10000 != 0 )); then
+    prod_offset=$(( (prod_offset / 0x10000 + 1) * 0x10000 ))
+  fi
+  local prod_size=$(( flash_size - prod_offset ))
+  if (( prod_size <= 0 )); then
+    err "Failsafe partition ($failsafe_size) leaves no room for production in $flash_size flash"
+  fi
+
+  printf '# ESP32-C6 2-partition table: permanent failsafe (ota_0) + production (ota_1)\n'
+  printf '# All OTA updates run from failsafe, so production (ota_1) is always the OTA\n'
+  printf '# target and failsafe (ota_0) is never overwritten. Generated by iotstack.\n'
+  printf '# Name,     Type, SubType, Offset,    Size,\n'
+  printf 'nvs,        data, nvs,     0x9000,    0x4000,\n'
+  printf 'otadata,    data, ota,     0xd000,    0x2000,\n'
+  printf 'failsafe,   app,  ota_0,   %s, %s,\n' "$app_offset" "$failsafe_size"
+  printf 'production, app,  ota_1,   0x%x, 0x%x,\n' "$prod_offset" "$prod_size"
 }
 
 _update_partition_table_file() {
-  # Write generated partition table to ~/.iotstack/iotstack_partition_table.csv
-  # ESPHome accesses via symlink at yamls/iotstack_partition_table.csv
-  local output_file="${1:-${HOME}/.iotstack/iotstack_partition_table.csv}"
+  # Write the partition table to $PARTITION_TABLE and ensure ESPHome's symlink
+  # points at it. Called before compilation so partitions.bin matches.
+  local output_file="${PARTITION_TABLE:-${HOME}/.iotstack/iotstack_partition_table.csv}"
 
   debug "Writing partition table: $output_file"
   mkdir -p "$(dirname "$output_file")"
   _generate_partition_table > "$output_file"
 
-  # Ensure symlink exists from yamls/ to ~/.iotstack/
-  local symlink_path="${YAMLS_DIR}/iotstack_partition_table.csv"
+  # Ensure symlink exists from yamls/ to the generated table
+  local symlink_path="${PARTITION_TABLE_SYMLINK:-${YAMLS_DIR}/iotstack_partition_table.csv}"
   if [[ ! -L "$symlink_path" ]] || [[ "$(readlink "$symlink_path")" != "$output_file" ]]; then
     rm -f "$symlink_path"
     ln -s "$output_file" "$symlink_path"
     debug "Created symlink: $symlink_path -> $output_file"
   fi
 
-  ok "Partition table generated and saved to $output_file"
+  ok "Partition table (failsafe + production) written to $output_file"
 }
 
 smart_compile() {
@@ -316,15 +237,16 @@ smart_compile() {
   yaml_sha=$(_get_yaml_sha "$yaml_file")
   [[ -z "$yaml_sha" ]] && err "Failed to compute SHA256 of $yaml_file"
 
-  # Generate initial partition table (needed by ESPHome during compilation)
-  _generate_initial_partition_table
+  # Write the fixed partition table before compiling so ESPHome's partitions.bin
+  # matches what gets flashed. The table is deterministic (no post-compile
+  # recalculation), which also fixes the prior bug where the recalculated table
+  # never reached the device. ESPHome's own build-size check then enforces that
+  # failsafe fits its ota_0 partition.
+  _update_partition_table_file
 
   # Check if we can skip compilation (unless DISABLE_COMPILATION_CACHE is set)
   if [[ "${DISABLE_COMPILATION_CACHE:-0}" != "1" ]] && _check_compilation_cache "$yaml_file"; then
     ok "Firmware already compiled (cached)"
-    # Even when using cache, recalculate partition sizes in case firmware size changed
-    _calculate_partition_sizes "$device_name" "$yaml_file" || return 1
-    _update_partition_table_file
     return 0
   fi
 
@@ -345,10 +267,6 @@ smart_compile() {
     _update_compilation_cache "$yaml_file" "$binary_sha"
     ok "Compilation cached"
   fi
-
-  # Calculate partition sizes based on actual compiled firmware size
-  _calculate_partition_sizes "$device_name" "$yaml_file" || return 1
-  _update_partition_table_file
 
   return 0
 }
