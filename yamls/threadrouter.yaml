@@ -25,7 +25,11 @@ external_components:
   - source:
       type: local
       path: ./external_components
-    components: [nvs_secrets]
+    components: [nvs_secrets, partition_manager]
+
+# Shared boot-button / restart / partition-toggle behavior (same on every device)
+packages:
+  partition_mgmt: !include common/partition_manager.yaml
 
 # Thread configuration
 # Thread TLV is loaded from NVS by nvs_secrets component at startup
@@ -37,9 +41,9 @@ openthread:
 network:
   enable_ipv6: true
 
-# Custom NVS secrets component - loads device-specific API key from NVS
-nvs_secrets:
-
+# Custom NVS secrets component - loads device-specific secrets from NVS
+# (empty dict {} is required to instantiate the component)
+nvs_secrets: {}
 
 # 4. API — native ESPHome over IPv6/Thread; OTA rides this connection
 api:
@@ -108,10 +112,8 @@ text_sensor:
     # network_key: omitted — exposes sensitive credentials
 
 # 11. Buttons
+# "Restart" and "Toggle Boot Partition" buttons come from partition_mgmt package
 button:
   - platform: safe_mode
     name: "Reboot to Safe Mode"
-    entity_category: diagnostic
-  - platform: restart
-    name: "Restart"
     entity_category: diagnostic

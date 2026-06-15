@@ -23,7 +23,11 @@ external_components:
   - source:
       type: local
       path: ./external_components
-    components: [nvs_secrets]
+    components: [nvs_secrets, partition_manager]
+
+# Shared boot-button / restart / partition-toggle behavior (same on every device)
+packages:
+  partition_mgmt: !include common/partition_manager.yaml
 
 esphome:
   name: ${device_role}
@@ -81,73 +85,12 @@ safe_mode:
   num_attempts: 3
   reboot_timeout: 2min
 
-# Global variables for partition toggle
-globals:
-  - id: boot_button_pressed_time
-    type: uint32_t
-    initial_value: '0'
-    restore_value: no
+# Boot button, restart button and partition-toggle button come from the shared
+# partition_manager package (see packages: above).
 
 binary_sensor:
   - platform: status
     name: "Connection Status"
-
-  # Boot button (GPIO9) on Seeed XIAO ESP32-C6
-  # Hold for 3+ seconds to toggle between recovery/production partitions
-  - platform: gpio
-    pin:
-      number: GPIO9
-      inverted: true
-      mode:
-        input: true
-        pullup: true
-      ignore_strapping_warning: true
-    name: "Partition Toggle Button"
-    internal: true
-    on_press:
-      then:
-        - lambda: |-
-            id(boot_button_pressed_time) = millis();
-            ESP_LOGI("PARTITION", "Boot button pressed - release to restart, or hold 3s to toggle boot partition");
-    on_release:
-      then:
-        - lambda: |-
-            uint32_t hold_time = millis() - id(boot_button_pressed_time);
-            if (hold_time >= 3000) {
-              ESP_LOGI("PARTITION", "Long press detected (%.1fs) - attempting partition switch", hold_time/1000.0f);
-
-              // Determine the alternate (target) partition
-              const esp_partition_t* running = esp_ota_get_running_partition();
-              const esp_partition_t* next;
-              if (running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
-                next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
-              } else {
-                next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
-              }
-
-              if (next == NULL) {
-                ESP_LOGE("PARTITION", "Failed to find alternate partition");
-              } else {
-                // Verify the target holds a valid app image first. Without this
-                // check esp_ota_set_boot_partition() "succeeds", but the
-                // bootloader rejects the empty/invalid image and silently falls
-                // back to failsafe - so report accurately instead.
-                esp_app_desc_t app_desc;
-                esp_err_t img_err = esp_ota_get_partition_description(next, &app_desc);
-                if (img_err != ESP_OK) {
-                  ESP_LOGW("PARTITION", "No valid image on '%s' (%s) - NOT switching", next->label, esp_err_to_name(img_err));
-                  ESP_LOGW("PARTITION", "Boot partition remains in FAILSAFE mode. Flash production firmware first.");
-                } else {
-                  esp_ota_set_boot_partition(next);
-                  ESP_LOGI("PARTITION", "Boot partition switched to: %s (v%s) - press boot again to restart and apply", next->label, app_desc.version);
-                }
-              }
-            } else if (hold_time >= 50) {
-              // Short press: restart the device (does not change the boot
-              // partition; the 3s hold above handles that separately).
-              ESP_LOGI("PARTITION", "Short press (%ums) - restarting device", (unsigned) hold_time);
-              App.safe_reboot();
-            }
 
 sensor:
   - platform: uptime
@@ -156,43 +99,6 @@ sensor:
     name: "WiFi RSSI (dBm)"
     update_interval: 60s
     entity_category: diagnostic
-
-button:
-  - platform: restart
-    name: "Restart"
-
-  # Manual partition toggle button for HA integration
-  - platform: template
-    name: "Toggle Boot Partition"
-    icon: "mdi:swap-horizontal"
-    on_press:
-      then:
-        - lambda: |-
-            // Manually toggle partition without holding the physical button
-            const esp_partition_t* running = esp_ota_get_running_partition();
-            const esp_partition_t* next;
-
-            if (running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
-              next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, NULL);
-            } else {
-              next = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, NULL);
-            }
-
-            if (next == NULL) {
-              ESP_LOGE("PARTITION", "Failed to find alternate partition");
-            } else {
-              // Only switch if the target actually has a valid app image,
-              // otherwise the bootloader falls back to failsafe anyway.
-              esp_app_desc_t app_desc;
-              esp_err_t img_err = esp_ota_get_partition_description(next, &app_desc);
-              if (img_err != ESP_OK) {
-                ESP_LOGW("PARTITION", "No valid image on '%s' (%s) - NOT switching", next->label, esp_err_to_name(img_err));
-                ESP_LOGW("PARTITION", "Boot partition remains in FAILSAFE mode. Flash production firmware first.");
-              } else {
-                esp_ota_set_boot_partition(next);
-                ESP_LOGI("PARTITION", "Boot partition toggled to: %s (v%s) - reboot to apply", next->label, app_desc.version);
-              }
-            }
 
 logger:
   level: DEBUG  # Enhanced logging to debug NVS issues

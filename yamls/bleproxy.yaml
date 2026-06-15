@@ -13,7 +13,12 @@ external_components:
   - source:
       type: local
       path: ./external_components
-    components: [nvs_secrets]
+    components: [nvs_secrets, partition_manager]
+
+# Shared boot-button / restart / partition-toggle behavior (same on every device)
+packages:
+  partition_mgmt: !include common/partition_manager.yaml
+
 esphome:
   name: ${device_role}
   friendly_name: ${friendly_name}
@@ -36,9 +41,10 @@ wifi:
   password: "placeholder"      # Placeholder - overridden by nvs_secrets component
   power_save_mode: none
 
-# Custom NVS secrets component - loads device-specific API key from NVS
-nvs_secrets:
-
+# Custom NVS secrets component - loads device-specific secrets from NVS
+# (empty dict {} is required to instantiate the component; bare `nvs_secrets:`
+# does not, so secrets would never load)
+nvs_secrets: {}
 
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
@@ -82,10 +88,9 @@ sensor:
 button:
   - platform: safe_mode
     name: "Restart in Safe Mode"
-  - platform: restart
-    name: "Restart"
   - platform: factory_reset
     name: "Factory Reset"
+  # "Restart" and "Toggle Boot Partition" buttons come from partition_mgmt package
 
 # Status LED - Onboard LED on XIAO ESP32-C6 (GPIO15, active-low)
 output:

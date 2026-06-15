@@ -1,0 +1,44 @@
+# Shared partition-management config, included by every device via packages:.
+#
+#   - boot button (GPIO9): short press = graceful restart,
+#                          hold 3s+   = toggle to the other OTA slot
+#   - "Restart" button (HA)
+#   - "Toggle Boot Partition" button (HA)
+#
+# Requires:
+#   - the partition_manager external component listed in external_components
+#   - an `ota:` section in the including yaml (pulls in esp_ota_ops)
+
+partition_manager:
+  id: partition_mgr
+
+binary_sensor:
+  # Boot button (GPIO9) on Seeed XIAO ESP32-C6
+  - platform: gpio
+    pin:
+      number: GPIO9
+      inverted: true
+      mode:
+        input: true
+        pullup: true
+      ignore_strapping_warning: true
+    name: "Partition Toggle Button"
+    internal: true
+    on_press:
+      then:
+        - lambda: "id(partition_mgr).handle_button_press();"
+    on_release:
+      then:
+        - lambda: "id(partition_mgr).handle_button_release();"
+
+button:
+  - platform: restart
+    name: "Restart"
+
+  # Manual partition toggle for Home Assistant
+  - platform: template
+    name: "Toggle Boot Partition"
+    icon: "mdi:swap-horizontal"
+    on_press:
+      then:
+        - lambda: "id(partition_mgr).toggle_boot_partition();"
