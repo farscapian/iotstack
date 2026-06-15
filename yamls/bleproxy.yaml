@@ -18,6 +18,7 @@ external_components:
 # Shared boot-button / restart / partition-toggle behavior (same on every device)
 packages:
   partition_mgmt: !include common/partition_manager.yaml
+  boot_button: !include common/boot_button.yaml
 
 esphome:
   name: ${device_role}

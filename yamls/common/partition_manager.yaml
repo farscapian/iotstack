@@ -1,9 +1,13 @@
-# Shared partition-management config, included by every device via packages:.
+# Shared partition-management controls, included by every device via packages:.
 #
-#   - boot button (GPIO9): short press = graceful restart,
-#                          hold 3s+   = toggle to the other OTA slot
+#   - the partition_manager component (boot-partition toggle logic, lives once)
 #   - "Restart" button (HA)
-#   - "Toggle Boot Partition" button (HA)
+#   - "Toggle Boot Partition" button (HA) — used by `iotstack update` to flip a
+#     production device into failsafe before OTA
+#
+# The physical BOOT button is a separate include (common/boot_button.yaml) so
+# devices that repurpose their boot pin (e.g. mmwave uses GPIO9) can still get
+# these controls.
 #
 # Requires:
 #   - the partition_manager external component listed in external_components
@@ -11,25 +15,6 @@
 
 partition_manager:
   id: partition_mgr
-
-binary_sensor:
-  # Boot button (GPIO9) on Seeed XIAO ESP32-C6
-  - platform: gpio
-    pin:
-      number: GPIO9
-      inverted: true
-      mode:
-        input: true
-        pullup: true
-      ignore_strapping_warning: true
-    name: "Partition Toggle Button"
-    internal: true
-    on_press:
-      then:
-        - lambda: "id(partition_mgr).handle_button_press();"
-    on_release:
-      then:
-        - lambda: "id(partition_mgr).handle_button_release();"
 
 button:
   - platform: restart
