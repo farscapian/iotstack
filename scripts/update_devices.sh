@@ -872,10 +872,16 @@ HA_URL=""
 HA_TOKEN=""
 API_KEY=""
 
-if [[ -f "$SECRETS_FILE" ]]; then
-  HA_URL=$(grep '^ha_url:' "$SECRETS_FILE" | cut -d' ' -f2- | tr -d '"')
-  HA_TOKEN=$(grep '^ha_token:' "$SECRETS_FILE" | cut -d' ' -f2- | tr -d '"')
-fi
+# Home Assistant credentials come from the pass store (the secrets.yaml file
+# this used to read was retired in favor of pass). Best-effort: if pass/HA is
+# not configured, HA_URL/HA_TOKEN stay empty and the HA registry check below is
+# simply skipped.
+export PASSWORD_STORE_DIR="${PASSWORD_STORE_DIR:-$HOME/.iotstack/.pass}"
+export GNUPGHOME="${GNUPGHOME:-$HOME/.iotstack/.gnupg}"
+HA_URL=$(pass show iotstack/common/ha_url 2>/dev/null | head -n1 || true)
+HA_TOKEN=$(pass show iotstack/common/ha_token 2>/dev/null | head -n1 || true)
+if [[ "$HA_URL" == "CONFIGURE_ME" ]]; then HA_URL=""; fi
+if [[ "$HA_TOKEN" == "CONFIGURE_ME" ]]; then HA_TOKEN=""; fi
 
 if [[ -n "$HA_URL" && -n "$HA_TOKEN" ]]; then
   log "Querying Home Assistant: ${HA_URL}..."
