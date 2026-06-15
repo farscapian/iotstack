@@ -132,9 +132,34 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     printf '%s/api/websocket' "$ws_url"
   }
 
+  ensure_websocket_client() {
+    if python3 -c "import websocket" 2>/dev/null; then
+      return 0
+    fi
+
+    info "python3 websocket-client is required for Home Assistant integration"
+    info "Installing websocket-client..."
+
+    if python3 -m pip install websocket-client >/dev/null 2>&1 \
+      || pip3 install websocket-client >/dev/null 2>&1; then
+      ok "websocket-client installed via pip"
+      return 0
+    fi
+
+    if command -v apt-get &>/dev/null \
+      && sudo apt-get update -qq \
+      && sudo apt-get install -y python3-websocket >/dev/null 2>&1; then
+      ok "python3-websocket installed via apt"
+      return 0
+    fi
+
+    err "python3 websocket-client is required. Install with: pip3 install websocket-client"
+  }
+
   test_ha_websocket() {
     local ha_url="$1"
     local ha_token="$2"
+    ensure_websocket_client
     python3 "${_SCRIPT_DIR}/ha_websocket.py" \
       --ha-url "$ha_url" \
       --ha-token "$ha_token" \
@@ -213,6 +238,9 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       local test_output=""
       if ! test_output="$(test_ha_websocket "$HA_URL" "$HA_TOKEN" 2>&1)"; then
         echo "$test_output" >&2
+        if grep -qi "websocket-client is required" <<<"$test_output"; then
+          err "Home Assistant WebSocket dependency missing (see above)"
+        fi
         err "Cannot connect to Home Assistant. Check URL, token, and network access."
       fi
       ok "Home Assistant connection verified (${test_output})"
