@@ -987,6 +987,114 @@ list_yaml_configs() {
   fi
 }
 
+# ── Failsafe-mediated production updates ─────────────────────────────────────
+
+_wait_for_device() {
+  # Wait for an mDNS device name (e.g. failsafe-1a7cfc) to appear, up to timeout
+  # seconds. Returns 0 if found, 1 on timeout.
+  local name="$1"
+  local timeout="${2:-60}"
+  local waited=0
+  while (( waited < timeout )); do
+    if avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "$name"; then
+      return 0
+    fi
+    sleep 2
+    waited=$((waited + 2))
+    (( waited % 20 == 0 )) && info "  ...still waiting for $name ($waited/${timeout}s)"
+  done
+  return 1
+}
+
+_update_via_failsafe() {
+  # Update production devices the safe way: switch each into failsafe, then OTA
+  # the new image into the production slot. OTA never writes the running
+  # partition, so updating from failsafe always targets production (ota_1) and
+  # the failsafe image (ota_0) is never overwritten. ESPHome's OTA auto-reboots
+  # the device back into production when done.
+  #
+  # Usage: _update_via_failsafe <role> <yaml_file> [mac ...]
+  local role="$1"
+  local yaml_file="$2"
+  shift 2
+  local -a want_macs=("$@")
+
+  # Discover role-<mac> devices currently on the network
+  local -a macs=()
+  local line
+  while IFS= read -r line; do
+    if [[ "$line" =~ ${role}-([0-9a-f]{6}) ]]; then
+      macs+=("${BASH_REMATCH[1]}")
+    fi
+  done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+  [[ ${#macs[@]} -gt 0 ]] && mapfile -t macs < <(printf '%s\n' "${macs[@]}" | sort -u)
+
+  # Filter to requested MAC suffixes if any were given
+  if [[ ${#want_macs[@]} -gt 0 ]]; then
+    local -a filtered=()
+    local m w
+    for m in "${macs[@]}"; do
+      for w in "${want_macs[@]}"; do
+        [[ "$m" == "$w" ]] && filtered+=("$m")
+      done
+    done
+    macs=("${filtered[@]}")
+  fi
+
+  if [[ ${#macs[@]} -eq 0 ]]; then
+    err "No '$role' device(s) found on the network."
+  fi
+
+  # Device OTA password = sha256(failsafe_role_secret | mac) — written to NVS at
+  # provisioning time, so failsafe authenticates the OTA with it.
+  local fs_secret
+  fs_secret=$(pass show "iotstack/roles/failsafe/ota_password" 2>/dev/null)
+  [[ -z "$fs_secret" ]] && err "Failsafe role OTA password not found in pass (provision a device first)."
+
+  info "Updating ${#macs[@]} '$role' device(s) via failsafe..."
+  local failed=0 mac
+  for mac in "${macs[@]}"; do
+    echo ""
+    info "[$role-$mac] 1/3 switching to failsafe for a safe OTA..."
+    if ! "$SCRIPT_DIR/scripts/esphome-service.sh" "${role}-${mac}.local" switch_to_failsafe; then
+      warn "[$role-$mac] could not call switch_to_failsafe (offline or already in failsafe?); will still wait"
+    fi
+
+    info "[$role-$mac] 2/3 waiting for failsafe-$mac on the network..."
+    if ! _wait_for_device "failsafe-$mac" 90; then
+      warn "[$role-$mac] failsafe-$mac did not appear; skipping"
+      failed=$((failed + 1))
+      continue
+    fi
+    # Give the failsafe OTA service a moment to come up
+    sleep 5
+
+    local dev_pwd
+    dev_pwd=$(echo -n "${fs_secret}|${mac}" | sha256sum | cut -c1-32)
+    info "[$role-$mac] 3/3 OTA '$role' into the production slot..."
+    if ! "$UPDATE_SCRIPT" --reassign "$mac" "$yaml_file" --ota-password "$dev_pwd" --jobs 1; then
+      warn "[$role-$mac] OTA failed"
+      failed=$((failed + 1))
+      continue
+    fi
+
+    # ESPHome OTA sets the boot slot to production and reboots automatically
+    if _wait_for_device "${role}-${mac}" 60; then
+      ok "[$role-$mac] updated and back in production"
+    else
+      warn "[$role-$mac] not seen as $role-$mac yet (may still be booting)"
+    fi
+  done
+
+  echo ""
+  if [[ $failed -eq 0 ]]; then
+    ok "All '$role' device(s) updated via failsafe"
+  else
+    warn "$failed '$role' device(s) failed to update"
+    return 1
+  fi
+}
+
 # ── Command Handlers ─────────────────────────────────────────────────────────
 
 cmd_update() {
@@ -1102,6 +1210,18 @@ cmd_update() {
     # Single yaml file
     if [[ ! -f "$yaml_file" ]]; then
       err "File not found: $yaml_file"
+    fi
+
+    # For a known production role (not a raw yaml path, not the failsafe role,
+    # not a dry run), update via failsafe so the OTA can never overwrite the
+    # failsafe image. Otherwise fall back to a direct OTA.
+    local _dry_run=0 _arg
+    for _arg in ${update_args[@]+"${update_args[@]}"}; do
+      [[ "$_arg" == "--dry-run" ]] && _dry_run=1
+    done
+    if [[ $_dry_run -eq 0 && "$device_or_yaml" != "failsafe" ]] && is_valid_role "$device_or_yaml"; then
+      _update_via_failsafe "$device_or_yaml" "$yaml_file" ${mac_suffixes[@]+"${mac_suffixes[@]}"}
+      return $?
     fi
 
     # Build update command with OTA password and MACs if specified
