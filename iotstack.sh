@@ -1,9 +1,6 @@
 #!/bin/bash
 # iotstack.sh — CLI tool for managing iotstack ESPHome devices
 # Wrapper around update_devices.sh with a cleaner interface
-#
-# Each invocation runs in an isolated git worktree to prevent code changes
-# from affecting running commands.
 
 set -euo pipefail
 
@@ -348,39 +345,8 @@ source "${SCRIPT_DIR}/scripts/config.sh"
 
 # UPDATE_SCRIPT is provided by config.sh (scripts/update_devices.sh)
 
-# ── Worktree Isolation ────────────────────────────────────────────────────────
-# Each iotstack invocation gets its own isolated worktree to prevent code
-# changes from affecting running commands.
-
-_setup_worktree() {
-  local worktree_dir="${SCRIPT_DIR}/.git/worktrees/iotstack-$$"
-
-  # Create and enter worktree
-  cd "$SCRIPT_DIR"
-
-  # Suppress git worktree output if QUIET is set
-  if [[ $QUIET -eq 1 ]]; then
-    git worktree add "$worktree_dir" HEAD >/dev/null 2>&1 || return 0
-  else
-    git worktree add "$worktree_dir" HEAD 2>/dev/null || return 0
-  fi
-
-  # Re-exec in worktree
-  cd "$worktree_dir"
-  export IOTSTACK_WORKTREE="$worktree_dir"
-  export QUIET="$QUIET"  # Preserve QUIET flag in worktree
-  exec bash "$SCRIPT_PATH" "$@"
-}
-
-_cleanup_worktree() {
-  if [[ -n "${IOTSTACK_WORKTREE:-}" ]]; then
-    cd "$SCRIPT_DIR" 2>/dev/null || return 0
-    git worktree remove "$IOTSTACK_WORKTREE" --force 2>/dev/null || true
-  fi
-}
-
-# Parse global flags early (before worktree setup) so they apply to git commands
-# Only parse -q/--quiet, -v/--verbose, and -env= flags here
+# ── Global flag parsing ──────────────────────────────────────────────────────
+# Parse -q/--quiet and -v/--verbose early so they apply to everything below.
 for arg in "$@"; do
   case "$arg" in
     -q|--quiet)
@@ -391,15 +357,6 @@ for arg in "$@"; do
       ;;
   esac
 done
-
-# Set up cleanup trap to ensure worktree is removed on exit
-# This runs in both parent (before creating worktree) and child (after re-exec)
-trap _cleanup_worktree EXIT
-
-# Create isolated worktree for this invocation
-if [[ -z "${IOTSTACK_WORKTREE:-}" ]]; then
-  _setup_worktree "$@"
-fi
 
 # ──────────────────────────────────────────────────────────────────────────────
 
