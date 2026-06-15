@@ -16,6 +16,14 @@
 partition_manager:
   id: partition_mgr
 
+# Native-API service so `iotstack update` can move a running production device
+# into failsafe (ota_0) before OTA. Callable via aioesphomeapi / Home Assistant.
+api:
+  services:
+    - service: switch_to_failsafe
+      then:
+        - lambda: "id(partition_mgr).boot_failsafe();"
+
 button:
   - platform: restart
     name: "Restart"

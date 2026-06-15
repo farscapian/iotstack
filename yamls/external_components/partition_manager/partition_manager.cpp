@@ -57,5 +57,22 @@ void PartitionManager::toggle_boot_partition() {
   ESP_LOGI(TAG, "Boot partition switched to: %s (v%s) - restart to apply", next->label, app_desc.version);
 }
 
+void PartitionManager::boot_failsafe() {
+  const esp_partition_t *running = esp_ota_get_running_partition();
+  if (running != nullptr && running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
+    ESP_LOGI(TAG, "Already running failsafe (ota_0); no switch needed");
+    return;
+  }
+  const esp_partition_t *fs =
+      esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, nullptr);
+  if (fs == nullptr) {
+    ESP_LOGE(TAG, "Failsafe partition (ota_0) not found");
+    return;
+  }
+  esp_ota_set_boot_partition(fs);
+  ESP_LOGW(TAG, "Switching to failsafe (ota_0) and rebooting for OTA update");
+  App.safe_reboot();
+}
+
 }  // namespace partition_manager
 }  // namespace esphome
