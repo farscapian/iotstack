@@ -17,6 +17,7 @@ substitutions:
   dev_status: "${development_status}"
   device_role: "failsafe"
   friendly_name: "Failsafe Mode"
+  heartbeat_interval: "5s"   # failsafe-only aliveness beacon (see interval: below)
 
 # External components (replaces deprecated custom_components folder)
 external_components:
@@ -100,6 +101,16 @@ sensor:
     name: "WiFi RSSI (dBm)"
     update_interval: 60s
     entity_category: diagnostic
+
+# Aliveness beacon (failsafe only). Lets `iotstack logs` confirm the device is
+# alive and in failsafe without a reboot; the free-heap reading also surfaces a
+# slow leak. Interval is the heartbeat_interval substitution above.
+interval:
+  - interval: ${heartbeat_interval}
+    then:
+      - lambda: |-
+          ESP_LOGI("heartbeat", "failsafe alive - up %us, free heap %u B",
+                   (unsigned) (millis() / 1000), (unsigned) esp_get_free_heap_size());
 
 logger:
   level: DEBUG  # Enhanced logging to debug NVS issues
