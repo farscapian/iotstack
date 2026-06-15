@@ -495,9 +495,59 @@ The Thread analog of the WiFi-from-NVS path. ESPHome's `openthread` component ba
 
 Status: compiles on threadrouter (Thread stack) and on WiFi-only devices (OT code excluded by the guard). **Not yet validated on a live Thread network** — the runtime `otDatasetSetActiveTlvs` + re-attach sequence (and its timing vs. the OT task spin-up) needs hardware confirmation; the disable→set→enable order may need tuning.
 
-### TODO: production self-recovery into (Thread) failsafe
+### TODO: production self-recovery into failsafe
 
-For a mixed pairing (e.g. Thread failsafe + WiFi production) parked where the production radio is weak, the production image can't be rescued remotely (only via the physical boot button). A production image *could* self-recover: watch connectivity (e.g. `wifi_signal` below a threshold for N minutes, or repeated disconnects) and, on sustained failure, call `partition_manager::boot_failsafe()` to drop into the failsafe image — which (if Thread) is reachable over the mesh for re-flash. ESPHome has the hooks (`wifi` `on_disconnect`, signal sensors, `interval:`). Not implemented; would live as an optional shared package so each device opts in.
+For a device parked where its production radio is weak, the production image
+can't be rescued remotely (only via the physical boot button). A production
+image *could* self-recover: watch connectivity (e.g. `wifi_signal` below a
+threshold for N minutes, or repeated disconnects) and, on sustained failure,
+call `partition_manager::boot_failsafe()` to drop into the failsafe image —
+which (if Thread) is reachable over the mesh for re-flash. ESPHome has the hooks
+(`wifi` `on_disconnect`, signal sensors, `interval:`). Not implemented; would
+live as an optional shared package so each device opts in.
+
+### TODO: cascading failsafe (3-tier, future)
+
+The generalization of the above. Three app partitions forming a recovery
+cascade, from most-reliable at the base to production at the top:
+
+```
+ota_0  failsafe-thread   (base — slowest OTA, presumed most reliable / best range)
+ota_1  failsafe-wifi     (faster recovery)
+ota_2  production
+```
+
+Cascade (each tier detects its own failure and steps the boot slot DOWN, never
+up; needs a boot-loop guard via the safe_mode counter):
+- production fails to stay connected → boot `failsafe-wifi`
+- `failsafe-wifi` can't get on WiFi within a timeout → boot `failsafe-thread`
+- `failsafe-thread` is the floor (retries; never steps down)
+
+**Only deploy all three IF they fit the flash.** Use the dynamic partition
+sizing to sum failsafe-thread + failsafe-wifi + production; if the total fits
+(comfortable on 8MB; tight on 4MB — production drops from ~2.88MB to ~2.2MB,
+still fits bleproxy 1.40MB), build the 3-tier layout. Otherwise fall back to the
+current 2-partition scheme (failsafe-wifi + production). The decision is made at
+provision time from the measured image sizes.
+
+**The hard part — OTA targeting with 3 OTA slots.** `esp_ota_get_next_update_partition()`
+cycles ota_0→ota_1→ota_2→ota_0, so:
+- OTA run from `failsafe-wifi` (ota_1) → lands in `production` (ota_2) ✓ — normal
+  updates work out of the box.
+- OTA run from `failsafe-thread` (ota_0) → lands in `failsafe-wifi` (ota_1) ✗.
+  A deep Thread-only recovery OTA (WiFi dead) therefore needs **explicit
+  partition selection** in the OTA backend (ESPHome uses get_next and doesn't
+  expose a target), which is the one piece beyond a weekend.
+
+**Naming:** with the cascade, rename the current `failsafe` → `failsafe-wifi`
+(touches the mDNS name `failsafe-<mac>`, the `iotstack/roles/failsafe/...` pass
+paths, the flash wait logic, and the `failsafe` partition label) and add
+`failsafe-thread`. Do the rename *with* the cascade, not piecemeal.
+
+**Build order:** (1) matched 2-variant failsafe (wifi/thread) + validated
+Thread-from-NVS; (2) single-step self-recovery trigger (above); (3) full 3-tier
+cascade + the explicit-OTA-target work. Keep `partition_manager`'s boot logic
+able to target a *specific* slot (not just toggle) so it's cascade-ready.
 
 Architecture:
 1. **Pass store** (`~/.iotstack/.pass/`): Role-based master secrets (encrypted)
