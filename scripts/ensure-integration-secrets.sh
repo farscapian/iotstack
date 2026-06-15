@@ -85,6 +85,10 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
         echo ""
         return 0
       fi
+      if [[ "$pass_path" == "iotstack/common/ha_url" ]]; then
+        value="$(normalize_ha_url "$value")"
+        validate_ha_url "$value"
+      fi
       store_pass_secret "$pass_path" "$value"
       info "Stored credential: $pass_path"
     fi
@@ -94,14 +98,30 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
 
   normalize_ha_url() {
     local url="$1"
+    url="$(printf '%s' "$url" | xargs)"
     url="${url%/}"
+
+    # Accept common bare host:port input (e.g. homeassistant.local:8123).
+    if [[ ! "$url" =~ ^https?:// ]]; then
+      if [[ "$url" =~ ^(localhost|127\.0\.0\.1)(:|/|$) ]]; then
+        url="http://${url}"
+      else
+        url="https://${url}"
+      fi
+    fi
+
+    # Base URL only — strip any path the user may have pasted.
+    if [[ "$url" =~ ^(https?://[^/?#]+) ]]; then
+      url="${BASH_REMATCH[1]}"
+    fi
+
     printf '%s' "$url"
   }
 
   validate_ha_url() {
     local url="$1"
     if [[ ! "$url" =~ ^https?://[^/[:space:]]+ ]]; then
-      err "Invalid Home Assistant URL: $url (expected http://host:8123 or https://...)"
+      err "Invalid Home Assistant URL: $url (expected host:8123 or http(s)://host:8123)"
     fi
   }
 
@@ -176,7 +196,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
 
     HA_URL="$(ensure_pass_secret \
       "iotstack/common/ha_url" \
-      "Home Assistant URL (e.g. http://homeassistant.local:8123)" \
+      "Home Assistant URL (e.g. homeassistant.local:8123)" \
       "false" \
       "true")"
     HA_TOKEN="$(ensure_pass_secret \
