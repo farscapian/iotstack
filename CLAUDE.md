@@ -178,7 +178,7 @@ Flash a target configuration only to specific devices:
 
 ```bash
 # Reassign specific devices to a different config
-./update_devices.sh --reassign 19b164 199ef4 yamls/esp32c6-wifi-mmwave.yaml
+scripts/update_devices.sh --reassign 19b164 199ef4 yamls/esp32c6-wifi-mmwave.yaml
 ```
 
 **Arguments:**
@@ -205,12 +205,12 @@ Flash a target configuration only to specific devices:
 ## iotstack CLI Tool
 
 ### Overview
-`iotstack.sh` is a user-friendly wrapper around `update_devices.sh`. It provides device roles (e.g., `iotstack update bleproxy`) instead of requiring full YAML paths (e.g., `./update_devices.sh wifi/esp32c6-wifi-bleproxy.yaml`).
+`iotstack.sh` is a user-friendly wrapper around `scripts/update_devices.sh`. It provides device roles (e.g., `iotstack update bleproxy`) instead of requiring full YAML paths (e.g., `scripts/update_devices.sh wifi/esp32c6-wifi-bleproxy.yaml`).
 
 Users run `setup.sh` once to add the `iotstack` alias to their `~/.bashrc`, making the command available globally.
 
-### Device Mapping (roles.conf)
-Device roles are defined in `roles.conf`. Network type (WiFi or Thread) is automatically detected by introspecting the YAML file:
+### Device Mapping (scripts/roles.conf)
+Device roles are defined in `scripts/roles.conf`. Network type (WiFi or Thread) is automatically detected by introspecting the YAML file:
 ```
 bleproxy=yamls/bleproxy.yaml
 mmwave=yamls/mmwave.yaml

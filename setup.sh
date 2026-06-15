@@ -16,8 +16,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source centralized configuration (resolves IOTSTACK_HOME, GNUPG_HOME,
 # PASS_STORE_DIR, ENV_FILE and loads ~/.iotstack/.env)
-# shellcheck source=config.sh
-source "${SCRIPT_DIR}/config.sh"
+# shellcheck source=scripts/config.sh
+source "${SCRIPT_DIR}/scripts/config.sh"
 
 # Early exit if sourced - just export the variables the gpg/pass tools expect
 if [[ $_sourced -eq 1 ]]; then

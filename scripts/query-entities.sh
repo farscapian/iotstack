@@ -5,9 +5,8 @@ set -euo pipefail
 
 # Source centralized configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-# shellcheck source=/dev/null
-source "${PROJECT_DIR}/config.sh"
+# shellcheck source=scripts/config.sh
+source "${SCRIPT_DIR}/config.sh"
 
 DEVICE_NAME="${1:-}"
 LIST_DEVICES="${LIST_DEVICES:-false}"

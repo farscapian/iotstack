@@ -380,11 +380,12 @@ confirm_multi_device() {
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
 
-# Source centralized configuration
-# shellcheck source=/dev/null
-source "${SCRIPT_DIR}/config.sh"
+# Source centralized configuration (now under scripts/). config.sh exports
+# SCRIPTS_DIR, PROJECT_ROOT, ROLES_CONF and UPDATE_SCRIPT.
+# shellcheck source=scripts/config.sh
+source "${SCRIPT_DIR}/scripts/config.sh"
 
-UPDATE_SCRIPT="${SCRIPT_DIR}/update_devices.sh"
+# UPDATE_SCRIPT is provided by config.sh (scripts/update_devices.sh)
 
 # ── Worktree Isolation ────────────────────────────────────────────────────────
 # Each iotstack invocation gets its own isolated worktree to prevent code
@@ -512,7 +513,7 @@ get_yaml_device_info() {
 # List available role names from roles.conf
 # Returns: role names (one per line)
 list_roles_from_conf() {
-  grep -v "^#\|^$" "${SCRIPT_DIR}/roles.conf" | cut -d= -f1 | sort
+  grep -v "^#\|^$" "$ROLES_CONF" | cut -d= -f1 | sort
 }
 
 # Validate that a role name exists in roles.conf
@@ -1125,7 +1126,7 @@ cmd_update() {
         fi
         echo
       fi
-    done < <(cat "${SCRIPT_DIR}/roles.conf" 2>/dev/null || echo "")
+    done < <(cat "$ROLES_CONF" 2>/dev/null || echo "")
 
     echo "────────────────────────────────────────────────────────────"
     if [[ $failed -eq 0 ]]; then

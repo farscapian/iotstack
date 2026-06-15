@@ -11,10 +11,19 @@
 #   export LOGS_DIR=/var/log/iotstack
 #   iotstack update bleproxy
 
+# Resolve project layout from THIS file's location. config.sh lives in
+# scripts/, so the project root is its parent directory. Project-relative
+# paths derive from PROJECT_ROOT (not the caller's SCRIPT_DIR) so they are
+# correct no matter which script sources this file.
+_CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export SCRIPTS_DIR="${SCRIPTS_DIR:-$_CONFIG_DIR}"
+export PROJECT_ROOT="${PROJECT_ROOT:-$(cd "${_CONFIG_DIR}/.." && pwd)}"
+# SCRIPT_DIR retained for backward compatibility (== project root)
+export SCRIPT_DIR="${SCRIPT_DIR:-$PROJECT_ROOT}"
+
 # Base directories — allow user override via environment variable
 export IOTSTACK_HOME="${IOTSTACK_HOME:-${HOME}/.iotstack}"
-export SCRIPT_DIR="${SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
-export YAMLS_DIR="${YAMLS_DIR:-${SCRIPT_DIR}/yamls}"
+export YAMLS_DIR="${YAMLS_DIR:-${PROJECT_ROOT}/yamls}"
 
 # Environment file for user configuration
 export ENV_FILE="${ENV_FILE:-${IOTSTACK_HOME}/.env}"
@@ -26,7 +35,8 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 # Filenames and paths — allow user override
-export ROLES_CONF="${ROLES_CONF:-${SCRIPT_DIR}/roles.conf}"
+export ROLES_CONF="${ROLES_CONF:-${SCRIPTS_DIR}/roles.conf}"
+export UPDATE_SCRIPT="${UPDATE_SCRIPT:-${SCRIPTS_DIR}/update_devices.sh}"
 export COMPILATION_CACHE="${COMPILATION_CACHE:-${IOTSTACK_HOME}/compilation-cache.csv}"
 export PARTITION_TABLE_CSV="${PARTITION_TABLE_CSV:-iotstack_partition_table.csv}"
 export PARTITION_TABLE="${PARTITION_TABLE:-${IOTSTACK_HOME}/${PARTITION_TABLE_CSV}}"

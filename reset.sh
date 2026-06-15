@@ -7,8 +7,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source centralized configuration (resolves IOTSTACK_HOME and loads ~/.iotstack/.env)
-# shellcheck source=/dev/null
-source "${SCRIPT_DIR}/config.sh"
+# shellcheck source=scripts/config.sh
+source "${SCRIPT_DIR}/scripts/config.sh"
 
 echo "════════════════════════════════════════════════════════"
 echo "iotstack Reset"

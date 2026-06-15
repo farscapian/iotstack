@@ -12,8 +12,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Source centralized configuration
-# shellcheck source=/dev/null
-source "${PROJECT_DIR}/config.sh"
+# shellcheck source=scripts/config.sh
+source "${SCRIPT_DIR}/config.sh"
 
 # Colors
 RED='\033[0;31m'
