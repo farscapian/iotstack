@@ -478,6 +478,27 @@ The earlier limitation — "ESPHome's WiFi component can't take credentials at r
 
 Verified on hardware: boot log shows `[NVS] Applying WiFi credentials from NVS to WiFi component (SSID: ...)` followed by `[wifi] Connecting to '<real-ssid>'` and a DHCP-assigned IP.
 
+### Thread Credentials From NVS (⏳ built, needs hardware validation)
+
+The Thread analog of the WiFi-from-NVS path. ESPHome's `openthread` component bakes the operational dataset in at compile time (`USE_OPENTHREAD_TLVS` / `CONFIG_OPENTHREAD_NETWORK_MASTERKEY`) and exposes no config-time NVS hook, so thread-only yamls carry a **placeholder** `network_key` (just to satisfy `has_exactly_one_key(network_key, tlv)` and compile). The real dataset comes from NVS at runtime:
+
+- `nvs_secrets` reads the `thread_tlv` key (hex operational-dataset TLVs) from NVS.
+- Guarded by `#ifdef USE_OPENTHREAD`, it parses the hex, takes the OpenThread stack lock (`openthread::InstanceLock::acquire()`), and applies it:
+  ```cpp
+  otThreadSetEnabled(inst, false);
+  otDatasetSetActiveTlvs(inst, &dataset);
+  otIp6SetEnabled(inst, true);
+  otThreadSetEnabled(inst, true);
+  ```
+- Ordering works like WiFi: the openthread component is `setup_priority::WIFI` (250), `nvs_secrets` is `AFTER_WIFI` (200), so the stack exists when nvs_secrets runs.
+- `CONFLICTS_WITH = ["wifi"]` in the openthread component means a single image cannot do both radios — WiFi and Thread are **separate failsafe/production variants** (one radio per image; the C6 runs whichever image is booted). The dynamic partition table sizes each slot to whatever image lands there.
+
+Status: compiles on threadrouter (Thread stack) and on WiFi-only devices (OT code excluded by the guard). **Not yet validated on a live Thread network** — the runtime `otDatasetSetActiveTlvs` + re-attach sequence (and its timing vs. the OT task spin-up) needs hardware confirmation; the disable→set→enable order may need tuning.
+
+### TODO: production self-recovery into (Thread) failsafe
+
+For a mixed pairing (e.g. Thread failsafe + WiFi production) parked where the production radio is weak, the production image can't be rescued remotely (only via the physical boot button). A production image *could* self-recover: watch connectivity (e.g. `wifi_signal` below a threshold for N minutes, or repeated disconnects) and, on sustained failure, call `partition_manager::boot_failsafe()` to drop into the failsafe image — which (if Thread) is reachable over the mesh for re-flash. ESPHome has the hooks (`wifi` `on_disconnect`, signal sensors, `interval:`). Not implemented; would live as an optional shared package so each device opts in.
+
 Architecture:
 1. **Pass store** (`~/.iotstack/.pass/`): Role-based master secrets (encrypted)
    - One secret per role (e.g., `iotstack/roles/bleproxy/ota_password`)
