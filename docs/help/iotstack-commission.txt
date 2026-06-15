@@ -1,7 +1,8 @@
 iotstack commission — Add Matter devices to your Thread network
 
-Commissions a Matter device to your Thread network using a QR code image file.
-Automatically decodes the QR code, validates the device credentials,
+Commissions a Matter device to your Thread network using a QR code image file
+or a manual Matter pairing code (0000-000-0000). Automatically decodes QR
+images, validates the device credentials,
 commissions via chip-tool, opens a commissioning window in Home Assistant, and
 adds the device for adoption. Stores device IDs sequentially in pass for
 tracking. Requires Thread network dataset and Home Assistant credentials
@@ -24,17 +25,22 @@ Dependencies:
   - curl, python3
 
 Usage:
-  iotstack commission <path-to-qr-image.jpg>
+  iotstack commission <path-to-qr-image>
+  iotstack commission <manual-pairing-code>
 
-How to use:
+How to use (QR image):
   1. Take a photo of the Matter QR code (phone, screenshot, etc.)
   2. Save the image (JPG, PNG, etc.)
   3. Run: iotstack commission /path/to/image.jpg
 
+How to use (manual pairing code):
+  1. Read the pairing code from the device label or packaging
+  2. Run: iotstack commission 0000-000-0000
+
 Examples:
   iotstack commission ~/qr-code.jpg
   iotstack commission ~/Downloads/device-qr.png
-  iotstack commission ./matter-qr.jpg
+  iotstack commission 1234-567-8901
 
 For detailed help, see:
   docs/help/iotstack-commission-detailed.txt

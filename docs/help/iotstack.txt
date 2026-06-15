@@ -12,7 +12,7 @@ Usage:
   iotstack flash <device|yaml> [tty-device]
   iotstack logs [-f] <tty-device>|[<MAC>] <role>
   iotstack set-boot <device> <failsafe|production>
-  iotstack commission <path-to-qr-image>
+  iotstack commission <qr-image>|<manual-pairing-code>
   iotstack devices [role|other] [--id]
   iotstack roles
   iotstack secret get <role> <ota|api> [version]
@@ -37,7 +37,7 @@ Commands:
   devices             Show discovered ESPHome devices on network
   roles               Show available device roles and their configurations
   secret              Retrieve secrets from encrypted pass store
-  commission          Commission a Matter device via QR code
+  commission          Commission a Matter device via QR image or pairing code
   rotate-secrets      Rotate device secrets (OTA password and API key)
   clean               Clean build artifacts and compilation caches
   help                Show help for a command

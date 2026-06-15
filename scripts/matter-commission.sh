@@ -5,8 +5,9 @@
 #
 # Dependencies: zbar-tools, chip-tool, curl, python3
 # Usage:
-#   ./matter-commission.sh                        # scan via zbarcam
-#   ./matter-commission.sh "MT:CUO00UDN168Q..."   # use provided payload directly
+#   ./matter-commission.sh <path-to-qr-image>
+#   ./matter-commission.sh <manual-pairing-code>   # e.g. 0000-000-0000
+#   ./matter-commission.sh "MT:CUO00UDN168Q..."     # Matter QR payload string
 
 set -euo pipefail
 
@@ -53,33 +54,44 @@ NODE_ID="${NEXT_NODE_ID}"
 
 
 # ---------------------------------------------------------------------------
-# 4. Get Matter payload — from QR code image file
+# 4. Get Matter onboarding payload — image file, manual code, or MT: string
 # ---------------------------------------------------------------------------
-[[ $# -lt 1 ]] && die "Usage: $0 <path-to-qr-image>"
+[[ $# -lt 1 ]] && die "Usage: $0 <qr-image-path>|<manual-pairing-code>"
 
-QR_IMAGE="$1"
-[[ ! -f "$QR_IMAGE" ]] && die "QR code image not found: $QR_IMAGE"
+INPUT="$1"
+MT_PAYLOAD=""
+INPUT_KIND=""
 
-# Check for zbarimg
-command -v zbarimg &>/dev/null || die "zbarimg not found. Install with: sudo apt install zbar-tools"
+PAIRING_CODE_RE='^[0-9]{4}-[0-9]{3}-[0-9]{4}$'
+MT_PAYLOAD_RE='^MT:[A-Z0-9\.\-]+$'
 
-# Decode QR code from image
-info "Decoding QR code from: $QR_IMAGE"
-MT_PAYLOAD=$(zbarimg --raw "$QR_IMAGE" 2>/dev/null | grep "^MT:" | head -1 || echo "")
+if [[ "$INPUT" =~ $PAIRING_CODE_RE ]]; then
+    MT_PAYLOAD="${INPUT//-}"
+    INPUT_KIND="manual pairing code"
+elif [[ "$INPUT" =~ $MT_PAYLOAD_RE ]]; then
+    MT_PAYLOAD="$INPUT"
+    INPUT_KIND="Matter QR payload"
+elif [[ -f "$INPUT" ]]; then
+    command -v zbarimg &>/dev/null || die "zbarimg not found. Install with: sudo apt install zbar-tools"
 
-[[ -z "$MT_PAYLOAD" ]] && die "No Matter QR code found in image. Ensure the image contains a valid Matter QR code."
+    info "Decoding QR code from: $INPUT"
+    MT_PAYLOAD=$(zbarimg --raw "$INPUT" 2>/dev/null | grep "^MT:" | head -1 || echo "")
+    [[ -z "$MT_PAYLOAD" ]] && die "No Matter QR code found in image. Ensure the image contains a valid Matter QR code."
+    INPUT_KIND="QR image"
+else
+    die "Not a QR image, manual pairing code (0000-000-0000), or MT: payload: $INPUT"
+fi
 
-info "Got payload: $MT_PAYLOAD"
-
-# ---------------------------------------------------------------------------
-# 5. Validate payload format
-# ---------------------------------------------------------------------------
-if [[ ! "${MT_PAYLOAD}" =~ ^MT:[A-Z0-9\.\-]+$ ]]; then
+if [[ "$INPUT_KIND" != "manual pairing code" && ! "$MT_PAYLOAD" =~ $MT_PAYLOAD_RE ]]; then
     die "Invalid Matter payload format: ${MT_PAYLOAD}"
 fi
 
-echo "[info] QR payload: ${MT_PAYLOAD}"
-echo "[info] Node ID:   ${NODE_ID}"
+if [[ "$INPUT_KIND" == "manual pairing code" && ! "$MT_PAYLOAD" =~ ^[0-9]{11}$ ]]; then
+    die "Invalid manual pairing code: ${INPUT}"
+fi
+
+info "Using ${INPUT_KIND}: ${MT_PAYLOAD}"
+echo "[info] Node ID: ${NODE_ID}"
 echo "[info] chip-tool will decode the payload during commissioning"
 echo ""
 

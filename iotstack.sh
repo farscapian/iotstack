@@ -2685,17 +2685,16 @@ cmd_logs() {
 }
 
 cmd_commission() {
-  # Commission a Matter device via QR code image
-  # Usage: iotstack commission <path-to-qr-image.jpg>
-  local qr_image="${1:-}"
+  # Commission a Matter device via QR image or manual pairing code
+  # Usage: iotstack commission <qr-image>|<0000-000-0000>
+  local input="${1:-}"
 
-  [[ -z "$qr_image" ]] && err "Usage: iotstack commission <path-to-qr-image>"
-  [[ ! -f "$qr_image" ]] && err "QR code image not found: $qr_image"
+  [[ -z "$input" ]] && err "Usage: iotstack commission <qr-image-path>|<manual-pairing-code>"
 
   local matter_script="${SCRIPT_DIR}/scripts/matter-commission.sh"
   [[ ! -f "$matter_script" ]] && err "Matter commission script not found: $matter_script"
 
-  "$matter_script" "$qr_image"
+  "$matter_script" "$input"
 }
 
 help_commission() {
