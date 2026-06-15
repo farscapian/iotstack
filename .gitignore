@@ -16,6 +16,7 @@ legacy/ # old yamls and other stuff that is useful but no longer considered mode
 !docs/help/iotstack-rotate-secrets-detailed.txt
 !scripts/iotstack-secrets
 !scripts/rotate-secrets
+!scripts/ensure-integration-secrets.sh
 
 # Exception: allow external_components and scripts (not secrets)
 !external_components/

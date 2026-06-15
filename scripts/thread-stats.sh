@@ -54,29 +54,26 @@ debug() {
 #######################################
 
 load_ha_credentials() {
-  # Try to load from pass store if available
-  if command -v pass &>/dev/null; then
-    if pass iotstack/common/ha_url &>/dev/null; then
-      HA_URL="$(pass show iotstack/common/ha_url 2>/dev/null || echo "")"
-      debug "Loaded HA_URL from pass: $HA_URL"
+  local _thread_stats_script_dir
+  _thread_stats_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck source=scripts/ensure-integration-secrets.sh
+  source "${_thread_stats_script_dir}/ensure-integration-secrets.sh"
+
+  if [[ -n "${HA_URL:-}" && -n "${HA_TOKEN:-}" ]]; then
+    HA_URL="$(normalize_ha_url "$HA_URL")"
+    validate_ha_url "$HA_URL"
+    info "Testing Home Assistant WebSocket connection to ${HA_URL}..."
+    local test_output=""
+    if ! test_output="$(test_ha_websocket "$HA_URL" "$HA_TOKEN" 2>&1)"; then
+      echo "$test_output" >&2
+      die "Cannot connect to Home Assistant. Check URL, token, and network access."
     fi
-    if pass iotstack/common/ha_token &>/dev/null; then
-      HA_TOKEN="$(pass show iotstack/common/ha_token 2>/dev/null || echo "")"
-      debug "Loaded HA_TOKEN from pass"
-    fi
+    ok "Home Assistant connection verified (${test_output})"
+    export HA_URL HA_TOKEN
+    return 0
   fi
 
-  # Fallback: check environment variables
-  if [[ -z "$HA_URL" ]]; then
-    HA_URL="${HA_URL:-http://homeassistant.local:8123}"
-  fi
-
-  if [[ -z "$HA_TOKEN" ]]; then
-    die "Home Assistant token not found. Set HA_TOKEN environment variable or store in pass at iotstack/common/ha_token"
-  fi
-
-  debug "HA_URL: $HA_URL"
-  debug "HA_TOKEN: (set)"
+  ensure_ha_integration
 }
 
 #######################################
@@ -84,74 +81,17 @@ load_ha_credentials() {
 #######################################
 
 query_ha_websocket() {
-  local endpoint="$1"
-  local query="$2"
+  local msg_type="$1"
+  local extra_data="${2:-{}}"
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-  # Extract host and path from URL
-  local ha_host
-  local ha_port
+  debug "WebSocket API: $msg_type"
 
-  if [[ "$HA_URL" =~ ^https?://([^/:]+)(:([0-9]+))?(/.*)$ ]]; then
-    ha_host="${BASH_REMATCH[1]}"
-    ha_port="${BASH_REMATCH[3]:-8123}"
-    local ha_path="${BASH_REMATCH[4]}"
-  else
-    die "Invalid HA_URL format: $HA_URL"
-  fi
-
-  debug "Connecting to $ha_host:$ha_port$ha_path"
-
-  # Use Python for WebSocket communication (more reliable than bash)
-  python3 << PYTHON
-import json
-import websocket
-import sys
-
-try:
-    ws_url = "ws://${ha_host}:${ha_port}/api/websocket"
-    ws = websocket.create_connection(ws_url, timeout=5)
-
-    # Authenticate
-    auth_msg = json.dumps({"type": "auth", "access_token": "${HA_TOKEN}"})
-    ws.send(auth_msg)
-    auth_resp = json.loads(ws.recv())
-
-    if auth_resp.get("type") != "auth_ok":
-        print("Authentication failed", file=sys.stderr)
-        sys.exit(1)
-
-    # Send query
-    msg_id = 1
-    query_msg = json.dumps({
-        "id": msg_id,
-        "type": "call_service",
-        "domain": "${domain:-homeassistant}",
-        "service": "${service:-get_entities}",
-        **${query}
-    })
-    ws.send(query_msg)
-
-    # Receive response
-    response = json.loads(ws.recv())
-    print(json.dumps(response, indent=2))
-
-    ws.close()
-except Exception as e:
-    print(f"WebSocket error: {e}", file=sys.stderr)
-    sys.exit(1)
-PYTHON
-}
-
-query_ha_rest() {
-  local endpoint="$1"
-  local method="${2:-GET}"
-
-  debug "REST API: $method $endpoint"
-
-  curl -s -X "$method" \
-    -H "Authorization: Bearer $HA_TOKEN" \
-    -H "Content-Type: application/json" \
-    "$HA_URL/api/$endpoint"
+  python3 "${script_dir}/ha_websocket.py" \
+    --ha-url "$HA_URL" \
+    --ha-token "$HA_TOKEN" \
+    query --type "$msg_type" --data "$extra_data"
 }
 
 #######################################
@@ -164,9 +104,8 @@ get_thread_devices() {
 
   debug "Querying thread devices..."
 
-  # Use REST API to get device list (simpler than WebSocket for this)
   local devices_json
-  devices_json=$(query_ha_rest "config/device_registry/list" "GET")
+  devices_json=$(query_ha_websocket "config/device_registry/list")
 
   # Filter for OTBR and Thread-related devices
   python3 << PYTHON
@@ -199,7 +138,7 @@ get_otbr_status() {
   debug "Querying OTBR status..."
 
   local otbr_status
-  otbr_status=$(query_ha_rest "openthread_border_router" "GET" 2>/dev/null || echo "{}")
+  otbr_status=$(query_ha_websocket "otbr/info" 2>/dev/null || echo "{}")
 
   echo "$otbr_status"
 }
@@ -209,7 +148,7 @@ get_thread_entities() {
   debug "Querying thread entities..."
 
   local entities_json
-  entities_json=$(query_ha_rest "states" "GET")
+  entities_json=$(query_ha_websocket "get_states")
 
   python3 << PYTHON
 import json
@@ -352,7 +291,7 @@ PYTHON
 
   # OTBR status
   info "OTBR Status:"
-  query_ha_rest "openthread_border_router" "GET" | python3 -m json.tool 2>/dev/null | sed 's/^/  /' || warn "OTBR endpoint not available"
+  query_ha_websocket "otbr/info" | python3 -m json.tool 2>/dev/null | sed 's/^/  /' || warn "OTBR WebSocket endpoint not available"
 
   echo ""
 }
@@ -392,8 +331,7 @@ CONFIGURATION:
     export HA_TOKEN="your_long_lived_token"
 
 REQUIREMENTS:
-  - curl (for REST API queries)
-  - python3-websocket (optional, for WebSocket queries)
+  - python3 websocket-client (pip3 install websocket-client)
   - Home Assistant with OTBR integration configured
 
 EOF
@@ -422,8 +360,8 @@ EOF
   # Load credentials
   load_ha_credentials
 
-  # Verify curl is available
-  command -v curl &>/dev/null || die "curl is required but not installed"
+  python3 -c "import websocket" 2>/dev/null \
+    || die "python3 websocket-client is required (pip3 install websocket-client)"
 
   # Show statistics
   show_thread_stats

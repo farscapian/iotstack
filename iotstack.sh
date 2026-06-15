@@ -345,6 +345,25 @@ source "${SCRIPT_DIR}/scripts/config.sh"
 
 # UPDATE_SCRIPT is provided by config.sh (scripts/update_devices.sh)
 
+_load_ha_credentials_optional() {
+  # shellcheck source=scripts/ensure-integration-secrets.sh
+  source "${SCRIPT_DIR}/scripts/ensure-integration-secrets.sh"
+  load_ha_credentials_optional
+}
+
+_ha_websocket_call_service() {
+  local domain="$1"
+  local service="$2"
+  local target_json="$3"
+
+  python3 "${SCRIPT_DIR}/scripts/ha_websocket.py" \
+    --ha-url "$HA_URL" \
+    --ha-token "$HA_TOKEN" \
+    call-service "$domain" "$service" \
+    --target "$target_json" \
+    >/dev/null 2>&1
+}
+
 # ── Global flag parsing ──────────────────────────────────────────────────────
 # Parse -q/--quiet and -v/--verbose early so they apply to everything below.
 for arg in "$@"; do
@@ -457,17 +476,10 @@ list_device_names() {
 # Query Home Assistant for device areas via WebSocket
 # Returns JSON with device_name -> area_name mapping
 get_ha_device_areas() {
+  _load_ha_credentials_optional || return 1
 
-  # Get HA credentials from pass store
-  local ha_token
-  ha_token=$(pass show "iotstack/common/ha_token" 2>/dev/null | xargs || echo "")
-  local ha_url
-  ha_url=$(pass show "iotstack/common/ha_url" 2>/dev/null | xargs || echo "")
-
-  # If still no credentials, return empty
-  if [[ -z "$ha_token" ]] || [[ -z "$ha_url" ]]; then
-    return 1
-  fi
+  local ha_token="$HA_TOKEN"
+  local ha_url="$HA_URL"
 
   # Convert HTTP/HTTPS to WS/WSS
   local ws_url="${ha_url//http:/ws:}"
@@ -1628,12 +1640,10 @@ cmd_rotate_secrets() {
 
   local ha_url=""
   local ha_token=""
-  ha_url=$(pass show "iotstack/common/ha_url" 2>/dev/null | xargs || echo "")
-  ha_token=$(pass show "iotstack/common/ha_token" 2>/dev/null | xargs || echo "")
-
-  # Check if HA credentials are configured
   local ha_configured=false
-  if [[ -n "$ha_url" && -n "$ha_token" ]]; then
+  if _load_ha_credentials_optional; then
+    ha_url="$HA_URL"
+    ha_token="$HA_TOKEN"
     ha_configured=true
   fi
 
@@ -2362,22 +2372,23 @@ _flash_recovery_dual() {
 
   if [[ ${#recovery_devices[@]} -gt 0 ]]; then
     # Try to toggle via Home Assistant first
-    local ha_url
-    ha_url=$(pass show iotstack/common/ha_url 2>/dev/null || echo "")
-    local ha_token
-    ha_token=$(pass show iotstack/common/ha_token 2>/dev/null || echo "")
+    local ha_url=""
+    local ha_token=""
+    if _load_ha_credentials_optional; then
+      ha_url="$HA_URL"
+      ha_token="$HA_TOKEN"
+    fi
 
     if [[ -n "$ha_url" && -n "$ha_token" ]]; then
-      # Call the partition toggle button via Home Assistant
+      export HA_URL="$ha_url"
+      export HA_TOKEN="$ha_token"
+      # Call the partition toggle button via Home Assistant WebSocket API
       for mac in "${recovery_devices[@]}"; do
         local device_name="failsafe-$mac"
         local entity_id="button.${device_name,,}_toggle_boot_partition"
 
-        info "Toggling partition on $device_name (via HA)..."
-        if curl -s -X POST "$ha_url/api/services/button/press" \
-          -H "Authorization: Bearer $ha_token" \
-          -H "Content-Type: application/json" \
-          -d "{\"entity_id\": \"$entity_id\"}" >/dev/null 2>&1; then
+        info "Toggling partition on $device_name (via HA WebSocket)..."
+        if _ha_websocket_call_service "button" "press" "{\"entity_id\": [\"$entity_id\"]}"; then
           ok "  Partition toggled, device rebooting..."
         else
           warn "  Could not toggle partition via HA (continuing anyway)"

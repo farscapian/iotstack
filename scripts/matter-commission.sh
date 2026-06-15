@@ -10,6 +10,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ensure-integration-secrets.sh
+source "${SCRIPT_DIR}/ensure-integration-secrets.sh"
+
 # ---------------------------------------------------------------------------
 # 1. Helper functions
 # ---------------------------------------------------------------------------
@@ -31,19 +35,14 @@ set_secret() {
 }
 
 # ---------------------------------------------------------------------------
-# 2. Load secrets from pass store
+# 2. Load and validate integration secrets (prompt if missing)
 # ---------------------------------------------------------------------------
-info "Loading Matter commissioning secrets from pass..."
+info "Checking Matter commissioning prerequisites..."
 
-THREAD_TLV=$(get_secret "iotstack/common/thread_tlv")
-HA_URL=$(get_secret "iotstack/common/ha_url")
-HA_TOKEN=$(get_secret "iotstack/common/ha_token")
+ensure_ha_integration
+ensure_thread_tlv "false"
+
 NEXT_NODE_ID=$(get_secret "iotstack/matter/next_node_id")
-
-# Validate required secrets
-[[ -n "${THREAD_TLV:-}" ]] || die "Thread TLV not found. Set with: pass insert iotstack/common/thread_tlv"
-[[ -n "${HA_URL:-}" ]] || die "HA_URL not found. Set with: pass insert iotstack/common/ha_url"
-[[ -n "${HA_TOKEN:-}" ]] || die "HA_TOKEN not found. Set with: pass insert iotstack/common/ha_token"
 [[ -n "${NEXT_NODE_ID:-}" ]] || {
     info "Initializing NEXT_NODE_ID to 1..."
     set_secret "iotstack/matter/next_node_id" "1" || die "Failed to initialize NEXT_NODE_ID"

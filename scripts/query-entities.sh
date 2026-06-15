@@ -10,7 +10,6 @@ source "${SCRIPT_DIR}/config.sh"
 
 DEVICE_NAME="${1:-}"
 LIST_DEVICES="${LIST_DEVICES:-false}"
-HA_URL="${HA_URL:-http://localhost:8123}"
 
 if [[ "$DEVICE_NAME" == "--list" ]] || [[ "$DEVICE_NAME" == "-l" ]]; then
   LIST_DEVICES=true
@@ -34,60 +33,47 @@ sync_secret() {
   local secrets_key="$1"
   local pass_path="$2"
 
-  local secrets_value
-  if [[ -f "$SECRETS_YAML" ]]; then
+  local secrets_value=""
+  if [[ -f "${SECRETS_YAML:-}" ]]; then
     secrets_value=$(grep "^${secrets_key}:" "$SECRETS_YAML" | cut -d'"' -f2 || echo "")
   fi
 
-  # Check if pass has this secret
   local pass_value=""
   if pass show "$pass_path" &>/dev/null; then
     pass_value=$(pass show "$pass_path")
   fi
 
-  # If different or missing, update pass
-  if [[ "$pass_value" != "$secrets_value" ]]; then
+  if [[ -n "$secrets_value" && "$pass_value" != "$secrets_value" ]]; then
     echo "$secrets_value" | pass insert -f "$pass_path" 2>&1 || true
   fi
 
   echo "$secrets_value"
 }
 
-HA_TOKEN=$(sync_secret "ha_token" "iotstack/common/ha_token" || pass show "iotstack/common/ha_token" 2>/dev/null || echo "")
-HA_TOKEN=$(printf '%s' "$HA_TOKEN" | xargs)  # Trim all whitespace
+# Sync legacy secrets.yaml values into pass, then prompt/validate if still missing.
+sync_secret "ha_token" "iotstack/common/ha_token" >/dev/null 2>&1 || true
+sync_secret "ha_url" "iotstack/common/ha_url" >/dev/null 2>&1 || true
 
-
-HA_URL=$(sync_secret "ha_url" "iotstack/common/ha_url" || pass show "iotstack/common/ha_url" 2>/dev/null || echo "$HA_URL")
-HA_URL=$(printf '%s' "$HA_URL" | xargs)  # Trim all whitespace
-
+# shellcheck source=scripts/ensure-integration-secrets.sh
+source "${SCRIPT_DIR}/ensure-integration-secrets.sh"
+ensure_ha_integration
 
 echo "[INFO] Using HA_URL: $HA_URL" >&2
-echo "[DEBUG] HA_URL length: ${#HA_URL} chars" >&2
 
-# Step 1: Get device list and find matching device_id
-echo "[DEBUG] Fetching device registry from: $HA_URL/api/config/device_registry/list" >&2
-if ! device_data=$(curl -v -m 10 -X GET \
-  -H "Authorization: Bearer $HA_TOKEN" \
-  -H "Content-Type: application/json" \
-  "$HA_URL/api/config/device_registry/list" 2>&1); then
-  err "Failed to query device registry: $device_data"
-fi
+echo "[DEBUG] Fetching device registry via WebSocket" >&2
+device_data=$(ha_websocket_query "config/device_registry/list")
 
-# Check if response is valid JSON
 if ! echo "$device_data" | jq empty 2>/dev/null; then
-  err "Invalid JSON response from device registry:\n$device_data"
+  err "Invalid JSON response from device registry"
 fi
 
-# If --list flag, show all devices and exit
 if [[ "$LIST_DEVICES" == "true" ]]; then
   echo "[INFO] Available devices:" >&2
   echo "$device_data" | jq -r '.[] | "  \(.id): \(.name)"'
   exit 0
 fi
 
-# Look for device matching name or id containing DEVICE_NAME (case-insensitive)
 echo "[INFO] Querying entities for device: $DEVICE_NAME" >&2
-echo "[DEBUG] Searching for device matching: '$DEVICE_NAME'" >&2
 device_id=$(echo "$device_data" | jq -r --arg name "$DEVICE_NAME" '
   .[] |
   select(
@@ -105,15 +91,8 @@ if [[ -z "$device_id" ]]; then
 fi
 
 echo "[DEBUG] Found device_id: $device_id" >&2
-
-# Step 2: Query entity registry for entities belonging to this device
-echo "[DEBUG] Fetching entity registry..." >&2
-if ! entity_data=$(curl -s -m 10 -X GET \
-  -H "Authorization: Bearer $HA_TOKEN" \
-  -H "Content-Type: application/json" \
-  "$HA_URL/api/config/entity_registry/list" 2>&1); then
-  err "Failed to query entity registry: $entity_data"
-fi
+echo "[DEBUG] Fetching entity registry via WebSocket" >&2
+entity_data=$(ha_websocket_query "config/entity_registry/list")
 
 if ! echo "$entity_data" | jq empty 2>/dev/null; then
   err "Invalid JSON response from entity registry"

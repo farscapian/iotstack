@@ -157,6 +157,10 @@ if ! command -v python3 &>/dev/null; then
   MISSING_DEPS+=("python3")
 fi
 
+if command -v python3 &>/dev/null && ! python3 -c "import websocket" 2>/dev/null; then
+  MISSING_DEPS+=("python3-websocket-client")
+fi
+
 if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
   echo "Missing dependencies for Matter commissioning:"
   printf '  %s\n' "${MISSING_DEPS[@]}"
@@ -182,6 +186,10 @@ if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
     # python3
     if [[ " ${MISSING_DEPS[*]} " =~ " python3 " ]]; then
       sudo apt install -y python3 python3-pip || warn "Failed to install python3"
+    fi
+
+    # websocket-client (required for Home Assistant WebSocket API)
+    if [[ " ${MISSING_DEPS[*]} " =~ " python3-websocket-client " ]]; then
       pip3 install websocket-client >/dev/null 2>&1 || warn "Failed to install websocket-client Python library"
     fi
 
