@@ -1,0 +1,28 @@
+iotstack logs — Stream device logs (serial or over the network)
+
+Streams live logs from a device. Give a serial device for a raw serial stream
+(no YAML needed), or a role name to stream over the network via the ESPHome
+API. With a role and no MAC suffix, logs from every device in that role are
+interleaved into one stream, each line prefixed with the device name.
+
+Usage:
+  iotstack logs [-f] <tty-device>
+  iotstack logs [-f] [<MAC>] <role>
+
+Arguments:
+  <tty-device>  Serial device (e.g., /dev/ttyACM0) — raw stream, no YAML
+  <role>        Device role (e.g., bleproxy) — streams over the network
+  [<MAC>]       MAC suffix for one device; omit for ALL devices in the role
+  [-f]          Accepted for familiarity; logs always follow (live stream)
+
+Examples:
+  iotstack logs /dev/ttyACM0     # Raw serial logs (no YAML needed)
+  iotstack logs -f /dev/ttyACM0  # Same (logs always follow)
+  iotstack logs bleproxy         # All bleproxy devices, interleaved
+  iotstack logs 1a7cfc bleproxy  # One bleproxy device over the network
+
+Notes:
+  - Serial streaming needs no YAML and works on a bricked/failsafe device.
+  - Network streaming uses 'esphome logs' under the hood (ESPHome API).
+  - Multiple devices are prefixed like '[bleproxy-1a7cfc] ...' and interleaved.
+  - Press Ctrl-C to stop.

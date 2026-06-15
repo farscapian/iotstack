@@ -569,6 +569,10 @@ help_flash() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-flash.txt"
 }
 
+help_logs() {
+  cat "${SCRIPT_DIR}/docs/help/iotstack-logs.txt"
+}
+
 help_query() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-query.txt"
 }
@@ -2600,6 +2604,77 @@ verify_wifi_credentials() {
   fi
 }
 
+cmd_logs() {
+  # Stream device logs.
+  #   iotstack logs [-f] /dev/ttyACM0     -> raw serial (no YAML needed)
+  #   iotstack logs [-f] <role>           -> all <role> devices, interleaved
+  #   iotstack logs [-f] <mac> <role>     -> one device via the network API
+  # Logs are inherently a live stream; -f/--follow is accepted for familiarity.
+  if [[ "${1:-}" == "help" ]]; then
+    help_logs
+    return 0
+  fi
+
+  local -a pos=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -f|--follow) shift ;;  # logs always follow; flag accepted for muscle memory
+      help) help_logs; return 0 ;;
+      *) pos+=("$1"); shift ;;
+    esac
+  done
+  [[ ${#pos[@]} -eq 0 ]] && { help_logs; exit 1; }
+
+  # ── Serial device: raw stream, no YAML ──
+  if [[ "${pos[0]}" == /dev/* ]]; then
+    local port="${pos[0]}"
+    [[ -e "$port" ]] || err "Serial device not found: $port"
+    info "Streaming serial logs from $port (Ctrl-C to stop)..."
+    local py
+    py=$(head -1 "$(command -v esphome)" 2>/dev/null | sed 's/^#!//')
+    [[ -x "$py" ]] || py="python3"
+    exec "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" "$port"
+  fi
+
+  # ── Network: [mac ...] <role> via esphome logs ──
+  local role="${pos[-1]}"
+  local -a macs=("${pos[@]:0:${#pos[@]}-1}")
+  if ! is_valid_role "$role"; then
+    err "Unknown role: '$role' (give a defined role, or a /dev/... serial device)"
+  fi
+  local yaml_file="${YAMLS_DIR}/${role}.yaml"
+  [[ -f "$yaml_file" ]] || err "YAML not found for role '$role': $yaml_file"
+
+  # No MACs given: discover every <role>-<mac> on the network
+  if [[ ${#macs[@]} -eq 0 ]]; then
+    local line
+    while IFS= read -r line; do
+      [[ "$line" =~ ${role}-([0-9a-f]{6}) ]] && macs+=("${BASH_REMATCH[1]}")
+    done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+    [[ ${#macs[@]} -gt 0 ]] && mapfile -t macs < <(printf '%s\n' "${macs[@]}" | sort -u)
+    [[ ${#macs[@]} -eq 0 ]] && err "No '$role' devices found on the network."
+  fi
+
+  # Single device: stream directly
+  if [[ ${#macs[@]} -eq 1 ]]; then
+    info "Streaming logs from ${role}-${macs[0]} (Ctrl-C to stop)..."
+    exec esphome logs "$yaml_file" --device "${role}-${macs[0]}.local"
+  fi
+
+  # Multiple devices: run a logger per device in parallel, prefix each line with
+  # the device name, and interleave to one stream.
+  info "Streaming logs from ${#macs[@]} '$role' devices, interleaved (Ctrl-C to stop)..."
+  trap 'jobs -p | xargs -r kill 2>/dev/null' INT TERM EXIT
+  local mac
+  for mac in "${macs[@]}"; do
+    (
+      PYTHONUNBUFFERED=1 esphome logs "$yaml_file" --device "${role}-${mac}.local" 2>&1 \
+        | stdbuf -oL sed "s/^/[${role}-${mac}] /"
+    ) &
+  done
+  wait
+}
+
 cmd_commission() {
   # Commission a Matter device via QR code image
   # Usage: iotstack commission <path-to-qr-image.jpg>
@@ -2757,6 +2832,10 @@ main() {
       shift
       cmd_flash "$@"
       ;;
+    logs)
+      shift
+      cmd_logs "$@"
+      ;;
     set-boot)
       shift
       cmd_set_boot "$@"
@@ -2782,6 +2861,7 @@ main() {
           devices)          help_devices ;;
           roles)            help_roles ;;
           flash)            help_flash ;;
+          logs)             help_logs ;;
           set-boot)         cmd_set_boot help ;;
           commission)       help_commission ;;
           clean)            help_clean ;;

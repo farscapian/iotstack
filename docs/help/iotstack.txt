@@ -10,6 +10,7 @@ Usage:
   iotstack verify [<device>|<yaml>|all]
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [--ota-password PASSWORD]
   iotstack flash <device|yaml> [tty-device]
+  iotstack logs [-f] <tty-device>|[<MAC>] <role>
   iotstack set-boot <device> <failsafe|production>
   iotstack commission <path-to-qr-image>
   iotstack devices [role|other] [--id]
@@ -31,6 +32,7 @@ Commands:
   reassign            Flash specific devices to a different configuration
   verify              Check if devices match the current build hash
   flash               Flash device via serial/USB (for bricked devices)
+  logs                Stream device logs (serial, or over the network by role)
   query               Query Home Assistant device and entity registry
   devices             Show discovered ESPHome devices on network
   roles               Show available device roles and their configurations
