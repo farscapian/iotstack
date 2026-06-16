@@ -1,0 +1,33 @@
+iotstack otbr — OpenThread Border Router provisioning
+
+Provision Raspberry Pi OTBR devices, Incus test VMs, and bare-metal snap/Docker
+installations. Runtime data (cache, logs, artifacts) lives in ~/.otbrstack/.
+
+Usage:
+  iotstack otbr [--env-file=PATH] <command> [args]
+  iotstack -env=<name>.env otbr <command>   # when file is in ~/.otbrstack/env/
+
+Commands:
+  setup             One-time setup (apt packages, esptool, incus)
+  vm x64            Incus VM test (native x86_64)
+  vm arm64          Incus VM (arm64)
+  flash             Flash Ubuntu Server 26.04 to SD card (/dev/sdX)
+  docker            Docker bare-metal provisioner
+  snap              Snap bare-metal provisioner
+  logs [-f] <host>  Remote logs over SSH (cloud-init, firstboot, OTBR snap)
+  shutdown <host>   Graceful shutdown of a remote OTBR device
+  restart <host>    Reboot a remote OTBR device
+  help              Show this help
+
+Env files:
+  Copy otbr/.env.example to ~/.otbrstack/env/.env or ~/.otbrstack/env/$(hostname).env
+
+Examples:
+  iotstack otbr setup
+  iotstack otbr flash /dev/sdb
+  iotstack otbr flash --hostname=otbr-kitchen /dev/sdb
+  iotstack otbr logs -f otbr-kitchen
+  iotstack otbr vm x64
+  iotstack otbr snap
+
+See otbr/README.md for full documentation.

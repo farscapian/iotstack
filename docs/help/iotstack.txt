@@ -18,8 +18,11 @@ Usage:
   iotstack set-boot <device> <failsafe|production>
   iotstack matter commission <qr-image>|<manual-pairing-code>
   iotstack matter configure-trust-store [pairing-code]
+  iotstack otbr flash /dev/sdX
+  iotstack otbr logs -f <hostname>
 
 Matter files: ~/.iotstack/chip-tool/ (snap: symlink to ~/snap/chip-tool)
+OTBR data: ~/.otbrstack/ (env files in ~/.otbrstack/env/)
   iotstack devices [role|other] [--id]
   iotstack roles
   iotstack secret get <role> <ota|api> [version]
@@ -45,6 +48,7 @@ Commands:
   roles               Show available device roles and their configurations
   secret              Retrieve secrets from encrypted pass store
   matter              Matter commissioning (commission, configure-trust-store)
+  otbr                OpenThread Border Router provisioning (flash, vm, snap, docker)
   rotate-secrets      Rotate device secrets (OTA password and API key)
   clean               Clean build artifacts and compilation caches
   help                Show help for a command

@@ -421,6 +421,7 @@ echo
 echo "2. Start using iotstack:"
 echo -e "  ${GRN}iotstack update bleproxy${RST}"
 echo -e "  ${GRN}iotstack flash bleproxy /dev/ttyACM0${RST}"
+echo -e "  ${GRN}iotstack otbr setup${RST}   (optional — OTBR / Raspberry Pi provisioning)"
 echo
 echo "Your role-based secrets are stored encrypted in:"
 echo -e "  ${GRN}${PASS_DIR}${RST}"

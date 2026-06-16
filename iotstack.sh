@@ -2969,6 +2969,16 @@ help_commission() {
   help_matter_commission
 }
 
+cmd_otbr() {
+  # shellcheck source=otbr/otbr.sh
+  source "${SCRIPT_DIR}/otbr/otbr.sh"
+  cmd_otbr_dispatch "$@"
+}
+
+help_otbr() {
+  cat "${SCRIPT_DIR}/docs/help/iotstack-otbr.txt"
+}
+
 cmd_clean() {
   # Clean build artifacts and compilation caches
   info "Cleaning build artifacts..."
@@ -3122,6 +3132,17 @@ main() {
       shift
       cmd_matter "$@"
       ;;
+    otbr)
+      if [[ "$ENV_FILE" != "${HOME}/.iotstack/.env" ]]; then
+        local _otbr_env_candidate
+        _otbr_env_candidate="${HOME}/.otbrstack/env/$(basename "$ENV_FILE")"
+        if [[ -f "$_otbr_env_candidate" ]]; then
+          export IOTSTACK_OTBR_ENV_FILE="$_otbr_env_candidate"
+        fi
+      fi
+      shift
+      cmd_otbr "$@"
+      ;;
     commission)
       shift
       cmd_commission "$@"
@@ -3146,6 +3167,7 @@ main() {
           logs)             help_logs ;;
           set-boot)         cmd_set_boot help ;;
           matter)           help_matter "${3:-}" ;;
+          otbr)             help_otbr ;;
           commission)       help_commission ;;
           clean)            help_clean ;;
           query)            help_query ;;
