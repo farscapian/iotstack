@@ -2,6 +2,7 @@
 archive/
 resources/esp32projects/  # Local clones of reference projects (not part of build)
 **/.temp-rename-*.yaml
+**/.temp-api-key-*.yaml
 .esphome/
 yamls/.esphome/
 yamls/iotstack_partition_table.csv  # Symlink to ~/.iotstack/iotstack_partition_table.csv (generated)
@@ -16,6 +17,7 @@ legacy/ # old yamls and other stuff that is useful but no longer considered mode
 !docs/help/iotstack-rotate-secrets-detailed.txt
 !scripts/iotstack-secrets
 !scripts/rotate-secrets
+!scripts/ensure-integration-secrets.sh
 
 # Exception: allow external_components and scripts (not secrets)
 !external_components/

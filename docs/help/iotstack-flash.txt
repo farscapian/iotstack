@@ -1,10 +1,8 @@
 iotstack flash — Serial flash tool for device setup and recovery
 
-Flash firmware to devices via USB/serial connection. Performs dual-partition
-setup on fresh devices (recovery + production) or OTA-only updates on existing
-devices. Auto-detects USB ports when multiple devices are connected. Supports
-recovery-only flashing for manual partition management. Use when OTA is
-unavailable (bricked devices, initial setup, failsafe mode).
+Flashes firmware over USB/serial when OTA is unavailable or for initial setup.
+Fresh devices get recovery and production partitions; existing devices can receive
+an OTA-style update over serial.
 
 Usage:
   iotstack flash <device> [tty-device] [options]

@@ -54,7 +54,8 @@ void PartitionManager::toggle_boot_partition() {
   }
 
   esp_ota_set_boot_partition(next);
-  ESP_LOGI(TAG, "Boot partition switched to: %s (v%s) - restart to apply", next->label, app_desc.version);
+  ESP_LOGI(TAG, "Boot partition switched to: %s — %s v%s - restart to apply",
+           next->label, app_desc.project_name, app_desc.version);
 }
 
 void PartitionManager::boot_failsafe() {

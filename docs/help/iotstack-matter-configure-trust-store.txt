@@ -1,0 +1,46 @@
+iotstack matter configure-trust-store — Matter attestation trust store
+
+Interactive one-time setup of chip-tool attestation trust anchors (CSA CD keys
+and vendor PAA root certificates). You add shared trust for a vendor, not
+per-device DAC certificates.
+
+Trust anchors are stored under:
+  ~/.iotstack/chip-tool/common/trust/paa-root-certs/
+  ~/.iotstack/chip-tool/common/trust/cd-certs/
+
+When chip-tool is installed via snap, ~/.iotstack/chip-tool symlinks to
+~/snap/chip-tool/ (trust under common/trust/ for snap confinement).
+
+chip-tool only loads PAA certificates in DER format (*.der).
+
+Usage:
+  iotstack matter configure-trust-store
+  iotstack matter configure-trust-store <manual-pairing-code>
+  iotstack matter configure-trust-store "MT:..."
+
+Optional pairing code:
+  Helps bootstrap vendor PAA certs when the code encodes a vendor ID.
+  Manual codes (0000-000-0000) usually do not — the menu prompts for a
+  hex vendor ID (e.g. 117C for IKEA).
+
+Menu options:
+  1) Install CSA CD keys + vendor PAA (recommended)
+  2) Add certificate from file path
+  3) Paste PEM certificate
+  4) Use DCL online lookup only
+  5) Skip attestation verification on future commissions (persisted)
+  6) Continue with current trust store
+
+Examples:
+  iotstack matter configure-trust-store
+  iotstack matter configure-trust-store 0167-951-2626
+
+After configuration, commission devices with:
+  iotstack matter commission <pairing-code-or-qr-image>
+
+Environment overrides (commission time):
+  IOTSTACK_BYPASS_ATTESTATION=1     Force bypass for one commission run
+  IOTSTACK_ATTESTATION_AUTO_BOOTSTRAP=1   Auto-download CD/PAA without menu
+
+Help:
+  iotstack matter configure-trust-store help

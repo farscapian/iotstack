@@ -1,0 +1,41 @@
+iotstack matter — Matter device commissioning
+
+Commission Matter-over-Thread devices with chip-tool and hand them off to Home
+Assistant. Subcommands cover attestation trust setup, per-device commissioning,
+and operational mDNS checks on the chip-tool fabric.
+
+Subcommands:
+
+  commission            Commission a device to Thread and hand off to Home Assistant
+  configure-trust-store   Interactive PAA/CD trust store setup for chip-tool
+  decode-qr <image>     Print MT: payload from a Matter QR code image
+  mdns [node-id]        Check operational mDNS for one chip-tool fabric node
+
+Typical workflow:
+  1. iotstack matter configure-trust-store     # once per vendor/network
+  2. iotstack matter commission <pairing-code> # per device
+
+Usage:
+  iotstack matter commission [-f] [-v] <qr-image>|<manual-pairing-code>|<MT:payload>
+  iotstack matter configure-trust-store [manual-pairing-code|MT:payload]
+  iotstack matter decode-qr <path-to-image>
+
+Examples:
+  iotstack matter configure-trust-store
+  iotstack matter configure-trust-store 0167-951-2626
+  iotstack matter commission ~/qr-code.jpg
+  iotstack matter commission 0167-951-2626
+  iotstack matter commission -v 0167-951-2626
+  iotstack matter decode-qr ~/qr-code.jpg
+
+Help:
+  iotstack matter help
+  iotstack matter commission help
+  iotstack matter configure-trust-store help
+  iotstack matter decode-qr help
+  iotstack matter mdns help
+
+See also:
+  docs/help/iotstack-commission-detailed.txt   (Matter commissioning deep dive)
+
+Note: 'iotstack commission' still works but is deprecated.

@@ -19,7 +19,8 @@ esp32:
     type: esp-idf
   flash_size: 4MB
   variant: esp32c6
-  
+  partitions: iotstack_partition_table.csv
+
 # External components (replaces deprecated custom_components folder)
 external_components:
   - source:
@@ -33,16 +34,16 @@ packages:
   boot_button: !include common/boot_button.yaml
 
 # Thread configuration.
-# ESPHome bakes a Thread dataset in at compile time, so the config must supply
-# exactly one of network_key/tlv. The value below is a PLACEHOLDER (the Thread
-# analog of the wifi "configured-via-nvs" placeholder): nvs_secrets applies the
-# REAL operational dataset from NVS (key: thread_tlv) at runtime via
-# otDatasetSetActiveTlvs(), overriding this. force_dataset: false so a
-# previously stored dataset is not clobbered before nvs_secrets runs.
+# No network_key or tlv is specified here deliberately: ESPHome passes nullptr
+# to esp_openthread_auto_start() when the dataset is empty, so the stack starts
+# in an unjoined state without crashing. nvs_secrets then applies the real
+# operational dataset from NVS (key: thread_tlv) at runtime via
+# otDatasetSetActiveTlvs(), and the device joins the Thread network.
+# force_dataset: false so a previously stored dataset is not clobbered before
+# nvs_secrets runs.
 openthread:
   device_type: FTD
   force_dataset: false
-  network_key: 0x00112233445566778899aabbccddeeff  # placeholder — overridden by NVS thread_tlv
 
 # 3. Network — required for IPv6/Thread
 network:

@@ -345,6 +345,32 @@ source "${SCRIPT_DIR}/scripts/config.sh"
 
 # UPDATE_SCRIPT is provided by config.sh (scripts/update_devices.sh)
 
+_load_ha_credentials_optional() {
+  # shellcheck source=scripts/ensure-integration-secrets.sh
+  source "${SCRIPT_DIR}/scripts/ensure-integration-secrets.sh"
+  load_ha_credentials_optional
+}
+
+_ensure_chip_tool_storage() {
+  command -v chip-tool &>/dev/null || return 0
+  # shellcheck source=scripts/ensure-chip-tool-storage.sh
+  source "${SCRIPT_DIR}/scripts/ensure-chip-tool-storage.sh"
+  setup_chip_tool_storage
+}
+
+_ha_websocket_call_service() {
+  local domain="$1"
+  local service="$2"
+  local target_json="$3"
+
+  python3 "${SCRIPT_DIR}/scripts/ha_websocket.py" \
+    --ha-url "$HA_URL" \
+    --ha-token "$HA_TOKEN" \
+    call-service "$domain" "$service" \
+    --target "$target_json" \
+    >/dev/null 2>&1
+}
+
 # ── Global flag parsing ──────────────────────────────────────────────────────
 # Parse -q/--quiet and -v/--verbose early so they apply to everything below.
 for arg in "$@"; do
@@ -457,17 +483,10 @@ list_device_names() {
 # Query Home Assistant for device areas via WebSocket
 # Returns JSON with device_name -> area_name mapping
 get_ha_device_areas() {
+  _load_ha_credentials_optional || return 1
 
-  # Get HA credentials from pass store
-  local ha_token
-  ha_token=$(pass show "iotstack/common/ha_token" 2>/dev/null | xargs || echo "")
-  local ha_url
-  ha_url=$(pass show "iotstack/common/ha_url" 2>/dev/null | xargs || echo "")
-
-  # If still no credentials, return empty
-  if [[ -z "$ha_token" ]] || [[ -z "$ha_url" ]]; then
-    return 1
-  fi
+  local ha_token="$HA_TOKEN"
+  local ha_url="$HA_URL"
 
   # Convert HTTP/HTTPS to WS/WSS
   local ws_url="${ha_url//http:/ws:}"
@@ -1628,12 +1647,10 @@ cmd_rotate_secrets() {
 
   local ha_url=""
   local ha_token=""
-  ha_url=$(pass show "iotstack/common/ha_url" 2>/dev/null | xargs || echo "")
-  ha_token=$(pass show "iotstack/common/ha_token" 2>/dev/null | xargs || echo "")
-
-  # Check if HA credentials are configured
   local ha_configured=false
-  if [[ -n "$ha_url" && -n "$ha_token" ]]; then
+  if _load_ha_credentials_optional; then
+    ha_url="$HA_URL"
+    ha_token="$HA_TOKEN"
     ha_configured=true
   fi
 
@@ -1950,6 +1967,73 @@ list_roles() {
   fi
 }
 
+# ── HA device registration ──────────────────────────────────────────────────
+
+_ha_register_esphome_device() {
+  # Wait for HA to discover a freshly-flashed ESPHome device via mDNS/zeroconf
+  # and notify the user to complete the config flow in the HA UI.
+  # Uses the WebSocket API only (no REST).
+  #
+  # Usage: _ha_register_esphome_device <hostname>
+  #   hostname — mDNS hostname without .local, e.g. "bleproxy-1a7cfc"
+  local hostname="$1"
+
+  info "Waiting for Home Assistant to discover $hostname..."
+
+  python3 - "$HA_URL" "$HA_TOKEN" "$hostname" "${SCRIPT_DIR}/scripts/ha_websocket.py" <<'PYEOF'
+import json, sys, time, subprocess
+
+ha_url    = sys.argv[1].rstrip("/")
+token     = sys.argv[2]
+target    = sys.argv[3].lower()   # e.g. "bleproxy-1a7cfc"
+ws_script = sys.argv[4]
+
+
+def ws_query(msg_type, data=None):
+    cmd = [sys.executable, ws_script,
+           "--ha-url", ha_url, "--ha-token", token,
+           "query", "--type", msg_type,
+           "--data", json.dumps(data or {})]
+    r = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if r.returncode != 0:
+        return None
+    return json.loads(r.stdout)
+
+
+def find_flow(target):
+    flows = ws_query("config_entries/flow/progress") or []
+    for flow in flows:
+        if flow.get("handler") != "esphome":
+            continue
+        title = (flow.get("context") or {}).get("title", "").lower()
+        if target in title or title in target:
+            return flow
+    return None
+
+
+# Poll up to 60 s — HA zeroconf discovery typically takes 10-30 s after boot.
+deadline = time.time() + 60
+flow     = None
+while time.time() < deadline:
+    flow = find_flow(target)
+    if flow:
+        break
+    time.sleep(5)
+
+if not flow:
+    print(f"[WARN] No pending HA config flow found for {target} after 60s", file=sys.stderr)
+    print(f"       If the device appears later, register it at:", file=sys.stderr)
+    print(f"       {ha_url}/config/integrations/dashboard", file=sys.stderr)
+    sys.exit(0)
+
+title = (flow.get("context") or {}).get("title", target)
+print(f"[INFO] Home Assistant discovered: {title}")
+print(f"[INFO] Complete registration at:")
+print(f"       {ha_url}/config/integrations/dashboard")
+print(f"       Look for '{title}' under Discovered → Configure")
+PYEOF
+}
+
 # ── Flash command: serial/USB flashing ─────────────────────────────────────
 cmd_set_boot() {
   # Set boot partition for a specific device
@@ -2072,8 +2156,11 @@ cmd_flash() {
 }
 
 _flash_recovery() {
-  # Flash recovery image via serial and return the device's MAC suffix
+  # Flash recovery image via serial and return the device's MAC suffix.
+  # When mac_return_file is provided the MAC is written there (allows calling
+  # without command substitution so all user output reaches the terminal).
   local tty_device="$1"
+  local mac_return_file="${2:-}"
 
   info "Flashing failsafe firmware (dual-partition setup)"
   echo ""
@@ -2197,7 +2284,11 @@ _flash_recovery() {
     sleep 10
 
     # Return the MAC suffix for later reassignment
-    echo "$device_mac"
+    if [[ -n "$mac_return_file" ]]; then
+      printf '%s' "$device_mac" > "$mac_return_file"
+    else
+      echo "$device_mac"
+    fi
     return
   fi
 
@@ -2362,22 +2453,23 @@ _flash_recovery_dual() {
 
   if [[ ${#recovery_devices[@]} -gt 0 ]]; then
     # Try to toggle via Home Assistant first
-    local ha_url
-    ha_url=$(pass show iotstack/common/ha_url 2>/dev/null || echo "")
-    local ha_token
-    ha_token=$(pass show iotstack/common/ha_token 2>/dev/null || echo "")
+    local ha_url=""
+    local ha_token=""
+    if _load_ha_credentials_optional; then
+      ha_url="$HA_URL"
+      ha_token="$HA_TOKEN"
+    fi
 
     if [[ -n "$ha_url" && -n "$ha_token" ]]; then
-      # Call the partition toggle button via Home Assistant
+      export HA_URL="$ha_url"
+      export HA_TOKEN="$ha_token"
+      # Call the partition toggle button via Home Assistant WebSocket API
       for mac in "${recovery_devices[@]}"; do
         local device_name="failsafe-$mac"
         local entity_id="button.${device_name,,}_toggle_boot_partition"
 
-        info "Toggling partition on $device_name (via HA)..."
-        if curl -s -X POST "$ha_url/api/services/button/press" \
-          -H "Authorization: Bearer $ha_token" \
-          -H "Content-Type: application/json" \
-          -d "{\"entity_id\": \"$entity_id\"}" >/dev/null 2>&1; then
+        info "Toggling partition on $device_name (via HA WebSocket)..."
+        if _ha_websocket_call_service "button" "press" "{\"entity_id\": [\"$entity_id\"]}"; then
           ok "  Partition toggled, device rebooting..."
         else
           warn "  Could not toggle partition via HA (continuing anyway)"
@@ -2439,7 +2531,13 @@ _flash_production_smart() {
       info "Fresh device detected (serial connection)"
       info "Step 1: Flashing failsafe firmware..."
       echo ""
-      device_mac=$(_flash_recovery "$tty_device")
+      # Use a temp file so _flash_recovery runs without command substitution and
+      # all its output (info/ok/esptool progress) is visible on the terminal.
+      local _mac_file
+      _mac_file=$(mktemp)
+      _flash_recovery "$tty_device" "$_mac_file"
+      device_mac=$(tr -d '[:space:]' < "$_mac_file")
+      rm -f "$_mac_file"
       echo ""
       info "Step 2: Waiting for device to appear on network..."
       echo ""
@@ -2450,8 +2548,7 @@ _flash_production_smart() {
 
     # Reassign failsafe device to production
     if [[ -n "$device_mac" ]]; then
-      # Extract only the MAC suffix (last 6 chars) from captured output
-      device_mac=$(echo "$device_mac" | tail -1 | tr -d '[:space:]')
+      device_mac=$(echo "$device_mac" | tr -d '[:space:]')
 
       info "Waiting for failsafe-$device_mac OTA service to come online..."
       # The device is ready once its OTA service (port 3232) accepts a
@@ -2484,6 +2581,16 @@ Check 'iotstack devices' (is failsafe-$device_mac listed?) and 'iotstack logs /d
 
       ok "failsafe-$device_mac OTA service is up; starting production OTA..."
 
+      # Resolve the failsafe device's IP now, before OTA changes the hostname.
+      # After reboot the device gets the same DHCP lease, so we can probe the
+      # OTA port on this IP directly — no avahi cache invalidation needed.
+      local device_ip=""
+      device_ip=$(getent hosts "failsafe-${device_mac}.local" 2>/dev/null | awk '{print $1}' | head -1)
+      if [[ -z "$device_ip" ]]; then
+        device_ip=$(avahi-resolve -n "failsafe-${device_mac}.local" 2>/dev/null | awk '{print $2}' | head -1)
+      fi
+      [[ -n "$device_ip" ]] && debug "Resolved failsafe-$device_mac → $device_ip (will probe after reboot)"
+
       info "Reassigning failsafe-$device_mac to $device firmware..."
 
       # Retrieve failsafe role-based OTA password from pass store. The failsafe
@@ -2511,32 +2618,56 @@ Check 'iotstack devices' (is failsafe-$device_mac listed?) and 'iotstack logs /d
   iotstack update $device"
       fi
 
-      # Wait for device to reboot and appear with correct firmware name
-      info "OTA update complete! Waiting for device to reboot..."
-      # Extract product name from device name (everything before the MAC suffix)
       local product_name="${device%-*}"
-      local max_reboot_wait=45
-      local reboot_waited=0
-      local rebooted=false
 
-      while [[ $reboot_waited -lt $max_reboot_wait ]]; do
-        if avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "${product_name}-${device_mac}"; then
-          rebooted=true
-          ok "Device rebooted successfully as $product_name-$device_mac"
-          break
+      # Detect the production firmware's network type so we know how to wait.
+      # Thread devices have no WiFi: port 3232 on the failsafe IP disappears
+      # after the OTA reboot and never comes back on WiFi. Probing the same IP
+      # would give a false positive (the failsafe that restarted), so skip it.
+      local network_type
+      network_type=$(get_yaml_device_info "$yaml_path" | cut -d'|' -f3)
+
+      if [[ "$network_type" == "thread" ]]; then
+        # Thread production firmware joins the Thread mesh (not WiFi).
+        # It won't appear in 'iotstack devices' (avahi/WiFi mDNS only).
+        info "OTA update complete! Thread device rebooting into $device firmware..."
+        info "(Thread devices communicate over the Thread mesh, not WiFi)"
+        info "Verify with: iotstack logs /dev/ttyACM0  or check your Thread Border Router"
+      else
+        # WiFi device: probe port 3232 on the resolved IP (avahi-independent).
+        info "OTA update complete! Waiting for device to reboot..."
+        local max_reboot_wait=90
+        local reboot_waited=0
+        local rebooted=false
+
+        while (( reboot_waited < max_reboot_wait )); do
+          local up=false
+          if [[ -n "$device_ip" ]]; then
+            timeout 3 bash -c "echo > /dev/tcp/${device_ip}/3232" 2>/dev/null && up=true
+          else
+            timeout 3 bash -c "echo > /dev/tcp/${product_name}-${device_mac}.local/3232" 2>/dev/null && up=true
+          fi
+          if [[ "$up" == true ]]; then
+            rebooted=true
+            ok "Device online as $product_name-$device_mac"
+            break
+          fi
+          sleep 3
+          reboot_waited=$(( reboot_waited + 3 ))
+          if (( reboot_waited % 15 == 0 )); then
+            info "  Still rebooting... ($reboot_waited/${max_reboot_wait}s)"
+          fi
+        done
+
+        if [[ "$rebooted" != "true" ]]; then
+          warn "Device did not come online after ${max_reboot_wait}s."
+          warn "It may still be booting. Check with: iotstack devices"
         fi
 
-        sleep 1
-        reboot_waited=$((reboot_waited + 1))
-
-        if (( reboot_waited % 10 == 0 )); then
-          info "  Still rebooting... ($reboot_waited/$max_reboot_wait seconds)"
+        # Register the device in Home Assistant (if HA is configured).
+        if _load_ha_credentials_optional && [[ -n "$HA_URL" && -n "$HA_TOKEN" ]]; then
+          _ha_register_esphome_device "${product_name}-${device_mac}"
         fi
-      done
-
-      if [[ "$rebooted" != "true" ]]; then
-        warn "Device did not appear as $product_name-$device_mac after $max_reboot_wait seconds."
-        warn "It may still be booting. Check with: iotstack devices"
       fi
     fi
 
@@ -2673,22 +2804,169 @@ cmd_logs() {
   wait
 }
 
-cmd_commission() {
-  # Commission a Matter device via QR code image
-  # Usage: iotstack commission <path-to-qr-image.jpg>
-  local qr_image="${1:-}"
-
-  [[ -z "$qr_image" ]] && err "Usage: iotstack commission <path-to-qr-image>"
-  [[ ! -f "$qr_image" ]] && err "QR code image not found: $qr_image"
-
+cmd_matter_commission() {
+  # Commission a Matter device via QR image or manual pairing code
+  # Usage: iotstack matter commission [-f] [-v] <qr-image>|<0000-000-0000>|<MT:payload>
   local matter_script="${SCRIPT_DIR}/scripts/matter-commission.sh"
   [[ ! -f "$matter_script" ]] && err "Matter commission script not found: $matter_script"
 
-  "$matter_script" "$qr_image"
+  local commission_args=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      help)
+        help_matter_commission
+        return 0
+        ;;
+      -f|--force)
+        export IOTSTACK_MATTER_FORCE=1
+        commission_args+=("$1")
+        shift
+        ;;
+      -v|--verbose)
+        export IOTSTACK_MATTER_VERBOSE=1
+        commission_args+=("$1")
+        shift
+        ;;
+      *)
+        commission_args+=("$1")
+        shift
+        ;;
+    esac
+  done
+
+  [[ ${#commission_args[@]} -lt 1 ]] \
+    && err "Usage: iotstack matter commission [-f] [-v] <qr-image>|<manual-pairing-code>|<MT:payload> (see: iotstack matter commission help)"
+
+  if [[ $VERBOSE -eq 1 ]]; then
+    export IOTSTACK_MATTER_VERBOSE=1
+  fi
+
+  "$matter_script" "${commission_args[@]}"
+}
+
+cmd_matter_configure_trust_store() {
+  # Interactive Matter attestation trust store setup
+  # Usage: iotstack matter configure-trust-store [manual-pairing-code|MT:payload]
+  if [[ "${1:-}" == "help" ]]; then
+    help_matter_configure_trust_store
+    return 0
+  fi
+
+  local trust_script="${SCRIPT_DIR}/scripts/matter-configure-trust-store.sh"
+  [[ ! -f "$trust_script" ]] && err "Matter trust store script not found: $trust_script"
+
+  "$trust_script" "$@"
+}
+
+cmd_matter_decode_qr() {
+  # Decode a Matter QR image and print the MT: payload to stdout.
+  # Usage: iotstack matter decode-qr <path-to-image>
+  if [[ "${1:-}" == "help" ]]; then
+    cat "${SCRIPT_DIR}/docs/help/iotstack-matter-decode-qr.txt"
+    return 0
+  fi
+
+  local decode_script="${SCRIPT_DIR}/scripts/matter-decode-qr.sh"
+  [[ ! -f "$decode_script" ]] && err "Matter decode-qr script not found: $decode_script"
+  [[ $# -lt 1 ]] && err "Usage: iotstack matter decode-qr <path-to-image> (see: iotstack matter decode-qr help)"
+
+  "$decode_script" "$@"
+}
+
+cmd_matter_mdns() {
+  # Show operational mDNS for one chip-tool fabric node (not all HA Matter devices).
+  # Usage: iotstack matter mdns [node-id]
+  if [[ "${1:-}" == "help" ]]; then
+    cat "${SCRIPT_DIR}/docs/help/iotstack-matter-mdns.txt"
+    return 0
+  fi
+
+  local node_id="${1:-1}"
+  [[ "${node_id}" =~ ^[0-9]+$ ]] || err "Usage: iotstack matter mdns [node-id] (see: iotstack matter mdns help)"
+
+  local instance=""
+  instance="$(_chip_tool_operational_mdns_instance "${node_id}")" \
+    || err "No chip-tool fabric ID saved. Commission once with iotstack matter commission, or save manually to $(resolve_chip_tool_storage_dir)/.compressed-fabric-id"
+
+  info "iotstack chip-tool operational instance: ${instance}"
+  info "Narrow browse: avahi-browse -t -r _matter._tcp 2>/dev/null | grep -F '${instance}'"
+  if timeout 12 avahi-browse -r _matter._tcp 2>/dev/null | grep -F -- "${instance}"; then
+    ok "Visible on this host"
+  else
+    warn "Not visible on this host yet (MYGGSPRAY awake? OTBR publishing mDNS to pangolin?)"
+    return 1
+  fi
+}
+
+_chip_tool_operational_mdns_instance() {
+  # shellcheck source=scripts/ensure-chip-tool-storage.sh
+  source "${SCRIPT_DIR}/scripts/ensure-chip-tool-storage.sh"
+  chip_tool_operational_mdns_instance "$@"
+}
+
+cmd_matter() {
+  [[ $# -lt 1 ]] && {
+    help_matter
+    return 1
+  }
+
+  case "$1" in
+    help)
+      shift
+      help_matter "$@"
+      ;;
+    commission)
+      shift
+      cmd_matter_commission "$@"
+      ;;
+    configure-trust-store)
+      shift
+      cmd_matter_configure_trust_store "$@"
+      ;;
+    mdns)
+      shift
+      cmd_matter_mdns "$@"
+      ;;
+    decode-qr)
+      shift
+      cmd_matter_decode_qr "$@"
+      ;;
+    *)
+      err "Unknown matter subcommand: $1. Try 'iotstack matter help'"
+      ;;
+  esac
+}
+
+cmd_commission() {
+  warn "iotstack commission is deprecated; use: iotstack matter commission"
+  cmd_matter_commission "$@"
+}
+
+help_matter() {
+  local topic="${1:-}"
+  case "$topic" in
+    commission) help_matter_commission ;;
+    configure-trust-store) help_matter_configure_trust_store ;;
+    decode-qr) help_matter_decode_qr ;;
+    mdns) cat "${SCRIPT_DIR}/docs/help/iotstack-matter-mdns.txt" ;;
+    *) cat "${SCRIPT_DIR}/docs/help/iotstack-matter.txt" ;;
+  esac
+}
+
+help_matter_commission() {
+  cat "${SCRIPT_DIR}/docs/help/iotstack-matter-commission.txt"
+}
+
+help_matter_configure_trust_store() {
+  cat "${SCRIPT_DIR}/docs/help/iotstack-matter-configure-trust-store.txt"
+}
+
+help_matter_decode_qr() {
+  cat "${SCRIPT_DIR}/docs/help/iotstack-matter-decode-qr.txt"
 }
 
 help_commission() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-commission.txt"
+  help_matter_commission
 }
 
 cmd_clean() {
@@ -2784,6 +3062,8 @@ main() {
     debug "Restored .iotstack symlink: $iotstack_link -> $iotstack_home"
   fi
 
+  _ensure_chip_tool_storage
+
   # Sync common secrets silently at startup
   local command="${1:-help}"
 
@@ -2838,6 +3118,10 @@ main() {
       shift
       cmd_set_boot "$@"
       ;;
+    matter)
+      shift
+      cmd_matter "$@"
+      ;;
     commission)
       shift
       cmd_commission "$@"
@@ -2861,6 +3145,7 @@ main() {
           flash)            help_flash ;;
           logs)             help_logs ;;
           set-boot)         cmd_set_boot help ;;
+          matter)           help_matter "${3:-}" ;;
           commission)       help_commission ;;
           clean)            help_clean ;;
           query)            help_query ;;

@@ -102,10 +102,10 @@ ensure_websocket_client() {
   fi
 }
 
-# ── Auto-configure discovered ESPHome devices via REST API ──────────────────
-# When devices are flashed with new names, HA discovers them but marks as
-# "Discovered" until they're configured with the encryption key. This function
-# automatically completes that configuration via the REST API.
+# ── Report discovered ESPHome config flows via WebSocket API ────────────────
+# Home Assistant exposes discovery flows over WebSocket (config_entries/flow/progress).
+# Completing a config flow step is not available via the public WebSocket API, so this
+# function only detects pending ESPHome discoveries and reports them.
 auto_configure_discovered_esphome() {
   local ha_url="$1"
   local ha_token="$2"
@@ -115,84 +115,49 @@ auto_configure_discovered_esphome() {
     return 0
   fi
 
-  python3 - "$ha_url" "$ha_token" "$api_key" <<'PYEOF'
-import json, os, sys, ssl
-try:
-    import urllib.request
-    import urllib.error
-except ImportError:
-    sys.exit(0)
+  local ha_ws_script="${_UPDATE_DEVICES_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/ha_websocket.py"
+  [[ -f "$ha_ws_script" ]] || return 0
 
-ha_url = sys.argv[1].rstrip('/')
+  python3 - "$ha_url" "$ha_token" "$ha_ws_script" <<'PYEOF'
+import json
+import subprocess
+import sys
+
+ha_url = sys.argv[1].rstrip("/")
 token = sys.argv[2]
-api_key = sys.argv[3]
+ha_ws_script = sys.argv[3]
 
-# Ignore SSL warnings for self-signed certs
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
 
-def make_request(method, path, data=None):
-    """Make HTTP request to Home Assistant"""
-    url = f"{ha_url}{path}"
-    headers = {
-        'Authorization': f'Bearer {token}',
-        'Content-Type': 'application/json',
-    }
-
-    req_data = None
-    if data:
-        req_data = json.dumps(data).encode('utf-8')
-
-    try:
-        req = urllib.request.Request(url, data=req_data, headers=headers, method=method)
-        with urllib.request.urlopen(req, timeout=10) as response:
-            return json.loads(response.read().decode())
-    except urllib.error.HTTPError as e:
-        if e.code == 404:
-            return None
+def ws_query(msg_type: str, data: dict | None = None):
+    cmd = [
+        sys.executable,
+        ha_ws_script,
+        "--ha-url",
+        ha_url,
+        "--ha-token",
+        token,
+        "query",
+        "--type",
+        msg_type,
+        "--data",
+        json.dumps(data or {}),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
         return None
-    except Exception:
-        return None
+    return json.loads(result.stdout)
 
-# Get all config entries to find discovered ESPHome entries
-entries_resp = make_request('GET', '/api/config/config_entries')
-if not entries_resp:
+
+flows = ws_query("config_entries/flow/progress")
+if not flows:
     sys.exit(0)
 
-discovered_flows = []
-for entry in entries_resp:
-    # Find entries that are in discovery state and belong to esphome
-    if entry.get('domain') == 'esphome' and entry.get('source') in ['discovery', 'dhcp', 'zeroconf']:
-        discovered_flows.append({
-            'entry_id': entry.get('entry_id'),
-            'title': entry.get('title'),
-            'unique_id': entry.get('unique_id'),
-        })
-
-if not discovered_flows:
-    sys.exit(0)
-
-# For each discovered entry, get its config flow and complete it with API key
-for flow in discovered_flows:
-    entry_id = flow['entry_id']
-
-    # Get the discovery flow to see what step we're on
-    flow_resp = make_request('GET', f'/api/config/config_entries/flow/{entry_id}')
-    if not flow_resp:
+for flow in flows:
+    if flow.get("handler") != "esphome":
         continue
-
-    # Get the current step to see what data it needs
-    current_step = flow_resp.get('step_id', 'user')
-
-    # Submit the encryption key
-    # The ESPHome flow expects: {"encryption_key": "value"}
-    submit_data = {
-        'encryption_key': api_key
-    }
-
-    result = make_request('POST', f'/api/config/config_entries/flow/{entry_id}/step/{current_step}', submit_data)
-    if result:
-        print(f"Auto-configured discovered device: {flow['title']}")
+    title = flow.get("context", {}).get("title") or flow.get("flow_id", "unknown")
+    print(f"Discovered ESPHome device pending in Home Assistant: {title}")
+    print("  Complete in HA: Settings → Devices & Services → Discovered")
 
 sys.exit(0)
 PYEOF
@@ -662,21 +627,12 @@ fi
 # IMPORTANT: Save original YAML name for caching (before temp file creation)
 ORIGINAL_YAML_FILE="$YAML_FILE"
 
-if [[ -n "$API_KEY" ]]; then
-  YAML_DIR="$(dirname "$YAML_FILE")"
-  YAML_BASENAME="$(basename "$YAML_FILE")"
-  TEMP_YAML="${YAML_DIR}/.temp-api-key-$$.${YAML_BASENAME}"
-
-  # Replace OTA password (for authentication of current device during upload)
-  # The API encryption key stays as-is (uses target device's key)
-  sed 's|password: !secret [^ ]*|password: '"$API_KEY"'|g' "$YAML_FILE" > "$TEMP_YAML"
-
-  # Use temp YAML for compilation and OTA
-  YAML_FILE="$TEMP_YAML"
-
-  # Clean up temp file on exit (expand $TEMP_YAML now, not at trap-run time)
-  # shellcheck disable=SC2064
-  trap "rm -f '$TEMP_YAML' 2>/dev/null; cleanup" EXIT
+# All secrets must come from NVS at runtime — !secret references in YAML are
+# forbidden. Catch them early so the build never silently embeds credentials.
+if grep -qE 'password:[[:space:]]+!secret[[:space:]]+\S' "$YAML_FILE"; then
+  err "$(basename "$YAML_FILE") contains '!secret' password references.
+All secrets must be stored in NVS (via write-nvs-secrets.sh), not in YAML files.
+Remove the 'password: !secret ...' line(s) and re-run."
 fi
 
 if ! [[ "$MAX_JOBS" =~ ^[1-9][0-9]*$ ]]; then
@@ -876,12 +832,10 @@ API_KEY=""
 # this used to read was retired in favor of pass). Best-effort: if pass/HA is
 # not configured, HA_URL/HA_TOKEN stay empty and the HA registry check below is
 # simply skipped.
-export PASSWORD_STORE_DIR="${PASSWORD_STORE_DIR:-$HOME/.iotstack/.pass}"
-export GNUPGHOME="${GNUPGHOME:-$HOME/.iotstack/.gnupg}"
-HA_URL=$(pass show iotstack/common/ha_url 2>/dev/null | head -n1 || true)
-HA_TOKEN=$(pass show iotstack/common/ha_token 2>/dev/null | head -n1 || true)
-if [[ "$HA_URL" == "CONFIGURE_ME" ]]; then HA_URL=""; fi
-if [[ "$HA_TOKEN" == "CONFIGURE_ME" ]]; then HA_TOKEN=""; fi
+_UPDATE_DEVICES_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/ensure-integration-secrets.sh
+source "${_UPDATE_DEVICES_SCRIPT_DIR}/ensure-integration-secrets.sh"
+load_ha_credentials_optional || true
 
 if [[ -n "$HA_URL" && -n "$HA_TOKEN" ]]; then
   log "Querying Home Assistant: ${HA_URL}..."

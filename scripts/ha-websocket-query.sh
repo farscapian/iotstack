@@ -136,12 +136,13 @@ sync_secret() {
   printf '%s' "$secrets_value"
 }
 
-# Get secrets
-HA_TOKEN=$(sync_secret "ha_token" "iotstack/common/ha_token" || pass show "iotstack/common/ha_token" 2>/dev/null || echo "")
-HA_TOKEN=$(printf '%s' "$HA_TOKEN" | xargs)
+# Sync legacy secrets.yaml values into pass, then prompt/validate if still missing.
+sync_secret "ha_token" "iotstack/common/ha_token" >/dev/null 2>&1 || true
+sync_secret "ha_url" "iotstack/common/ha_url" >/dev/null 2>&1 || true
 
-HA_URL=$(sync_secret "ha_url" "iotstack/common/ha_url" || pass show "iotstack/common/ha_url" 2>/dev/null || echo "$HA_URL")
-HA_URL=$(printf '%s' "$HA_URL" | xargs)
+# shellcheck source=scripts/ensure-integration-secrets.sh
+source "${SCRIPT_DIR}/ensure-integration-secrets.sh"
+ensure_ha_integration
 
 # Convert HTTP/HTTPS to WS/WSS
 WS_URL="${HA_URL//http:/ws:}"

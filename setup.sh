@@ -157,6 +157,10 @@ if ! command -v python3 &>/dev/null; then
   MISSING_DEPS+=("python3")
 fi
 
+if command -v python3 &>/dev/null && ! python3 -c "import websocket" 2>/dev/null; then
+  MISSING_DEPS+=("python3-websocket-client")
+fi
+
 if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
   echo "Missing dependencies for Matter commissioning:"
   printf '  %s\n' "${MISSING_DEPS[@]}"
@@ -182,23 +186,52 @@ if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
     # python3
     if [[ " ${MISSING_DEPS[*]} " =~ " python3 " ]]; then
       sudo apt install -y python3 python3-pip || warn "Failed to install python3"
+    fi
+
+    # websocket-client (required for Home Assistant WebSocket API)
+    if [[ " ${MISSING_DEPS[*]} " =~ " python3-websocket-client " ]]; then
       pip3 install websocket-client >/dev/null 2>&1 || warn "Failed to install websocket-client Python library"
     fi
 
-    # chip-tool (needs separate install from source or snap)
+    # chip-tool (snap recommended on Ubuntu/Debian)
     if [[ " ${MISSING_DEPS[*]} " =~ " chip-tool " ]]; then
-      warn "chip-tool must be installed separately:"
-      echo "  https://github.com/project-chip/connectedhomeip/tree/master/examples/chip-tool"
-      echo "  Or via: sudo snap install chip-tool"
+      if command -v snap &>/dev/null; then
+        # shellcheck source=scripts/ensure-chip-tool-storage.sh
+        source "${SCRIPT_DIR}/scripts/ensure-chip-tool-storage.sh"
+        setup_chip_tool_snap || warn "chip-tool snap setup incomplete — see messages above"
+      else
+        warn "snap not found; install chip-tool manually:"
+        echo "  https://github.com/project-chip/connectedhomeip/tree/master/examples/chip-tool"
+      fi
     fi
   else
     dim "Skipping dependency installation"
-    echo "To use 'iotstack commission', install:"
+    echo "To use 'iotstack matter commission', install:"
     printf '  sudo apt install %s\n' "${MISSING_DEPS[@]}"
     echo "  And: sudo snap install chip-tool  (or build from source)"
   fi
 else
   ok "All Matter commissioning dependencies installed"
+fi
+
+# ── chip-tool layout + snap interfaces ───────────────────────────────────
+# shellcheck source=scripts/ensure-chip-tool-storage.sh
+source "${SCRIPT_DIR}/scripts/ensure-chip-tool-storage.sh"
+if command -v snap &>/dev/null && chip_tool_snap_is_installed; then
+  setup_chip_tool_snap_enabled || true
+  setup_chip_tool_snap_interfaces || true
+fi
+if command -v chip-tool &>/dev/null; then
+  setup_chip_tool_layout
+  if chip_tool_is_snap; then
+    ok "chip-tool layout: ~/.iotstack/chip-tool → ~/snap/chip-tool"
+  else
+    ok "chip-tool layout: ~/.iotstack/chip-tool/{common,common/trust,paa-mirror}"
+  fi
+elif chip_tool_snap_is_installed && chip_tool_snap_is_disabled; then
+  warn "chip-tool snap is still disabled — run: sudo snap enable chip-tool"
+elif chip_tool_snap_is_installed; then
+  warn "chip-tool snap is installed but not on PATH — try: hash -r && which chip-tool"
 fi
 
 echo
@@ -277,46 +310,6 @@ if ! command -v pass &>/dev/null; then
 fi
 
 ok "pass is installed"
-
-# ── Install gocryptfs (user-land encrypted FUSE filesystem) ──────────────────
-echo
-if ! command -v gocryptfs &>/dev/null; then
-  echo "Installing gocryptfs (user-land encrypted filesystem)..."
-  if command -v apt &>/dev/null; then
-    # Try standard install
-    if sudo apt update && sudo apt install -y gocryptfs 2>/dev/null; then
-      ok "gocryptfs installed via apt"
-    else
-      # Try enabling universe repo (common for gocryptfs)
-      echo "gocryptfs not in default repos. Trying universe repository..."
-      sudo add-apt-repository -y universe 2>/dev/null || true
-      if sudo apt update && sudo apt install -y gocryptfs 2>/dev/null; then
-        ok "gocryptfs installed via apt (universe)"
-      else
-        warn "Could not install gocryptfs via apt. Please install manually:"
-        echo "  https://github.com/rfjakob/gocryptfs/releases"
-      fi
-    fi
-  elif command -v brew &>/dev/null; then
-    if brew install gocryptfs 2>/dev/null; then
-      ok "gocryptfs installed via brew"
-    else
-      warn "Could not install gocryptfs via brew. Please install manually:"
-      echo "  https://github.com/rfjakob/gocryptfs/releases"
-    fi
-  else
-    warn "Could not install gocryptfs automatically (no apt or brew found)."
-    echo "Please install manually:"
-    echo "  https://github.com/rfjakob/gocryptfs/releases"
-  fi
-fi
-
-if command -v gocryptfs &>/dev/null; then
-  ok "gocryptfs is installed"
-else
-  err "gocryptfs not found. iotstack requires gocryptfs for encrypted secrets.
-Please install from: https://github.com/rfjakob/gocryptfs/releases"
-fi
 
 # Create pass repository in ~/.iotstack/.pass
 PASS_DIR="${IOTSTACK_HOME}/.pass"

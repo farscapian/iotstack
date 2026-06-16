@@ -1,4 +1,8 @@
-iotstack commission — Additional Documentation
+iotstack matter commission — Additional Documentation
+
+Extended reference for Matter commissioning: protocol background, chip-tool
+storage layout, sleepy ICD devices, and troubleshooting beyond iotstack matter
+commission help.
 
 Matter Protocol Overview
 ========================
@@ -127,15 +131,22 @@ Troubleshooting
 Node ID Management
 ==================
 
-Each commissioned device gets a unique node ID (incremented automatically).
+Each device on the chip-tool bridge fabric gets a node ID. chip-tool stores
+fabric session state under:
 
-Node IDs are stored in:
-  iotstack/matter/next_node_id (current counter)
+  ~/.iotstack/chip-tool/common/chip_tool_config*.ini
 
-To check commissioned devices:
-  pass show iotstack/matter/next_node_id
+For the snap build, common/ is a symlink to ~/snap/chip-tool/common (created
+by setup.sh).
 
-To manually set next ID:
-  pass edit iotstack/matter/next_node_id
+After commissioning, iotstack writes a Matter NodeLabel on the device
+(e.g. iotstack:01679512626) so later runs can find the same device without
+pass or a sidecar registry.
 
-Node IDs start at 1 and increment with each commissioning.
+On retry:
+  - If NodeLabel matches, commissioning is skipped and HA handoff runs directly
+  - If exactly one node is on the fabric, it is reused for bridge handoff
+  - Otherwise the next free node ID is assigned
+
+To inspect fabric nodes:
+  grep -o 'f/1/s/[0-9a-f]*' ~/.iotstack/chip-tool/common/chip_tool_config*.ini

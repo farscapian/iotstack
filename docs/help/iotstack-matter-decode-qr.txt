@@ -1,0 +1,23 @@
+iotstack matter decode-qr — Extract MT: payload from a Matter QR image
+
+Decodes a Matter QR code image and prints only the MT: setup payload string to
+stdout (suitable for piping or pasting into other commands).
+
+Usage:
+  iotstack matter decode-qr <path-to-image>
+
+Arguments:
+  <path-to-image>   JPG, PNG, or other format supported by zbarimg
+
+Dependencies:
+  zbar-tools (zbarimg): apt install zbar-tools
+
+Examples:
+  iotstack matter decode-qr ~/qr-code.jpg
+  iotstack matter decode-qr ~/Downloads/device-qr.png
+  MT_PAYLOAD=$(iotstack matter decode-qr device.png)
+  iotstack matter commission "$(iotstack matter decode-qr device.png)"
+  iotstack matter commission MT:CUO000QV17VHCJ3.A00
+
+Help:
+  iotstack matter decode-qr help

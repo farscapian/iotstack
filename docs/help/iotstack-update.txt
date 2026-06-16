@@ -1,10 +1,8 @@
 iotstack update — Compile and flash device(s) over-the-air (OTA)
 
-Discovers devices on the network and flashes new firmware via OTA.
-Automatically detects which devices need updates by comparing build hashes
-(delta mode). Supports updating by role, specific devices by MAC address, all
-devices, or custom YAML configs. Compiles once and then flashes in parallel to
-multiple devices.
+Compiles firmware and flashes it to ESPHome devices over the network. Detects
+which devices need updates by build hash and can update by role, MAC, or all at
+once in parallel.
 
 Usage:
   iotstack update [options] [<device>|<yaml>|all]

@@ -1,22 +1,23 @@
-iotstack commission — Add Matter devices to your Thread network
+iotstack commission — Deprecated alias for matter commission
 
-Commissions a Matter device to your Thread network using a QR code image file.
-Automatically decodes the QR code, validates the device credentials,
-commissions via chip-tool, opens a commissioning window in Home Assistant, and
-adds the device for adoption. Stores device IDs sequentially in pass for
-tracking. Requires Thread network dataset and Home Assistant credentials
-configured in pass.
+Same as iotstack matter commission: commissions a Matter device onto Thread
+from a QR image or pairing code, then hands it off to Home Assistant. Prefer
+iotstack matter commission for new use.
 
 Required secrets (stored in pass):
   iotstack/common/thread_tlv          Thread network TLV data (hex)
   iotstack/common/ha_url              Home Assistant URL
   iotstack/common/ha_token            Home Assistant long-lived token
-  iotstack/matter/next_node_id        Auto-increment node ID (auto-initialized)
 
 Set secrets with:
   pass insert iotstack/common/thread_tlv
   pass insert iotstack/common/ha_url
   pass insert iotstack/common/ha_token
+
+chip-tool / Matter files (non-secret) under ~/.iotstack/chip-tool/
+  common/        fabric storage
+  common/trust/  attestation PAA/CD certs
+  paa-mirror/    vendor PAA index cache
 
 Dependencies:
   - zbar-tools (zbarimg): apt install zbar-tools
@@ -24,17 +25,22 @@ Dependencies:
   - curl, python3
 
 Usage:
-  iotstack commission <path-to-qr-image.jpg>
+  iotstack commission <path-to-qr-image>
+  iotstack commission <manual-pairing-code>
 
-How to use:
+How to use (QR image):
   1. Take a photo of the Matter QR code (phone, screenshot, etc.)
   2. Save the image (JPG, PNG, etc.)
   3. Run: iotstack commission /path/to/image.jpg
 
+How to use (manual pairing code):
+  1. Read the pairing code from the device label or packaging
+  2. Run: iotstack commission 0000-000-0000
+
 Examples:
   iotstack commission ~/qr-code.jpg
   iotstack commission ~/Downloads/device-qr.png
-  iotstack commission ./matter-qr.jpg
+  iotstack commission 1234-567-8901
 
 For detailed help, see:
   docs/help/iotstack-commission-detailed.txt

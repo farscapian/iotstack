@@ -1,0 +1,23 @@
+iotstack matter mdns — Check chip-tool operational mDNS
+
+Checks whether a device on the chip-tool Matter fabric is visible on this host
+via _matter._tcp (avahi-browse). Use after commissioning to confirm operational
+discovery before opening the HA handoff window.
+
+Usage:
+  iotstack matter mdns [node-id]
+
+Arguments:
+  [node-id]   Fabric node ID to look up (default: 1)
+
+The instance name is <compressed-fabric-id>-<16-digit-node-id>, saved after
+commission (e.g. 5FD0DB16AB3C3FBE-0000000000000001). This is separate from HA
+Matter instances (AC524104A0E54AC9-...).
+
+Examples:
+  iotstack matter mdns
+  iotstack matter mdns 1
+
+Help:
+  iotstack matter mdns help
+  iotstack matter help
