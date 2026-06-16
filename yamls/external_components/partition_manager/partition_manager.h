@@ -8,8 +8,8 @@ namespace partition_manager {
 
 // Centralizes the boot-partition logic shared by every device:
 //  - short press of the boot button  -> graceful restart (stays on same slot)
-//  - hold 3s+                         -> toggle to the other OTA slot
-//  - toggle_boot_partition()          -> validate target then switch (also
+//  - hold 3s+                         -> toggle to other OTA slot + immediate reboot
+//  - toggle_boot_partition()          -> validate target, switch, and reboot (also
 //                                        callable from a template button / HA)
 class PartitionManager : public Component {
  public:

@@ -11,7 +11,7 @@ static const char *const TAG = "partition";
 
 void PartitionManager::handle_button_press() {
   this->press_time_ = millis();
-  ESP_LOGI(TAG, "Boot button pressed - release to restart, or hold 3s to toggle boot partition");
+  ESP_LOGI(TAG, "Boot button pressed - release to restart, or hold 3s to switch partition and reboot");
 }
 
 void PartitionManager::handle_button_release() {
@@ -54,8 +54,9 @@ void PartitionManager::toggle_boot_partition() {
   }
 
   esp_ota_set_boot_partition(next);
-  ESP_LOGI(TAG, "Boot partition switched to: %s — %s v%s - restart to apply",
+  ESP_LOGI(TAG, "Boot partition switched to: %s — %s v%s - rebooting now",
            next->label, app_desc.project_name, app_desc.version);
+  App.safe_reboot();
 }
 
 void PartitionManager::boot_failsafe() {
