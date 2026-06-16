@@ -627,21 +627,12 @@ fi
 # IMPORTANT: Save original YAML name for caching (before temp file creation)
 ORIGINAL_YAML_FILE="$YAML_FILE"
 
-if [[ -n "$API_KEY" ]]; then
-  YAML_DIR="$(dirname "$YAML_FILE")"
-  YAML_BASENAME="$(basename "$YAML_FILE")"
-  TEMP_YAML="${YAML_DIR}/.temp-api-key-$$.${YAML_BASENAME}"
-
-  # Replace OTA password (for authentication of current device during upload)
-  # The API encryption key stays as-is (uses target device's key)
-  sed 's|password: !secret [^ ]*|password: '"$API_KEY"'|g' "$YAML_FILE" > "$TEMP_YAML"
-
-  # Use temp YAML for compilation and OTA
-  YAML_FILE="$TEMP_YAML"
-
-  # Clean up temp file on exit (expand $TEMP_YAML now, not at trap-run time)
-  # shellcheck disable=SC2064
-  trap "rm -f '$TEMP_YAML' 2>/dev/null; cleanup" EXIT
+# All secrets must come from NVS at runtime — !secret references in YAML are
+# forbidden. Catch them early so the build never silently embeds credentials.
+if grep -qE 'password:[[:space:]]+!secret[[:space:]]+\S' "$YAML_FILE"; then
+  err "$(basename "$YAML_FILE") contains '!secret' password references.
+All secrets must be stored in NVS (via write-nvs-secrets.sh), not in YAML files.
+Remove the 'password: !secret ...' line(s) and re-run."
 fi
 
 if ! [[ "$MAX_JOBS" =~ ^[1-9][0-9]*$ ]]; then
