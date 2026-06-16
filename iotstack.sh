@@ -290,7 +290,7 @@ smart_compile() {
 
   # Pass 1: compile against a generous failsafe partition so it definitely fits
   IOTSTACK_FAILSAFE_PART_SIZE="${IOTSTACK_FAILSAFE_PART_SIZE:-0x180000}" _update_partition_table_file
-  info "Compiling failsafe firmware (pass 1/2: measuring size)..."
+  info "Compiling failsafe-wifi firmware (pass 1/2: measuring size)..."
   _esphome_compile "$yaml_file" || return 1
 
   # Size the failsafe partition to the measured firmware, regenerate the table
@@ -303,7 +303,7 @@ smart_compile() {
 
   # Pass 2: recompile so partitions.bin reflects the exact table (app image is
   # cached/unchanged, so this only regenerates the partition binary)
-  info "Compiling failsafe firmware (pass 2/2: applying exact partition table)..."
+  info "Compiling failsafe-wifi firmware (pass 2/2: applying exact partition table)..."
   _esphome_compile "$yaml_file" || return 1
 
   local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
@@ -2089,7 +2089,7 @@ _boot_partition_usb() {
   local device="$1"
   local partition="$2"
 
-  # Device must be running failsafe firmware for this to work
+  # Device must be running failsafe-wifi firmware for this to work
   info "Toggling boot partition..."
   if timeout 5 curl -s -X POST "http://localhost:6053/api/services/button/press" \
     -H "Content-Type: application/json" \
@@ -2162,7 +2162,7 @@ _flash_recovery() {
   local tty_device="$1"
   local mac_return_file="${2:-}"
 
-  info "Flashing failsafe firmware (dual-partition setup)"
+  info "Flashing failsafe-wifi firmware (dual-partition setup)"
   echo ""
 
   local failsafe_yaml="$YAMLS_DIR/failsafe.yaml"
@@ -2195,10 +2195,10 @@ _flash_recovery() {
       ok "Build directory cleaned"
     fi
 
-    info "Compiling failsafe firmware..."
+    info "Compiling failsafe-wifi firmware..."
     smart_compile "$failsafe_yaml" "failsafe" || err "Compilation failed"
 
-    info "Uploading failsafe firmware to device..."
+    info "Uploading failsafe-wifi firmware to device..."
 
     # Create flash log directory
     local flash_log_dir="$HOME/.iotstack/logs/flash"
@@ -2211,7 +2211,7 @@ _flash_recovery() {
     python3 -m esptool --chip esp32c6 --port "$tty_device" --baud 9600 erase-flash 2>&1 | tee -a "$flash_log" >/dev/null || err "Erase failed"
     sleep 3  # Wait for erase to complete and device to stabilize
 
-    # Flash generic failsafe firmware and capture MAC
+    # Flash generic failsafe-wifi firmware and capture MAC
     local build_dir="$YAMLS_DIR/.esphome/build/failsafe/.pioenvs/failsafe"
     [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
 
@@ -2220,7 +2220,7 @@ _flash_recovery() {
     failsafe_offset=$(awk -F',' '/^failsafe[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
     [[ -z "$failsafe_offset" ]] && err "Could not find failsafe partition offset in: $PARTITION_TABLE"
 
-    info "Flashing failsafe firmware..."
+    info "Flashing failsafe-wifi firmware..."
     if [[ $VERBOSE -eq 1 ]]; then
       info "Detailed output:"
       info "tail -f $flash_log"
@@ -2279,7 +2279,7 @@ _flash_recovery() {
     # Device is functional if NVS secrets are readable by nvs_secrets component.
     echo ""
 
-    info "Device booting failsafe firmware..."
+    info "Device booting failsafe-wifi firmware..."
     info "(Failsafe firmware at 0x30000 - failsafe partition)"
     sleep 10
 
@@ -2314,7 +2314,7 @@ _flash_recovery() {
   # Confirm before flashing multiple devices
   confirm_multi_device ${#tty_devices[@]} "$(printf '%s\n' "${tty_devices[@]}")"
 
-  info "Compiling failsafe firmware..."
+  info "Compiling failsafe-wifi firmware..."
   if [[ $VERBOSE -eq 1 ]]; then
     esphome compile "$failsafe_yaml" || err "Compilation failed"
   else
@@ -2399,7 +2399,7 @@ _flash_recovery() {
   else
     ok "Failsafe firmware flashed to all ${#tty_devices[@]} device(s)"
     echo ""
-    info "Devices booting failsafe firmware..."
+    info "Devices booting failsafe-wifi firmware..."
     info "Waiting 15 seconds for devices to stabilize and connect..."
     sleep 15
   fi
@@ -2529,7 +2529,7 @@ _flash_production_smart() {
     local device_mac=""
     if [[ "$skip_recovery" != "--ota-only" ]]; then
       info "Fresh device detected (serial connection)"
-      info "Step 1: Flashing failsafe firmware..."
+      info "Step 1: Flashing failsafe-wifi firmware..."
       echo ""
       # Use a temp file so _flash_recovery runs without command substitution and
       # all its output (info/ok/esptool progress) is visible on the terminal.

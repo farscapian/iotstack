@@ -53,7 +53,7 @@ matter_resolve_onboarding_input() {
         return 1
     fi
 
-    MATTER_RESOLVED_PAYLOAD="${payload}"
-    MATTER_RESOLVED_INPUT_KIND="${kind}"
+    export MATTER_RESOLVED_PAYLOAD="${payload}"
+    export MATTER_RESOLVED_INPUT_KIND="${kind}"
     return 0
 }

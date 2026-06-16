@@ -269,7 +269,7 @@ _prune_chip_tool_storage_junk() {
         [[ -n "${base}" && -d "${base}" ]] || continue
         for name in "${_CHIP_TOOL_JUNK_NAMES[@]}"; do
             if [[ -e "${base}/${name}" || -L "${base}/${name}" ]]; then
-                rm -rf "${base}/${name}"
+                rm -rf "${base:?}/${name:?}"
             fi
         done
     done

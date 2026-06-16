@@ -71,7 +71,7 @@ run_chip_tool_capture() {
         set -e
     else
         set +e
-        run_chip_tool "$@" 2>&1 >"$tmp"
+        run_chip_tool "$@" >"$tmp" 2>&1
         status=$?
         set -e
         cat "$tmp"

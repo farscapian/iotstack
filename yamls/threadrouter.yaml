@@ -34,16 +34,18 @@ packages:
   boot_button: !include common/boot_button.yaml
 
 # Thread configuration.
-# No network_key or tlv is specified here deliberately: ESPHome passes nullptr
-# to esp_openthread_auto_start() when the dataset is empty, so the stack starts
-# in an unjoined state without crashing. nvs_secrets then applies the real
-# operational dataset from NVS (key: thread_tlv) at runtime via
-# otDatasetSetActiveTlvs(), and the device joins the Thread network.
-# force_dataset: false so a previously stored dataset is not clobbered before
-# nvs_secrets runs.
+# tlv: is a PLACEHOLDER complete dataset — all values are fake and will never
+# match any real Thread network. It exists only to satisfy ESPHome's config
+# validator (which requires network_key or tlv) and to give
+# esp_openthread_auto_start() a syntactically valid TLV so the stack starts
+# without crashing. nvs_secrets then applies the REAL operational dataset from
+# NVS (key: thread_tlv) at runtime via otDatasetSetActiveTlvs(), and the
+# device joins the real Thread network.
+# force_dataset: false so a previously stored real dataset is not clobbered.
 openthread:
   device_type: FTD
   force_dataset: false
+  tlv: "0e080000000000000001000300000f0102beef0208dead00beef00cafe0314696f74737461636b2d706c616365686f6c646572041000000000000000000000000000000000051000112233445566778899aabbccddeeff0708fd112233445566770c0402a0f8ff"
 
 # 3. Network — required for IPv6/Thread
 network:

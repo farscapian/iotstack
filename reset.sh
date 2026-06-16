@@ -21,6 +21,7 @@ RST='\033[0m'
 info() { echo -e "${YLW}[INFO]${RST} $*"; }
 ok()   { echo -e "${GRN}[OK]${RST} $*"; }
 warn() { echo -e "${YLW}[WARN]${RST} $*"; }
+err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
 
 usage() {
     sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
