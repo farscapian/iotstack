@@ -1,0 +1,30 @@
+# Symlink to ~/.otbr/ data home (local convenience; not shared)
+.otbr
+
+# Legacy data dirs — now live in ~/.otbr/ but may still exist here from before migration
+cache/
+artifacts/
+logs/
+
+test-vm/vm-disk.qcow2
+test-vm/seed.iso
+test-vm/uefi-vars.fd
+test-vm/uefi-code.fd
+test-vm/user-data.yaml
+test-vm/test-vm-key
+test-vm/test-vm-key.pub
+
+# Syncthing conflict files
+*.sync-conflict-*
+
+# Active working env (may contain secrets); example *.env files are committed
+*.env
+
+# IDE / AI assistant
+.vscode/
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo

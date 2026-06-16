@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <!-- Background -->
+  <rect width="128" height="128" fill="#f5f5f5" rx="24"/>
+
+  <!-- Thread mesh network icon -->
+  <g fill="none" stroke="#2563eb" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Central node -->
+    <circle cx="64" cy="64" r="12" fill="#2563eb"/>
+
+    <!-- Surrounding nodes -->
+    <circle cx="32" cy="32" r="8" stroke="#2563eb" fill="none"/>
+    <circle cx="96" cy="32" r="8" stroke="#2563eb" fill="none"/>
+    <circle cx="32" cy="96" r="8" stroke="#2563eb" fill="none"/>
+    <circle cx="96" cy="96" r="8" stroke="#2563eb" fill="none"/>
+    <circle cx="64" cy="24" r="8" stroke="#2563eb" fill="none"/>
+    <circle cx="64" cy="104" r="8" stroke="#2563eb" fill="none"/>
+
+    <!-- Connection lines from center -->
+    <line x1="64" y1="64" x2="32" y2="32"/>
+    <line x1="64" y1="64" x2="96" y2="32"/>
+    <line x1="64" y1="64" x2="32" y2="96"/>
+    <line x1="64" y1="64" x2="96" y2="96"/>
+    <line x1="64" y1="64" x2="64" y2="24"/>
+    <line x1="64" y1="64" x2="64" y2="104"/>
+
+    <!-- Border connections -->
+    <line x1="32" y1="32" x2="96" y2="32"/>
+    <line x1="32" y1="96" x2="96" y2="96"/>
+  </g>
+</svg>

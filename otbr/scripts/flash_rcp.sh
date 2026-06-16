@@ -1,0 +1,275 @@
+#!/usr/bin/env bash
+# Build ot_rcp firmware from ESP-IDF source and flash onto an ESP32-C6.
+#
+# Usage
+#   flash_rcp.sh [--port <tty>] [--force]
+#
+# Options
+#   --port <tty>   Serial port to flash (default: auto-detect first
+#                  /dev/ttyACM* with USB idVendor=303a)
+#   --force        Force a clean rebuild and flash even if the binary
+#                  matches the cached copy
+#
+# Environment variables (all optional with sensible defaults)
+#   IDF_DIR          Path to the ESP-IDF clone
+#                    default: ~/.otbrstack/cache/esp-idf
+#   IDF_TOOLS_PATH   Path where esp-idf stores downloaded toolchains
+#                    default: ~/.espressif  (esp-idf default)
+#   RCP_BIN_CACHE    Path used to track the last-flashed binary
+#                    (sha256 comparison skips unnecessary reflashes)
+#                    default: ~/.otbrstack/cache/esp32/rcp/esp_ot_rcp.bin
+#
+# Exit codes
+#   0  success (flashed or already up to date)
+#   1  error
+
+set -euo pipefail
+
+# Forward HTTP_PROXY (otbr's project variable) to the lowercase env vars
+# that git and curl actually read.  No-op when HTTP_PROXY is unset.
+if [[ -n "${HTTP_PROXY:-}" && -z "${https_proxy:-}" ]]; then
+    export http_proxy="$HTTP_PROXY" https_proxy="$HTTP_PROXY"
+fi
+
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_PORT=""
+_FORCE=0
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --port)  _PORT="$2"; shift 2 ;;
+        --force) _FORCE=1;   shift   ;;
+        *) echo "[flash-rcp] Unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+
+_OTBR_HOME="${OTBR_HOME:-${HOME}/.otbrstack}"
+IDF_DIR="${IDF_DIR:-${_OTBR_HOME}/cache/esp-idf}"
+IDF_TOOLS_PATH="${IDF_TOOLS_PATH:-${HOME}/.espressif}"
+RCP_BIN_CACHE="${RCP_BIN_CACHE:-${_OTBR_HOME}/cache/esp32/rcp/esp_ot_rcp.bin}"
+# Staged binary pre-loaded at flash time — used only to restore the build
+# artefact without a full rebuild.  Separate from RCP_BIN_CACHE so that the
+# flash-skip decision (cache == last-flashed) is not spoofed by the pre-load.
+RCP_BIN_STAGED="${RCP_BIN_STAGED:-/var/lib/otbr/esp_ot_rcp_staged.bin}"
+
+log() { echo "[flash-rcp] $*"; }
+die() { echo "[flash-rcp] ERROR: $*" >&2; exit 1; }
+
+# ---------------------------------------------------------------------------
+# Port detection
+# ---------------------------------------------------------------------------
+if [[ -z "$_PORT" ]]; then
+    for _dev in /dev/ttyACM*; do
+        [[ -c "$_dev" ]] || continue
+        _base=$(basename "$_dev")
+        _link=$(readlink -f "/sys/class/tty/${_base}/device" 2>/dev/null) || true
+        _usb="$_link"
+        while [[ -n "$_usb" && "$_usb" != "/" && ! -f "$_usb/idVendor" ]]; do
+            _usb=$(dirname "$_usb")
+        done
+        if [[ -f "$_usb/idVendor" ]] && [[ "$(cat "$_usb/idVendor")" == "303a" ]]; then
+            _PORT="$_dev"
+            log "Auto-detected ESP32-C6 at $_PORT"
+            break
+        fi
+    done
+    [[ -n "$_PORT" ]] || die "No ESP32-C6 found (idVendor=303a on /dev/ttyACM*)"
+fi
+
+# ---------------------------------------------------------------------------
+# 1. Ensure ESP-IDF is cloned/updated to latest stable release tag
+# ---------------------------------------------------------------------------
+_src_changed=0
+export IDF_TOOLS_PATH
+
+if [[ "${PULL_LATEST_REPOS:-1}" -eq 0 ]]; then
+    # Skip all git network ops — use whatever is pre-seeded or installed.
+    if [[ -d "$IDF_DIR" ]]; then
+        _idf_tag=$(git -C "$IDF_DIR" describe --tags --exact-match 2>/dev/null \
+            || git -C "$IDF_DIR" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+        log "PULL_LATEST_REPOS=0 — skipping ESP-IDF update; using: ${_idf_tag}"
+    else
+        die "PULL_LATEST_REPOS=0 but no ESP-IDF found at ${IDF_DIR}"
+    fi
+else
+    log "Resolving latest ESP-IDF release tag ..."
+    _idf_tag=$(git ls-remote --tags --sort=-v:refname \
+        https://github.com/espressif/esp-idf.git 'v[0-9]*' 2>/dev/null \
+        | grep -oE $'\trefs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' \
+        | head -1 | sed 's|.*refs/tags/||') || true
+
+    if [[ -z "$_idf_tag" ]]; then
+        # GitHub unreachable (SSL failure, clock skew, no network).
+        # Fall back to the installed clone so the rest of the script can still
+        # verify firmware currency and skip flashing if nothing changed.
+        if [[ -d "$IDF_DIR" ]]; then
+            _idf_tag=$(git -C "$IDF_DIR" describe --tags --exact-match 2>/dev/null \
+                || git -C "$IDF_DIR" rev-parse --short HEAD 2>/dev/null || echo "")
+            [[ -n "$_idf_tag" ]] \
+                || die "GitHub unreachable and cannot determine installed ESP-IDF version"
+            log "GitHub unreachable — using installed ESP-IDF version: ${_idf_tag}"
+        else
+            die "GitHub unreachable and no local ESP-IDF found at ${IDF_DIR}"
+        fi
+    else
+        log "Latest ESP-IDF release: $_idf_tag"
+    fi
+
+    if [[ ! -d "$IDF_DIR" ]]; then
+        log "Cloning ESP-IDF $_idf_tag into $IDF_DIR ..."
+        git clone --depth 1 --branch "$_idf_tag" --recurse-submodules --shallow-submodules \
+            https://github.com/espressif/esp-idf.git "$IDF_DIR"
+        "${IDF_DIR}/install.sh" esp32c6
+        _src_changed=1
+    else
+        _idf_cur=$(git -C "$IDF_DIR" describe --tags --exact-match 2>/dev/null \
+            || git -C "$IDF_DIR" rev-parse --short HEAD)
+        if [[ "$_idf_cur" != "$_idf_tag" ]]; then
+            log "Updating ESP-IDF: $_idf_cur → $_idf_tag"
+            git -C "$IDF_DIR" fetch --depth 1 origin tag "$_idf_tag"
+            git -C "$IDF_DIR" -c advice.detachedHead=false checkout "$_idf_tag"
+            git -C "$IDF_DIR" submodule update --init --recursive --depth 1
+            "${IDF_DIR}/install.sh" esp32c6
+            _src_changed=1
+        else
+            log "ESP-IDF already at $_idf_tag."
+        fi
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 1.5. Ensure ESP-IDF tools (Python venv + toolchains) are installed.
+#      PULL_LATEST_REPOS=0 skips install.sh; run it here when the venv is
+#      absent so that export.sh succeeds on SKIP_CHROOT=1 flash targets.
+# ---------------------------------------------------------------------------
+if ! ls "${IDF_TOOLS_PATH}/python_env"/*/bin/python3 &>/dev/null; then
+    log "ESP-IDF Python venv not found — running install.sh esp32c6 (one-time setup) ..."
+    "${IDF_DIR}/install.sh" esp32c6
+fi
+
+_ot_rcp_dir="${IDF_DIR}/examples/openthread/ot_rcp"
+[[ -d "$_ot_rcp_dir" ]] || die "ot_rcp example not found at $_ot_rcp_dir"
+
+# ---------------------------------------------------------------------------
+# 2. Write sdkconfig overrides; force rebuild when they change
+#
+#    SDKCONFIG_DEFAULTS is only applied when sdkconfig is absent.
+#    idf.py set-target is a no-op when the target already matches, so a
+#    stale sdkconfig silently ignores updated defaults.  Track a sha256 of
+#    the overrides file and delete sdkconfig whenever it changes so
+#    set-target regenerates it from scratch.
+# ---------------------------------------------------------------------------
+_defaults_file="${_ot_rcp_dir}/sdkconfig.defaults.otbr"
+_defaults_hash_file="${_ot_rcp_dir}/sdkconfig.defaults.otbr.sha256"
+
+cat > "$_defaults_file" <<'SDKEOF'
+# Required for ESP32-C6 USB JTAG RCP (generated by otbr)
+#
+# ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG must be enabled first —
+# OPENTHREAD_RCP_USB_SERIAL_JTAG has a hard Kconfig dependency on it.
+# Without this, the USB JTAG RCP option is silently ignored and the
+# firmware falls back to UART for Spinel (no response on /dev/ttyACM0).
+CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y
+CONFIG_OPENTHREAD_RCP_USB_SERIAL_JTAG=y
+CONFIG_OPENTHREAD_RADIO=y
+CONFIG_OPENTHREAD_RADIO_NATIVE=y
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=n
+SDKEOF
+
+_new_hash=$(sha256sum "$_defaults_file" | awk '{print $1}')
+_old_hash=""
+[[ -f "$_defaults_hash_file" ]] && _old_hash=$(cat "$_defaults_hash_file")
+
+if [[ "$_new_hash" != "$_old_hash" ]]; then
+    log "sdkconfig overrides changed — forcing clean rebuild."
+    rm -f "${_ot_rcp_dir}/sdkconfig"
+    _src_changed=1
+fi
+
+if [[ "$_FORCE" -eq 1 && "$_src_changed" -eq 0 ]]; then
+    log "Force-flash requested — deleting stale sdkconfig and rebuilding."
+    rm -f "${_ot_rcp_dir}/sdkconfig"
+    _src_changed=1
+fi
+
+# ---------------------------------------------------------------------------
+# 3. Build if source/config changed or no prior build exists
+# ---------------------------------------------------------------------------
+_built="${_ot_rcp_dir}/build/esp_ot_rcp.bin"
+
+if [[ "$_src_changed" -eq 1 || ! -f "$_built" ]]; then
+    # Optimisation: if source is unchanged, restore the build artefact instead
+    # of rebuilding from scratch.  Prefer the flash cache (tracks what the
+    # device currently has); fall back to the staged binary pre-loaded at flash
+    # time (separate path so it doesn't spoof the flash-skip decision).
+    if [[ "$_src_changed" -eq 0 && -f "$RCP_BIN_CACHE" ]]; then
+        log "Source unchanged — restoring binary from cache (skipping rebuild)."
+        mkdir -p "$(dirname "$_built")"
+        cp "$RCP_BIN_CACHE" "$_built"
+    elif [[ "$_src_changed" -eq 0 && -f "$RCP_BIN_STAGED" ]]; then
+        log "Source unchanged — restoring binary from staged pre-load (skipping rebuild)."
+        mkdir -p "$(dirname "$_built")"
+        cp "$RCP_BIN_STAGED" "$_built"
+    else
+        log "Building ot_rcp for esp32c6 ..."
+        (
+            set -euo pipefail
+            export IDF_TOOLS_PATH
+            # shellcheck disable=SC1091
+            source "${IDF_DIR}/export.sh"
+            set -euo pipefail
+            cd "$_ot_rcp_dir"
+            export SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.defaults.otbr"
+            idf.py set-target esp32c6
+            idf.py build
+        )
+    fi
+    echo "$_new_hash" > "$_defaults_hash_file"
+else
+    log "Source unchanged — skipping rebuild."
+fi
+
+[[ -f "$_built" ]] || die "Build failed — $_built not found."
+
+# ---------------------------------------------------------------------------
+# 4. Flash if the built binary differs from the cached copy (or forced)
+#
+#    The cache records what was last flashed, not that the device has it.
+#    force=1 always flashes (used when Spinel probe already confirmed the
+#    device is unresponsive).
+# ---------------------------------------------------------------------------
+_do_flash=0
+if [[ "$_FORCE" -eq 1 ]]; then
+    log "Forcing flash."
+    _do_flash=1
+elif [[ ! -f "$RCP_BIN_CACHE" ]]; then
+    _do_flash=1
+else
+    _sum_built=$(sha256sum "$_built"        | awk '{print $1}')
+    _sum_cache=$(sha256sum "$RCP_BIN_CACHE" | awk '{print $1}')
+    if [[ "$_sum_built" != "$_sum_cache" ]]; then
+        log "Firmware changed — reflashing device."
+        _do_flash=1
+    else
+        log "Firmware up to date — skipping flash."
+    fi
+fi
+
+if [[ "$_do_flash" -eq 1 ]]; then
+    log "Flashing $_PORT (bootloader + partition table + app) ..."
+    (
+        set -euo pipefail
+        export IDF_TOOLS_PATH
+        # shellcheck disable=SC1091
+        source "${IDF_DIR}/export.sh"
+        set -euo pipefail
+        cd "$_ot_rcp_dir"
+        idf.py -p "$_PORT" flash
+    )
+    mkdir -p "$(dirname "$RCP_BIN_CACHE")"
+    cp "$_built" "$RCP_BIN_CACHE"
+    log "Flash complete — waiting for USB re-enumeration ..."
+    sleep 8
+fi
+
+log "RCP firmware ready on $_PORT."
