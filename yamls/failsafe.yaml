@@ -4,8 +4,7 @@
 #
 # Key features:
 # - Works for ALL device roles (bleproxy, mmwave, threadrouter, etc.)
-# - Device-specific OTA password from NVS (unique per device)
-# - Device-specific API encryption key from NVS (unique per device)
+# - Device-specific OTA password from NVS (failsafe-derived, unique per device)
 # - Minimal functionality to save flash space
 # - Single firmware binary for all devices (secrets from NVS)
 # - Can OTA flash any production firmware back
@@ -67,15 +66,49 @@ wifi:
   ssid: "configured-via-nvs"  # Placeholder - overridden by nvs_secrets component
   password: "placeholder"      # Placeholder - overridden by nvs_secrets component
   power_save_mode: none
+  # Reboot if WiFi fails to connect within 3 minutes on any boot.
+  reboot_timeout: 3min
+  on_connect:
+    - lambda: |-
+        // Remove _esphomelib._tcp so HA does not auto-discover failsafe devices.
+        // iotstack finds failsafe devices via _iotstack-failsafe._tcp (see mdns: below).
+        mdns_service_remove("_esphomelib", "_tcp");
+
+# Advertise a failsafe-specific mDNS service so iotstack can discover failsafe
+# devices without Home Assistant auto-discovering and offering to onboard them.
+mdns:
+  services:
+    - service: "_iotstack-failsafe"
+      proto: "_tcp"
+      port: 6053
 
 api:
-  # API encryption key is set dynamically by nvs_secrets component from NVS
-  # No hardcoded key in firmware binary
+  # No API encryption key for failsafe — only iotstack tools connect to it.
+  # Production images use prod_api_key from NVS for HA API authentication.
+  services:
+    # Write new secrets to NVS without serial access.
+    # Pass only the keys you want to change; empty string = leave unchanged.
+    # Device reboots automatically after a successful commit so the new values
+    # take effect on the next boot.  Only exposed in failsafe firmware.
+    - service: update_nvs_secrets
+      variables:
+        wifi_ssid: string
+        wifi_password: string
+        ota_password: string
+        api_key: string
+        thread_tlv: string
+      then:
+        - lambda: |-
+            id(nvs).update_secrets(wifi_ssid, wifi_password, ota_password, api_key, thread_tlv);
+        - delay: 500ms
+        - lambda: |-
+            App.safe_reboot();
 
 # Custom NVS secrets component - loads device-specific secrets from NVS at startup
 # Handles: WiFi credentials, OTA password, API encryption key
 # All secrets are unique per device and stored in device flash (NVS partition)
-nvs_secrets: {}
+nvs_secrets:
+  id: nvs
 
 # OTA Configuration for failsafe partition
 # Password is dynamically set by nvs_secrets component from NVS
