@@ -37,6 +37,8 @@ esphome:
   project:
     name: "iotstack.${device_role}-${dev_status}"
     version: "1.0.1"
+  includes:
+    - mdns_remove.h
   on_boot:
     # Low priority (-100) runs AFTER all components have set up, so the
     # [nvs_secrets] setup() logs print first. The delay gives you time to
@@ -72,9 +74,6 @@ wifi:
     - lambda: |-
         // Remove _esphomelib._tcp so HA does not auto-discover failsafe devices.
         // iotstack finds failsafe devices via _iotstack-failsafe._tcp (see mdns: below).
-        // Forward-declare the ESP-IDF function: its header is only in the mDNS
-        // component's .cpp, not in the shared header available to this lambda.
-        extern "C" esp_err_t mdns_service_remove(const char *service_type, const char *proto);
         mdns_service_remove("_esphomelib", "_tcp");
 
 # Advertise a failsafe-specific mDNS service so iotstack can discover failsafe
