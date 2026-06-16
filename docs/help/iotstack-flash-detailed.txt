@@ -1,5 +1,8 @@
 iotstack flash — Additional Documentation
 
+Extended reference for iotstack flash: dual-partition layout, recovery vs
+production firmware, and serial flashing workflows.
+
 Dual-Partition OTA Architecture
 ================================
 

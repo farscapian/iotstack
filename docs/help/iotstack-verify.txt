@@ -1,9 +1,7 @@
 iotstack verify — Check if devices match the current build hash
 
-Discovers devices on the network and compares their firmware hash against the
-compiled build. Shows which devices are up-to-date and which need updates. Does
-not flash anything—purely informational. Useful for auditing your fleet before
-running updates or checking if devices are synchronized.
+Compares discovered devices against the current compiled build without flashing
+anything. Reports which devices are up to date and which still need an update.
 
 Usage:
   iotstack verify [<yaml>|all]

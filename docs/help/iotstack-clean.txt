@@ -1,9 +1,8 @@
 iotstack clean — Clean build artifacts and compilation caches
 
-Removes build directories, compiler caches, and old log files to free disk
-space or reset the build environment. Safe to run repeatedly—only removes
-generated artifacts, never source files. Useful when experiencing strange
-compilation errors, forcing a complete rebuild, or managing disk space.
+Removes generated build output, compiler caches, and old logs. Safe to rerun; it
+never deletes source files. Use when you need a full rebuild or to reclaim disk
+space.
 
 Removes:
   - ESPHome build directory (.esphome/build/)

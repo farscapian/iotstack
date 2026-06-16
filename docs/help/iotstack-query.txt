@@ -1,10 +1,7 @@
 iotstack query — Query Home Assistant device and entity registry
 
-Lists all devices and entities registered in Home Assistant, optionally
-filtered to a specific device. Shows all buttons, sensors, switches, and other
-entities associated with a device. Connects to Home Assistant via WebSocket API
-(requires websocat). Useful for verifying device integration and checking what
-controls are available in Home Assistant.
+Lists devices and entities in Home Assistant via the WebSocket API. Optionally
+filter to one device to see its sensors, switches, buttons, and other entities.
 
 Usage:
   iotstack query [<device-name>|--list]

@@ -1,10 +1,8 @@
 iotstack reassign — Flash specific devices to a different configuration
 
-Reassigns one or more devices (identified by MAC address) to a different role
-or YAML configuration. Flashes the target firmware to matched devices only,
-leaving others untouched. Automatically updates Home Assistant entity IDs to
-reflect the new device configuration. Useful for redeploying devices to
-different roles (e.g., WiFi BLE proxy → Thread router).
+Flashes one or more devices (by MAC address) to a different role or YAML config
+and updates Home Assistant entity IDs to match. Other devices on the network are
+left unchanged.
 
 Usage:
   iotstack reassign <MAC1> [MAC2 ...] <device|yaml> [options]

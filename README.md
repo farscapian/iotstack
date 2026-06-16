@@ -179,7 +179,6 @@ On your Linux machine running iotstack, you need:
 - **Python 3.8+**: For scripts and tools
 - **Bash 4.3+**: Shell scripting (standard on most Linux systems)
 - **avahi-utils**: For mDNS device discovery (`sudo apt install avahi-utils`)
-- **gocryptfs**: For encrypted secrets storage (installed by `setup.sh`)
 - **pass**: Password manager for role-based secrets (installed by `setup.sh`)
 
 ---

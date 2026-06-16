@@ -2,6 +2,7 @@
 archive/
 resources/esp32projects/  # Local clones of reference projects (not part of build)
 **/.temp-rename-*.yaml
+**/.temp-api-key-*.yaml
 .esphome/
 yamls/.esphome/
 yamls/iotstack_partition_table.csv  # Symlink to ~/.iotstack/iotstack_partition_table.csv (generated)

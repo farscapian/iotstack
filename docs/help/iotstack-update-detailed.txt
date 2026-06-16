@@ -1,5 +1,8 @@
 iotstack update — Additional Documentation
 
+Extended reference for iotstack update: OTA password handling, parallel flashing
+behavior, and troubleshooting beyond the built-in help summary.
+
 SECURITY: OTA Password Best Practices
 ======================================
 

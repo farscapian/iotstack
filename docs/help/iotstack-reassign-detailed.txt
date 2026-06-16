@@ -1,5 +1,8 @@
 iotstack reassign — Additional Documentation
 
+Extended reference for iotstack reassign: OTA password handling, Home Assistant
+entity updates, and redeploying devices to a new role.
+
 SECURITY: Password Handling Best Practices
 ===========================================
 

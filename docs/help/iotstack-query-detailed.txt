@@ -1,5 +1,8 @@
 iotstack query — Additional Documentation
 
+Extended reference for iotstack query: Home Assistant WebSocket setup,
+required secrets, and examples for inspecting device entities.
+
 Dependencies
 =============
 

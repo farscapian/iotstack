@@ -1,8 +1,7 @@
 iotstack devices — Show discovered ESPHome devices on network
 
-Lists all ESPHome devices discovered on the network via mDNS, optionally
-filtered by role or showing unmatched devices. Useful for checking which
-devices are currently online and what roles they're running.
+Lists ESPHome devices visible on the network via mDNS. Optionally filter by
+role or show devices that do not match any configured role.
 
 Usage:
   iotstack devices [role|other] [--id]
