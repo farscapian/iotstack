@@ -608,6 +608,7 @@ list_devices() {
   local output_format="${1:-text}"
   local filter_role="${2:-}"
   local suffix_only="${3:-false}"
+  local mdns_service="${4:-_esphomelib._tcp}"
   local current_hostname=""
   local current_friendly=""
   local current_project=""
@@ -644,20 +645,22 @@ list_devices() {
         current_hash=""
       fi
     fi
-  done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+  done < <(avahi-browse -t -r "$mdns_service" 2>/dev/null)
 
   # Sort and deduplicate
   sort -u "$device_data" > "${device_data}.sorted"
 
-  # Try to get Home Assistant area info.
+  # Try to get Home Assistant area info (only for production devices).
   # Normalize to a single JSON object: get_ha_device_areas can emit more than
   # one document (e.g. an empty "{}" plus a fallback "{}"), and a multi-doc
   # input makes the per-row `jq -r` lookups emit one line per document — which
   # would put an embedded newline into the area value and break table rows.
   local ha_areas="{}"
-  if get_ha_device_areas > /tmp/ha_areas.json 2>/dev/null; then
-    ha_areas=$(jq -cs 'reduce .[] as $o ({}; . * $o)' /tmp/ha_areas.json 2>/dev/null || echo '{}')
-    [[ -z "$ha_areas" ]] && ha_areas="{}"
+  if [[ "$mdns_service" == "_esphomelib._tcp" ]]; then
+    if get_ha_device_areas > /tmp/ha_areas.json 2>/dev/null; then
+      ha_areas=$(jq -cs 'reduce .[] as $o ({}; . * $o)' /tmp/ha_areas.json 2>/dev/null || echo '{}')
+      [[ -z "$ha_areas" ]] && ha_areas="{}"
+    fi
   fi
 
   # If ID-only mode, output device IDs in requested format
@@ -847,7 +850,11 @@ list_devices() {
       (( ${#hash} + margin > w_hash )) && w_hash=$(( ${#hash} + margin ))
     done < "${device_data}.sorted"
 
-    info "Discovered ESPHome devices on network:"
+    if [[ "$mdns_service" == "_esphomelib._tcp" ]]; then
+      info "Discovered ESPHome devices on network:"
+    else
+      info "Discovered failsafe devices on network:"
+    fi
     echo
 
     # Print headers with calculated widths (all left-aligned with %)
@@ -973,8 +980,11 @@ _wait_for_device() {
   local name="$1"
   local timeout="${2:-60}"
   local waited=0
+  # Failsafe devices advertise _iotstack-failsafe._tcp; production uses _esphomelib._tcp
+  local mdns_svc="_esphomelib._tcp"
+  [[ "$name" == failsafe-* ]] && mdns_svc="_iotstack-failsafe._tcp"
   while (( waited < timeout )); do
-    if avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "$name"; then
+    if avahi-browse -t -r "$mdns_svc" 2>/dev/null | grep -Fqi "$name"; then
       return 0
     fi
     sleep 2
@@ -1561,7 +1571,7 @@ cmd_list() {
         esac
         return 0
         ;;
-      devices|roles)
+      devices|roles|failsafe)
         subcommand="$1"
         shift
         # For devices subcommand, next argument might be a role filter
@@ -1580,11 +1590,14 @@ cmd_list() {
     devices)
       list_devices "$output_format" "$filter_role" "$suffix_only"
       ;;
+    failsafe)
+      list_devices "$output_format" "" "$suffix_only" "_iotstack-failsafe._tcp"
+      ;;
     roles)
       list_roles "$output_format" "$suffix_only"
       ;;
     *)
-      err "Unknown subcommand: $subcommand. Try 'iotstack devices' or 'iotstack roles'"
+      err "Unknown subcommand: $subcommand. Try 'iotstack devices', 'iotstack failsafe', or 'iotstack roles'"
       ;;
   esac
 }
@@ -2121,11 +2134,27 @@ _boot_partition_single() {
 }
 
 cmd_flash() {
-  # Handle help request
   if [[ "${1:-}" == "help" ]]; then
     help_flash
     return 0
   fi
+
+  # Parse flags
+  local LOG_FOR_CLAUDE=0
+  local _flash_positional=()
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --log-for-claude) LOG_FOR_CLAUDE=1 ; shift ;;
+      *) _flash_positional+=("$1") ; shift ;;
+    esac
+  done
+  export LOG_FOR_CLAUDE
+  if [[ ${#_flash_positional[@]} -gt 0 ]]; then
+    set -- "${_flash_positional[@]}"
+  else
+    set --
+  fi
+
   local device="${1:-}"
   local tty_device_or_role="${2:-}"
   local skip_recovery="${3:-}"
@@ -2159,8 +2188,11 @@ _flash_recovery() {
   # Flash recovery image via serial and return the device's MAC suffix.
   # When mac_return_file is provided the MAC is written there (allows calling
   # without command substitution so all user output reaches the terminal).
+  # production_role is passed to write-nvs-secrets.sh so both failsafe- and
+  # production-derived secrets are written to NVS in a single flash.
   local tty_device="$1"
   local mac_return_file="${2:-}"
+  local production_role="${3:-}"
 
   info "Flashing failsafe-wifi firmware (dual-partition setup)"
   echo ""
@@ -2204,7 +2236,13 @@ _flash_recovery() {
     local flash_log_dir="$HOME/.iotstack/logs/flash"
     mkdir -p "$flash_log_dir"
     local flash_log
-    flash_log="$flash_log_dir/$(date +%Y%m%d_%H%M%S).log"
+    if [[ "${LOG_FOR_CLAUDE:-0}" -eq 1 ]]; then
+      flash_log="$HOME/.iotstack/logs/iotstack-flash.log"
+      : > "$flash_log"
+      info "Flash log (for Claude): $flash_log"
+    else
+      flash_log="$flash_log_dir/$(date +%Y%m%d_%H%M%S).log"
+    fi
 
     # Erase flash completely to handle devices with incompatible firmware (RCP, etc.)
     info "Erasing flash memory..."
@@ -2244,44 +2282,36 @@ _flash_recovery() {
     ok "Failsafe firmware flashed to: $device_mac"
     echo ""
 
-    # Compute device-specific OTA password from role-based secret
-    # sha256(role_secret | device_mac) - never stored, computed in-memory only
-    local failsafe_role_password
-    failsafe_role_password=$(pass show "iotstack/roles/failsafe/ota_password" 2>/dev/null)
-    if [[ -z "$failsafe_role_password" ]]; then
-      info "Failsafe role OTA password not found, generating..."
-      failsafe_role_password=$(openssl rand -hex 16)
-      # Store it in pass
-      { echo "$failsafe_role_password"; echo "$failsafe_role_password"; } | \
-        pass insert -f "iotstack/roles/failsafe/ota_password" 2>/dev/null || \
-        err "Failed to store failsafe OTA password in pass"
-      ok "Failsafe OTA password generated and stored"
-    fi
-
-    local device_specific_ota_password
-    device_specific_ota_password=$(echo -n "${failsafe_role_password}|${device_mac}" | sha256sum | cut -c1-32)
-
     # Wait for device to fully boot before writing NVS
     info "Waiting for device to boot..."
     sleep 5
 
-    # Write device-specific secrets to NVS partition
-    # Firmware reads these via custom NVS components
+    # Write device-specific secrets to NVS partition.
+    # write-nvs-secrets.sh derives the failsafe OTA password internally and also
+    # writes production-role secrets when production_role is non-empty.
     info "Writing device-specific secrets to NVS..."
-    if ! "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "failsafe" "$device_specific_ota_password"; then
+    if ! "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "$production_role"; then
       err "Failed to write NVS secrets to device"
     fi
     ok "NVS secrets written successfully"
     sleep 2  # Let device stabilize after NVS write
 
-    # Note: Flash verification skipped - esptool already verified write integrity
-    # during flash operation ("Hash of data verified" message above).
-    # Device is functional if NVS secrets are readable by nvs_secrets component.
     echo ""
 
-    info "Device booting failsafe-wifi firmware..."
-    info "(Failsafe firmware at 0x30000 - failsafe partition)"
-    sleep 10
+    if [[ "${LOG_FOR_CLAUDE:-0}" -eq 1 ]]; then
+      local claude_device_log="$HOME/.iotstack/logs/esp32_device.log"
+      info "Recording device boot log to: $claude_device_log"
+      info "Capturing 90s of serial output (Ctrl-C to stop early)..."
+      local py
+      py=$(head -1 "$(command -v esphome)" 2>/dev/null | sed 's/^#!//')
+      [[ -x "$py" ]] || py="python3"
+      timeout 90 "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" "$tty_device" | tee "$claude_device_log" || true
+      ok "Device log saved to: $claude_device_log"
+    else
+      info "Device booting failsafe-wifi firmware..."
+      info "(Failsafe firmware at 0x30000 - failsafe partition)"
+      sleep 10
+    fi
 
     # Return the MAC suffix for later reassignment
     if [[ -n "$mac_return_file" ]]; then
@@ -2332,18 +2362,6 @@ _flash_recovery() {
   failsafe_offset=$(awk -F',' '/^failsafe[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
   [[ -z "$failsafe_offset" ]] && err "Could not find failsafe partition offset in: $PARTITION_TABLE"
 
-  # Get failsafe OTA password (needed for all devices)
-  local failsafe_role_password
-  failsafe_role_password=$(pass show "iotstack/roles/failsafe/ota_password" 2>/dev/null)
-  if [[ -z "$failsafe_role_password" ]]; then
-    info "Failsafe role OTA password not found, generating..."
-    failsafe_role_password=$(openssl rand -hex 16)
-    { echo "$failsafe_role_password"; echo "$failsafe_role_password"; } | \
-      pass insert -f "iotstack/roles/failsafe/ota_password" 2>/dev/null || \
-      err "Failed to store failsafe OTA password in pass"
-    ok "Failsafe OTA password generated and stored"
-  fi
-
   local failed=0
   for tty in "${tty_devices[@]}"; do
     local log_file
@@ -2373,13 +2391,9 @@ _flash_recovery() {
         # Wait for device to boot
         sleep 5
 
-        # Compute device-specific OTA password
-        local device_specific_ota_password
-        device_specific_ota_password=$(echo -n "${failsafe_role_password}|${device_mac}" | sha256sum | cut -c1-32)
-
-        # Write NVS secrets
+        # Write NVS secrets; write-nvs-secrets.sh derives passwords internally
         info "Writing NVS secrets to $tty ($device_mac)..."
-        if "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty" "$device_mac" "failsafe" "$device_specific_ota_password"; then
+        if "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty" "$device_mac" "$production_role"; then
           ok "NVS secrets written to $device_mac"
         else
           warn "Failed to write NVS secrets to $device_mac (continuing anyway)"
@@ -2417,13 +2431,13 @@ _flash_recovery_dual() {
   info "Step 2: Reassigning devices to $production_role firmware via OTA..."
   echo ""
 
-  # Discover recovery devices
+  # Discover recovery devices (failsafe advertises _iotstack-failsafe._tcp)
   local recovery_macs=()
   while IFS= read -r line; do
     if [[ "$line" =~ failsafe-([0-9a-f]+) ]]; then
       recovery_macs+=("${BASH_REMATCH[1]}")
     fi
-  done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+  done < <(avahi-browse -t -r _iotstack-failsafe._tcp 2>/dev/null)
 
   if [[ ${#recovery_macs[@]} -eq 0 ]]; then
     err "No recovery devices found on network. Check WiFi connection."
@@ -2443,13 +2457,13 @@ _flash_recovery_dual() {
   info "Toggling boot partition to production firmware..."
   echo ""
 
-  # Discover recovery devices and toggle them
+  # Discover recovery devices and toggle them (failsafe advertises _iotstack-failsafe._tcp)
   local recovery_devices=()
   while IFS= read -r line; do
     if [[ "$line" =~ failsafe-([0-9a-f]+) ]]; then
       recovery_devices+=("${BASH_REMATCH[1]}")
     fi
-  done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+  done < <(avahi-browse -t -r _iotstack-failsafe._tcp 2>/dev/null)
 
   if [[ ${#recovery_devices[@]} -gt 0 ]]; then
     # Try to toggle via Home Assistant first
@@ -2535,7 +2549,7 @@ _flash_production_smart() {
       # all its output (info/ok/esptool progress) is visible on the terminal.
       local _mac_file
       _mac_file=$(mktemp)
-      _flash_recovery "$tty_device" "$_mac_file"
+      _flash_recovery "$tty_device" "$_mac_file" "$device"
       device_mac=$(tr -d '[:space:]' < "$_mac_file")
       rm -f "$_mac_file"
       echo ""
@@ -2576,7 +2590,10 @@ _flash_production_smart() {
 
       if [[ "$found" != "true" ]]; then
         err "Failsafe device (failsafe-$device_mac) OTA service not reachable after ${max_wait}s.
-Check 'iotstack devices' (is failsafe-$device_mac listed?) and 'iotstack logs /dev/ttyACM0'."
+The device is likely unable to connect to WiFi.
+It will auto-reboot in ~3 minutes to retry WiFi. Once it connects, run:
+  iotstack update $device
+Or monitor it now: iotstack logs /dev/ttyACM0"
       fi
 
       ok "failsafe-$device_mac OTA service is up; starting production OTA..."
@@ -3104,6 +3121,10 @@ main() {
       shift
       cmd_list devices "$@"
       ;;
+    failsafe)
+      shift
+      cmd_list failsafe "$@"
+      ;;
     roles)
       shift
       cmd_list roles "$@"
@@ -3162,6 +3183,7 @@ main() {
           verify)           help_verify ;;
           reassign)         help_reassign ;;
           devices)          help_devices ;;
+          failsafe)         help_devices ;;
           roles)            help_roles ;;
           flash)            help_flash ;;
           logs)             help_logs ;;
