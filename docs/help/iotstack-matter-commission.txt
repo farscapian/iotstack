@@ -1,0 +1,74 @@
+iotstack matter commission — Add Matter devices to your Thread network
+
+Commissions a Matter device onto your Thread network from a QR image, an MT:
+setup payload string, or a manual pairing code (0000-000-0000), then opens a
+commissioning window so Home Assistant can adopt it on the HA Matter fabric.
+
+Configure attestation trust anchors first:
+  iotstack matter configure-trust-store
+
+Required secrets (stored in pass):
+  iotstack/common/thread_tlv          Thread network TLV data (hex)
+  iotstack/common/ha_url              Home Assistant URL
+  iotstack/common/ha_token            Home Assistant long-lived token
+
+Set secrets with:
+  pass insert iotstack/common/thread_tlv
+  pass insert iotstack/common/ha_url
+  pass insert iotstack/common/ha_token
+
+chip-tool / Matter files (non-secret) under ~/.iotstack/chip-tool/:
+  common/        fabric storage (--storage-directory)
+  common/trust/  PAA/CD attestation anchors (*.der)
+  paa-mirror/    connectedhomeip PAA index (scripts only)
+
+When chip-tool is installed via snap:
+  ~/.iotstack/chip-tool -> ~/snap/chip-tool
+Trust lives under common/trust/ so the confined binary can read *.der certs.
+
+Dependencies:
+  - zbar-tools (zbarimg): apt install zbar-tools
+  - chip-tool: https://github.com/project-chip/connectedhomeip
+  - curl, python3, openssl
+
+Usage:
+  iotstack matter commission [-f] [-v] <path-to-qr-image>
+  iotstack matter commission [-f] [-v] <manual-pairing-code>
+  iotstack matter commission [-f] [-v] <MT:payload>
+  iotstack -v matter commission <manual-pairing-code>
+
+  -f, --force     Reset chip-tool local fabric and commission from scratch.
+                  Use after factory-resetting a device that still appears in
+                  chip-tool storage (skips the "already on fabric" shortcut).
+  -v, --verbose   Stream chip-tool log output as it occurs (default: show
+                  output only after each chip-tool step completes)
+
+How to use (QR image):
+  1. Take a photo of the Matter QR code (phone, screenshot, etc.)
+  2. Save the image (JPG, PNG, etc.)
+  3. Run: iotstack matter commission /path/to/image.jpg
+
+How to use (manual pairing code):
+  1. Configure trust store if needed: iotstack matter configure-trust-store
+  2. Read the pairing code from the device label or packaging
+  3. Run: iotstack matter commission 0000-000-0000
+
+How to use (MT: payload from decode-qr or device label):
+  1. iotstack matter decode-qr ~/qr-code.jpg
+  2. iotstack matter commission MT:CUO000QV17VHCJ3.A00
+  Or: iotstack matter commission "$(iotstack matter decode-qr ~/qr-code.jpg)"
+
+Examples:
+  iotstack matter commission ~/qr-code.jpg
+  iotstack matter commission ~/Downloads/device-qr.png
+  iotstack matter commission MT:CUO000QV17VHCJ3.A00
+  iotstack matter commission "$(iotstack matter decode-qr device.png)"
+  iotstack matter commission 1234-567-8901
+  iotstack matter commission -v 0167-951-2626
+  iotstack matter commission -f -v 0167-951-2626
+
+Help:
+  iotstack matter commission help
+
+For detailed help, see:
+  docs/help/iotstack-commission-detailed.txt
