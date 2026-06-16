@@ -79,7 +79,7 @@ wifi:
 mdns:
   services:
     - service: "_iotstack-failsafe"
-      proto: "_tcp"
+      protocol: "_tcp"
       port: 6053
 
 api:
