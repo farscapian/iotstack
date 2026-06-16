@@ -403,10 +403,6 @@ button:
     on_press:
       - script.execute: button_slave2_press
 
-  - platform: safe_mode
-    name: "Safe Mode"
-    entity_category: config
-
   - platform: restart
     name: "Restart"
     entity_category: config

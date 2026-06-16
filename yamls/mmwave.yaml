@@ -312,13 +312,7 @@ button:
   - platform: restart
     id: restart_btn
     internal: true
-  - platform: safe_mode
-    id: safe_mode_btn
-    internal: true
   # "Restart" and "Toggle Boot Partition" buttons come from partition_mgmt package
-  - platform: safe_mode
-    name: "Safe Mode"
-    entity_category: config
   - platform: factory_reset
     name: "Factory Reset"
     entity_category: config

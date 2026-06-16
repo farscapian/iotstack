@@ -87,8 +87,6 @@ sensor:
     entity_category: diagnostic
 
 button:
-  - platform: safe_mode
-    name: "Restart in Safe Mode"
   - platform: factory_reset
     name: "Factory Reset"
   # "Restart" and "Toggle Boot Partition" buttons come from partition_mgmt package

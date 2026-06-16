@@ -71,11 +71,7 @@ sensor:
     update_interval: 60s
     entity_category: diagnostic
 
-button:
-  # "Restart" and "Toggle Boot Partition" buttons come from partition_mgmt package
-  - platform: safe_mode
-    name: "Reboot to Safe Mode"
-    entity_category: diagnostic
+# Buttons: "Restart" and "Toggle Boot Partition" come from partition_mgmt package.
 
 light:
   # Status LED on GPIO21 (user LED)
