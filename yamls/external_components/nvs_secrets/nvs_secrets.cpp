@@ -5,6 +5,7 @@
 
 #ifdef USE_WIFI
 #include "esphome/components/wifi/wifi_component.h"
+#include "esp_wifi.h"
 #endif
 
 #ifdef USE_OPENTHREAD
@@ -78,8 +79,9 @@ void NVSSecrets::setup() {
 
   wifi_ssid_ = read_nvs_string("wifi_ssid");
   wifi_password_ = read_nvs_string("wifi_password");
-  ota_password_ = read_nvs_string("ota_password");
-  api_encryption_key_ = read_nvs_string("api_key");
+  ota_password_ = read_nvs_string(ota_nvs_key_.c_str());
+  if (!api_nvs_key_.empty())
+    api_encryption_key_ = read_nvs_string(api_nvs_key_.c_str());
   thread_tlv_ = read_nvs_string("thread_tlv");
 
   if (!wifi_ssid_.empty()) {
@@ -98,6 +100,13 @@ void NVSSecrets::setup() {
     if (wifi::global_wifi_component != nullptr) {
       ESP_LOGI(TAG, "[NVS] Applying WiFi credentials from NVS to WiFi component (SSID: %s)", wifi_ssid_.c_str());
       wifi::global_wifi_component->save_wifi_sta(wifi_ssid_, wifi_password_);
+      // WiFi (priority 250) started connecting with the YAML placeholder before
+      // this ran (priority 200). save_wifi_sta() saved the real credentials and
+      // set connect_soon_(), but the state machine stays in its retry cycle until
+      // the current attempt resolves — which can take minutes in RETRY_HIDDEN.
+      // esp_wifi_disconnect() forces an immediate DISCONNECTED event so the
+      // machine idles and picks up connect_soon_() on the next loop() call.
+      esp_wifi_disconnect();
     } else {
       ESP_LOGW(TAG, "[NVS] WiFi component unavailable; cannot apply NVS credentials");
     }
@@ -162,14 +171,49 @@ void NVSSecrets::apply_thread_dataset_() {
 #endif
 }
 
+void NVSSecrets::write_nvs_string(nvs_handle_t handle, const char* key, const std::string &value) {
+  if (value.empty())
+    return;
+  esp_err_t err = nvs_set_str(handle, key, value.c_str());
+  if (err != ESP_OK)
+    ESP_LOGW(TAG, "[NVS-UPDATE] write '%s' failed: %s", key, esp_err_to_name(err));
+  else
+    ESP_LOGI(TAG, "[NVS-UPDATE] '%s' updated", key);
+}
+
+void NVSSecrets::update_secrets(const std::string &wifi_ssid,
+                                const std::string &wifi_password,
+                                const std::string &ota_password,
+                                const std::string &api_key,
+                                const std::string &thread_tlv) {
+  nvs_handle_t handle;
+  esp_err_t err = nvs_open(NAMESPACE, NVS_READWRITE, &handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "[NVS-UPDATE] Failed to open NVS for writing: %s", esp_err_to_name(err));
+    return;
+  }
+  write_nvs_string(handle, "wifi_ssid",    wifi_ssid);
+  write_nvs_string(handle, "wifi_password", wifi_password);
+  write_nvs_string(handle, "ota_password", ota_password);
+  write_nvs_string(handle, "api_key",      api_key);
+  write_nvs_string(handle, "thread_tlv",   thread_tlv);
+  err = nvs_commit(handle);
+  if (err != ESP_OK)
+    ESP_LOGE(TAG, "[NVS-UPDATE] nvs_commit failed: %s", esp_err_to_name(err));
+  else
+    ESP_LOGI(TAG, "[NVS-UPDATE] NVS commit successful; reboot to apply");
+  nvs_close(handle);
+}
+
 void NVSSecrets::dump_config() {
   ESP_LOGCONFIG(TAG, "NVS Runtime Data:");
 #ifdef USE_WIFI
   ESP_LOGCONFIG(TAG, "  WiFi SSID: %s", wifi_ssid_.empty() ? "(not set)" : "(loaded from NVS)");
   ESP_LOGCONFIG(TAG, "  WiFi Password: %s", wifi_password_.empty() ? "(not set)" : "(loaded from NVS)");
 #endif
-  ESP_LOGCONFIG(TAG, "  OTA Password: %s", ota_password_.empty() ? "(not set)" : "(loaded from NVS)");
-  ESP_LOGCONFIG(TAG, "  API Key: %s", api_encryption_key_.empty() ? "(not set)" : "(loaded from NVS)");
+  ESP_LOGCONFIG(TAG, "  OTA key '%s': %s", ota_nvs_key_.c_str(), ota_password_.empty() ? "(not set)" : "(loaded from NVS)");
+  if (!api_nvs_key_.empty())
+    ESP_LOGCONFIG(TAG, "  API key '%s': %s", api_nvs_key_.c_str(), api_encryption_key_.empty() ? "(not set)" : "(loaded from NVS)");
 #ifdef USE_OPENTHREAD
   ESP_LOGCONFIG(TAG, "  Thread TLV: %s", thread_tlv_.empty() ? "(not set)" : "(loaded from NVS)");
 #endif

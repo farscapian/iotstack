@@ -1,12 +1,13 @@
 #!/bin/bash
 # write-nvs-secrets.sh
-# Write device-specific secrets to NVS partition after firmware flash
-# Accepts pre-computed device-specific OTA password (computed by iotstack.sh)
+# Write device-specific secrets to NVS partition after firmware flash.
+# Computes both failsafe-derived and (optionally) production-derived secrets.
 #
 # Usage:
-#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 device_mac device_role ota_password
-# Example:
-#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c failsafe a1b2c3d4e5f6
+#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 device_mac [production_role]
+# Examples:
+#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c              # failsafe only
+#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c bleproxy     # failsafe + production
 
 set -euo pipefail
 
@@ -42,11 +43,9 @@ _get_or_prompt_credential() {
     echo -ne "${YLW}[PROMPT]${RST} $prompt_text: " >&2
 
     if [[ "$is_secret" == "true" ]]; then
-      # For secrets, read without echo
       read -rs value </dev/tty 2>/dev/null || value=""
       echo >&2
     else
-      # For non-secrets, read normally
       read -r value </dev/tty 2>/dev/null || value=""
     fi
 
@@ -63,16 +62,29 @@ _get_or_prompt_credential() {
   echo "$value"
 }
 
+# Get or generate a role OTA password (no prompt; auto-generates if absent)
+_get_or_generate_role_ota_password() {
+  local pass_path="$1"
+  local role_label="$2"
+  local value
+  value=$(pass show "$pass_path" 2>/dev/null || echo "")
+  if [[ -z "$value" ]]; then
+    info "OTA password not found for role: $role_label, generating..."
+    value=$(openssl rand -hex 16)
+    { echo "$value"; echo "$value"; } | pass insert -f "$pass_path" 2>/dev/null || \
+      err "Failed to store OTA password in pass: $pass_path"
+    ok "OTA password generated and stored for role: $role_label"
+  fi
+  echo "$value"
+}
+
 # Arguments
 TTY_DEVICE="${1:-}"
 DEVICE_MAC="${2:-}"
-DEVICE_ROLE="${3:-}"
-DEVICE_OTA_PASSWORD="${4:-}"
+PRODUCTION_ROLE="${3:-}"
 
-[[ -z "$TTY_DEVICE" ]] && err "Usage: $0 <tty_device> <device_mac> <device_role> <ota_password>"
-[[ -z "$DEVICE_MAC" ]] && err "Usage: $0 <tty_device> <device_mac> <device_role> <ota_password>"
-[[ -z "$DEVICE_ROLE" ]] && err "Usage: $0 <tty_device> <device_mac> <device_role> <ota_password>"
-[[ -z "$DEVICE_OTA_PASSWORD" ]] && err "Usage: $0 <tty_device> <device_mac> <device_role> <ota_password>"
+[[ -z "$TTY_DEVICE" ]] && err "Usage: $0 <tty_device> <device_mac> [production_role]"
+[[ -z "$DEVICE_MAC" ]] && err "Usage: $0 <tty_device> <device_mac> [production_role]"
 
 [[ ! -e "$TTY_DEVICE" ]] && err "TTY device not found: $TTY_DEVICE"
 
@@ -91,10 +103,8 @@ NVS_SIZE=$(awk -F',' '/^nvs[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "
 
 info "Using NVS partition offset: $NVS_OFFSET, size: $NVS_SIZE from generated partition table"
 
-# ── Retrieve role-based secrets from pass store (lazy-load on demand) ─────
-info "Retrieving secrets for role: $DEVICE_ROLE"
-
-# Get WiFi credentials (lazy-load if not set or placeholder)
+# ── Retrieve shared credentials ────────────────────────────────────────────
+info "Retrieving WiFi credentials..."
 WIFI_SSID=$(_get_or_prompt_credential "iotstack/common/wifi_ssid" "WiFi network name (SSID)" false)
 WIFI_PASSWORD=$(_get_or_prompt_credential "iotstack/common/wifi_password" "WiFi password" true)
 
@@ -113,35 +123,40 @@ if [[ -z "$THREAD_TLV" || "$THREAD_TLV" == "CONFIGURE_ME" ]]; then
   fi
 fi
 
-# Get role-based API encryption key for derivation
-API_ENCRYPTION_KEY_BASE=$(pass show "iotstack/roles/${DEVICE_ROLE}/api_encryption_key" 2>/dev/null || echo "")
+# ── Derive failsafe device-specific OTA password ──────────────────────────
+info "Computing failsafe secrets for device: $DEVICE_MAC"
+FAILSAFE_OTA_BASE=$(_get_or_generate_role_ota_password "iotstack/roles/failsafe/ota_password" "failsafe")
+FAILSAFE_OTA_PASSWORD=$(echo -n "${FAILSAFE_OTA_BASE}|${DEVICE_MAC}" | sha256sum | cut -c1-32)
 
-if [[ -z "$API_ENCRYPTION_KEY_BASE" ]]; then
-  info "API encryption key not found for role: $DEVICE_ROLE, generating..."
-  API_ENCRYPTION_KEY_BASE=$(openssl rand -base64 32 | tr -d '\n')
-  # Store it in pass
-  { echo "$API_ENCRYPTION_KEY_BASE"; echo "$API_ENCRYPTION_KEY_BASE"; } | \
-    pass insert -f "iotstack/roles/${DEVICE_ROLE}/api_encryption_key" 2>/dev/null || \
-    err "Failed to store API encryption key in pass"
-  ok "API encryption key generated and stored for role: $DEVICE_ROLE"
+# ── Derive production device-specific API key (if production role given) ──
+PROD_API_KEY=""
+if [[ -n "$PRODUCTION_ROLE" ]]; then
+  info "Computing production API key for role: $PRODUCTION_ROLE (device: $DEVICE_MAC)"
+
+  PROD_API_BASE=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/api_encryption_key" 2>/dev/null || echo "")
+  if [[ -z "$PROD_API_BASE" ]]; then
+    info "API encryption key not found for role: $PRODUCTION_ROLE, generating..."
+    PROD_API_BASE=$(openssl rand -base64 32 | tr -d '\n')
+    { echo "$PROD_API_BASE"; echo "$PROD_API_BASE"; } | \
+      pass insert -f "iotstack/roles/${PRODUCTION_ROLE}/api_encryption_key" 2>/dev/null || \
+      err "Failed to store API encryption key in pass"
+    ok "API encryption key generated and stored for role: $PRODUCTION_ROLE"
+  fi
+  PROD_API_KEY=$(echo -n "${PROD_API_BASE}|${DEVICE_MAC}" | sha256sum | cut -c1-64)
 fi
 
-# ── Derive device-specific API key ────────────────────────────────────────
-info "Deriving device-specific API encryption key from role + MAC"
-
-# OTA password is pre-computed and passed as parameter (never stored on disk)
-# API key is derived from role secret + MAC: sha256(base | mac)
-DEVICE_API_KEY=$(echo -n "${API_ENCRYPTION_KEY_BASE}|${DEVICE_MAC}" | sha256sum | cut -c1-64)
-
 info "Device secrets ready"
-ok "OTA Password: (from parameter)"
-ok "API Key: (derived)"
+ok "Failsafe OTA password: (derived)"
+if [[ -n "$PRODUCTION_ROLE" ]]; then
+  ok "Production API key: (derived for role: $PRODUCTION_ROLE)"
+fi
 
 # ── Use Python to generate NVS data ────────────────────────────────────────
 info "Writing NVS partition to device..."
 
 export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
-       OTA_PASSWORD="$DEVICE_OTA_PASSWORD" API_KEY="$DEVICE_API_KEY" \
+       FAILSAFE_OTA_PASSWORD="$FAILSAFE_OTA_PASSWORD" \
+       PROD_API_KEY="$PROD_API_KEY" \
        THREAD_TLV="$THREAD_TLV" DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE" \
        NVS_SIZE="$NVS_SIZE"
 
@@ -157,8 +172,8 @@ import sys
 # Get environment variables
 wifi_ssid = os.environ['WIFI_SSID']
 wifi_password = os.environ['WIFI_PASSWORD']
-ota_password = os.environ['OTA_PASSWORD']
-api_key = os.environ['API_KEY']
+failsafe_ota_password = os.environ['FAILSAFE_OTA_PASSWORD']
+prod_api_key = os.environ.get('PROD_API_KEY', '')
 thread_tlv = os.environ.get('THREAD_TLV', '')
 device_mac = os.environ['DEVICE_MAC']
 nvs_size_str = os.environ['NVS_SIZE']  # e.g., "0x4000"
@@ -177,8 +192,10 @@ with open(nvs_csv_path, 'w') as f:
     f.write("iotstack,namespace,,\n")
     f.write(f"wifi_ssid,data,string,{wifi_ssid}\n")
     f.write(f"wifi_password,data,string,{wifi_password}\n")
-    f.write(f"ota_password,data,string,{ota_password}\n")
-    f.write(f"api_key,data,string,{api_key}\n")
+    # failsafe reads this key for OTA authentication
+    f.write(f"ota_password,data,string,{failsafe_ota_password}\n")
+    if prod_api_key:
+        f.write(f"prod_api_key,data,string,{prod_api_key}\n")
     if thread_tlv:
         f.write(f"thread_tlv,data,string,{thread_tlv}\n")
 

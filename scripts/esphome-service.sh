@@ -3,7 +3,7 @@
 # Runs esphome_service.py under the esphome venv python (which ships
 # aioesphomeapi).
 #
-# Usage: scripts/esphome-service.sh <host> <service_name> [api_password]
+# Usage: scripts/esphome-service.sh <host> <service_name> [api_password [json_variables]]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,8 +11,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 host="${1:-}"
 service="${2:-}"
 password="${3:-}"
+json_vars="${4:-}"
 if [[ -z "$host" || -z "$service" ]]; then
-  echo "usage: $(basename "$0") <host> <service_name> [api_password]" >&2
+  echo "usage: $(basename "$0") <host> <service_name> [api_password [json_vars]]" >&2
   exit 64
 fi
 
@@ -27,4 +28,4 @@ if [[ ! -x "$esphome_py" ]]; then
   exit 1
 fi
 
-exec "$esphome_py" "${SCRIPT_DIR}/esphome_service.py" "$host" "$service" "$password"
+exec "$esphome_py" "${SCRIPT_DIR}/esphome_service.py" "$host" "$service" "$password" "$json_vars"

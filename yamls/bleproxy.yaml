@@ -42,10 +42,9 @@ wifi:
   password: "placeholder"      # Placeholder - overridden by nvs_secrets component
   power_save_mode: none
 
-# Custom NVS secrets component - loads device-specific secrets from NVS
-# (empty dict {} is required to instantiate the component; bare `nvs_secrets:`
-# does not, so secrets would never load)
-nvs_secrets: {}
+# Custom NVS secrets component - reads production-specific secrets from NVS
+nvs_secrets:
+  api_nvs_key: prod_api_key
 
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS

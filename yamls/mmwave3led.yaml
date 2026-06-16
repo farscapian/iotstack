@@ -68,8 +68,9 @@ logger:
   hardware_uart: USB_SERIAL_JTAG
   level: INFO
 
-# Custom NVS secrets component - loads device-specific API key from NVS
+# Custom NVS secrets component - reads production-specific secrets from NVS
 nvs_secrets:
+  api_nvs_key: prod_api_key
 
 
 api:

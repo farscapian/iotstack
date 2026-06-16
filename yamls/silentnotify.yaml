@@ -44,5 +44,5 @@ api:
 ota:
   - platform: esphome
 
-# (empty dict {} is required to instantiate the component)
-nvs_secrets: {}
+nvs_secrets:
+  api_nvs_key: prod_api_key
