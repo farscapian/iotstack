@@ -11,20 +11,29 @@ static const char *const TAG = "partition";
 
 void PartitionManager::handle_button_press() {
   this->press_time_ = millis();
+  this->button_held_ = true;
+  this->long_press_triggered_ = false;
   ESP_LOGI(TAG, "Boot button pressed - release to restart, or hold 3s to switch partition and reboot");
 }
 
 void PartitionManager::handle_button_release() {
+  this->button_held_ = false;
+  if (this->long_press_triggered_)
+    return;  // loop() already fired the reboot; ignore release
   uint32_t hold = millis() - this->press_time_;
-  if (hold >= 3000) {
-    ESP_LOGI(TAG, "Long press detected (%.1fs) - attempting partition switch", hold / 1000.0f);
-    this->toggle_boot_partition();
-  } else if (hold >= 50) {
-    // Short press: graceful restart. On the native USB-Serial/JTAG this is a
-    // soft reset that keeps the USB CDC alive, so an attached log session
-    // survives the reboot. Does not change the boot partition.
+  if (hold >= 50) {
     ESP_LOGI(TAG, "Short press (%ums) - restarting device", (unsigned) hold);
     App.safe_reboot();
+  }
+}
+
+void PartitionManager::loop() {
+  if (!this->button_held_ || this->long_press_triggered_)
+    return;
+  if (millis() - this->press_time_ >= 3000) {
+    this->long_press_triggered_ = true;
+    ESP_LOGI(TAG, "3s hold threshold reached - switching partition and rebooting");
+    this->toggle_boot_partition();
   }
 }
 

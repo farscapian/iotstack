@@ -15,6 +15,7 @@ class PartitionManager : public Component {
  public:
   void handle_button_press();
   void handle_button_release();
+  void loop() override;
   void toggle_boot_partition();
 
   // Set the boot slot to failsafe (ota_0) and reboot. Used by the
@@ -25,6 +26,8 @@ class PartitionManager : public Component {
 
  protected:
   uint32_t press_time_{0};
+  bool button_held_{false};
+  bool long_press_triggered_{false};
 };
 
 }  // namespace partition_manager
