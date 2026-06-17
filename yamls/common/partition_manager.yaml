@@ -1,37 +1,4 @@
-# Shared partition-management controls, included by every device via packages:.
-#
-#   - the partition_manager component (boot-partition toggle logic, lives once)
-#   - "Restart" button (HA)
-#   - "Toggle Boot Partition" button (HA) — used by `iotstack update` to flip a
-#     production device into failsafe before OTA
-#
-# The physical BOOT button is a separate include (common/boot_button.yaml) so
-# devices that repurpose their boot pin (e.g. mmwave uses GPIO9) can still get
-# these controls.
-#
-# Requires:
-#   - the partition_manager external component listed in external_components
-#   - an `ota:` section in the including yaml (pulls in esp_ota_ops)
-
-partition_manager:
-  id: partition_mgr
-
-# Native-API service so `iotstack update` can move a running production device
-# into failsafe (ota_0) before OTA. Callable via aioesphomeapi / Home Assistant.
-api:
-  services:
-    - service: switch_to_failsafe
-      then:
-        - lambda: "id(partition_mgr).boot_failsafe();"
-
-button:
-  - platform: restart
-    name: "Restart"
-
-  # Manual partition toggle for Home Assistant
-  - platform: template
-    name: "Toggle Boot Partition"
-    icon: "mdi:swap-horizontal"
-    on_press:
-      then:
-        - lambda: "id(partition_mgr).toggle_boot_partition();"
+# Production partition package (backward-compatible include path).
+# Failsafe images must use partition_manager_failsafe.yaml instead.
+packages:
+  partition_production: !include partition_manager_production.yaml

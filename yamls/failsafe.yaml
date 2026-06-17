@@ -25,9 +25,9 @@ external_components:
       path: ./external_components
     components: [nvs_secrets, partition_manager]
 
-# Shared boot-button / restart / partition-toggle behavior (same on every device)
+# Boot-button / restart / partition-toggle (no switch_to_failsafe — already on failsafe)
 packages:
-  partition_mgmt: !include common/partition_manager.yaml
+  partition_mgmt: !include common/partition_manager_failsafe.yaml
   boot_button: !include common/boot_button.yaml
 
 esphome:
@@ -117,10 +117,6 @@ nvs_secrets:
 # Each device has a unique OTA password derived at flash time
 ota:
   - platform: esphome
-
-safe_mode:
-  num_attempts: 3
-  reboot_timeout: 2min
 
 # Boot button, restart button and partition-toggle button come from the shared
 # partition_manager package (see packages: above).

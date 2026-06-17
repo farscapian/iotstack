@@ -1,0 +1,14 @@
+# Shared partition_manager component and HA buttons (included by production and failsafe).
+partition_manager:
+  id: partition_mgr
+
+button:
+  - platform: restart
+    name: "Restart"
+
+  - platform: template
+    name: "Toggle Boot Partition"
+    icon: "mdi:swap-horizontal"
+    on_press:
+      then:
+        - lambda: "id(partition_mgr).toggle_boot_partition();"
