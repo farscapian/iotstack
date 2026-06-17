@@ -55,21 +55,11 @@ network:
 nvs_secrets:
   api_nvs_key: prod_api_key
 
-# 4. API — native ESPHome over IPv6/Thread; OTA rides this connection
+# 4. API — native ESPHome over IPv6/Thread (OTA is failsafe-only)
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
 
-# 5. OTA — password set dynamically by nvs_ota_password component from device NVS
-ota:
-  - platform: esphome
-
-# 6. Safe mode — Thread-only node; safe mode OTA recovery requires USB serial
-#    if Thread is disrupted during update
-safe_mode:
-  num_attempts: 5
-  boot_is_good_after: 60s
-
-# 7. Logger
+# 5. Logger
 logger:
   baud_rate: 115200
   # USB serial only; disable (baud_rate: 0) after initial setup if desired

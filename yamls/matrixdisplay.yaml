@@ -1,9 +1,8 @@
 substitutions:
   development_status: "dev"
-  device_role: "ledstrip"
-  friendly_name: "LED Light Strip"
-  dev_status: "dev"
-  boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
+  device_role: "matrixdisplay"
+  friendly_name: "Matrix Display"
+  # boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
 
 # External components (replaces deprecated custom_components folder)
 external_components:
@@ -21,7 +20,7 @@ esphome:
   name: ledstrip
   friendly_name: ${friendly_name}
   project:
-    name: "iotstack.${device_role}-${dev_status}"
+    name: "iotstack.${device_role}-${development_status}"
     version: 1.0.0
   name_add_mac_suffix: true
 
@@ -31,6 +30,11 @@ esp32:
   framework:
     type: esp-idf
   flash_size: 16MB
+
+
+psram:
+  mode: octal
+ 
 
 # WiFi credentials are loaded from NVS by nvs_secrets component at startup
 wifi:
@@ -44,15 +48,50 @@ nvs_secrets:
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
 
-# OTA Configuration
-# Password is dynamically set by nvs_secrets component from NVS
-ota:
-  - platform: esphome
-
-safe_mode:
-  num_attempts: 5
-  boot_is_good_after: 60s
-
 logger:
   baud_rate: 115200
 
+
+
+
+####################3
+
+font:
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 14
+ 
+# Pin mapping below is for RGB Matrix Adapter Board (E) Rev 2.2 by Seengreat,
+# wired to a genuine ESP32-S3-DevKitC-1 module.
+#
+# Verified compatible by physical inspection on 2026-06-16:
+#   - Adapter board silkscreen confirmed: "RGB Matrix Adapter Board (E)
+#     Rev 2.2" (Seengreat)
+#   - ESP32-S3 module confirmed standard DevKitC-1 pin layout/labeling
+#     (module marked S3-N16R8, WiFi+BT)
+# Pin mapping source: https://seengreat.com/wiki/186/rgb-matrix-adapter-board-e
+# (Rev 2.2 corresponds to the "V2.x" table on that page for the
+# ESP32-S3-DevKitC-1 wiring diagram.)
+display:
+  - platform: hub75
+    id: matrix_display
+    panel_width: 64
+    panel_height: 32
+    brightness: 170  # ~67%, matches the headroom budget discussed earlier
+    r1_pin: GPIO18
+    g1_pin: GPIO8
+    b1_pin: GPIO17
+    r2_pin: GPIO16
+    g2_pin: GPIO1
+    b2_pin: GPIO15
+    a_pin: GPIO7
+    b_pin: GPIO48
+    c_pin: GPIO6
+    d_pin: GPIO47
+    lat_pin: GPIO21
+    oe_pin: GPIO4
+    clk_pin: GPIO5
+    # e_pin omitted: your panel is 1/16 scan ("16S" on the panel label),
+    # so the E row-select line isn't used.
+    lambda: |-
+      it.print(0, 8, id(font_small), "Hello!");

@@ -45,15 +45,6 @@ nvs_secrets:
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
 
-# OTA Configuration
-# Password is dynamically set by nvs_secrets component from NVS
-ota:
-  - platform: esphome
-
-safe_mode:
-  num_attempts: 5
-  boot_is_good_after: 60s
-
 logger:
   baud_rate: 115200
 

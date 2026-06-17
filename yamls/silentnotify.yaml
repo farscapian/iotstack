@@ -41,8 +41,5 @@ wifi:
 
 api:
 
-ota:
-  - platform: esphome
-
 nvs_secrets:
   api_nvs_key: prod_api_key
