@@ -635,6 +635,35 @@ All secrets must be stored in NVS (via write-nvs-secrets.sh), not in YAML files.
 Remove the 'password: !secret ...' line(s) and re-run."
 fi
 
+# Production firmware must not expose an OTA server — updates run from failsafe only.
+_yaml_is_failsafe() {
+  local yaml_file="$1"
+  [[ "$(basename "$yaml_file")" == "failsafe.yaml" ]] && return 0
+  grep -qE '^\s*device_role:\s*"?failsafe"?\s*$' "$yaml_file" 2>/dev/null
+}
+
+if ! _yaml_is_failsafe "$YAML_FILE"; then
+  if grep -qE '^ota:' "$YAML_FILE"; then
+    err "$(basename "$YAML_FILE") must not include 'ota:' — OTA is failsafe-only.
+Remove the ota: section from this production YAML."
+  fi
+fi
+
+if grep -qE '^safe_mode:' "$YAML_FILE"; then
+  err "$(basename "$YAML_FILE") must not include 'safe_mode:' — boot-loop recovery is handled by partition_manager.
+Remove the safe_mode: section from this YAML."
+fi
+
+if _yaml_is_failsafe "$YAML_FILE"; then
+  if grep -qE 'partition_manager\.yaml|partition_manager_production\.yaml' "$YAML_FILE"; then
+    err "$(basename "$YAML_FILE") must use partition_manager_failsafe.yaml — switch_to_failsafe is production-only."
+  fi
+else
+  if grep -qE 'partition_manager_failsafe\.yaml' "$YAML_FILE"; then
+    err "$(basename "$YAML_FILE") must use partition_manager.yaml — production requires switch_to_failsafe API."
+  fi
+fi
+
 if ! [[ "$MAX_JOBS" =~ ^[1-9][0-9]*$ ]]; then
   err "--jobs must be a positive integer."
   exit 1
@@ -730,7 +759,20 @@ else
   log "Discovering ${BASE_NAME}-* devices via mDNS..."
 fi
 
-RAW=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null || true)
+if [[ "$REASSIGN_MODE" == true ]]; then
+  # Reassign always OTA's from failsafe, which advertises _iotstack-failsafe._tcp only.
+  # Dry-run may run before the device has been switched to failsafe, so also scan
+  # production mDNS to allow compile/plan when the device is still on production.
+  if [[ "$DRY_RUN" == true ]]; then
+    RAW=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null || true)
+    RAW_FAILSAFE=$(avahi-browse -t -r _iotstack-failsafe._tcp 2>/dev/null || true)
+    RAW="${RAW}"$'\n'"${RAW_FAILSAFE}"
+  else
+    RAW=$(avahi-browse -t -r _iotstack-failsafe._tcp 2>/dev/null || true)
+  fi
+else
+  RAW=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null || true)
+fi
 
 # Extract device hostnames from mDNS
 if [[ "$REASSIGN_MODE" == true ]]; then
@@ -738,7 +780,7 @@ if [[ "$REASSIGN_MODE" == true ]]; then
   ALL_DEVICES=$(echo "$RAW" \
     | grep "^= " \
     | awk '{print $4}' \
-    | sort -u)
+    | sort -u || true)
 
   HOSTNAMES=""
   for mac in "${REASSIGN_MACS[@]}"; do
@@ -755,7 +797,7 @@ else
     | grep "^= " \
     | awk '{print $4}' \
     | grep "^${BASE_NAME}-" \
-    | sort -u)
+    | sort -u || true)
 fi
 
 if [[ -z "$HOSTNAMES" ]]; then
