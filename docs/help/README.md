@@ -20,7 +20,6 @@ Each file contains in-depth information about a command beyond what the help tex
 
 - **reassign.txt** - Flash specific devices to a different configuration
   - Password handling and security
-  - Password list mode for device recovery
   - Home Assistant entity ID updates
   - Device role switching scenarios
 

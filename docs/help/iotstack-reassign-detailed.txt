@@ -15,28 +15,9 @@ Instead, pass via environment variable:
            iotstack reassign 19b164 mmwave --ota-password "$OTA_PWD"
            unset OTA_PWD
 
-
-Password List Mode
-==================
-
-For recovering devices with unknown or lost passwords, use a password list:
-
-  iotstack reassign 19b164 mmwave --ota-password-list-path ~/passwords.txt
-
-File format (one password per line):
-  myPassword123
-  anotherPassword456
-  # Lines starting with # are ignored (comments)
-  YetAnotherPassword789
-
-File security:
-  chmod 600 ~/passwords.txt        # Ensure only you can read it
-  rm ~/passwords.txt               # Delete after successful reassignment
-
-The command will try each password until one succeeds. This is useful when:
-  - A device has a password you no longer have
-  - You're trying multiple archived passwords
-  - You're rotating devices with unknown credentials
+By default, iotstack derives the OTA password from the failsafe role secret and
+device MAC (the value stored in NVS at provisioning). Use --ota-password only
+when you need to override that.
 
 
 Home Assistant Entity ID Updates
