@@ -136,6 +136,17 @@ _check_serial_port_in_use() {
       local cmd
       cmd=$(echo "$processes" | awk '{print $1}' | head -1)
 
+      # If it's an iotstack logs session (serial-logs.py), kill it automatically
+      # so flash can proceed without user intervention.
+      local full_cmdline
+      full_cmdline=$(ps -p "$pid" -o args= 2>/dev/null || true)
+      if [[ "$full_cmdline" == *"serial-logs.py"* ]]; then
+        info "Killing iotstack logs on $tty_device (pid $pid) to free port for flash..."
+        kill "$pid" 2>/dev/null || true
+        sleep 1
+        return 0
+      fi
+
       local kill_cmd=""
       if [[ "$cmd" == "screen" ]]; then
         kill_cmd="screen -X -S $pid quit"
@@ -994,6 +1005,205 @@ _wait_for_device() {
   return 1
 }
 
+_find_production_hostname_for_mac() {
+  # Return the production mDNS hostname (e.g. bleproxy-1a7cfc) for a MAC suffix.
+  local mac="$1"
+  local line hostname
+  while IFS= read -r line; do
+    [[ "$line" =~ ^=\  ]] || continue
+    hostname=$(awk '{print $4}' <<< "$line" | cut -d'.' -f1)
+    if [[ "$hostname" =~ -${mac}$ ]] && [[ "$hostname" != failsafe-* ]]; then
+      echo "$hostname"
+      return 0
+    fi
+  done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+  return 1
+}
+
+_device_on_failsafe() {
+  local mac="$1"
+  avahi-browse -t -r _iotstack-failsafe._tcp 2>/dev/null | grep -Fqi "failsafe-${mac}"
+}
+
+_failsafe_device_ota_password() {
+  # NVS stores sha256(failsafe_role_secret | mac) — used for OTA from failsafe.
+  local mac="$1"
+  local fs_secret
+  fs_secret=$(pass show "iotstack/roles/failsafe/ota_password" 2>/dev/null)
+  [[ -z "$fs_secret" ]] && return 1
+  echo -n "${fs_secret}|${mac}" | sha256sum | cut -c1-32
+}
+
+_wait_for_ota_service() {
+  # Wait for ESPHome OTA (port 3232) on a device hostname.
+  local hostname="$1"
+  local max_wait="${2:-90}"
+  local waited=0
+  while (( waited < max_wait )); do
+    if timeout 3 bash -c "echo > /dev/tcp/${hostname}.local/3232" 2>/dev/null; then
+      return 0
+    fi
+    sleep 3
+    waited=$((waited + 3))
+    (( waited % 15 == 0 )) && info "  ...still waiting for ${hostname} OTA service ($waited/${max_wait}s)"
+  done
+  return 1
+}
+
+_yaml_device_role() {
+  local yaml_file="$1"
+  local role
+  role=$(grep -E '^\s*device_role:\s*' "$yaml_file" | head -1 | sed -E 's/^\s*device_role:\s*"?([^"]*)"?/\1/')
+  if [[ -n "$role" ]]; then
+    echo "$role"
+  else
+    basename "$yaml_file" .yaml
+  fi
+}
+
+_update_args_include_dry_run() {
+  local arg
+  for arg in "$@"; do
+    [[ "$arg" == "--dry-run" ]] && return 0
+  done
+  return 1
+}
+
+_ensure_device_on_failsafe() {
+  # Switch a production device into failsafe and wait for its OTA service.
+  local mac="$1"
+  local is_dry_run="${2:-false}"
+  if [[ "$is_dry_run" == true ]]; then
+    return 0
+  fi
+
+  if _device_on_failsafe "$mac"; then
+    info "[$mac] already on failsafe"
+  else
+    local production_hostname
+    production_hostname=$(_find_production_hostname_for_mac "$mac" || true)
+    if [[ -n "$production_hostname" ]]; then
+      info "[$mac] 1/4 switching $production_hostname to failsafe..."
+      if ! "$SCRIPT_DIR/scripts/esphome-service.sh" "${production_hostname}.local" switch_to_failsafe; then
+        warn "[$mac] could not call switch_to_failsafe (offline or already in failsafe?); will still wait"
+      fi
+    else
+      warn "[$mac] not found in production mDNS; waiting for failsafe-$mac..."
+    fi
+  fi
+
+  info "[$mac] 2/4 waiting for failsafe-$mac on the network..."
+  if ! _wait_for_device "failsafe-$mac" 90; then
+    warn "[$mac] failsafe-$mac did not appear"
+    return 1
+  fi
+
+  info "[$mac] 3/4 waiting for failsafe OTA service..."
+  if ! _wait_for_ota_service "failsafe-$mac" 90; then
+    warn "[$mac] failsafe-$mac OTA service not reachable"
+    return 1
+  fi
+  sleep 2
+  return 0
+}
+
+_ota_via_failsafe() {
+  # OTA into the production slot via failsafe (partition-safe path).
+  # Usage: _ota_via_failsafe <mac> <yaml_file> <ota_password> <post_ota_hostname> [update_args...]
+  local mac="$1"
+  local yaml_file="$2"
+  local ota_password="$3"
+  local post_ota_hostname="$4"
+  shift 4
+  declare -a ota_update_args=("$@")
+
+  local is_dry_run=false
+  if _update_args_include_dry_run "${ota_update_args[@]}"; then
+    is_dry_run=true
+  fi
+
+  if ! _ensure_device_on_failsafe "$mac" "$is_dry_run"; then
+    return 1
+  fi
+
+  info "[$mac] 4/4 OTA into production slot..."
+  if ! "$UPDATE_SCRIPT" --reassign "$mac" "$yaml_file" --ota-password "$ota_password" --jobs 1 "${ota_update_args[@]}"; then
+    warn "[$mac] OTA failed"
+    return 1
+  fi
+
+  if [[ "$is_dry_run" != true && -n "$post_ota_hostname" ]]; then
+    local network_type
+    network_type=$(get_yaml_device_info "$yaml_file" | cut -d'|' -f3)
+    if [[ "$network_type" == "thread" ]]; then
+      ok "[$mac] OTA complete; Thread device rebooting as $post_ota_hostname (mesh, not WiFi mDNS)"
+    elif _wait_for_device "$post_ota_hostname" 90; then
+      ok "[$mac] reassigned and back as $post_ota_hostname"
+    else
+      warn "[$mac] not seen as $post_ota_hostname yet (may still be booting)"
+    fi
+  fi
+  return 0
+}
+
+_reassign_devices_via_failsafe() {
+  # Reassign one or more devices to a new role/YAML via the failsafe partition.
+  # Usage: _reassign_devices_via_failsafe <yaml_file> <ota_password> <mac...> -- [update_args...]
+  local yaml_file="$1"
+  local ota_password="$2"
+  shift 2
+  local -a macs=()
+  local -a ota_update_args=()
+  local seen_sep=false
+  local arg
+  for arg in "$@"; do
+    if [[ "$arg" == "--" ]]; then
+      seen_sep=true
+      continue
+    fi
+    if [[ "$seen_sep" == true ]]; then
+      ota_update_args+=("$arg")
+    else
+      macs+=("$arg")
+    fi
+  done
+
+  if [[ ${#macs[@]} -eq 0 ]]; then
+    err "No MAC suffixes provided for reassignment"
+  fi
+
+  if [[ -z "$ota_password" ]]; then
+    if ! pass show "iotstack/roles/failsafe/ota_password" &>/dev/null; then
+      err "Failsafe role OTA password not found in pass (provision a device first)."
+    fi
+  fi
+
+  local target_role
+  target_role=$(_yaml_device_role "$yaml_file")
+
+  info "Reassigning ${#macs[@]} device(s) to '$target_role' via failsafe..."
+  local failed=0 mac dev_pwd
+  for mac in "${macs[@]}"; do
+    echo ""
+    dev_pwd="$ota_password"
+    if [[ -z "$dev_pwd" ]]; then
+      dev_pwd=$(_failsafe_device_ota_password "$mac") || err "Could not derive failsafe OTA password for $mac"
+      echo "  OTA Password: (derived from failsafe role secret)"
+    fi
+    if ! _ota_via_failsafe "$mac" "$yaml_file" "$dev_pwd" "${target_role}-${mac}" "${ota_update_args[@]}"; then
+      failed=$((failed + 1))
+    fi
+  done
+
+  echo ""
+  if [[ $failed -eq 0 ]]; then
+    ok "All device(s) reassigned via failsafe"
+    return 0
+  fi
+  warn "$failed device(s) failed to reassign"
+  return 1
+}
+
 _update_via_failsafe() {
   # Update production devices the safe way: switch each into failsafe, then OTA
   # the new image into the production slot. OTA never writes the running
@@ -1033,44 +1243,17 @@ _update_via_failsafe() {
     err "No '$role' device(s) found on the network."
   fi
 
-  # Device OTA password = sha256(failsafe_role_secret | mac) — written to NVS at
-  # provisioning time, so failsafe authenticates the OTA with it.
   local fs_secret
   fs_secret=$(pass show "iotstack/roles/failsafe/ota_password" 2>/dev/null)
   [[ -z "$fs_secret" ]] && err "Failsafe role OTA password not found in pass (provision a device first)."
 
   info "Updating ${#macs[@]} '$role' device(s) via failsafe..."
-  local failed=0 mac
+  local failed=0 mac dev_pwd
   for mac in "${macs[@]}"; do
     echo ""
-    info "[$role-$mac] 1/3 switching to failsafe for a safe OTA..."
-    if ! "$SCRIPT_DIR/scripts/esphome-service.sh" "${role}-${mac}.local" switch_to_failsafe; then
-      warn "[$role-$mac] could not call switch_to_failsafe (offline or already in failsafe?); will still wait"
-    fi
-
-    info "[$role-$mac] 2/3 waiting for failsafe-$mac on the network..."
-    if ! _wait_for_device "failsafe-$mac" 90; then
-      warn "[$role-$mac] failsafe-$mac did not appear; skipping"
-      failed=$((failed + 1))
-      continue
-    fi
-    # Give the failsafe OTA service a moment to come up
-    sleep 5
-
-    local dev_pwd
     dev_pwd=$(echo -n "${fs_secret}|${mac}" | sha256sum | cut -c1-32)
-    info "[$role-$mac] 3/3 OTA '$role' into the production slot..."
-    if ! "$UPDATE_SCRIPT" --reassign "$mac" "$yaml_file" --ota-password "$dev_pwd" --jobs 1; then
-      warn "[$role-$mac] OTA failed"
+    if ! _ota_via_failsafe "$mac" "$yaml_file" "$dev_pwd" "${role}-${mac}"; then
       failed=$((failed + 1))
-      continue
-    fi
-
-    # ESPHome OTA sets the boot slot to production and reboots automatically
-    if _wait_for_device "${role}-${mac}" 60; then
-      ok "[$role-$mac] updated and back in production"
-    else
-      warn "[$role-$mac] not seen as $role-$mac yet (may still be booting)"
     fi
   done
 
@@ -1230,7 +1413,6 @@ cmd_reassign() {
   fi
 
   local api_key=""
-  local password_list_file=""
   declare -a update_args=()
   declare -a positional_args=()
 
@@ -1239,10 +1421,6 @@ cmd_reassign() {
     case "$1" in
       --ota-password)
         api_key="$2"
-        shift 2
-        ;;
-      --ota-password-list-path)
-        password_list_file="$2"
         shift 2
         ;;
       --dry-run|-v|--verbose)
@@ -1286,7 +1464,12 @@ cmd_reassign() {
   fi
 
   # Early sanity check: verify devices aren't already the target role
-  local target_role="$device_or_yaml"
+  local target_role
+  if [[ -f "$device_or_yaml" ]]; then
+    target_role=$(_yaml_device_role "$yaml_file")
+  else
+    target_role="$device_or_yaml"
+  fi
   for mac in "${reassign_macs[@]}"; do
     local device_info
     device_info=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -i "$mac" | head -1)
@@ -1307,136 +1490,18 @@ cmd_reassign() {
   # Confirm before reassigning multiple devices
   confirm_multi_device ${#reassign_macs[@]} "$(printf '%s\n' "${reassign_macs[@]}")"
 
-  # Handle password list if provided
-  if [[ -n "$password_list_file" ]]; then
-    # Expand path (handle ~)
-    password_list_file="${password_list_file/#\~/$HOME}"
-
-    if [[ ! -f "$password_list_file" ]]; then
-      err "Password list file not found: $password_list_file"
-    fi
-
-    echo "  Mode: Password list brute-force"
-    echo
-
-    declare -a successful_passwords=()
-    declare -a failed_passwords=()
-    local password_count=0
-
-    while IFS= read -r password || [[ -n "$password" ]]; do
-      # Skip empty lines and comments
-      [[ -z "$password" ]] && continue
-      [[ "$password" =~ ^[[:space:]]*# ]] && continue
-
-      # Trim whitespace
-      password=$(printf '%s' "$password" | xargs)
-      [[ -z "$password" ]] && continue
-
-      password_count=$((password_count + 1))
-      echo "[${password_count}] Trying password (${#password} chars)..."
-
-      # Try reassign with this password
-      if "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" --ota-password "$password" "${update_args[@]}" 2>&1 | grep -q "flash successful"; then
-        ok "  ✓ Password worked!"
-        successful_passwords+=("$password")
-      else
-        failed_passwords+=("$password")
-      fi
-      echo
-    done < "$password_list_file"
-
-    # Summary
-    echo "════════════════════════════════════════════════════════"
-    echo "[INFO] Password brute-force summary:"
-    echo "  Total tried: $password_count"
-    echo "  Successful: ${#successful_passwords[@]}"
-    echo "  Failed: ${#failed_passwords[@]}"
-
-    if [[ ${#successful_passwords[@]} -gt 0 ]]; then
-      echo
-      ok "Working password(s):"
-      for pwd in "${successful_passwords[@]}"; do
-        echo "  → $(printf '%s' "$pwd" | head -c 32)${#pwd}"
-      done
-      return 0
-    else
-      err "No passwords from the list worked"
-      # shellcheck disable=SC2317
-      return 1
-    fi
-  else
-    # Single password mode - auto-retrieve from pass if not provided
-    local source_role=""
-
-    if [[ -n "$api_key" ]]; then
-      echo "  OTA Password: (provided)"
-    else
-      # Try to auto-retrieve OTA password from pass for current device role
-      for mac in "${reassign_macs[@]}"; do
-        # Query mDNS to find device with this MAC suffix
-        local device_info
-        device_info=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -i "$mac" | head -1)
-        if [[ -n "$device_info" ]]; then
-          # Extract device name (e.g., "bleproxy-137284" from the line)
-          local device_name
-          device_name=$(echo "$device_info" | awk -F' ' '{print $4}' | cut -d'.' -f1)
-          # Extract role (everything before the MAC suffix)
-          source_role="${device_name%-"$mac"}"
-
-          if [[ -n "$source_role" ]]; then
-            # NVS-provisioned devices (failsafe or any production role) authenticate
-            # OTA with a device-specific password derived from the failsafe role
-            # secret + MAC (written to NVS at provisioning time).
-            if [[ "$source_role" =~ ^failsafe ]]; then
-              local fs_secret
-              fs_secret=$(pass show "iotstack/roles/failsafe/ota_password" 2>/dev/null)
-              if [[ -n "$fs_secret" ]]; then
-                api_key=$(echo -n "${fs_secret}|${mac}" | sha256sum | cut -c1-32)
-                echo "  OTA Password: (derived from failsafe role secret)"
-                break
-              fi
-            fi
-
-            # Try to retrieve OTA password for this role
-            api_key=$(cmd_secret get "$source_role" ota 2>/dev/null) || true
-            if [[ -n "$api_key" ]]; then
-              echo "  OTA Password: (auto-retrieved from $source_role)"
-              break
-            fi
-          fi
-        fi
-      done
-
-      if [[ -z "$api_key" ]]; then
-        warn "Could not auto-retrieve OTA password. Proceeding without password."
-        echo "  OTA Password: (none)"
-      fi
-    fi
-    echo
-
-    # Suppress verbose esphome output, only show errors
-    local log_file
-    log_file="${HOME}/.iotstack/logs/reassign-$(date +%s).log"
-    mkdir -p "$(dirname "$log_file")"
-
-    # Build and invoke update_devices.sh with reassign flags
-    if [[ -n "$api_key" ]]; then
-      "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" --ota-password "$api_key" "${update_args[@]}" > "$log_file" 2>&1
-    else
-      "$UPDATE_SCRIPT" --reassign "${reassign_macs[@]}" "$yaml_file" "${update_args[@]}" > "$log_file" 2>&1
-    fi
-
-    local exit_code=$?
-
-    # Show summary lines from log (ok/err/warn only)
-    grep -E '^\[OK\]|\[ERR\]|\[WARN\]|^═' "$log_file" 2>/dev/null || true
-
-    if [[ $exit_code -ne 0 ]]; then
-      warn "See full log: $log_file"
-    fi
-
-    return $exit_code
+  if _update_args_include_dry_run "${update_args[@]}"; then
+    info "Dry run: will compile target firmware (device need not be on failsafe yet)"
   fi
+
+  if [[ -n "$api_key" ]]; then
+    echo "  OTA Password: (provided)"
+  else
+    echo "  OTA Password: (will derive from failsafe role secret per device)"
+  fi
+  echo
+
+  _reassign_devices_via_failsafe "$yaml_file" "$api_key" "${reassign_macs[@]}" -- "${update_args[@]}"
 }
 
 cmd_verify() {
@@ -1676,16 +1741,10 @@ cmd_rotate_secrets() {
   fi
   echo
 
-  # Get current OTA password from password manager (versioned)
-  local current_password
-  echo "[INFO] Retrieving current OTA password from version history..."
-  current_password=$(cmd_secret get "$role" ota 2>/dev/null)
-  if [[ -z "$current_password" ]]; then
+  # Ensure the role already has an OTA password in pass (will be versioned on success).
+  echo "[INFO] Verifying current OTA password exists in pass..."
+  if ! cmd_secret get "$role" ota &>/dev/null; then
     err "No password found in pass. Ensure role '$role' has an OTA password configured."
-  fi
-
-  if [[ -z "$current_password" ]]; then
-    err "Current password is required"
   fi
 
   # If no new password provided, generate a cryptographically secure one
@@ -1732,34 +1791,26 @@ cmd_rotate_secrets() {
     return 0
   fi
 
-  # Flash all devices with new password using old password for authentication
-  echo "[INFO] Flashing devices with new password (authenticating with old password)..."
-  echo "[INFO] Using parallel jobs (4 devices at a time)..."
+  # OTA each device via failsafe so the production slot is updated safely.
+  # Devices authenticate OTA with sha256(failsafe_role_secret | mac) from NVS.
+  local yaml_file
+  yaml_file=$(resolve_device "$role")
+
+  echo "[INFO] Flashing devices via failsafe (partition-safe OTA)..."
   echo
 
-  local max_jobs=4
-  declare -a commands=()
-
-  # Build command list for parallel execution
-  for mac in "${mac_suffixes[@]}"; do
-    commands+=("if \"$UPDATE_SCRIPT\" --reassign \"$mac\" \"$(resolve_device "$role")\" --ota-password \"$current_password\" >/dev/null 2>&1; then echo \"[OK] $mac flashed successfully\"; else echo \"[ERR] $mac flash failed\"; fi")
-  done
-
-  # Run all flashing jobs in parallel
-  job_results=()
-  run_parallel_jobs "$max_jobs" "${commands[@]}"
-
-  # Collect results
   local success_count=0
   local fail_count=0
   declare -a failed_macs=()
+  local mac dev_pwd
 
-  for i in "${!job_results[@]}"; do
-    if [[ ${job_results[$i]} -eq 0 ]]; then
+  for mac in "${mac_suffixes[@]}"; do
+    dev_pwd=$(_failsafe_device_ota_password "$mac") || err "Could not derive failsafe OTA password for $mac"
+    if _ota_via_failsafe "$mac" "$yaml_file" "$dev_pwd" "${role}-${mac}"; then
       success_count=$((success_count + 1))
     else
       fail_count=$((fail_count + 1))
-      failed_macs+=("${mac_suffixes[$i]}")
+      failed_macs+=("$mac")
     fi
   done
 
@@ -1776,10 +1827,8 @@ cmd_rotate_secrets() {
     echo "  Failed MACs: ${failed_macs[*]}"
     echo
     warn "Some devices failed. Retry with:"
-    echo "  iotstack reassign ${failed_macs[*]} $role --ota-password \"<password>\""
-    echo
-    warn "Using new password (if those devices were flashed):"
-    echo "  iotstack reassign ${failed_macs[*]} $role"
+    echo "  iotstack rotate-secrets $role"
+    echo "  # or: iotstack reassign ${failed_macs[*]} $role"
   fi
 
   # Only update password manager if all succeeded
@@ -2149,6 +2198,15 @@ cmd_flash() {
     esac
   done
   export LOG_FOR_CLAUDE
+
+  if [[ "$LOG_FOR_CLAUDE" -eq 1 ]]; then
+    local _claude_flash_log="$HOME/.iotstack/logs/iotstack-flash.log"
+    mkdir -p "$HOME/.iotstack/logs"
+    : > "$_claude_flash_log"
+    exec > >(tee -a "$_claude_flash_log") 2>&1
+    info "Flash log (for Claude): $_claude_flash_log"
+  fi
+
   if [[ ${#_flash_positional[@]} -gt 0 ]]; then
     set -- "${_flash_positional[@]}"
   else
@@ -2182,6 +2240,31 @@ cmd_flash() {
   # If device is fresh (no recovery): flash recovery first, then production
   # If device exists (has recovery): just flash production via OTA
   _flash_production_smart "$device" "$tty_device_or_role" "$skip_recovery"
+}
+
+_wait_for_serial_signal() {
+  # Stream serial output until "wifi cleared Warning flag" is seen or timeout.
+  # The device is live on the console the whole time; OTA can start the moment
+  # WiFi clears rather than waiting a fixed sleep.
+  # Usage: _wait_for_serial_signal <tty> [timeout_seconds]
+  # Returns 0 when signal found, non-0 on timeout.
+  local tty="$1"
+  local timeout_s="${2:-90}"
+  local py
+  py=$(head -1 "$(command -v esphome)" 2>/dev/null | sed 's/^#!//')
+  [[ -x "$py" ]] || py="python3"
+
+  if [[ "${LOG_FOR_CLAUDE:-0}" -eq 1 ]]; then
+    local log_file="$HOME/.iotstack/logs/esp32_device.log"
+    info "Recording device log to: $log_file"
+    timeout "$timeout_s" "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" \
+      --reconnect --stop-on "wifi cleared Warning flag" "$tty" \
+      | tee -a "$log_file"
+    return "${PIPESTATUS[0]}"
+  else
+    timeout "$timeout_s" "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" \
+      --reconnect --stop-on "wifi cleared Warning flag" "$tty"
+  fi
 }
 
 _flash_recovery() {
@@ -2238,8 +2321,6 @@ _flash_recovery() {
     local flash_log
     if [[ "${LOG_FOR_CLAUDE:-0}" -eq 1 ]]; then
       flash_log="$HOME/.iotstack/logs/iotstack-flash.log"
-      : > "$flash_log"
-      info "Flash log (for Claude): $flash_log"
     else
       flash_log="$flash_log_dir/$(date +%Y%m%d_%H%M%S).log"
     fi
@@ -2298,19 +2379,12 @@ _flash_recovery() {
 
     echo ""
 
-    if [[ "${LOG_FOR_CLAUDE:-0}" -eq 1 ]]; then
-      local claude_device_log="$HOME/.iotstack/logs/esp32_device.log"
-      info "Recording device boot log to: $claude_device_log"
-      info "Capturing 90s of serial output (Ctrl-C to stop early)..."
-      local py
-      py=$(head -1 "$(command -v esphome)" 2>/dev/null | sed 's/^#!//')
-      [[ -x "$py" ]] || py="python3"
-      timeout 90 "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" "$tty_device" | tee "$claude_device_log" || true
-      ok "Device log saved to: $claude_device_log"
+    info "Waiting for device to connect to WiFi..."
+    if _wait_for_serial_signal "$tty_device" 90; then
+      ok "Device connected to WiFi"
+      [[ "${LOG_FOR_CLAUDE:-0}" -eq 1 ]] && ok "Device log saved to: $HOME/.iotstack/logs/esp32_device.log"
     else
-      info "Device booting failsafe-wifi firmware..."
-      info "(Failsafe firmware at 0x30000 - failsafe partition)"
-      sleep 10
+      warn "WiFi wait timed out (90s); proceeding"
     fi
 
     # Return the MAC suffix for later reassignment
@@ -2363,6 +2437,7 @@ _flash_recovery() {
   [[ -z "$failsafe_offset" ]] && err "Could not find failsafe partition offset in: $PARTITION_TABLE"
 
   local failed=0
+  local successful_ttys=()
   for tty in "${tty_devices[@]}"; do
     local log_file
     log_file="/tmp/iotstack-flash-failsafe-$(basename "$tty").log"
@@ -2399,6 +2474,7 @@ _flash_recovery() {
           warn "Failed to write NVS secrets to $device_mac (continuing anyway)"
         fi
         sleep 2
+        successful_ttys+=("$tty")
       fi
     else
       warn "Recovery flash FAILED on $tty"
@@ -2413,9 +2489,17 @@ _flash_recovery() {
   else
     ok "Failsafe firmware flashed to all ${#tty_devices[@]} device(s)"
     echo ""
-    info "Devices booting failsafe-wifi firmware..."
-    info "Waiting 15 seconds for devices to stabilize and connect..."
-    sleep 15
+    if [[ ${#successful_ttys[@]} -eq 1 ]]; then
+      info "Waiting for device to connect to WiFi..."
+      if _wait_for_serial_signal "${successful_ttys[0]}" 60; then
+        ok "Device connected to WiFi"
+      else
+        warn "WiFi wait timed out (60s); proceeding"
+      fi
+    else
+      info "Waiting 15s for ${#successful_ttys[@]} devices to connect..."
+      sleep 15
+    fi
   fi
 }
 
@@ -2426,6 +2510,9 @@ _flash_recovery_dual() {
 
   # First: flash recovery via serial to all USB devices (auto-detect)
   _flash_recovery ""
+
+  # Brief pause so mDNS advertisement propagates after WiFi connects.
+  sleep 2
 
   # Second: Discover recovery devices and reassign to production role
   info "Step 2: Reassigning devices to $production_role firmware via OTA..."
@@ -2607,6 +2694,14 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
         device_ip=$(avahi-resolve -n "failsafe-${device_mac}.local" 2>/dev/null | awk '{print $2}' | head -1)
       fi
       [[ -n "$device_ip" ]] && debug "Resolved failsafe-$device_mac → $device_ip (will probe after reboot)"
+
+      # Wait for the OTA service to be fully ready. The /dev/tcp check above
+      # confirmed the port is listening, but ESPHome needs a moment after the
+      # socket opens to finish setup() before it can accept a connection.
+      if [[ -n "$device_ip" ]] && command -v wait-for-it &>/dev/null; then
+        wait-for-it "$device_ip:3232" -t 15 -q || true
+        sleep 2
+      fi
 
       info "Reassigning failsafe-$device_mac to $device firmware..."
 
