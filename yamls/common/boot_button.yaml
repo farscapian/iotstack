@@ -1,5 +1,4 @@
-# Physical BOOT button -> partition_manager. Optional: include only on devices
-# whose boot pin is free (mmwave, for example, repurposes GPIO9 for its own UI).
+# Physical BOOT button -> partition_manager. Include on every production/failsafe device.
 #
 #   - short press -> graceful restart (soft reset; keeps USB CDC alive)
 #   - hold 3s+    -> toggle to the other OTA slot
@@ -7,7 +6,7 @@
 # Pin defaults to GPIO9 (Seeed XIAO ESP32-C6). Boards with a different BOOT pin
 # (e.g. ESP32-S3-DevKitC = GPIO0) override boot_button_pin in substitutions:.
 #
-# Requires common/partition_manager.yaml (provides id: partition_mgr).
+# Requires a partition_manager package (provides id: partition_mgr).
 
 substitutions:
   boot_button_pin: GPIO9

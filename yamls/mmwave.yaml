@@ -17,6 +17,7 @@ external_components:
 # Shared boot-button / restart / partition-toggle behavior (same on every device)
 packages:
   partition_mgmt: !include common/partition_manager.yaml
+  boot_button: !include common/boot_button.yaml
 
 esphome:
   name: ${device_role}
@@ -87,14 +88,7 @@ api:
               brightness: 60%
               effect: "Strobe Red Yellow"
 
-# OTA Configuration
-# Password is dynamically set by nvs_secrets component from NVS
-ota:
-  - platform: esphome
-
-safe_mode:
-  num_attempts: 5
-  reboot_timeout: 3min
+# Status LED effects are controlled via the API / Home Assistant (light entity).
 
 time:
   - platform: sntp
@@ -179,28 +173,6 @@ binary_sensor:
                 blue: 0%
                 brightness: 20%
                 effect: "Strobe Red Yellow"
-
-  # Physical button (GPIO9 - boot button on Seeed XIAO)
-  - platform: gpio
-    pin:
-      number: GPIO9
-      inverted: true
-      mode:
-        input: true
-        pullup: true
-      ignore_strapping_warning: true
-    name: "Device Button"
-    internal: true
-    on_click:
-      min_length: 50ms
-      max_length: 350ms
-      then:
-        - script.execute: cycle_effect
-    on_double_click:
-      min_length: 50ms
-      max_length: 350ms
-      then:
-        - button.press: restart_btn
 
 text_sensor:
   - platform: template
@@ -292,10 +264,6 @@ sensor:
 
 # 6. Global variables
 globals:
-  - id: current_effect
-    type: int
-    initial_value: '0'
-    restore_value: no
   - id: brightness_multiplier
     type: float
     initial_value: '0.5'  # Default to 50%
@@ -309,9 +277,6 @@ button:
     entity_category: diagnostic
     on_press:
       - script.execute: identify_pulse
-  - platform: restart
-    id: restart_btn
-    internal: true
   # "Restart" and "Toggle Boot Partition" buttons come from partition_mgmt package
   - platform: factory_reset
     name: "Factory Reset"
@@ -522,26 +487,6 @@ light:
 
 # 8. Scripts
 script:
-  - id: cycle_effect
-    mode: restart
-    then:
-      - lambda: |-
-          int current = id(current_effect);
-          current = (current + 1) % 4;  // Cycle through 0, 1, 2, 3
-          id(current_effect) = current;
-
-          auto call = id(rgb_led).make_call();
-          if (current == 0) {
-            call.set_effect("Off");
-          } else if (current == 1) {
-            call.set_effect("Pulse Breath Rate");
-          } else if (current == 2) {
-            call.set_effect("Pulse Heart Rate");
-          } else if (current == 3) {
-            call.set_effect("Distance");
-          }
-          call.perform();
-
   - id: identify_pulse
     mode: restart
     then:
