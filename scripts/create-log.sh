@@ -1,5 +1,5 @@
 #!/bin/bash
-# create-log.sh — Session logging helpers for iotstack --create-log
+# create-log.sh — Session logging helpers for iotstack --create-log / --timestamp
 #
 # Requires config.sh (IOTSTACK_HOME) and SCRIPT_DIR to be set.
 
@@ -13,8 +13,10 @@ IOTSTACK_ARGV=()
 
 iotstack_parse_global_argv() {
   # Global flags valid anywhere on the command line (before or after subcommand):
-  #   -v, --verbose (alias), -q, --quiet (alias), --create-log, -env=<file>
-  # Sets VERBOSE/QUIET/IOTSTACK_CREATE_LOG and fills IOTSTACK_ARGV with the rest.
+  #   -v, --verbose (alias), -q, --quiet (alias), --create-log, --timestamp,
+  #   -env=<file>
+  # Sets VERBOSE/QUIET/IOTSTACK_CREATE_LOG/IOTSTACK_TIMESTAMP and fills
+  # IOTSTACK_ARGV with the rest.
   IOTSTACK_ARGV=()
   VERBOSE=0
   QUIET=0
@@ -29,6 +31,9 @@ iotstack_parse_global_argv() {
         ;;
       --create-log)
         export IOTSTACK_CREATE_LOG=1
+        ;;
+      --timestamp)
+        export IOTSTACK_TIMESTAMP=1
         ;;
       -env=*)
         ENV_FILE="${HOME}/.iotstack/${1#-env=}"
@@ -50,6 +55,20 @@ iotstack_parse_global_argv() {
 
 create_log_enabled() {
   [[ "${IOTSTACK_CREATE_LOG:-0}" -eq 1 ]]
+}
+
+iotstack_timestamp_enabled() {
+  [[ "${IOTSTACK_TIMESTAMP:-0}" -eq 1 ]]
+}
+
+create_log_child_output_piped() {
+  create_log_enabled || iotstack_timestamp_enabled
+}
+
+iotstack_timestamp_prefix() {
+  if iotstack_timestamp_enabled; then
+    printf '%s ' "$(date -Iseconds)"
+  fi
 }
 
 create_log_stamp_line() {
@@ -77,22 +96,42 @@ create_log_stamp_pipe() {
   fi
 }
 
+create_log_console_stamp_pipe() {
+  # Prefix each stdin line with a timestamp on stdout.
+  local source="${1:-}"
+  if [[ -f "$IOTSTACK_LOG_STAMP" ]]; then
+    local -a stamp_args=(--console-only)
+    if create_log_enabled && [[ -n "${IOTSTACK_LOG_FILE:-}" ]]; then
+      stamp_args=(--console --source "$source" --log-file "$IOTSTACK_LOG_FILE")
+    fi
+    stdbuf -oL -eL python3 -u "$IOTSTACK_LOG_STAMP" "${stamp_args[@]}"
+  else
+    cat
+  fi
+}
+
 create_log_tee_console() {
-  # Mirror stdout to the terminal immediately and stamp a copy into the session log.
+  # Filter: mirror child stdout to the terminal (optionally timestamped) and stamp
+  # a copy into the session log when --create-log is set.
   local source="$1"
-  if create_log_enabled && [[ -n "${IOTSTACK_LOG_FILE:-}" ]]; then
+  if create_log_enabled && iotstack_timestamp_enabled; then
+    create_log_console_stamp_pipe "$source"
+  elif create_log_enabled; then
     stdbuf -oL -eL tee /dev/tty | create_log_stamp_pipe "$source"
+  elif iotstack_timestamp_enabled; then
+    create_log_console_stamp_pipe "$source"
   else
     cat
   fi
 }
 
 create_log_run() {
-  # Run a command with line-buffered stdout/stderr mirrored live and stamped to the log.
+  # Run a command with line-buffered stdout/stderr mirrored live (and timestamped
+  # and/or stamped to the session log).
   # Usage: create_log_run <source_label> <cmd> [args...]
   local source="$1"
   shift
-  if create_log_enabled; then
+  if create_log_child_output_piped; then
     env PYTHONUNBUFFERED=1 stdbuf -oL -eL "$@" 2>&1 | create_log_tee_console "$source"
     return "${PIPESTATUS[0]}"
   fi
@@ -127,7 +166,8 @@ create_log_serial_source() {
 }
 
 create_log_run_esptool() {
-  # Run esptool with optional session logging. Sets create_log_esptool_output.
+  # Run esptool with optional session logging and/or console timestamps.
+  # Sets create_log_esptool_output.
   # Usage: create_log_run_esptool <source_label> <flash_log> <esptool-args...>
   local source="$1"
   local flash_log="$2"
@@ -135,16 +175,22 @@ create_log_run_esptool() {
   local -a esptool_args=("$@")
   local tmp rc
 
-  if create_log_enabled; then
+  if create_log_child_output_piped; then
     tmp=$(mktemp)
     if [[ $VERBOSE -eq 1 ]]; then
-      python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
-        | stdbuf -oL -eL tee "$tmp" /dev/tty \
-        | create_log_stamp_pipe "$source"
+      if create_log_enabled && ! iotstack_timestamp_enabled; then
+        python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
+          | stdbuf -oL -eL tee "$tmp" /dev/tty \
+          | create_log_stamp_pipe "$source"
+      else
+        python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
+          | stdbuf -oL -eL tee "$tmp" \
+          | create_log_tee_console "$source"
+      fi
     else
       python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
         | tee "$tmp" \
-        | create_log_stamp_pipe "$source" >/dev/null
+        | create_log_tee_console "$source" >/dev/null
     fi
     rc=${PIPESTATUS[0]}
     create_log_esptool_output=$(cat "$tmp")

@@ -7,6 +7,7 @@ set -euo pipefail
 # Global configuration
 VERBOSE=0
 QUIET=0
+IOTSTACK_TIMESTAMP=0
 # ENV_FILE is defined in config.sh
 
 # Colors (using ANSI-C quoting to properly interpret escape sequences)
@@ -215,7 +216,7 @@ _esphome_compile() {
   # Run esphome compile, honoring VERBOSE
   local yaml_file="$1"
   if [[ $VERBOSE -eq 1 ]]; then
-    if create_log_enabled; then
+    if create_log_child_output_piped; then
       create_log_run "esphome:compile" esphome compile "$yaml_file" || return 1
     else
       esphome compile "$yaml_file" || return 1
@@ -356,14 +357,26 @@ _iotstack_log_plain() {
   fi
 }
 
-err()  { _iotstack_log_plain "ERROR" "$@"; echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
-ok()   { [[ $QUIET -eq 0 ]] && { _iotstack_log_plain "OK" "$@"; echo -e "${GRN}[OK]${RST} $*"; }; return 0; }
-warn() { [[ $QUIET -eq 0 ]] && { _iotstack_log_plain "WARN" "$@"; echo -e "${YLW}[WARN]${RST} $*"; }; return 0; }
-info() { [[ $QUIET -eq 0 ]] && { _iotstack_log_plain "INFO" "$@"; echo -e "${BLU}[INFO]${RST} $*"; }; return 0; }
-debug() { [[ $VERBOSE -eq 1 && $QUIET -eq 0 ]] && { _iotstack_log_plain "DEBUG" "$@"; echo -e "${DIM}[DEBUG]${RST} $*"; }; return 0; }
+_iotstack_echo() {
+  local stream="$1"
+  shift
+  local ts
+  ts=$(iotstack_timestamp_prefix)
+  if [[ "$stream" == "stderr" ]]; then
+    echo -e "${ts}$*" >&2
+  else
+    echo -e "${ts}$*"
+  fi
+}
+
+err()  { _iotstack_log_plain "ERROR" "$@"; _iotstack_echo stderr "${RED}[ERROR]${RST} $*"; exit 1; }
+ok()   { [[ $QUIET -eq 0 ]] && { _iotstack_log_plain "OK" "$@"; _iotstack_echo stdout "${GRN}[OK]${RST} $*"; }; return 0; }
+warn() { [[ $QUIET -eq 0 ]] && { _iotstack_log_plain "WARN" "$@"; _iotstack_echo stdout "${YLW}[WARN]${RST} $*"; }; return 0; }
+info() { [[ $QUIET -eq 0 ]] && { _iotstack_log_plain "INFO" "$@"; _iotstack_echo stdout "${BLU}[INFO]${RST} $*"; }; return 0; }
+debug() { [[ $VERBOSE -eq 1 && $QUIET -eq 0 ]] && { _iotstack_log_plain "DEBUG" "$@"; _iotstack_echo stdout "${DIM}[DEBUG]${RST} $*"; }; return 0; }
 
 _run_update_devices() {
-  if create_log_enabled; then
+  if create_log_child_output_piped; then
     create_log_run "update_devices.sh" bash "$UPDATE_SCRIPT" "$@"
     return $?
   fi
@@ -2766,7 +2779,7 @@ _wait_for_serial_signal() {
   local serial_source
   serial_source=$(create_log_serial_source "$tty")
 
-  if create_log_enabled; then
+  if create_log_child_output_piped; then
     timeout "$timeout_s" "$py" -u "${SCRIPT_DIR}/scripts/serial-logs.py" \
       --reconnect --stop-on "wifi cleared Warning flag" "$tty" \
       | create_log_tee_console "$serial_source"
@@ -2910,7 +2923,7 @@ _flash_failsafe_to_tty() {
     sleep 5
 
     info "Writing device-specific secrets to NVS..."
-    if create_log_enabled; then
+    if create_log_child_output_piped; then
       if ! create_log_run "write-nvs-secrets" "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" \
           "$tty_device" "$device_mac" "$production_role"; then
         err "Failed to write NVS secrets to device"
@@ -3519,7 +3532,7 @@ cmd_logs() {
     local py serial_source
     py=$(head -1 "$(command -v esphome)" 2>/dev/null | sed 's/^#!//')
     [[ -x "$py" ]] || py="python3"
-    if create_log_enabled; then
+    if create_log_child_output_piped; then
       serial_source=$(create_log_serial_source "$port")
       "$py" -u "${SCRIPT_DIR}/scripts/serial-logs.py" "$port" \
         | create_log_tee_console "$serial_source"
