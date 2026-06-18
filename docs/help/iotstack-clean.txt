@@ -11,7 +11,7 @@ Removes:
   - PlatformIO cache
   - Compilation cache file
   - Logs directory (~/.iotstack/logs/)
-  - Temporary artifact files
+  - Temporary artifact files (partition table CSV is kept)
 
 Usage:
   iotstack clean

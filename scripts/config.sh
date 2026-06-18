@@ -61,7 +61,8 @@ export IOTSTACK_APP_OFFSET="${IOTSTACK_APP_OFFSET:-0x30000}"         # first app
 # IOTSTACK_FAILSAFE_MARGIN (rounded up to 64KB); production (ota_1) gets the
 # rest. IOTSTACK_FAILSAFE_PART_SIZE is the fallback/initial size used for the
 # first compile pass and if the firmware can't be measured.
-export IOTSTACK_FAILSAFE_PART_SIZE="${IOTSTACK_FAILSAFE_PART_SIZE:-0x180000}"  # initial/fallback (1.5MB)
+export IOTSTACK_FAILSAFE_PART_SIZE="${IOTSTACK_FAILSAFE_PART_SIZE:-0xe0000}"   # tuned for current failsafe (~800KB + margin)
+export IOTSTACK_FAILSAFE_PART_SIZE_GENEROUS="${IOTSTACK_FAILSAFE_PART_SIZE_GENEROUS:-0x180000}"  # pass-1 fallback if tight table fails
 export IOTSTACK_FAILSAFE_MARGIN="${IOTSTACK_FAILSAFE_MARGIN:-0x10000}"         # headroom above firmware (64KB)
 
 # ESPHome build directories (for verification scripts)

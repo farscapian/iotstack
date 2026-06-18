@@ -306,7 +306,7 @@ _failsafe_part_size() {
   local sz
   sz=$(stat -c%s "$bin" 2>/dev/null || stat -f%z "$bin" 2>/dev/null || echo 0)
   if (( sz <= 0 )); then
-    printf '%s' "${IOTSTACK_FAILSAFE_PART_SIZE:-0x180000}"
+    printf '%s' "${IOTSTACK_FAILSAFE_PART_SIZE:-0xe0000}"
     return
   fi
   local total=$(( sz + margin ))
@@ -401,23 +401,22 @@ smart_compile() {
   # Pass 1: compile (prefer persisted partition size; fall back to generous default).
   local pass1_size fs_size fw_bytes partitions_bin
   _smart_compile_cache_miss_notice "$device_name" "failsafe"
-  pass1_size=$(_partition_table_failsafe_size 2>/dev/null) || pass1_size="0x180000"
-  if [[ -n "${IOTSTACK_FAILSAFE_PART_SIZE:-}" ]]; then
-    pass1_size="$IOTSTACK_FAILSAFE_PART_SIZE"
-  fi
+  local generous_size="${IOTSTACK_FAILSAFE_PART_SIZE_GENEROUS:-0x180000}"
+  pass1_size=$(_partition_table_failsafe_size 2>/dev/null) \
+    || pass1_size="${IOTSTACK_FAILSAFE_PART_SIZE:-0xe0000}"
   export IOTSTACK_FAILSAFE_PART_SIZE="$pass1_size"
   _update_partition_table_file
-  if _hex_sizes_equal "$pass1_size" "0x180000"; then
+  if _hex_sizes_equal "$pass1_size" "$generous_size"; then
     info "Compiling failsafe-wifi firmware (pass 1/2: measuring size)..."
   else
-    info "Compiling failsafe-wifi firmware (pass 1: partition table ${pass1_size} from artifact)..."
+    info "Compiling failsafe-wifi firmware (pass 1: partition table ${pass1_size})..."
   fi
   if ! _esphome_compile "$yaml_file"; then
-    if _hex_sizes_equal "$pass1_size" "0x180000"; then
+    if _hex_sizes_equal "$pass1_size" "$generous_size"; then
       return 1
     fi
-    warn "Failsafe compile failed with partition ${pass1_size} — retrying with generous 0x180000"
-    export IOTSTACK_FAILSAFE_PART_SIZE="0x180000"
+    warn "Failsafe compile failed with partition ${pass1_size} — retrying with generous ${generous_size}"
+    export IOTSTACK_FAILSAFE_PART_SIZE="$generous_size"
     _update_partition_table_file
     info "Compiling failsafe-wifi firmware (pass 1/2: measuring size)..."
     _esphome_compile "$yaml_file" || return 1
@@ -4083,7 +4082,7 @@ cmd_clean() {
     "${LOGS_DIR}"
   )
 
-  local cleaned_count=0
+  local cleaned_count=0 artifact name size
 
   for item in "${items_to_clean[@]}"; do
     if [[ -e "$item" ]]; then
@@ -4100,10 +4099,23 @@ cmd_clean() {
     fi
   done
 
-  # Clean temp files
-  if [[ -d "${HOME}/.iotstack/artifacts" ]]; then
-    info "Removing temporary files..."
-    rm -rf "${HOME}/.iotstack/artifacts"/*
+  # Clean temp artifact files (keep partition table so failsafe pass 2 can be skipped)
+  if [[ -d "${ARTIFACTS_DIR}" ]]; then
+    info "Removing temporary artifact files (keeping $(basename "$PARTITION_TABLE"))..."
+    for artifact in "${ARTIFACTS_DIR}"/*; do
+      [[ -e "$artifact" ]] || continue
+      name=$(basename "$artifact")
+      [[ "$name" == "$(basename "$PARTITION_TABLE")" ]] && continue
+      if [[ -d "$artifact" ]]; then
+        size=$(du -sh "$artifact" 2>/dev/null | awk '{print $1}' || echo "unknown")
+        info "Removing directory: $artifact ($size)"
+        rm -rf "$artifact"
+      else
+        info "Removing file: $artifact"
+        rm -f "$artifact"
+      fi
+      ((cleaned_count++))
+    done
   fi
 
   ok "Clean complete. Removed $cleaned_count item(s)"
