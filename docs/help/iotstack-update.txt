@@ -23,6 +23,11 @@ Options:
   -v, --verbose is a global flag (anywhere on the command line); shows full
   compilation output for update. Example: iotstack -v update bleproxy
 
+Per-role help (flash, update, reassign, verify share one file per role):
+
+  iotstack help matrixdisplay
+  iotstack update matrixdisplay help
+
 Examples:
   iotstack update bleproxy                           # All bleproxy devices
   iotstack update all                                # All devices

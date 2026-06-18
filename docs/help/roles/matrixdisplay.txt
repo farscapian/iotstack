@@ -1,0 +1,43 @@
+iotstack matrixdisplay — Matrix Display
+
+ESP32-S3 HUB75 LED matrix with adaptive brightness from Home Assistant room
+illuminance. Panel geometry is stored in NVS at flash time (panels cannot
+self-report wiring).
+
+Config: yamls/matrixdisplay.yaml
+Chip: esp32s3 (esp32-s3-devkitc-1)
+Network: WiFi
+
+Commands (shared help for flash, update, reassign, verify):
+
+  iotstack flash matrixdisplay /dev/ttyACM0 [options]
+  iotstack update matrixdisplay
+  iotstack update <MAC> matrixdisplay
+  iotstack reassign <MAC> matrixdisplay
+  iotstack verify matrixdisplay
+
+Flash options (matrixdisplay only; written to NVS via write-nvs-secrets.sh):
+
+  --matrix-columns=N       HUB75 panel count (1 or 2)
+  --matrix-panel-width=N   Panel width in pixels (default 64)
+  --matrix-panel-height=N  Panel height in pixels (default 32)
+
+Examples:
+
+  iotstack flash matrixdisplay /dev/ttyACM0
+  iotstack flash matrixdisplay /dev/ttyACM0 --matrix-columns=2 --matrix-panel-width=64 --matrix-panel-height=32
+  iotstack update matrixdisplay --dry-run
+  iotstack reassign 8238cc matrixdisplay
+
+NVS / pass store (optional defaults):
+
+  iotstack/roles/matrixdisplay/matrix_cols
+  iotstack/roles/matrixdisplay/matrix_panel_w
+  iotstack/roles/matrixdisplay/matrix_panel_h
+
+General command reference:
+
+  iotstack flash help
+  iotstack update help
+  iotstack reassign help
+  iotstack verify help

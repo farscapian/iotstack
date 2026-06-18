@@ -16,3 +16,10 @@ Output shows:
   - Network type (WiFi or Thread)
   - YAML configuration path
   - Number of devices currently running each role
+
+Per-role command help (flash, update, reassign, verify):
+
+  iotstack help <role>           e.g. iotstack help matrixdisplay
+  iotstack flash <role> help     same docs/help/roles/<role>.txt file
+  iotstack update <role> help
+  iotstack reassign help <role>

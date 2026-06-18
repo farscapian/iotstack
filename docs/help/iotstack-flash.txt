@@ -23,12 +23,11 @@ Options:
                   thorough). Default uses runtime mDNS config_hash (same as
                   iotstack devices / iotstack failsafe).
   --flash-anyway  Always erase and reflash (skip hash comparison)
-  --matrix-columns=N
-                  HUB75 panel count for matrixdisplay (1 or 2); written to NVS
-  --matrix-panel-width=N
-                  HUB75 panel width in pixels (matrixdisplay only)
-  --matrix-panel-height=N
-                  HUB75 panel height in pixels (matrixdisplay only)
+
+Role-specific options (e.g. matrixdisplay HUB75 NVS layout):
+
+  iotstack help <role>              e.g. iotstack help matrixdisplay
+  iotstack flash <role> help        same file for flash / update / reassign
 
 Smart flash (default):
   Assessment compares runtime config_hash from mDNS (fast). Production OTA
@@ -45,7 +44,7 @@ Examples:
   iotstack flash failsafe mmwave                 # Dual-flash: failsafe + mmwave
   iotstack flash failsafe /dev/ttyUSB0           # Failsafe image only
   iotstack flash mmwave /dev/ttyACM0 --ota-only  # Skip recovery, OTA prod only
-  iotstack flash matrixdisplay /dev/ttyACM0 --matrix-columns=2 --matrix-panel-width=64 --matrix-panel-height=32
+  iotstack flash matrixdisplay help              # Role-specific flash options
   iotstack flash threadrouter                    # Auto-detect all USB devices
 
 For detailed help including architecture and timing, see:

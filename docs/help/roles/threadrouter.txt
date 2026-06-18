@@ -1,0 +1,33 @@
+iotstack threadrouter — Thread Router
+
+ESP32-C6 OpenThread border-router companion / Thread mesh router (no WiFi
+station — uses OpenThread RCP).
+
+Config: yamls/threadrouter.yaml
+Chip: esp32c6
+Network: Thread
+
+Commands (shared help for flash, update, reassign, verify):
+
+  iotstack flash threadrouter /dev/ttyACM0
+  iotstack update threadrouter
+  iotstack update <MAC> threadrouter
+  iotstack reassign <MAC> threadrouter
+  iotstack verify threadrouter
+
+Examples:
+
+  iotstack flash threadrouter /dev/ttyACM0
+  iotstack update 135b60 1a7b00 threadrouter
+  iotstack reassign 11cdc4 threadrouter
+
+Notes:
+  Thread devices require an operational OpenThread network (OTBR). Use
+  iotstack otbr help for border router setup.
+
+General command reference:
+
+  iotstack flash help
+  iotstack update help
+  iotstack reassign help
+  iotstack verify help

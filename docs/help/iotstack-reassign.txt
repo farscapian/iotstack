@@ -15,6 +15,11 @@ Options:
   --ota-password <pwd>
                   OTA password override (defaults to failsafe-derived per device)
 
+Per-role help (shared with flash / update / verify):
+
+  iotstack help bleproxy
+  iotstack reassign help matrixdisplay
+
 Examples:
   iotstack reassign 19b164 bleproxy           # Reassign to bleproxy role
   iotstack reassign 8dfcac 0f4df4 mmwave      # Reassign several to mmwave

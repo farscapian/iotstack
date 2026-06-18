@@ -762,6 +762,94 @@ help_roles() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-roles.txt"
 }
 
+_ROLE_HELP_DIR="${SCRIPT_DIR}/docs/help/roles"
+
+role_help_file() {
+  printf '%s/%s.txt' "$_ROLE_HELP_DIR" "$1"
+}
+
+_iotstack_extract_role_from_args() {
+  # First production role in argv (skip help, flags, MACs, paths, tty devices).
+  local arg
+  for arg in "$@"; do
+    [[ "$arg" == "help" ]] && continue
+    [[ "$arg" =~ ^-- ]] && continue
+    [[ "$arg" =~ ^/dev/ ]] && continue
+    [[ "$arg" =~ ^[0-9a-fA-F]{6}$ ]] && continue
+    [[ -f "$arg" ]] && continue
+    [[ "$arg" == "all" ]] && continue
+    if is_valid_role "$arg"; then
+      printf '%s\n' "$arg"
+      return 0
+    fi
+  done
+  return 1
+}
+
+_iotstack_command_help_if_requested() {
+  # Usage: _iotstack_command_help_if_requested <flash|update|reassign|verify> "$@"
+  # Shows per-role help when help + role are present; else generic command help.
+  local cmd="$1"
+  shift
+  local arg role="" want_help=0
+  for arg in "$@"; do
+    [[ "$arg" == "help" ]] && want_help=1
+  done
+  [[ $want_help -eq 1 ]] || return 1
+  role=$(_iotstack_extract_role_from_args "$@") || role=""
+  if [[ -n "$role" ]]; then
+    help_role "$role"
+  else
+    case "$cmd" in
+      flash)    help_flash ;;
+      update)   help_update ;;
+      reassign) help_reassign ;;
+      verify)   help_verify ;;
+      *)        return 1 ;;
+    esac
+  fi
+  return 0
+}
+
+help_role() {
+  local role="${1:-}"
+  local yaml_file info board variant network dev_status friendly f
+
+  if [[ -z "$role" ]]; then
+    err "Usage: iotstack help <role>"
+  fi
+  if ! is_valid_role "$role"; then
+    err "Unknown role: $role. Run 'iotstack roles' for available roles."
+  fi
+
+  f=$(role_help_file "$role")
+  if [[ -f "$f" ]]; then
+    cat "$f"
+    return 0
+  fi
+
+  yaml_file=$(resolve_device "$role")
+  info=$(get_yaml_device_info "$yaml_file")
+  IFS='|' read -r board variant network dev_status <<< "$info"
+  friendly=$(yaml_friendly_name_from_file "$yaml_file" 2>/dev/null) || friendly="$role"
+
+  cat <<EOF
+iotstack ${role} — ${friendly}
+
+Config: yamls/${role}.yaml
+Chip: ${variant:-unknown}${board:+ (${board})}
+Network: ${network:-unknown}
+Status: ${dev_status:-unknown}
+
+  iotstack flash ${role} [/dev/ttyACM0]
+  iotstack update ${role}
+  iotstack reassign <MAC> ${role}
+  iotstack verify ${role}
+
+Role help file not found: docs/help/roles/${role}.txt
+EOF
+}
+
 help_reassign() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-reassign.txt"
 }
@@ -1888,11 +1976,7 @@ _update_via_failsafe() {
 # ── Command Handlers ─────────────────────────────────────────────────────────
 
 cmd_update() {
-  # Handle help request
-  if [[ "${1:-}" == "help" ]]; then
-    help_update
-    return 0
-  fi
+  _iotstack_command_help_if_requested update "$@" && return 0
 
   local device_or_yaml=""
   local ota_password=""
@@ -2031,11 +2115,7 @@ cmd_update() {
 }
 
 cmd_reassign() {
-  # Handle help request
-  if [[ "${1:-}" == "help" ]]; then
-    help_reassign
-    return 0
-  fi
+  _iotstack_command_help_if_requested reassign "$@" && return 0
 
   local api_key=""
   declare -a update_args=()
@@ -2130,11 +2210,7 @@ cmd_reassign() {
 }
 
 cmd_verify() {
-  # Handle help request
-  if [[ "${1:-}" == "help" ]]; then
-    help_verify
-    return 0
-  fi
+  _iotstack_command_help_if_requested verify "$@" && return 0
 
   local device_or_yaml=""
 
@@ -3006,6 +3082,8 @@ _flash_matrix_layout_applicable() {
 }
 
 cmd_flash() {
+  _iotstack_command_help_if_requested flash "$@" && return 0
+
   local device="" tty_device_or_role="" skip_recovery=""
   export FLASH_ANYWAY=0
   export FLASH_ON_FLASH_VERIFY=0
@@ -3015,10 +3093,6 @@ cmd_flash() {
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      help)
-        help_flash
-        return 0
-        ;;
       --ota-only)
         skip_recovery="--ota-only"
         shift
@@ -4334,6 +4408,9 @@ main() {
       ;;
     help)
       if [[ $# -gt 1 ]]; then
+        if is_valid_role "$2"; then
+          help_role "$2"
+        else
         case "$2" in
           update)           help_update ;;
           verify)           help_verify ;;
@@ -4356,6 +4433,7 @@ main() {
           rotate-secrets)   help_rotate_secrets ;;
           *)                err "Unknown command: $2" ;;
         esac
+        fi
       else
         usage
       fi

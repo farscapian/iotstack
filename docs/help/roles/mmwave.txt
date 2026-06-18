@@ -1,0 +1,28 @@
+iotstack mmwave — mmWave Presence Detector
+
+ESP32-C6 WiFi presence sensor (LD2410 mmWave radar).
+
+Config: yamls/mmwave.yaml
+Chip: esp32c6
+Network: WiFi
+
+Commands (shared help for flash, update, reassign, verify):
+
+  iotstack flash mmwave /dev/ttyACM0
+  iotstack update mmwave
+  iotstack update <MAC> mmwave
+  iotstack reassign <MAC> mmwave
+  iotstack verify mmwave
+
+Examples:
+
+  iotstack flash mmwave /dev/ttyACM0
+  iotstack update mmwave
+  iotstack reassign 8dfcac mmwave
+
+General command reference:
+
+  iotstack flash help
+  iotstack update help
+  iotstack reassign help
+  iotstack verify help

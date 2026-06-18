@@ -1,0 +1,29 @@
+iotstack bleproxy — Bluetooth Proxy
+
+ESP32-C6 WiFi device that extends Home Assistant Bluetooth reach via ESPHome
+bluetooth_proxy.
+
+Config: yamls/bleproxy.yaml
+Chip: esp32c6 (seeed_xiao_esp32c6)
+Network: WiFi
+
+Commands (shared help for flash, update, reassign, verify):
+
+  iotstack flash bleproxy /dev/ttyACM0
+  iotstack update bleproxy
+  iotstack update <MAC> bleproxy
+  iotstack reassign <MAC> bleproxy
+  iotstack verify bleproxy
+
+Examples:
+
+  iotstack flash bleproxy /dev/ttyACM0
+  iotstack update bleproxy --dry-run
+  iotstack reassign 19b164 bleproxy
+
+General command reference:
+
+  iotstack flash help
+  iotstack update help
+  iotstack reassign help
+  iotstack verify help

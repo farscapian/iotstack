@@ -1,0 +1,28 @@
+iotstack silentnotify — Silent Notify
+
+ESP32-S3 WiFi notification / alert device.
+
+Config: yamls/silentnotify.yaml
+Chip: esp32s3
+Network: WiFi
+
+Commands (shared help for flash, update, reassign, verify):
+
+  iotstack flash silentnotify /dev/ttyACM0
+  iotstack update silentnotify
+  iotstack update <MAC> silentnotify
+  iotstack reassign <MAC> silentnotify
+  iotstack verify silentnotify
+
+Examples:
+
+  iotstack flash silentnotify /dev/ttyACM0
+  iotstack update silentnotify
+  iotstack reassign a1b2c3 silentnotify
+
+General command reference:
+
+  iotstack flash help
+  iotstack update help
+  iotstack reassign help
+  iotstack verify help

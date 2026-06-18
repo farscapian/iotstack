@@ -10,6 +10,11 @@ Arguments:
   <yaml>     Path to device config
   all        Verify all device configs
 
+Per-role help:
+
+  iotstack help matrixdisplay
+  iotstack verify matrixdisplay help
+
 Examples:
   iotstack verify bleproxy  # Check if devices are up-to-date
   iotstack verify all       # Check entire fleet
