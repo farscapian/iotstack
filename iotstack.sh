@@ -435,7 +435,8 @@ source "${SCRIPT_DIR}/scripts/config.sh"
 # shellcheck source=scripts/create-log.sh
 source "${SCRIPT_DIR}/scripts/create-log.sh"
 
-# --create-log: stamp iotstack messages to the session log; stdout stays on the tty.
+# --create-log: stamp iotstack messages to the session log (implies --timestamp);
+# stdout stays on the tty. --log-id=<id> appends to iotstack-<id>.log.
 _iotstack_log_plain() {
   local tag="$1"
   shift

@@ -11,15 +11,28 @@ IOTSTACK_LOG_STAMP="${IOTSTACK_LOG_STAMP:-${SCRIPT_DIR}/scripts/log-stamp.py}"
 # Remaining argv after global flags are stripped (set by iotstack_parse_global_argv).
 IOTSTACK_ARGV=()
 
+iotstack_validate_log_id() {
+  local log_id="$1"
+  if [[ -z "$log_id" ]]; then
+    echo "[ERROR] --log-id requires a value" >&2
+    exit 1
+  fi
+  if [[ ! "$log_id" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo "[ERROR] --log-id must contain only letters, digits, and . _ -" >&2
+    exit 1
+  fi
+}
+
 iotstack_parse_global_argv() {
   # Global flags valid anywhere on the command line (before or after subcommand):
   #   -v, --verbose (alias), -q, --quiet (alias), --create-log, --timestamp,
-  #   -env=<file>
-  # Sets VERBOSE/QUIET/IOTSTACK_CREATE_LOG/IOTSTACK_TIMESTAMP and fills
-  # IOTSTACK_ARGV with the rest.
+  #   --log-id=<id>, -env=<file>
+  # Sets VERBOSE/QUIET/IOTSTACK_CREATE_LOG/IOTSTACK_TIMESTAMP/IOTSTACK_LOG_ID and
+  # fills IOTSTACK_ARGV with the rest.
   IOTSTACK_ARGV=()
   VERBOSE=0
   QUIET=0
+  unset IOTSTACK_LOG_ID 2>/dev/null || true
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -31,9 +44,20 @@ iotstack_parse_global_argv() {
         ;;
       --create-log)
         export IOTSTACK_CREATE_LOG=1
+        export IOTSTACK_TIMESTAMP=1
         ;;
       --timestamp)
         export IOTSTACK_TIMESTAMP=1
+        ;;
+      --log-id=*)
+        export IOTSTACK_LOG_ID="${1#--log-id=}"
+        iotstack_validate_log_id "$IOTSTACK_LOG_ID"
+        ;;
+      --log-id)
+        shift
+        [[ $# -gt 0 ]] || { echo "[ERROR] --log-id requires a value" >&2; exit 1; }
+        export IOTSTACK_LOG_ID="$1"
+        iotstack_validate_log_id "$IOTSTACK_LOG_ID"
         ;;
       -env=*)
         ENV_FILE="${HOME}/.iotstack/${1#-env=}"
@@ -47,6 +71,11 @@ iotstack_parse_global_argv() {
 
   if [[ $VERBOSE -eq 1 && $QUIET -eq 1 ]]; then
     echo "[ERROR] -v/--verbose and -q/--quiet are incompatible" >&2
+    exit 1
+  fi
+
+  if [[ -n "${IOTSTACK_LOG_ID:-}" && "${IOTSTACK_CREATE_LOG:-0}" != 1 ]]; then
+    echo "[ERROR] --log-id requires --create-log" >&2
     exit 1
   fi
 
@@ -147,13 +176,36 @@ create_log_setup() {
   # Keep stdout/stderr on the terminal so child tools (esphome, esptool, etc.) stay
   # line-buffered. iotstack messages are stamped via create_log_stamp_line(); piped
   # subprocesses use create_log_run() / create_log_tee_console().
+  #
+  # Default: iotstack-<cmd>.log (truncated each run).
+  # --log-id=<id>: iotstack-<id>.log; append when the file already exists (any command).
   local command="$1"
+  local log_name session_cmd
   create_log_enabled || return 0
 
   export PYTHONUNBUFFERED=1
-  export IOTSTACK_LOG_FILE="${IOTSTACK_HOME}/logs/iotstack-${command}.log"
+  if [[ -n "${IOTSTACK_LOG_ID:-}" ]]; then
+    log_name="iotstack-${IOTSTACK_LOG_ID}"
+  else
+    log_name="iotstack-${command}"
+  fi
+  export IOTSTACK_LOG_FILE="${IOTSTACK_HOME}/logs/${log_name}.log"
   mkdir -p "$(dirname "$IOTSTACK_LOG_FILE")"
-  : > "$IOTSTACK_LOG_FILE"
+
+  session_cmd="iotstack"
+  if [[ ${#IOTSTACK_ARGV[@]} -gt 0 ]]; then
+    session_cmd+=" ${IOTSTACK_ARGV[*]}"
+  fi
+
+  if [[ -n "${IOTSTACK_LOG_ID:-}" && -f "$IOTSTACK_LOG_FILE" ]]; then
+    {
+      echo ""
+      printf '%s === %s ===\n' "$(date -Iseconds)" "$session_cmd"
+    } >> "$IOTSTACK_LOG_FILE"
+  else
+    : > "$IOTSTACK_LOG_FILE"
+    printf '%s === %s ===\n' "$(date -Iseconds)" "$session_cmd" >> "$IOTSTACK_LOG_FILE"
+  fi
 }
 
 create_log_serial_source() {
