@@ -1037,6 +1037,9 @@ _wait_for_device() {
   local mdns_svc="_esphomelib._tcp"
   [[ "$name" == failsafe-* ]] && mdns_svc="_iotstack-failsafe._tcp"
   while (( waited < timeout )); do
+    if [[ "$name" == failsafe-* ]] && _iotstack_ota_tcp_open "$name" 3232; then
+      return 0
+    fi
     if avahi-browse -t -r "$mdns_svc" 2>/dev/null | grep -Fqi "$name"; then
       return 0
     fi
@@ -1363,7 +1366,7 @@ _ensure_device_on_failsafe() {
     production_hostname=$(_find_production_hostname_for_mac "$mac" || true)
     if [[ -n "$production_hostname" ]]; then
       info "[$mac] 1/4 switching $production_hostname to failsafe..."
-      if ! "$SCRIPT_DIR/scripts/esphome-service.sh" "${production_hostname}.local" switch_to_failsafe; then
+      if ! _call_production_api_service "$production_hostname" "$mac" switch_to_failsafe; then
         warn "[$mac] could not call switch_to_failsafe (offline or already in failsafe?); will still wait"
       fi
     else
@@ -2435,6 +2438,33 @@ _derive_device_api_encryption_key() {
   echo -n "${base}|${mac}" | sha256sum | cut -c1-64
 }
 
+_device_api_noise_psk_b64() {
+  # Base64 noise_psk for aioesphomeapi (same encoding as HA config-flow registration).
+  local role="$1"
+  local mac="$2"
+  local hex
+  hex=$(_derive_device_api_encryption_key "$role" "$mac") || return 1
+  python3 -c "import binascii,base64,sys; print(base64.b64encode(binascii.unhexlify(sys.argv[1])).decode())" "$hex"
+}
+
+_call_production_api_service() {
+  # Invoke a native-API user service on a running production device.
+  local production_hostname="$1"
+  local mac="$2"
+  local service="$3"
+  local role noise_psk
+
+  role="${production_hostname%-${mac}}"
+  noise_psk=$(_device_api_noise_psk_b64 "$role" "$mac" 2>/dev/null) || true
+  if [[ -n "$noise_psk" ]]; then
+    IOTSTACK_API_NOISE_PSK="$noise_psk" \
+      "$SCRIPT_DIR/scripts/esphome-service.sh" "${production_hostname}.local" "$service"
+  else
+    warn "[$mac] no API encryption key in pass for role ${role}; trying plaintext API"
+    "$SCRIPT_DIR/scripts/esphome-service.sh" "${production_hostname}.local" "$service"
+  fi
+}
+
 _ha_register_esphome_device() {
   # Register production device in Home Assistant when PERFORM_HA_DEVICE_REGISTRATION=1.
   # Uses WebSocket API to find the zeroconf flow and the device api_encryption_key
@@ -3079,13 +3109,25 @@ _flash_production_smart() {
             ok "Production firmware setup complete!"
             return
           fi
-          _flash_production_ota_update "$device_mac" "$yaml_path" "$device" \
-            || err "Production OTA update failed"
-          ok "Production firmware setup complete!"
-          return
-        fi
-
-        if [[ $FLASH_ASSESS_FAILSAFE_ONLINE -eq 1 ]] || _failsafe_ota_reachable "$device_mac"; then
+          if _flash_production_ota_update "$device_mac" "$yaml_path" "$device"; then
+            ok "Production firmware setup complete!"
+            return
+          fi
+          warn "Production OTA via network failed — trying serial failsafe path"
+          info "Step 1: Refreshing failsafe-wifi firmware on ${tty_device}..."
+          echo ""
+          local _mac_file
+          _mac_file=$(mktemp)
+          _flash_failsafe_to_tty "$tty_device" "$_mac_file" "$device" \
+            || err "Failsafe serial flash failed"
+          if [[ -f "$_mac_file" ]]; then
+            device_mac=$(tr -d '[:space:]' < "$_mac_file")
+            rm -f "$_mac_file"
+          fi
+          echo ""
+          info "Step 2: Reassigning failsafe device to ${device} production firmware..."
+          echo ""
+        elif [[ $FLASH_ASSESS_FAILSAFE_ONLINE -eq 1 ]] || _failsafe_ota_reachable "$device_mac"; then
           info "Device is on failsafe firmware (failsafe-${device_mac} OTA is reachable)"
           local _mac_file
           _mac_file=$(mktemp)

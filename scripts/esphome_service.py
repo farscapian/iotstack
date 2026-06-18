@@ -14,14 +14,20 @@ success — the caller verifies the result by watching mDNS.
 """
 import asyncio
 import json
+import os
 import sys
 
 from aioesphomeapi import APIClient
 
 
-async def call_service(host: str, service_name: str, password: str,
-                       variables: dict) -> int:
-    cli = APIClient(host, 6053, password or "")
+async def call_service(
+    host: str,
+    service_name: str,
+    password: str,
+    variables: dict,
+    noise_psk: str | None = None,
+) -> int:
+    cli = APIClient(host, 6053, password or "", noise_psk=noise_psk or None)
     try:
         await asyncio.wait_for(cli.connect(login=True), timeout=15.0)
     except Exception as exc:  # noqa: BLE001
@@ -66,7 +72,8 @@ def main() -> int:
         except json.JSONDecodeError as exc:
             print(f"[ERROR] invalid JSON variables: {exc}", file=sys.stderr)
             return 64
-    return asyncio.run(call_service(host, service, password, variables))
+    noise_psk = os.environ.get("IOTSTACK_API_NOISE_PSK") or None
+    return asyncio.run(call_service(host, service, password, variables, noise_psk))
 
 
 if __name__ == "__main__":
