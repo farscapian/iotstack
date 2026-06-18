@@ -19,7 +19,9 @@ Options:
   --dry-run             Compile and show what would be flashed (no flash)
   --force-reflash       Flash all devices regardless of version
   --jobs N              Max concurrent OTA jobs (default: 4)
-  -v, --verbose         Show full compilation output
+
+  -v, --verbose is a global flag (anywhere on the command line); shows full
+  compilation output for update. Example: iotstack -v update bleproxy
 
 Examples:
   iotstack update bleproxy                           # All bleproxy devices

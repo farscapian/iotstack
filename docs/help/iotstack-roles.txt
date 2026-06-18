@@ -4,10 +4,12 @@ Lists device roles defined in this project and the YAML file each role uses.
 Shows WiFi and Thread variants so you can see what firmware types are available.
 
 Usage:
-  iotstack roles
+  iotstack roles [--json] [--id] [--csv]
 
 Examples:
-  iotstack roles        # Show all available device roles
+  iotstack roles                  # Show all available device roles
+  iotstack roles --json           # JSON array of role objects (via jq)
+  iotstack roles --json --id      # JSON array of role name strings
 
 Output shows:
   - Role name (e.g., bleproxy, mmwave, threadrouter)

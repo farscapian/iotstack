@@ -1,0 +1,63 @@
+iotstack tests — Overnight integration test runner
+
+Runs scripted end-to-end tests against USB-connected ESP32 boards. Automatically
+maps /dev/ttyACM* ports to chip variants (esp32c6 vs esp32s3) using esptool
+chip-id, so you can leave a C6 and an S3 plugged in simultaneously.
+
+Usage:
+  iotstack tests list
+  iotstack tests ports
+  iotstack tests run [options] [test...]
+
+Arguments:
+  test              Test id (0, 20), numeric prefix (00), or slug (flash-bleproxy).
+                    Omit to run the full suite in order.
+
+Options:
+  --tty <device>    Pin a port (chip auto-detected; sets C6 or S3 override)
+  --iterations <n>  Repeat the suite N times (default: 1)
+  --stop-on-failure Stop after the first failing test
+  --verbose         Pass -v to iotstack subcommands
+
+Environment (~/.iotstack/.env):
+  IOTSTACK_TEST_TTY_C6=/dev/ttyACM0   Optional override for ESP32-C6
+  IOTSTACK_TEST_TTY_S3=/dev/ttyACM1   Optional override for ESP32-S3
+
+Role → chip mapping (from iotstack roles / YAML variant):
+  esp32c6: bleproxy, mmwave, threadrouter, failsafe
+  esp32s3: ledlightstrip, sendspinspeaker, silentnotify, matrixdisplay
+
+Test suites:
+  00–14  ESP32-C6 (bleproxy / failsafe / mmwave reassign cycle)
+  20–28  ESP32-S3 (ledlightstrip / silentnotify reassign cycle)
+
+Examples:
+  iotstack tests ports
+  iotstack tests run
+  iotstack tests run --iterations 3
+  iotstack tests run 0
+  iotstack tests run 20-flash-ledlightstrip
+  iotstack tests run c6              # all cases (slug match — use 0–14 individually)
+  iotstack tests run 0 20            # C6 flash + S3 flash only
+
+Logs:
+  ~/.iotstack/logs/tests/run_<timestamp>.log   test runner summary
+  ~/.iotstack/logs/iotstack-flash.log          flash (--log-for-claude, default in tests)
+  ~/.iotstack/logs/iotstack-update.log         update
+  ~/.iotstack/logs/iotstack-reassign.log       reassign
+  ~/.iotstack/logs/iotstack-verify.log         verify
+  ~/.iotstack/logs/esp32_device.log            serial during flash
+
+Tests pass --log-for-claude to every iotstack invocation (disable with
+IOTSTACK_TEST_LOG_FOR_CLAUDE=0). Quiet mode is off while Claude logging is on.
+
+State: ~/.iotstack/artifacts/test-state.env (per-role MAC cache)
+Ports: ~/.iotstack/artifacts/serial-port-map.env (last scan)
+
+Overnight (C6 + S3 plugged in):
+  iotstack tests run --iterations 5 2>&1 | tee ~/iotstack-overnight.log
+
+Failsafe firmware is compiled per chip variant (yamls/.iotstack-failsafe-esp32c6.yaml,
+etc.) with separate compilation-cache entries.
+`iotstack flash` detects the chip on each /dev/ttyACM* port and substitutes the
+matching profile before compile.

@@ -18,6 +18,13 @@ Arguments:
 Options:
   --ota-only      Skip failsafe flash, only OTA production (device already
                   has recovery)
+  --flash-anyway  Always erase and reflash (skip hash comparison)
+
+Smart flash (default):
+  Serial erase runs only when the on-device partition table or failsafe
+  image differs from the current build. If both match, the failsafe
+  partition is left intact. Production OTA is skipped when the production
+  partition already matches the compiled image.
 
 Examples:
   iotstack flash bleproxy /dev/ttyUSB0           # Smart setup (recovery + prod)

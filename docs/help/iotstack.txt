@@ -14,15 +14,25 @@ Commands:
   logs                Stream device logs (serial, or over the network by role)
   query               Query Home Assistant device and entity registry
   devices             Show discovered ESPHome devices on network
+  failsafe            Show devices running failsafe (recovery) firmware
+  device              Read per-device NVS secrets from USB-connected hardware
   roles               Show available device roles and their configurations
   secret              Retrieve secrets from encrypted pass store
   matter              Matter commissioning (commission, configure-trust-store)
   otbr                OpenThread Border Router provisioning (flash, vm, snap, docker)
   rotate-secrets      Rotate device secrets (OTA password and API key)
   clean               Clean build artifacts and compilation caches
+  tests               Run overnight integration tests (USB ESP32-C6)
 
 Use 'iotstack <command> help' for detailed help on any command.
 
-Global Options:
-  -v, --verbose       Show all output (compiler, flashing, diagnostics)
-  -q, --quiet         Suppress status messages (errors still shown)
+Global Options (valid anywhere on the command line, before or after the subcommand):
+  -v, --verbose       Show all output (compiler, flashing, diagnostics); --verbose
+                      is a full alias for -v (incompatible with -q/--quiet)
+  -q, --quiet         Suppress status messages (errors still shown; incompatible
+                      with -v/--verbose)
+  --create-log        Copy console output to ~/.iotstack/logs/iotstack-<cmd>.log
+                      in real time (console stays live; log lines are timestamped
+                      with source: iotstack.sh, esptool, serial:<chip>:<tty>, etc.)
+
+  

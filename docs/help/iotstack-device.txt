@@ -1,0 +1,29 @@
+iotstack device — Read per-device data from connected hardware
+
+Commands for inspecting device-local state over USB serial. NVS secrets cannot
+be read over the network; the device must be plugged in.
+
+Usage:
+  iotstack device get [--all] [key...] <tty|mac>
+
+Arguments:
+  --all           Print all keys in the iotstack NVS namespace
+  <key...>        One or more NVS keys to read (see list below)
+  <tty|mac>       Serial port (/dev/ttyACM0) or 6-char MAC suffix (e.g., 1af95c)
+
+NVS keys (namespace iotstack):
+  wifi_ssid       WiFi network name written at flash time
+  wifi_password   WiFi password
+  ota_password    Device-specific OTA password (sha256(role_secret | mac))
+  prod_api_key    Device-specific production API encryption key
+  thread_tlv      Thread operational dataset TLVs (hex string)
+
+Examples:
+  iotstack device get --all /dev/ttyACM0
+  iotstack device get ota_password 1af95c
+  iotstack device get wifi_ssid wifi_password /dev/ttyACM0
+
+Notes:
+  - MAC suffix targets are resolved by scanning USB serial ports (esptool chip-id).
+  - Partition offset/size come from ~/.iotstack/artifacts/iotstack_partition_table.csv.
+  - Compile or flash once if the partition table is missing.

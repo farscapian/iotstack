@@ -4,7 +4,7 @@ Lists ESPHome devices visible on the network via mDNS. Optionally filter by
 role or show devices that do not match any configured role.
 
 Usage:
-  iotstack devices [role|other] [--id]
+  iotstack devices [role|other] [--json] [--id] [--csv]
 
 Arguments:
   [role]        Show only devices matching this role (e.g., bleproxy, mmwave)

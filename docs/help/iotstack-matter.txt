@@ -16,7 +16,8 @@ Typical workflow:
   2. iotstack matter commission <pairing-code> # per device
 
 Usage:
-  iotstack matter commission [-f] [-v] <qr-image>|<manual-pairing-code>|<MT:payload>
+  iotstack matter commission [-f] <qr-image>|<manual-pairing-code>|<MT:payload>
+  iotstack -v matter commission <manual-pairing-code>   # global verbose
   iotstack matter configure-trust-store [manual-pairing-code|MT:payload]
   iotstack matter decode-qr <path-to-image>
 
@@ -25,7 +26,7 @@ Examples:
   iotstack matter configure-trust-store 0167-951-2626
   iotstack matter commission ~/qr-code.jpg
   iotstack matter commission 0167-951-2626
-  iotstack matter commission -v 0167-951-2626
+  iotstack -v matter commission 0167-951-2626
   iotstack matter decode-qr ~/qr-code.jpg
 
 Help:
