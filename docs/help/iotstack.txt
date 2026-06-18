@@ -34,10 +34,10 @@ Global Options (valid anywhere on the command line, before or after the subcomma
   --create-log        Copy console output to ~/.iotstack/logs/iotstack-<cmd>.log
                       in real time (implies --timestamp; console stays live; log
                       lines include source: iotstack.sh, esptool, serial:<chip>:<tty>)
-  --log-id=<id>       With --create-log, write to ~/.iotstack/logs/iotstack-<id>.log
-                      (e.g. --log-id=flash-0 → iotstack-flash-0.log). Reusing the
-                      same id appends later runs to that file across any subcommand;
-                      a new id starts a new log file
+  --log-id=<id>       Write to ~/.iotstack/logs/iotstack-<id>.log (implies
+                      --create-log; .log suffix optional, e.g. flash-0 or
+                      flash-0.log). Reusing the same id appends later runs across
+                      any subcommand; a new id starts a new log file
   --timestamp         Prefix each console line with an ISO datetime (iotstack status
                       messages and subprocess output) to show timing during long runs
                       (enabled automatically by --create-log)

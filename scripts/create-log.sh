@@ -11,8 +11,16 @@ IOTSTACK_LOG_STAMP="${IOTSTACK_LOG_STAMP:-${SCRIPT_DIR}/scripts/log-stamp.py}"
 # Remaining argv after global flags are stripped (set by iotstack_parse_global_argv).
 IOTSTACK_ARGV=()
 
-iotstack_validate_log_id() {
+iotstack_normalize_log_id() {
+  # Accept flash-matrix-0 or flash-matrix-0.log (filename suffix is optional).
   local log_id="$1"
+  log_id="${log_id%.log}"
+  printf '%s' "$log_id"
+}
+
+iotstack_validate_log_id() {
+  local log_id
+  log_id=$(iotstack_normalize_log_id "$1")
   if [[ -z "$log_id" ]]; then
     echo "[ERROR] --log-id requires a value" >&2
     exit 1
@@ -21,12 +29,14 @@ iotstack_validate_log_id() {
     echo "[ERROR] --log-id must contain only letters, digits, and . _ -" >&2
     exit 1
   fi
+  printf '%s' "$log_id"
 }
 
 iotstack_parse_global_argv() {
   # Global flags valid anywhere on the command line (before or after subcommand):
   #   -v, --verbose (alias), -q, --quiet (alias), --create-log, --timestamp,
   #   --log-id=<id>, -env=<file>
+  # --log-id implies --create-log (which implies --timestamp).
   # Sets VERBOSE/QUIET/IOTSTACK_CREATE_LOG/IOTSTACK_TIMESTAMP/IOTSTACK_LOG_ID and
   # fills IOTSTACK_ARGV with the rest.
   IOTSTACK_ARGV=()
@@ -50,14 +60,18 @@ iotstack_parse_global_argv() {
         export IOTSTACK_TIMESTAMP=1
         ;;
       --log-id=*)
-        export IOTSTACK_LOG_ID="${1#--log-id=}"
-        iotstack_validate_log_id "$IOTSTACK_LOG_ID"
+        IOTSTACK_LOG_ID=$(iotstack_validate_log_id "${1#--log-id=}")
+        export IOTSTACK_LOG_ID
+        export IOTSTACK_CREATE_LOG=1
+        export IOTSTACK_TIMESTAMP=1
         ;;
       --log-id)
         shift
         [[ $# -gt 0 ]] || { echo "[ERROR] --log-id requires a value" >&2; exit 1; }
-        export IOTSTACK_LOG_ID="$1"
-        iotstack_validate_log_id "$IOTSTACK_LOG_ID"
+        IOTSTACK_LOG_ID=$(iotstack_validate_log_id "$1")
+        export IOTSTACK_LOG_ID
+        export IOTSTACK_CREATE_LOG=1
+        export IOTSTACK_TIMESTAMP=1
         ;;
       -env=*)
         ENV_FILE="${HOME}/.iotstack/${1#-env=}"
@@ -71,11 +85,6 @@ iotstack_parse_global_argv() {
 
   if [[ $VERBOSE -eq 1 && $QUIET -eq 1 ]]; then
     echo "[ERROR] -v/--verbose and -q/--quiet are incompatible" >&2
-    exit 1
-  fi
-
-  if [[ -n "${IOTSTACK_LOG_ID:-}" && "${IOTSTACK_CREATE_LOG:-0}" != 1 ]]; then
-    echo "[ERROR] --log-id requires --create-log" >&2
     exit 1
   fi
 
