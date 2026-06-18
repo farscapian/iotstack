@@ -29,6 +29,12 @@ Role-specific options (e.g. matrixdisplay HUB75 NVS layout):
   iotstack help <role>              e.g. iotstack help matrixdisplay
   iotstack flash <role> help        same file for flash / update / reassign
 
+NVS secrets (WiFi, OTA password, API key, matrix layout, etc.):
+  iotstack prefers updating NVS over the network — switch to failsafe, then
+  call the update_nvs_secrets API service on failsafe-<mac>.local. USB
+  (write-nvs-secrets.sh / esptool) is used only when failsafe is not yet on
+  WiFi (typical first serial provision) or the API is unavailable.
+
 Smart flash (default):
   Assessment compares runtime config_hash from mDNS (fast). Production OTA
   is skipped when the running firmware matches the compiled build. Serial

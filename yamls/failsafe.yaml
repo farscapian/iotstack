@@ -93,10 +93,10 @@ api:
   # No API encryption key for failsafe — only iotstack tools connect to it.
   # Production images use prod_api_key from NVS for HA API authentication.
   services:
-    # Write new secrets to NVS without serial access.
-    # Pass only the keys you want to change; empty string = leave unchanged.
-    # Device reboots automatically after a successful commit so the new values
-    # take effect on the next boot.  Only exposed in failsafe firmware.
+    # Write NVS secrets without USB (iotstack preferred path). Pass only the keys
+    # you want to change; empty string = leave unchanged. Includes matrix_cols,
+    # matrix_panel_w, matrix_panel_h for matrixdisplay layout updates.
+    # Device reboots automatically after commit. Failsafe firmware only.
     - service: update_nvs_secrets
       variables:
         wifi_ssid: string

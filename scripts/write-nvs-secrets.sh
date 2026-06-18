@@ -5,9 +5,11 @@
 #
 # Usage:
 #   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 device_mac [production_role]
+#   ./scripts/write-nvs-secrets.sh --print-api-json device_mac [production_role]
 # Examples:
-#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c              # failsafe only
-#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c bleproxy     # failsafe + production
+#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c              # failsafe only (USB)
+#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c bleproxy     # failsafe + production (USB)
+#   ./scripts/write-nvs-secrets.sh --print-api-json 1af95c bleproxy  # JSON for update_nvs_secrets API
 
 set -euo pipefail
 
@@ -24,8 +26,8 @@ YLW='\033[0;33m'
 RST='\033[0m'
 
 err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
-ok()   { echo -e "${GRN}[OK]${RST} $*"; }
-info() { echo -e "${YLW}[INFO]${RST} $*"; }
+ok()   { echo -e "${GRN}[OK]${RST} $*" >&2; }
+info() { echo -e "${YLW}[INFO]${RST} $*" >&2; }
 
 # Get or prompt for credential (lazy-loading on demand)
 _get_or_prompt_credential() {
@@ -79,29 +81,40 @@ _get_or_generate_role_ota_password() {
 }
 
 # Arguments
-TTY_DEVICE="${1:-}"
-DEVICE_MAC="${2:-}"
-PRODUCTION_ROLE="${3:-}"
+PRINT_API_JSON=0
+TTY_DEVICE=""
+DEVICE_MAC=""
+PRODUCTION_ROLE=""
 
-[[ -z "$TTY_DEVICE" ]] && err "Usage: $0 <tty_device> <device_mac> [production_role]"
-[[ -z "$DEVICE_MAC" ]] && err "Usage: $0 <tty_device> <device_mac> [production_role]"
-
-[[ ! -e "$TTY_DEVICE" ]] && err "TTY device not found: $TTY_DEVICE"
-
-# Read NVS size from the generated partition table
-if [[ ! -f "$PARTITION_TABLE" ]]; then
-  err "Partition table not found: $PARTITION_TABLE\nMake sure to compile firmware first (which generates the partition table)"
+if [[ "${1:-}" == "--print-api-json" ]]; then
+  PRINT_API_JSON=1
+  DEVICE_MAC="${2:-}"
+  PRODUCTION_ROLE="${3:-}"
+  [[ -z "$DEVICE_MAC" ]] && err "Usage: $0 --print-api-json <device_mac> [production_role]"
+else
+  TTY_DEVICE="${1:-}"
+  DEVICE_MAC="${2:-}"
+  PRODUCTION_ROLE="${3:-}"
+  [[ -z "$TTY_DEVICE" || -z "$DEVICE_MAC" ]] && err "Usage: $0 <tty_device> <device_mac> [production_role]"
+  [[ ! -e "$TTY_DEVICE" ]] && err "TTY device not found: $TTY_DEVICE"
 fi
 
-# Extract NVS offset and size from partition table CSV
-# Format: nvs,        data,  nvs,        0x9000,   0x4000,
-NVS_OFFSET=$(awk -F',' '/^nvs[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
-[[ -z "$NVS_OFFSET" ]] && err "Could not find NVS partition offset in: $PARTITION_TABLE"
+# Read NVS size from the generated partition table (USB path only)
+if [[ "$PRINT_API_JSON" != "1" ]]; then
+  if [[ ! -f "$PARTITION_TABLE" ]]; then
+    err "Partition table not found: $PARTITION_TABLE\nMake sure to compile firmware first (which generates the partition table)"
+  fi
 
-NVS_SIZE=$(awk -F',' '/^nvs[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $5); print $5}' "$PARTITION_TABLE" | head -1)
-[[ -z "$NVS_SIZE" ]] && err "Could not find NVS partition size in: $PARTITION_TABLE"
+  # Extract NVS offset and size from partition table CSV
+  # Format: nvs,        data,  nvs,        0x9000,   0x4000,
+  NVS_OFFSET=$(awk -F',' '/^nvs[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
+  [[ -z "$NVS_OFFSET" ]] && err "Could not find NVS partition offset in: $PARTITION_TABLE"
 
-info "Using NVS partition offset: $NVS_OFFSET, size: $NVS_SIZE from generated partition table"
+  NVS_SIZE=$(awk -F',' '/^nvs[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $5); print $5}' "$PARTITION_TABLE" | head -1)
+  [[ -z "$NVS_SIZE" ]] && err "Could not find NVS partition size in: $PARTITION_TABLE"
+
+  info "Using NVS partition offset: $NVS_OFFSET, size: $NVS_SIZE from generated partition table"
+fi
 
 # ── Retrieve shared credentials ────────────────────────────────────────────
 info "Retrieving WiFi credentials..."
@@ -175,6 +188,28 @@ if [[ "$PRODUCTION_ROLE" == "matrixdisplay" ]] || \
     err "MATRIX_COLS must be 1 or 2 (got: $MATRIX_COLS)"
   fi
   info "Matrix layout NVS: ${MATRIX_COLS} panel(s), ${MATRIX_PANEL_W}x${MATRIX_PANEL_H} px each"
+fi
+
+if [[ "$PRINT_API_JSON" == "1" ]]; then
+  export WIFI_SSID WIFI_PASSWORD FAILSAFE_OTA_PASSWORD PROD_API_KEY THREAD_TLV \
+         WRITE_MATRIX_LAYOUT MATRIX_COLS MATRIX_PANEL_W MATRIX_PANEL_H
+  python3 - <<'PY'
+import json, os
+
+payload = {
+    "wifi_ssid": os.environ["WIFI_SSID"],
+    "wifi_password": os.environ["WIFI_PASSWORD"],
+    "ota_password": os.environ["FAILSAFE_OTA_PASSWORD"],
+    "api_key": os.environ.get("PROD_API_KEY", ""),
+    "thread_tlv": os.environ.get("THREAD_TLV", ""),
+}
+if os.environ.get("WRITE_MATRIX_LAYOUT") == "1":
+    payload["matrix_cols"] = os.environ.get("MATRIX_COLS", "1")
+    payload["matrix_panel_w"] = os.environ.get("MATRIX_PANEL_W", "64")
+    payload["matrix_panel_h"] = os.environ.get("MATRIX_PANEL_H", "32")
+print(json.dumps(payload))
+PY
+  exit 0
 fi
 
 # ── Use Python to generate NVS data ────────────────────────────────────────

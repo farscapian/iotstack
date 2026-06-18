@@ -3189,6 +3189,11 @@ _flash_read_matrix_layout_from_device() {
   [[ -n "$_cols_ref" && -n "$_w_ref" && -n "$_h_ref" ]]
 }
 
+# ── NVS update policy ────────────────────────────────────────────────────────
+# Prefer failsafe update_nvs_secrets over WiFi/API. USB (write-nvs-secrets.sh)
+# is used only when failsafe is unreachable — typical on first serial provision
+# before WiFi credentials exist in NVS, or when failsafe lacks the API service.
+
 _call_failsafe_api_service() {
   # Invoke a native-API user service on failsafe firmware (plaintext API, port 6053).
   local device_mac="$1"
@@ -3205,22 +3210,73 @@ _call_failsafe_api_service() {
   "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service" "" "$json_vars"
 }
 
+_nvs_secrets_api_json_payload() {
+  # Build update_nvs_secrets JSON (stdout only). Uses pass + env (MATRIX_* flags).
+  local device_mac="$1"
+  local production_role="${2:-}"
+  "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" --print-api-json "$device_mac" "$production_role"
+}
+
+_failsafe_api_reachable() {
+  local device_mac="$1"
+  _production_api_reachable "failsafe-${device_mac}"
+}
+
+_nvs_update_via_failsafe_api() {
+  # Call update_nvs_secrets on failsafe-<mac>.local. Returns 0 on success.
+  local device_mac="$1"
+  local json_vars="$2"
+  local failsafe_host="failsafe-${device_mac}"
+
+  if ! _failsafe_api_reachable "$device_mac"; then
+    return 1
+  fi
+  info "Updating NVS via ${failsafe_host}.local (update_nvs_secrets API)..."
+  _call_failsafe_api_service "$device_mac" update_nvs_secrets "$json_vars"
+}
+
+_provision_device_nvs() {
+  # Write device NVS: API first, USB only when network path is unavailable.
+  local tty_device="${1:-}"
+  local device_mac="$2"
+  local production_role="${3:-}"
+  local json_vars
+
+  json_vars=$(_nvs_secrets_api_json_payload "$device_mac" "$production_role") || return 1
+
+  if _nvs_update_via_failsafe_api "$device_mac" "$json_vars"; then
+    ok "NVS updated via failsafe API (device rebooting)"
+    sleep 5
+    _wait_for_device "failsafe-${device_mac}" 60 || true
+    return 0
+  fi
+
+  if [[ -z "$tty_device" ]]; then
+    debug "NVS API update failed and no USB device provided"
+    return 1
+  fi
+
+  warn "Failsafe API unavailable — writing NVS via USB on ${tty_device} (required on first provision)"
+  _flash_write_nvs_secrets_usb "$tty_device" "$device_mac" "$production_role"
+}
+
 _failsafe_update_nvs_matrix_layout() {
-  # Write matrix_cols / matrix_panel_w / matrix_panel_h via update_nvs_secrets API.
+  # Partial update: matrix_cols / matrix_panel_w / matrix_panel_h only.
   local device_mac="$1"
   local cols="$2"
   local w="$3"
   local h="$4"
-  local json_vars failsafe_host="failsafe-${device_mac}"
-
-  if ! _production_api_reachable "$failsafe_host"; then
-    return 1
-  fi
+  local json_vars
 
   json_vars=$(
     MATRIX_COLS="$cols" MATRIX_PANEL_W="$w" MATRIX_PANEL_H="$h" python3 - <<'PY'
 import json, os
 print(json.dumps({
+    "wifi_ssid": "",
+    "wifi_password": "",
+    "ota_password": "",
+    "api_key": "",
+    "thread_tlv": "",
     "matrix_cols": os.environ["MATRIX_COLS"],
     "matrix_panel_w": os.environ["MATRIX_PANEL_W"],
     "matrix_panel_h": os.environ["MATRIX_PANEL_H"],
@@ -3228,11 +3284,10 @@ print(json.dumps({
 PY
   ) || return 1
 
-  info "Updating matrix layout NVS via ${failsafe_host}.local (update_nvs_secrets API)..."
-  _call_failsafe_api_service "$device_mac" update_nvs_secrets "$json_vars"
+  _nvs_update_via_failsafe_api "$device_mac" "$json_vars"
 }
 
-_flash_write_nvs_secrets() {
+_flash_write_nvs_secrets_usb() {
   local tty_device="$1"
   local device_mac="$2"
   local production_role="${3:-}"
@@ -3246,7 +3301,12 @@ _flash_write_nvs_secrets() {
     "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "$production_role" \
       || err "Failed to write NVS secrets to device"
   fi
-  ok "NVS secrets written successfully"
+  ok "NVS secrets written successfully via USB"
+}
+
+# Back-compat alias
+_flash_write_nvs_secrets() {
+  _flash_write_nvs_secrets_usb "$@"
 }
 
 _flash_store_matrix_layout_pass() {
@@ -3328,9 +3388,9 @@ _flash_matrix_layout_update_via_failsafe_if_needed() {
     sleep 5
     _wait_for_device "failsafe-${device_mac}" 60 || true
   elif [[ -n "$tty_device" ]]; then
-    warn "Failsafe API NVS update unavailable — falling back to USB write on ${tty_device}"
-    warn "Refresh failsafe firmware when possible so update_nvs_secrets supports matrix layout"
-    _flash_write_nvs_secrets "$tty_device" "$device_mac" "$device"
+    warn "Failsafe API unavailable — writing matrix layout NVS via USB on ${tty_device}"
+    export MATRIX_COLS="$want_cols" MATRIX_PANEL_W="$want_w" MATRIX_PANEL_H="$want_h"
+    _flash_write_nvs_secrets_usb "$tty_device" "$device_mac" "$device"
   else
     err "Failsafe API NVS update failed and no USB device was provided"
     return 1
@@ -3622,7 +3682,8 @@ _flash_failsafe_to_tty() {
     info "Waiting for device to boot..."
     sleep 5
 
-    _flash_write_nvs_secrets "$tty_device" "$device_mac" "$production_role"
+    _provision_device_nvs "$tty_device" "$device_mac" "$production_role" || \
+      err "Failed to provision device NVS"
     sleep 2
 
     info "Waiting for device to connect to WiFi..."
