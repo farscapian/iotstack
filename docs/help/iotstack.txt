@@ -35,7 +35,7 @@ Global Options (valid anywhere on the command line, before or after the subcomma
                       in real time (implies --timestamp; console stays live; log
                       lines include source: iotstack.sh, esptool, serial:<chip>:<tty>)
   --log-id=<id>       Write to ~/.iotstack/logs/iotstack-<id>.log (implies
-                      --create-log; .log suffix optional, e.g. flash-0 or
+                      --create-log and -v; .log suffix optional, e.g. flash-0 or
                       flash-0.log). Reusing the same id appends later runs across
                       any subcommand; a new id starts a new log file
   --timestamp         Prefix each console line with an ISO datetime (iotstack status

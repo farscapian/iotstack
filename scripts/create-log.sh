@@ -36,7 +36,7 @@ iotstack_parse_global_argv() {
   # Global flags valid anywhere on the command line (before or after subcommand):
   #   -v, --verbose (alias), -q, --quiet (alias), --create-log, --timestamp,
   #   --log-id=<id>, -env=<file>
-  # --log-id implies --create-log (which implies --timestamp).
+  # --log-id implies --create-log, --timestamp, and -v/--verbose.
   # Sets VERBOSE/QUIET/IOTSTACK_CREATE_LOG/IOTSTACK_TIMESTAMP/IOTSTACK_LOG_ID and
   # fills IOTSTACK_ARGV with the rest.
   IOTSTACK_ARGV=()
@@ -82,6 +82,8 @@ iotstack_parse_global_argv() {
     esac
     shift
   done
+
+  [[ -n "${IOTSTACK_LOG_ID:-}" ]] && VERBOSE=1
 
   if [[ $VERBOSE -eq 1 && $QUIET -eq 1 ]]; then
     echo "[ERROR] -v/--verbose and -q/--quiet are incompatible" >&2
