@@ -4,10 +4,12 @@ substitutions:
   friendly_name: "Matrix Display"
   boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
   # Adaptive brightness: HA sets "Room Illuminance" (lx); device maps linearly to pixel brightness.
-  matrix_brightness_cap: "85"        # Max pixel brightness (matches display.brightness headroom)
-  matrix_brightness_floor: "4"       # Pixel brightness at matrix_illuminance_min_lx (very dim)
-  matrix_illuminance_min_lx: "1"   # Below this → floor brightness
-  matrix_illuminance_max_lx: "30"  # At/above this → cap brightness
+  matrix_brightness_cap: "170"       # Max pixel brightness at matrix_illuminance_max_lx
+  matrix_brightness_default: "85"    # Target brightness at matrix_illuminance_default_lx
+  matrix_brightness_floor: "8"       # Pixel brightness at matrix_illuminance_min_lx (very dim)
+  matrix_illuminance_min_lx: "1"     # Below this → floor brightness
+  matrix_illuminance_max_lx: "30"    # At/above this → cap brightness
+  matrix_illuminance_default_lx: "14.8"  # HA default input → matrix_brightness_default
 
 # External components (replaces deprecated custom_components folder)
 external_components:
@@ -91,7 +93,7 @@ display:
     panel_height: 32
     max_layout_cols: 2
     default_layout_cols: 1
-    brightness: ${matrix_brightness_cap}  # Cap for adaptive brightness mapping
+    brightness: ${matrix_brightness_default}
     r1_pin: GPIO18
     g1_pin: GPIO8
     b1_pin: GPIO17
@@ -165,7 +167,7 @@ number:
     id: room_illuminance
     optimistic: true
     restore_value: true
-    initial_value: ${matrix_illuminance_max_lx}
+    initial_value: ${matrix_illuminance_default_lx}
     min_value: 0
     max_value: 100000
     step: 0.1
@@ -185,7 +187,7 @@ sensor:
     entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: never
-    lambda: 'return ${matrix_brightness_cap};'
+    lambda: 'return ${matrix_brightness_default};'
 
 text_sensor:
   - platform: template
