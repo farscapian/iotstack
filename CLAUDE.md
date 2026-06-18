@@ -3,13 +3,27 @@
 ## Naming Convention
 
 **Always use lowercase "iotstack"** — never "IoT Stack" or "iotStack". Examples:
-- ✓ `iotstack update bleproxy`
-- ✓ `iotstack devices`
-- ✗ ~~IoT Stack~~
-- ✗ ~~iotStack~~
-- ✗ ~~IOTSTACK~~
+- OK: `iotstack update bleproxy`
+- OK: `iotstack devices`
+- BAD: ~~IoT Stack~~, ~~iotStack~~, ~~IOTSTACK~~
 
 This applies in code comments, documentation, help text, and all user-facing messages.
+
+## Canonical Development Path
+
+- **Primary repo:** `~/Sync/mini_projects/iotstack` on branch `main`
+- **CLI entrypoint:** `~/.local/bin/iotstack` → symlinks to `iotstack.sh` in that repo
+- **Before testing fixes:** `git pull` on `main` — stale local trees produce confusing output (e.g. `--flash-anyway` appearing to do nothing when the fix is not yet pulled)
+- Grok/Cursor worktrees may mirror the same commit but are not the install target; develop and commit on `main` unless explicitly working in a worktree
+
+## CLI Output Conventions
+
+Runtime script output uses plain ASCII status tags — no Unicode symbols (checkmarks, arrows, emoji):
+
+- `[INFO]`, `[OK]`, `[WARN]`, `[ERR]`, `[FAIL]`
+- Use `matches`, `!=`, `...` instead of decorative characters
+- Compile progress: `info "Compiling firmware..."` — not animated `⚙ Compiling ✓` spinners
+- `iotstack.sh` and `update_devices.sh` both follow this; `iotstack.sh` uses `$'\033[...'` only for tag colors in `echo -e`, never raw symbols in message text
 
 ## Environment Variables
 
@@ -36,7 +50,7 @@ cp ~/.iotstack/.env.example ~/.iotstack/pangolin.env
 # Edit pangolin.env with specific settings
 
 # Use alternate config for a command
-iotstack -env=pangolin.env flash recovery /dev/ttyACM0
+iotstack -env=pangolin.env flash bleproxy /dev/ttyACM0
 
 # Or combine with other flags
 iotstack -v -env=debug.env update bleproxy
@@ -55,10 +69,10 @@ iotstack -v -env=debug.env update bleproxy
 echo "DISABLE_COMPILATION_CACHE=1" >> ~/.iotstack/.env
 
 # Option 2: Use alternate config file
-iotstack -env=debug.env flash recovery /dev/ttyACM0
+iotstack -env=debug.env flash bleproxy /dev/ttyACM0
 
 # Option 3: Set for single command
-DISABLE_COMPILATION_CACHE=1 iotstack flash recovery /dev/ttyACM0
+DISABLE_COMPILATION_CACHE=1 iotstack flash bleproxy /dev/ttyACM0
 ```
 
 **Examples:**
@@ -80,10 +94,10 @@ The `update_devices.sh` script is a batch OTA flash tool for managing multiple E
 
 The `iotstack.sh` CLI tool provides a user-friendly wrapper around this script with device roles (defined in `roles.conf`).
 
-⚠️ **IMPORTANT: Development Process**
-- When assisting with changes, changes are staged but NOT committed until the human has tested and approved them
-- The human must verify functionality against actual devices before changes are committed to git
-- This ensures all commits represent validated, working code
+**IMPORTANT: Development Process**
+- Default: stage changes and wait for human device testing before commit
+- Commit/push only after explicit human approval (or when the human explicitly asks to commit)
+- Tagged releases use annotated git tags (e.g. `v0.1.0`); firmware `project_version` is derived from the latest tag at compile time
 - See [Development Workflow](#development-workflow) section below for details
 
 ## Core Architecture
@@ -105,20 +119,24 @@ The `iotstack.sh` CLI tool provides a user-friendly wrapper around this script w
 Cache stored at `~/.iotstack/compilation-cache.csv` (CSV format with headers):
 
 **Columns:**
-- `yaml_name`: YAML filename (e.g., `recovery.yaml`)
-- `yaml_sha`: SHA256 hash of YAML + all `yamls/external_components/` files (cache key)
+- `yaml_name`: YAML filename (e.g., `bleproxy.yaml`, `.iotstack-failsafe-esp32c6.yaml`)
+- `yaml_sha`: SHA256 hash of YAML + `yamls/external_components/` + `yamls/common/` + **current git tag** (cache key)
 - `binary_sha`: SHA256 of compiled `firmware.bin`
+- `config_hash`: 8-char hex ESPHome config hash (primary runtime comparison key)
+
+Per-device build cache also at `~/.iotstack/logs/<device>.build.cache` (used by `update_devices.sh`).
 
 **Cache invalidation:**
-- Changes to any YAML file automatically invalidate cache
-- Changes to any file in `yamls/external_components/` automatically invalidate cache
+- Changes to any device YAML, `external_components/`, or `common/` package
+- New git tag (`iotstack_project_version` folded into `yaml_sha` via `scripts/iotstack-version.sh`)
+- ESPHome version change (`update_devices.sh` per-device cache)
 - Set `DISABLE_COMPILATION_CACHE=1` to force recompilation
 
 **Example cache contents:**
 ```
-yaml_name,yaml_sha,binary_sha
-recovery.yaml,75e67037f9e3fc23...,a183d757ba74cc50...
-bleproxy.yaml,8f3e2c9d4a1b5f...,c9d2a8e7f3b1c4...
+yaml_name,yaml_sha,binary_sha,config_hash
+bleproxy.yaml,8f3e2c9d4a1b5f...,c9d2a8e7f3b1c4...,1a25e0c8
+failsafe.yaml,75e67037f9e3fc23...,a183d757ba74cc50...,3ea7c88a
 ```
 
 ### Serial Flash Baud Rate: 9600 (Critical)
@@ -136,9 +154,32 @@ Testing with ESP32-C6 devices revealed that higher baud rates cause data corrupt
 If baud rate changes are ever considered, empirically test with actual 789KB firmware transfers and verify full SHA256 checksums.
 
 ### YAML Configuration
-- ESPHome devices are configured via YAML files in the `yamls/` directory
-- Each device has a simple `name:` for mDNS discovery (e.g., `ble-proxy`, `thread-router`)
-- MAC suffix is appended for device uniqueness
+- ESPHome devices are configured via YAML files in `yamls/` (one file per role, e.g. `bleproxy.yaml`, `matrixdisplay.yaml`)
+- `esphome.name` is the role name; `name_add_mac_suffix: true` produces hostnames like `bleproxy-8238cc`
+- **Production YAMLs must not include `ota:`** — OTA server lives only on failsafe firmware; production is updated via failsafe-mediated OTA
+- **No `safe_mode:`** — boot-loop recovery is handled by `partition_manager`
+- **No `factory_reset` button** — physical reset is `common/boot_button.yaml`
+
+### Project Version (Build-Time Git Tag)
+
+All role YAMLs use a substitution injected before every `esphome compile`:
+
+```yaml
+substitutions:
+  project_version: "0.0.0-dev"  # placeholder; overridden at compile time
+esphome:
+  project:
+    version: "${project_version}"
+```
+
+**Resolution order** (`scripts/iotstack-version.sh`):
+1. `IOTSTACK_PROJECT_VERSION` env var (tests/overrides)
+2. Latest git tag: `git describe --tags --abbrev=0` (e.g. `v0.1.0`)
+3. Fallback `0.0.0-dev` when no tags exist
+
+**Injection points:** `iotstack.sh` `_esphome_compile`, `update_devices.sh`, `failsafe-yaml.sh` (variant artifacts). Source YAMLs in git stay at `0.0.0-dev`; only compile-time copies get the real tag.
+
+`project_version` is advertised in mDNS TXT and used as a **fallback** when `config_hash` is unavailable. It is not the primary flash/update comparison key.
 
 ## Features
 
@@ -158,27 +199,31 @@ iotstack update 135b60 1a7b00 1af95c threadrouter
 
 # Works with all options
 iotstack update a1a7b0 8e1aa8 bleproxy --dry-run
-iotstack update a1a7b0 mmwave --force-reflash
+iotstack update a1a7b0 mmwave --flash-anyway
 ```
 
 **How it works:**
 - MAC suffixes are 6-character hex strings (last 6 chars of MAC address)
 - MACs come before the device name in command
 - Only devices matching specified MACs are flashed
-- All other update options (--dry-run, --force-reflash, etc.) work normally
+- Production updates run **via failsafe** (`_update_via_failsafe`) so OTA never overwrites the failsafe partition
 
 ### 2. Delta Updates (Default: On)
-- Compares `config_hash` from device's mDNS TXT record vs. compiled firmware
-- Only flashes devices with mismatched hashes
-- `--no-upgrade-delta` forces flash all devices
-- Fallback to `project_version` comparison if config_hash unavailable
+- **Primary comparison:** `config_hash` from device mDNS TXT vs. compiled build
+- Only flashes devices with mismatched hashes (`--upgrade-delta`, default in `update_devices.sh`)
+- **`--flash-anyway`:** force all matched devices onto the flash list (separate `FLASH_ANYWAY` flag — does not disable compile cache)
+- Fallback to `project_version` comparison if `config_hash` unavailable in mDNS
+- Note: some help text still says `--force-reflash`; the implemented flag is `--flash-anyway`
 
-### 2. Device Reassignment (`--reassign <MACs...> <target_yaml>`)
-Flash a target configuration only to specific devices:
+### 3. Device Reassignment (`iotstack reassign` / `--reassign`)
+Flash a target configuration only to specific devices (always via failsafe OTA):
 
 ```bash
-# Reassign specific devices to a different config
-scripts/update_devices.sh --reassign 19b164 199ef4 yamls/esp32c6-wifi-mmwave.yaml
+# Reassign specific devices to a different role
+iotstack reassign 19b164 199ef4 mmwave
+
+# Or call update_devices.sh directly
+scripts/update_devices.sh --reassign 19b164 199ef4 yamls/mmwave.yaml
 ```
 
 **Arguments:**
@@ -191,7 +236,17 @@ scripts/update_devices.sh --reassign 19b164 199ef4 yamls/esp32c6-wifi-mmwave.yam
 - Updates Home Assistant entity IDs if HA integration is configured
 - Warns if any requested MACs are offline
 
-### 3. Home Assistant Integration
+### 4. Verify (`iotstack verify`)
+Compile (or cache-hit) and compare each device's runtime `config_hash` against the build — no flashing:
+
+```bash
+iotstack verify bleproxy
+iotstack verify all
+```
+
+Uses `update_devices.sh --verify`. Discovery and mismatch reporting must use `info()` / `ok()` / `err()`, not `log()` alone (see gotchas).
+
+### 5. Home Assistant Integration
 - Uses WebSocket API (NOT REST API — REST endpoints are internal, not public)
 - Recreates entity IDs after reassignment to reflect new device configuration
 - Filters updates to ESPHome platform only (`platform == 'esphome'`)
@@ -205,18 +260,20 @@ scripts/update_devices.sh --reassign 19b164 199ef4 yamls/esp32c6-wifi-mmwave.yam
 ## iotstack CLI Tool
 
 ### Overview
-`iotstack.sh` is a user-friendly wrapper around `scripts/update_devices.sh`. It provides device roles (e.g., `iotstack update bleproxy`) instead of requiring full YAML paths (e.g., `scripts/update_devices.sh wifi/esp32c6-wifi-bleproxy.yaml`).
+`iotstack.sh` is a user-friendly wrapper around `scripts/update_devices.sh`. It provides device roles (e.g., `iotstack update bleproxy`) instead of requiring full YAML paths (e.g., `scripts/update_devices.sh yamls/bleproxy.yaml`).
 
-Users run `setup.sh` once to add the `iotstack` alias to their `~/.bashrc`, making the command available globally.
+Users run `setup.sh` once to symlink `iotstack` into `~/.local/bin/` and ensure that directory is on `PATH` (via `~/.bashrc`).
 
 ### Device Mapping (scripts/roles.conf)
 Device roles are defined in `scripts/roles.conf`. Network type (WiFi or Thread) is automatically detected by introspecting the YAML file:
 ```
 bleproxy=yamls/bleproxy.yaml
 mmwave=yamls/mmwave.yaml
-sendspin=yamls/sendspin.yaml
+sendspinspeaker=yamls/sendspinspeaker.yaml
 ledlightstrip=yamls/ledlightstrip.yaml
 threadrouter=yamls/threadrouter.yaml
+silentnotify=yamls/silentnotify.yaml
+matrixdisplay=yamls/matrixdisplay.yaml
 ```
 
 Format: `<role>=<yaml-path>`
@@ -248,30 +305,27 @@ iotstack update yamls/custom.yaml
 
 ## Partition Configuration — Dynamically Calculated
 
-**Partition sizes are calculated AFTER firmware compilation based on actual firmware binary sizes.**
+**Two-partition scheme:** permanent **failsafe** (`ota_0`) + **production** (`ota_1`). All production OTA runs from failsafe so the failsafe image is never overwritten. Partition sizes are calculated from actual compiled firmware binary sizes.
 
 ### Calculation Process
 
 1. **Compile failsafe firmware** (`smart_compile`)
-   - Compiles `yamls/recovery.yaml` via `esphome compile`
+   - Template: `yamls/failsafe.yaml`
+   - Rendered per chip to `yamls/.iotstack-failsafe-<variant>.yaml` (`scripts/failsafe-yaml.sh`)
    - Output: `firmware.bin` in build directory
 
-2. **Calculate partition sizes** (`_calculate_partition_sizes`)
-   - Reads `firmware.bin` size
-   - Recovery partition = firmware_size (rounded up to 4KB boundary for flash alignment)
-   - Production partition = same size as recovery (for symmetry)
-   - Production offset = calculated from recovery offset + recovery size
+2. **Measure failsafe size** and set `IOTSTACK_FAILSAFE_PART_SIZE`
+   - Failsafe partition = firmware size + margin, rounded up to 64 KB
+   - Production partition = remaining flash after fixed NVS/OTA/metadata regions
 
-3. **Generate partition table** (`_generate_partition_table`)
-   - Creates `~/.iotstack/iotstack_partition_table.csv` with calculated sizes/offsets
-   - Accessed via symlink at `yamls/iotstack_partition_table.csv` (for ESPHome compatibility)
-   - NVS (16KB, fixed) and OTA data (8KB, fixed) unchanged
-   - Recovery and production partitions sized to actual firmware
+3. **Generate partition table** (`scripts/partition-table.sh`)
+   - Creates `~/.iotstack/iotstack_partition_table.csv`
+   - Symlink at `yamls/iotstack_partition_table.csv` (ESPHome `!include`)
+   - Failsafe may require a second compile pass after the table is regenerated
 
 4. **Use partition table**
-   - `write-nvs-secrets.sh` reads NVS size from generated CSV
-   - Flash operations use the calculated offsets
-   - ESPHome finds partition table via symlink
+   - `write-nvs-secrets.sh` reads NVS offset/size from generated CSV
+   - Serial flash and assessment code use calculated production offset
 
 ### Why This Approach?
 
@@ -344,8 +398,62 @@ r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)'
 ### Logging Strategy
 - Compilation output goes to: `~/.iotstack/logs/<device>/<timestamp>.compile.log`
 - Flash logs per device: `~/.iotstack/logs/<device>/<timestamp>-<hash>/`
-- Build cache: `~/.iotstack/logs/<device>.build.cache` (SHA256 + version)
-- Cache invalidated if YAML or ESPHome version changes
+- Per-device build cache: `~/.iotstack/logs/<device>.build.cache` (YAML SHA + ESPHome version + config_hash)
+- Global compilation cache: `~/.iotstack/compilation-cache.csv` (used by `smart_compile` / flash assessment)
+- Cache invalidated on YAML/common/external_components changes, new git tag, or ESPHome upgrade
+
+## Architecture Decisions & Gotchas
+
+### Failsafe-mediated production OTA
+
+Production firmware has **no OTA server** in YAML. Update/reassign/flash paths:
+1. Switch device to failsafe (`switch_to_failsafe` API or serial refresh)
+2. Wait for `failsafe-<mac>.local` on `_iotstack-failsafe._tcp`
+3. OTA production image from failsafe via `update_devices.sh --reassign`
+
+`iotstack flash --flash-anyway` on an online production device still goes through this failsafe path for the actual OTA step.
+
+### `--flash-anyway` assessment and update_devices
+
+**iotstack.sh flash assessment** (`FLASH_ANYWAY=1`):
+- Must skip early exit in `_flash_production_matches_build` when hashes match
+- Must skip the **second** mDNS `config_hash` match check in `_flash_assess_device` (there were two independent "current" checks)
+- Export `FLASH_ANYWAY=1` explicitly before assessment helpers run
+
+**update_devices.sh** (`--flash-anyway`):
+- Uses a dedicated `FLASH_ANYWAY=true` flag to force devices onto the flash list
+- **Do not** tie `--flash-anyway` to `UPGRADE_DELTA=false` — that skipped compile-cache / `NEW_CONFIG_HASH` resolution and caused `hash: unknown` plus redundant compiles
+- `iotstack flash` passes **both** `--upgrade-delta` and `--flash-anyway` during failsafe OTA; argument order must leave `FLASH_ANYWAY` effective without disabling delta compile logic
+
+### `iotstack verify` and `set -e`
+
+`update_devices.sh` runs with `set -e`. The old `log()` helper returned exit 1 when not verbose, which killed the script on the first `log` call in verify mode before any output.
+
+**Fix:** `log()` always `return 0`; use `info()` for messages that must print in non-verbose verify/discovery paths.
+
+### Post-OTA hash reporting
+
+During reassign OTA the discovered host is `failsafe-<mac>` — failsafe mDNS typically has **no `config_hash`**. Success line should fall back to build hash from `NEW_CONFIG_HASH`, `build_info.json`, or `compilation-cache.csv` (`_resolve_build_config_hash`).
+
+### Matrix display panel layout (NVS, not config_hash)
+
+Panel count and dimensions live in **NVS**, not in firmware `config_hash`. A device can run current firmware but wrong panel layout.
+
+- CLI flags: `--panel-count`, `--panel-width`, `--panel-height` (flags → pass store → role defaults)
+- Runtime sensor: `panel_count` (legacy fallback: `matrix_panel_columns`)
+- **Preferred path:** switch to failsafe → `update_nvs_secrets` API with `matrix_cols`, `matrix_panel_w`, `matrix_panel_h`
+- **USB fallback:** `write-nvs-secrets.sh` only when failsafe API unreachable (first provision)
+- Flash with current firmware but wrong layout: assessment reports NVS update action without recompiling
+
+### NVS secrets update policy
+
+Network-first, USB-last:
+1. `update_nvs_secrets` on `failsafe-<mac>.local` (production API for read/compare, failsafe API for write)
+2. `write-nvs-secrets.sh` / esptool only when failsafe is not yet on WiFi or API is down
+
+### Color variables and `printf`
+
+`update_devices.sh` color vars must use ANSI-C quoting (`GRN=$'\033[0;32m'`). Single-quoted `'\033[...]'` stores a literal backslash; `echo -e` in `[OK]` lines still works but `printf '%s'` prints raw `\033[0;32m`.
 
 ## Common Pitfalls & Solutions
 
@@ -353,48 +461,56 @@ r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)'
 |-------|-----------|----------|
 | Prompt doesn't appear, script hangs | User input code runs after stdout redirect | Use `>&2` for messages, `</dev/tty` for input |
 | `grep: invalid option -- '$'` | Pattern starts with dash (e.g., `-19b164$`) | Use `grep -- ` to stop option processing |
-| Device discovery finds wrong devices | Filtering by device_name in reassign mode | In reassign mode, discover ALL then filter by MAC suffix |
+| Device discovery finds wrong devices | Filtering by device_name in reassign mode | In reassign mode, discover `_iotstack-failsafe._tcp`, filter by MAC suffix |
 | Entity updates affect wrong integrations | Not checking platform field | Always filter: `if platform != 'esphome': continue` |
+| `iotstack verify` prints nothing / exits immediately | `log()` returned 1 under `set -e` when not verbose | `log()` always returns 0; use `info()` for required output |
+| `--flash-anyway` says it will reflash but exits early | Assessment ignored `FLASH_ANYWAY` on mDNS hash match | Honor `FLASH_ANYWAY` in all match branches; pull latest `main` |
+| OTA success shows `hash: unknown` | Failsafe host has no mDNS config_hash; compile cache skipped hash | Separate `FLASH_ANYWAY` from `UPGRADE_DELTA`; `_resolve_build_config_hash` fallback |
+| Literal `\033[0;32m` in compile spinner | `printf` + single-quoted color vars | Use `$'\033[...]'` or `[INFO]` lines only |
+| `--panel-count=2` ignored when firmware current | Layout is NVS, not config_hash | Failsafe NVS update path even when firmware matches |
+| Stale CLI behavior after fixes | Testing against unpulled `main` | `git pull` on `~/Sync/mini_projects/iotstack` |
 
 ## Device Types
 
+Roles are listed in `scripts/roles.conf`. Examples:
+
 ### WiFi BLE Proxy
-- YAML: `yamls/esp32c6-wifi-bleproxy.yaml`
-- mDNS Name: `ble-proxy`
-- Board: ESP32-C6
-- Example mDNS advertised name: `ble-proxy-19b164` (name-MAC suffix)
+- YAML: `yamls/bleproxy.yaml`
+- mDNS hostname: `bleproxy-<mac>` (e.g. `bleproxy-8238cc`)
+- Board: Seeed XIAO ESP32-C6
 
 ### Thread Router
-- YAML: `yamls/esp32c6-thread-threadrouter.yaml`
-- mDNS Name: `thread-router`
-- Board: ESP32-C6
-- Network: Thread (IPv6)
+- YAML: `yamls/threadrouter.yaml`
+- mDNS hostname: `threadrouter-<mac>`
+- Network: Thread (OpenThread)
 - Special handling: forces `--jobs 1` (Thread OTA is slow; parallelism causes mesh contention)
-- Example mDNS advertised name: `thread-router-135b60` (name-MAC suffix)
 
 ### WiFi mmWave
-- YAML: `yamls/esp32c6-wifi-mmwave.yaml`
-- mDNS Name: `mmwave`
-- Supports device reassignment via `--reassign`
+- YAML: `yamls/mmwave.yaml`
+- mDNS hostname: `mmwave-<mac>`
+
+### Matrix Display
+- YAML: `yamls/matrixdisplay.yaml`
+- Board: ESP32-S3-DevKitC-1, HUB75 panels
+- Panel layout in NVS; see [Matrix display panel layout](#matrix-display-panel-layout-nvs-not-config_hash) above
 
 ## Development Workflow
 
-⚠️ **CRITICAL: Git Operations Only After Human Testing**
+**CRITICAL: Git Operations Only After Human Testing**
 
-All code changes should be staged and ready, but **git commits and pushes must ONLY occur after the human has**:
+Default workflow — **git commits and pushes only after the human has**:
 1. **Tested the changes** against actual devices (not just compilation)
 2. **Verified functionality** works as expected
-3. **Evaluated the implementation** for correctness and quality
-4. **Explicitly approved** the changes for commit
+3. **Explicitly approved** the changes (or directly requested commit/push)
 
 **Workflow:**
-1. Make code changes
-2. Stage changes (git add)
-3. **Wait for human approval** — do not commit yet
-4. **After human testing and approval**, create commit with appropriate message
-5. **Only push to remote** after commit succeeds
+1. Make code changes on `main` at `~/Sync/mini_projects/iotstack`
+2. Stage changes (`git add`)
+3. Wait for human approval unless they explicitly ask to commit
+4. Commit with a clear message; push to `origin/main` when approved
+5. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate — firmware picks up the tag on next compile
 
-This ensures that all commits represent validated, tested, working changes — not experimental code that may need revision.
+This keeps commits aligned with validated device behavior. AI-assisted sessions may commit when the human explicitly requests it, but device validation remains the bar for correctness.
 
 ### Research FIRST, Then Debug
 
@@ -682,7 +798,7 @@ Our threat model protects against:
 
 ```
 Role-based secret (in pass store):
-  iotstack/roles/recovery/ota_password = "base_secret_xyz"
+  iotstack/roles/failsafe/ota_password = "base_secret_xyz"
   
 Device-specific computation (in-memory during flash):
   device_password = sha256("base_secret_xyz" | "1af95c")[0:32]
@@ -891,4 +1007,6 @@ trap 'cleanup "$temp_file"' EXIT
 - mDNS discovery: `avahi-browse(1)` man page
 - ESPHome YAML: https://esphome.io (substitutions, name_add_mac_suffix)
 - Home Assistant WebSocket API: `config/entity_registry/*` commands
-- Script memory: See `/home/derek/.claude/projects/.../memory/` for architecture notes
+- Project version injection: `scripts/iotstack-version.sh`
+- Failsafe YAML artifacts: `scripts/failsafe-yaml.sh`
+- Flash assessment: `iotstack.sh` `_flash_assess_device`, `_flash_production_matches_build`
