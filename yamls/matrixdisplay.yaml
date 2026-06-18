@@ -4,8 +4,8 @@ substitutions:
   friendly_name: "Matrix Display"
   boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
   # Adaptive brightness: HA sets "Room Illuminance" (lx); device maps linearly to pixel brightness.
-  matrix_brightness_cap: "170"       # Max pixel brightness (matches display.brightness headroom)
-  matrix_brightness_floor: "8"     # Pixel brightness at matrix_illuminance_min_lx (very dim)
+  matrix_brightness_cap: "85"        # Max pixel brightness (matches display.brightness headroom)
+  matrix_brightness_floor: "4"       # Pixel brightness at matrix_illuminance_min_lx (very dim)
   matrix_illuminance_min_lx: "1"   # Below this → floor brightness
   matrix_illuminance_max_lx: "30"  # At/above this → cap brightness
 
