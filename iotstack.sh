@@ -274,7 +274,11 @@ smart_compile() {
     info "Compiling production firmware (${device_name})..."
     _esphome_compile "$yaml_file" || return 1
     local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
-    [[ -n "$binary_sha" ]] && { _update_compilation_cache "$yaml_file" "$binary_sha"; ok "Compilation cache updated"; }
+    if [[ -n "$binary_sha" ]]; then
+      _update_compilation_cache "$yaml_file" "$binary_sha"
+      _sync_yaml_build_config_cache "$yaml_file" "$device_name"
+      ok "Compilation cache updated"
+    fi
     return 0
   fi
 
@@ -317,8 +321,37 @@ smart_compile() {
   _esphome_compile "$yaml_file" || return 1
 
   local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
-  [[ -n "$binary_sha" ]] && { _update_compilation_cache "$yaml_file" "$binary_sha"; ok "Compilation cache updated"; }
+  if [[ -n "$binary_sha" ]]; then
+    _update_compilation_cache "$yaml_file" "$binary_sha"
+    _sync_yaml_build_config_cache "$yaml_file" "$device_name"
+    ok "Compilation cache updated"
+  fi
   return 0
+}
+
+_build_config_hash_from_build_dir() {
+  # 8-char hex config_hash from ESPHome build_info.json (authoritative after compile).
+  local build_name="$1"
+  local build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
+  [[ -f "$build_info" ]] || return 1
+  python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
+}
+
+_sync_yaml_build_config_cache() {
+  # Keep ~/.iotstack/logs/<role>/<role>.build.cache aligned with the last compile.
+  local yaml_file="$1"
+  local build_name="$2"
+  local yaml_name yaml_sha config_hash esphome_version cache_file build_info
+  yaml_name=$(basename "$yaml_file" .yaml)
+  build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
+  [[ -f "$build_info" ]] || return 0
+  config_hash=$(_build_config_hash_from_build_dir "$build_name" 2>/dev/null) || return 0
+  esphome_version=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('esphome_version',''))" "$build_info" 2>/dev/null) || true
+  yaml_sha=$(_get_yaml_sha "$yaml_file")
+  cache_file="${HOME}/.iotstack/logs/${yaml_name}/${yaml_name}.build.cache"
+  mkdir -p "$(dirname "$cache_file")"
+  printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
+    "$yaml_sha" "$esphome_version" "$config_hash" > "$cache_file"
 }
 
 # Prompt for multi-device operations
@@ -1321,10 +1354,13 @@ _production_reachable_now() {
 }
 
 _build_config_hash_for_yaml() {
-  # config_hash from the last update_devices compile cache or compile log.
+  # config_hash for comparing against device mDNS (8-char hex).
+  # Prefer live build_info.json (updated by smart_compile); fall back to logs cache.
   local yaml_path="$1"
-  local yaml_name cache_file hash latest_log
-  yaml_name=$(basename "$yaml_path" .yaml)
+  local yaml_name="${2:-$(basename "$yaml_path" .yaml)}"
+  local cache_file hash latest_log
+  hash=$(_build_config_hash_from_build_dir "$yaml_name" 2>/dev/null) || true
+  [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   cache_file="${HOME}/.iotstack/logs/${yaml_name}/${yaml_name}.build.cache"
   if [[ -f "$cache_file" ]]; then
     hash=$(grep '^config_hash=' "$cache_file" 2>/dev/null | cut -d= -f2-)
@@ -1448,7 +1484,7 @@ _flash_assess_device_on_flash_action() {
         info "  On-flash production: matches build (image ${running_hash})"
       fi
     elif [[ -n "$mdns_hash" && -n "$build_hash" ]]; then
-      info "  Production: matches build (runtime config_hash ${mdns_hash})"
+      info "  Production: matches build (config_hash ${mdns_hash})"
     else
       info "  Production: matches build"
     fi
@@ -3000,7 +3036,8 @@ _flash_failsafe_esptool() {
 }
 
 _ensure_failsafe_build_for_assess() {
-  # Ensure failsafe firmware.bin exists so on-flash MD5 can be read during assessment.
+  # Ensure failsafe is compiled (shared external_components + partition table for production).
+  # On-flash MD5 read during assessment requires --on-flash-verify.
   local tty_device="$1"
   local production_role="$2"
   local profile variant board flash_size framework failsafe_yaml
@@ -3359,10 +3396,8 @@ _flash_production_smart() {
       if [[ -n "$device_mac" ]]; then
         prod_hostname="${device}-${device_mac}"
         info "Assessing connected device on ${tty_device}..."
-        if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" ]]; then
-          _ensure_failsafe_build_for_assess "$tty_device" "$device" \
-            || warn "Could not prepare failsafe build — on-flash failsafe hash may be unknown"
-        fi
+        _ensure_failsafe_build_for_assess "$tty_device" "$device" \
+          || warn "Could not prepare failsafe build — partition table may be stale"
         _flash_assess_device_runtime "$device_mac" "$prod_hostname" "$tty_device"
         smart_compile "$yaml_path" "$device" || err "Production compile failed"
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
@@ -3370,7 +3405,7 @@ _flash_production_smart() {
         if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
           local img_hash
           img_hash=$(_production_running_image_hash "$prod_hostname" "$tty_device" "$yaml_path")
-          ok "Device ${prod_hostname} already running current ${device} firmware (image hash ${img_hash})"
+          ok "Device ${prod_hostname} already running current ${device} firmware (config_hash ${img_hash})"
           _ha_after_production_online "$yaml_path" "$prod_hostname"
           ok "Production firmware setup complete!"
           return
