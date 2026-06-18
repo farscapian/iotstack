@@ -66,6 +66,9 @@ load_ha_credentials() {
     local test_output=""
     if ! test_output="$(test_ha_websocket "$HA_URL" "$HA_TOKEN" 2>&1)"; then
       echo "$test_output" >&2
+      if invalidate_ha_token_if_auth_failure "$test_output"; then
+        die "Home Assistant access token is invalid — iotstack/common/ha_token reset to CONFIGURE_ME. Configure a new token and retry."
+      fi
       die "Cannot connect to Home Assistant. Check URL, token, and network access."
     fi
     ok "Home Assistant connection verified (${test_output})"

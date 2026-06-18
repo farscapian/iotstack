@@ -25,15 +25,30 @@
 
 set -euo pipefail
 
+_UPDATE_DEVICES_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/config.sh
+source "${_UPDATE_DEVICES_SCRIPT_DIR}/config.sh"
+# shellcheck source=scripts/failsafe-yaml.sh
+source "${_UPDATE_DEVICES_SCRIPT_DIR}/failsafe-yaml.sh"
+
 # ── Cleanup on exit ──────────────────────────────────────────────────────────
+WORK_DIR=""
+COMPILE_LOG=""
+
 cleanup() {
   # Kill all background jobs (OTA uploads)
   jobs -p | xargs -r kill 2>/dev/null || true
+  iotstack_cleanup_generated_yamls
+  if [[ -n "${WORK_DIR}" && -d "${WORK_DIR}" ]]; then
+    rm -rf "${WORK_DIR}"
+  fi
+  if [[ -n "${COMPILE_LOG}" && -f "${COMPILE_LOG}" ]]; then
+    rm -f "${COMPILE_LOG}"
+  fi
   printf "\n" 2>/dev/null
-  exit
 }
 trap cleanup EXIT
-trap cleanup INT  # Handle Ctrl+C
+trap 'cleanup; exit 130' INT
 
 # ── Defaults ────────────────────────────────────────────────────────────────
 UPGRADE_DELTA=true
@@ -44,8 +59,9 @@ FORCE_UPDATE_ENTITIES=false
 MAX_JOBS=4
 JOBS_EXPLICIT=false
 YAML_FILE=""
-API_KEY=""
+OTA_PASSWORD=""
 REASSIGN_MODE=false
+HA_FINALIZE_HOSTNAME=""
 declare -a REASSIGN_MACS=()
 REASSIGN_YAML=""
 
@@ -57,11 +73,19 @@ BLU='\033[0;34m'
 DIM='\033[2m'
 RST='\033[0m'
 
-log()  { :; }
+info() { echo -e "${BLU}[INFO]${RST}  $*"; }
+log()  { [[ "$VERBOSE" == true ]] && info "$@"; }
 ok()   { echo -e "${GRN}[OK]${RST}    $*"; }
 warn() { echo -e "${YLW}[WARN]${RST}  $*"; }
 err()  { echo -e "${RED}[ERR]${RST}   $*" >&2; }
 dim()  { echo -e "${DIM}$*${RST}"; }
+
+_compile_log_banner() {
+  # Written when esphome compile actually starts (not at script startup).
+  local banner="── $(date '+%Y-%m-%d %H:%M:%S') Compiling $(basename "$YAML_FILE") ──"
+  echo "$banner" >> "$COMPILE_LOG_FILE"
+  [[ "$VERBOSE" == true ]] && echo "$banner"
+}
 
 # Animate dots while waiting (1 to 5 dots, repeating)
 animate_compile() {
@@ -212,6 +236,44 @@ with open(temp_yaml, 'w') as f:
 PYTHONEOF
 }
 
+# ── Create upload-only YAML with OTA client config ────────────────────────────
+# Production firmware must not include an OTA server (compiled from ORIGINAL_YAML_FILE).
+# esphome upload still requires ota: in the config it reads — this temp file is
+# used only for the upload command, never for compilation.
+create_ota_upload_yaml() {
+  local orig_yaml="$1"
+  local ota_password="${2:-}"
+  local temp_yaml="$3"
+
+  python3 - "$orig_yaml" "$ota_password" "$temp_yaml" <<'PYTHONEOF'
+import sys, re
+
+orig_yaml = sys.argv[1]
+ota_password = sys.argv[2]
+temp_yaml = sys.argv[3]
+
+with open(orig_yaml, 'r') as f:
+    content = f.read()
+
+if re.search(r'^ota:', content, re.MULTILINE):
+    with open(temp_yaml, 'w') as f:
+        f.write(content)
+    sys.exit(0)
+
+if ota_password:
+    ota_block = (
+        '\nota:\n'
+        '  - platform: esphome\n'
+        f'    password: "{ota_password}"\n'
+    )
+else:
+    ota_block = '\nota:\n  - platform: esphome\n'
+
+with open(temp_yaml, 'w') as f:
+    f.write(content + ota_block)
+PYTHONEOF
+}
+
 # ── Update YAML device_name substitution ─────────────────────────────────────
 update_yaml_device_name() {
   local yaml_file="$1"
@@ -224,18 +286,51 @@ update_yaml_device_name() {
   fi
 }
 
+# ── Post-production HA: entity IDs + consistency (production hostname only) ─
+run_ha_production_finalize() {
+  local yaml_file="$1"
+  local prod_hostname="$2"
+
+  _UPDATE_DEVICES_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck source=scripts/ensure-integration-secrets.sh
+  source "${_UPDATE_DEVICES_SCRIPT_DIR}/ensure-integration-secrets.sh"
+  load_ha_credentials_optional || true
+
+  if [[ -z "$HA_URL" || -z "$HA_TOKEN" ]]; then
+    return 0
+  fi
+
+  recreate_entity_ids "$HA_URL" "$HA_TOKEN" "$prod_hostname"
+
+  local consistency_output
+  consistency_output=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$yaml_file" "$prod_hostname" 2>&1)
+  if [[ -n "$consistency_output" ]]; then
+    if echo "$consistency_output" | grep -q "WARNING"; then
+      echo "$consistency_output"
+    else
+      ok "Entity ID consistency: All entity IDs match device names"
+    fi
+  fi
+}
+
 # ── Verify entity ID consistency with device name ──────────────────────────────
 verify_entity_id_consistency() {
   local ha_url="$1"
   local ha_token="$2"
-  local base_name="$3"
+  local yaml_file="$3"
   local hostnames="$4"  # space-separated list of device hostnames
+  local entity_slug
 
-  if [[ -z "$ha_url" || -z "$ha_token" || -z "$hostnames" ]]; then
+  if [[ -z "$ha_url" || -z "$ha_token" || -z "$hostnames" || -z "$yaml_file" ]]; then
     return 0
   fi
 
-  HA_URL="$ha_url" HA_TOKEN="$ha_token" BASE_NAME="$base_name" HOSTNAMES="$hostnames" python3 - <<'VERIFYEOF'
+  local entity_slug friendly_name
+  entity_slug=$(yaml_entity_slug_from_file "$yaml_file") || return 0
+  friendly_name=$(yaml_friendly_name_from_file "$yaml_file") || friendly_name="$entity_slug"
+
+  HA_URL="$ha_url" HA_TOKEN="$ha_token" ENTITY_SLUG="$entity_slug" \
+    FRIENDLY_NAME="$friendly_name" HOSTNAMES="$hostnames" python3 - <<'VERIFYEOF'
 import json, os, sys, ssl, re
 try:
     import websocket
@@ -245,7 +340,8 @@ except ImportError:
 
 ha_url = os.environ['HA_URL'].rstrip('/')
 token = os.environ['HA_TOKEN']
-base_name = os.environ['BASE_NAME']
+entity_slug = os.environ['ENTITY_SLUG']
+friendly_name = os.environ.get('FRIENDLY_NAME', entity_slug)
 hostnames = os.environ['HOSTNAMES'].strip().split()
 
 # Extract MAC suffixes
@@ -306,7 +402,7 @@ except Exception:
 ws.close()
 
 # Check entity ID consistency (only ESPHome entities)
-base_slug = base_name.replace('-', '_')
+base_slug = entity_slug.replace('-', '_')
 inconsistent = []
 
 for entity in all_entities:
@@ -334,7 +430,11 @@ for entity in all_entities:
 if inconsistent:
     print('WARNING: Entity ID inconsistencies detected:', file=sys.stderr)
     for item in inconsistent:
-        print(f"  {item['entity_id']} (should contain '{base_slug}', from {item['device']})", file=sys.stderr)
+        print(
+            f"  {item['entity_id']} (should contain '{base_slug}', "
+            f"from friendly_name '{friendly_name}', device {item['device']})",
+            file=sys.stderr,
+        )
     sys.exit(0)
 
 print('✓ All entity IDs are consistent with device names.')
@@ -578,7 +678,8 @@ while [[ $# -gt 0 ]]; do
     --force-update-entities) FORCE_UPDATE_ENTITIES=true; shift ;;
     --dry-run)               DRY_RUN=true;        shift ;;
     --jobs)                  MAX_JOBS="$2"; JOBS_EXPLICIT=true; shift 2 ;;
-    --ota-password)          API_KEY="$2";        shift 2 ;;
+    --ota-password)          OTA_PASSWORD="$2";   shift 2 ;;
+    --ha-finalize)           HA_FINALIZE_HOSTNAME="$2"; shift 2 ;;
     --reassign)
       REASSIGN_MODE=true
       shift
@@ -621,6 +722,12 @@ if [[ ! -f "$YAML_FILE" ]]; then
   exit 1
 fi
 
+# Standalone: entity-ID work after device has booted production (not failsafe).
+if [[ -n "$HA_FINALIZE_HOSTNAME" ]]; then
+  run_ha_production_finalize "$YAML_FILE" "$HA_FINALIZE_HOSTNAME"
+  exit 0
+fi
+
 # ── Handle custom OTA password for authentication ─────────────────────────
 # If user provided a custom OTA password, create a temporary YAML with it
 # The OTA password is used to authenticate the OTA upload from the current device
@@ -642,10 +749,17 @@ _yaml_is_failsafe() {
   grep -qE '^\s*device_role:\s*"?failsafe"?\s*$' "$yaml_file" 2>/dev/null
 }
 
+UPLOAD_YAML=""
+OTA_UPLOAD_TEMP=""
+
 if ! _yaml_is_failsafe "$YAML_FILE"; then
   if grep -qE '^ota:' "$YAML_FILE"; then
     err "$(basename "$YAML_FILE") must not include 'ota:' — OTA is failsafe-only.
 Remove the ota: section from this production YAML."
+  fi
+  if grep -qE 'platform:[[:space:]]+factory_reset' "$YAML_FILE"; then
+    err "$(basename "$YAML_FILE") must not include a factory_reset button — physical reset is handled by boot_button.yaml.
+Remove the factory_reset button from this production YAML."
   fi
 fi
 
@@ -689,9 +803,10 @@ COMPILE_LOG_FILE="${LOG_ROOT}/${RUN_TS}.compile.log"
 FLASH_LOG_DIR=""  # Set after compilation succeeds and hash is known
 mkdir -p "$LOG_ROOT"
 
-# Log compilation separately, don't tee to stdout (using spinner)
-exec > >(tee -a "$COMPILE_LOG_FILE") 2>&1
-echo "── $(date '+%Y-%m-%d %H:%M:%S') Compilation started ──────────────────────"
+# Non-verbose: capture stdout/stderr to the per-run compile log (spinner stays on stderr).
+if [[ "$VERBOSE" != true ]]; then
+  exec > >(tee -a "$COMPILE_LOG_FILE") 2>&1
+fi
 
 # Once hash is known, create flash log directory and open it for OTA logs
 setup_flash_logs() {
@@ -836,8 +951,8 @@ if [[ "$REASSIGN_MODE" == true ]]; then
 fi
 
 DEVICE_COUNT=$(echo "$HOSTNAMES" | wc -l | tr -d ' ')
-log "Found ${DEVICE_COUNT} device(s):"
-echo "$HOSTNAMES" | while read -r h; do dim "  $h"; done
+info "Found ${DEVICE_COUNT} device(s) on network:"
+echo "$HOSTNAMES" | while read -r h; do echo "  $h"; done
 echo
 
 # ── Parse config_hash and project_version from mDNS TXT records ─────────────
@@ -865,11 +980,13 @@ done < <(awk '
 ' <<< "$RAW")
 
 # ── Home Assistant registry check ───────────────────────────────────────────
-# Runs immediately after discovery so it always prints, even when no devices
+# Runs immediately after discovery so it always prints, even when no devices.
+# Skipped in --reassign mode: the device is still on failsafe; HA is handled
+# after production boot via iotstack.sh → --ha-finalize <prod-hostname>.
 HA_URL=""
 HA_TOKEN=""
-API_KEY=""
 
+if [[ "$REASSIGN_MODE" != true ]]; then
 # Home Assistant credentials come from the pass store (the secrets.yaml file
 # this used to read was retired in favor of pass). Best-effort: if pass/HA is
 # not configured, HA_URL/HA_TOKEN stay empty and the HA registry check below is
@@ -998,6 +1115,7 @@ PYEOF
   fi
   echo
 fi
+fi
 
 # ── Compile (with SHA256 cache to skip unnecessary builds) ───────────────────
 # Cache key: SHA256 of the ORIGINAL YAML file + ESPHome version.
@@ -1073,12 +1191,10 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
     echo
   else
     if [[ "$VERBOSE" == true ]]; then
-      # Verbose mode: show all output
+      _compile_log_banner
       ok "Compiling firmware (ESPHome ${ESPHOME_VERSION})..."
-      COMPILE_LOG=$(mktemp)
-      trap 'rm -f "$COMPILE_LOG"' EXIT
-      if "$ESPHOME_BIN" compile "$YAML_FILE" 2>&1 | tee "$COMPILE_LOG"; then
-        NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG" \
+      if "$ESPHOME_BIN" compile "$YAML_FILE" 2>&1 | tee -a "$COMPILE_LOG_FILE"; then
+        NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG_FILE" \
           | tail -1 | sed 's/config_hash=0x//')
         COMPILED=true
         # Persist cache for next run
@@ -1093,7 +1209,7 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
     else
       # Silent mode: compile with output to log file only
       COMPILE_LOG=$(mktemp)
-      trap 'rm -f "$COMPILE_LOG"' EXIT
+      _compile_log_banner
 
       # Run compilation in background for animation
       "$ESPHOME_BIN" compile "$YAML_FILE" >> "$COMPILE_LOG" 2>&1 &
@@ -1134,10 +1250,6 @@ if [[ "$REASSIGN_MODE" == true ]]; then
     exit 1
   fi
 
-  echo
-  echo "════════════════════════════════════════════════════════"
-  ok "Reassigning devices"
-  echo "════════════════════════════════════════════════════════"
 fi
 
 # ── Per-device triage ────────────────────────────────────────────────────────
@@ -1229,9 +1341,7 @@ if [[ ${#FLASH_LIST[@]} -eq 0 ]]; then
     ok "All devices are up to date. Nothing to do."
 
     # Verify entity ID consistency even when no flashing needed
-    echo
-    echo "════════════════════════════════════════════════════════"
-    CONSISTENCY_OUTPUT=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$BASE_NAME" "$HOSTNAMES" 2>&1)
+    CONSISTENCY_OUTPUT=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$YAML_FILE" "$HOSTNAMES" 2>&1)
     if [[ -n "$CONSISTENCY_OUTPUT" ]]; then
       if echo "$CONSISTENCY_OUTPUT" | grep -q "WARNING"; then
         echo "$CONSISTENCY_OUTPUT"
@@ -1239,37 +1349,15 @@ if [[ ${#FLASH_LIST[@]} -eq 0 ]]; then
         ok "Entity ID consistency: All entity IDs match device names"
       fi
     fi
-    echo "════════════════════════════════════════════════════════"
 
     exit 0
   fi
-  # USB was flashed; skip OTA and fall through to final report
+  # USB was flashed; skip OTA
 else
-  echo
-  for h in "${FLASH_LIST[@]}"; do dim "  → $h (OTA)"; done
-
   if [[ "$DRY_RUN" == true ]]; then
-    echo
     warn "Dry run — no OTA devices will be flashed."
-
-    # In reassign mode, still show entity inconsistencies even in dry-run
-    if [[ "$REASSIGN_MODE" == true ]]; then
-      echo
-      echo "════════════════════════════════════════════════════════"
-      CONSISTENCY_OUTPUT=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$BASE_NAME" "$HOSTNAMES" 2>&1)
-      if [[ -n "$CONSISTENCY_OUTPUT" ]]; then
-        if echo "$CONSISTENCY_OUTPUT" | grep -q "WARNING"; then
-          warn "Entity ID inconsistencies would need fixing:"
-          echo "$CONSISTENCY_OUTPUT" | grep -v "^WARNING:" | sed 's/^/  /'
-        else
-          ok "Entity ID consistency: All entity IDs match device names"
-        fi
-      fi
-      echo "════════════════════════════════════════════════════════"
-    fi
     exit 0
   fi
-  echo
 fi
 
 echo
@@ -1277,17 +1365,19 @@ echo
 # ── Compile (only if not already done above) ─────────────────────────────────
 if [[ "$COMPILED" == false ]]; then
   if [[ "$VERBOSE" == true ]]; then
+    _compile_log_banner
     ok "Compiling firmware..."
-    COMPILE_LOG=$(mktemp)
-    trap 'rm -f "$COMPILE_LOG"' EXIT
-    if ! "$ESPHOME_BIN" compile "$YAML_FILE" 2>&1 | tee "$COMPILE_LOG"; then
+    if ! "$ESPHOME_BIN" compile "$YAML_FILE" 2>&1 | tee -a "$COMPILE_LOG_FILE"; then
       err "Compilation failed — aborting."
       exit 1
     fi
+    NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG_FILE" \
+      | tail -1 | sed 's/config_hash=0x//')
+    [[ -n "$NEW_CONFIG_HASH" ]] && COMPILED=true
   else
     printf "  ⚙ Compiling firmware..." >&2
     COMPILE_LOG=$(mktemp)
-    trap 'rm -f "$COMPILE_LOG"' EXIT
+    _compile_log_banner
 
     if "$ESPHOME_BIN" compile "$YAML_FILE" >> "$COMPILE_LOG" 2>&1; then
       printf ' %s✓%s\n' "$GRN" "$RST" >&2
@@ -1305,13 +1395,22 @@ if [[ "$COMPILED" == false ]]; then
 fi
 
 WORK_DIR=$(mktemp -d)
-trap 'rm -rf "$WORK_DIR"' EXIT
+
+# Upload config: production YAMLs omit ota: (no OTA server in firmware) but
+# esphome upload requires ota: for the client. Compile uses YAML_FILE; upload
+# uses UPLOAD_YAML (temp with OTA client password when --ota-password is set).
+if ! _yaml_is_failsafe "$ORIGINAL_YAML_FILE"; then
+  # Must live under yamls/ so !include common/... resolves (same as failsafe artifacts).
+  OTA_UPLOAD_TEMP="$(dirname "$ORIGINAL_YAML_FILE")/.temp-ota-upload-$(basename "$ORIGINAL_YAML_FILE")"
+  mkdir -p "$(dirname "$OTA_UPLOAD_TEMP")"
+  create_ota_upload_yaml "$ORIGINAL_YAML_FILE" "$OTA_PASSWORD" "$OTA_UPLOAD_TEMP"
+  UPLOAD_YAML="$OTA_UPLOAD_TEMP"
+else
+  UPLOAD_YAML="$YAML_FILE"
+fi
 
 # ── Parallel flash ───────────────────────────────────────────────────────────
 # Note: USB devices are NOT flashed here. Use 'iotstack flash' for serial flashing.
-
-log "Flashing ${#FLASH_LIST[@]} device(s) (max ${MAX_JOBS} parallel)..."
-echo
 
 slot_count=0
 
@@ -1322,7 +1421,7 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   done
 
   FQDN="${HOSTNAME}.local"
-  dim "  started → ${HOSTNAME}"
+  [[ "$VERBOSE" == true ]] && dim "  started → ${HOSTNAME}"
 
   # Extract device name from ORIGINAL YAML filename (not temp file)
   # IMPORTANT: Use ORIGINAL_YAML_FILE because YAML_FILE might be a temp file with OTA password
@@ -1343,7 +1442,7 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
 
   (
     # Run upload with 30-second timeout (fail fast if auth fails)
-    if timeout 30 "$ESPHOME_BIN" upload "$YAML_FILE" --device "$FQDN" --file "$FIRMWARE_BIN"; then
+    if timeout 30 "$ESPHOME_BIN" upload "$UPLOAD_YAML" --device "$FQDN" --file "$FIRMWARE_BIN"; then
       echo ok > "$WORK_DIR/${HOSTNAME}.result"
     else
       echo fail > "$WORK_DIR/${HOSTNAME}.result"
@@ -1354,82 +1453,95 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
 done
 
 
-# ── Background progress monitor ──────────────────────────────────────────────
-# Polls each device's log file every 4s and prints a one-line status summary.
-# Also detects authentication failures for individual devices.
-# ESPHome OTA logs progress as e.g. "OTA in progress: 25%" — captured by the
-# percentage regex. Thread OTA is slower so this is especially useful there.
-(
-  elapsed=0
-  declare -A auth_failed_devices
-  while true; do
-    sleep 4
-    elapsed=$((elapsed + 4))
-    parts=()
-    for hostname in "${FLASH_LIST[@]}"; do
-      result_f="${WORK_DIR}/${hostname}.result"
-      log_f="${WORK_DIR}/${hostname}.log"
-
-      # Check for authentication failure on this specific device
-      if [[ -f "$log_f" ]] && grep -q "Authentication invalid" "$log_f" 2>/dev/null; then
-        echo fail > "$result_f"
-        parts+=("${RED}✗${RST} ${hostname} (auth failed)")
-        auth_failed_devices[$hostname]=true
-        continue
-      fi
-
-      if [[ -f "$result_f" ]]; then
-        if [[ "$(cat "$result_f")" == ok ]]; then
-          parts+=("${GRN}✓${RST} ${hostname}")
-        else
-          parts+=("${RED}✗${RST} ${hostname}")
-        fi
-      elif [[ -f "$log_f" ]]; then
-        pct=$(grep -oE '[0-9]+(\.[0-9]+)? ?%' "$log_f" 2>/dev/null \
-              | tr -d ' ' | tail -1)
-        if [[ -n "$pct" ]]; then
-          parts+=("${BLU}↑${RST} ${hostname} ${pct}")
-        else
-          parts+=("${DIM}… ${hostname}${RST}")
-        fi
-      else
-        parts+=("${DIM}… ${hostname} (queued)${RST}")
-      fi
-    done
-    line=""
-    for part in "${parts[@]}"; do
-      [[ -n "$line" ]] && line+="   "
-      line+="$part"
-    done
-    echo -e "${DIM}  [${elapsed}s]${RST}  ${line}"
-
-    # Break early if all devices have either auth failed or completed
-    all_done=true
-    for hostname in "${FLASH_LIST[@]}"; do
-      result_f="${WORK_DIR}/${hostname}.result"
-      # Device is done if: result file exists (completed) OR auth failed
-      if [[ ! -f "$result_f" ]] && [[ ! -v auth_failed_devices[$hostname] ]]; then
-        all_done=false
-        break
-      fi
-    done
-    [[ "$all_done" == true ]] && break
+# ── Wait for OTA jobs (progress monitor only in verbose mode) ────────────────
+_monitor_ota_auth_failures() {
+  local hostname result_f log_f
+  for hostname in "${FLASH_LIST[@]}"; do
+    result_f="${WORK_DIR}/${hostname}.result"
+    log_f="${WORK_DIR}/${hostname}.log"
+    if [[ -f "$log_f" ]] && grep -q "Authentication invalid" "$log_f" 2>/dev/null; then
+      echo fail > "$result_f"
+    fi
   done
-) &
-MONITOR_PID=$!
+}
 
-wait 2>/dev/null || true
-kill "$MONITOR_PID" 2>/dev/null || true
-wait "$MONITOR_PID" 2>/dev/null || true
+if [[ "$VERBOSE" == true ]]; then
+  (
+    elapsed=0
+    declare -A auth_failed_devices
+    while true; do
+      sleep 4
+      elapsed=$((elapsed + 4))
+      parts=()
+      for hostname in "${FLASH_LIST[@]}"; do
+        result_f="${WORK_DIR}/${hostname}.result"
+        log_f="${WORK_DIR}/${hostname}.log"
 
-# ── Print per-device logs and collect failures ───────────────────────────────
-echo
+        if [[ -f "$log_f" ]] && grep -q "Authentication invalid" "$log_f" 2>/dev/null; then
+          echo fail > "$result_f"
+          parts+=("${RED}✗${RST} ${hostname} (auth failed)")
+          auth_failed_devices[$hostname]=true
+          continue
+        fi
+
+        if [[ -f "$result_f" ]]; then
+          if [[ "$(cat "$result_f")" == ok ]]; then
+            parts+=("${GRN}✓${RST} ${hostname}")
+          else
+            parts+=("${RED}✗${RST} ${hostname}")
+          fi
+        elif [[ -f "$log_f" ]]; then
+          pct=$(grep -oE '[0-9]+(\.[0-9]+)? ?%' "$log_f" 2>/dev/null \
+                | tr -d ' ' | tail -1)
+          if [[ -n "$pct" ]]; then
+            parts+=("${BLU}↑${RST} ${hostname} ${pct}")
+          else
+            parts+=("${DIM}… ${hostname}${RST}")
+          fi
+        else
+          parts+=("${DIM}… ${hostname} (queued)${RST}")
+        fi
+      done
+      line=""
+      for part in "${parts[@]}"; do
+        [[ -n "$line" ]] && line+="   "
+        line+="$part"
+      done
+      echo -e "${DIM}  [${elapsed}s]${RST}  ${line}"
+
+      all_done=true
+      for hostname in "${FLASH_LIST[@]}"; do
+        result_f="${WORK_DIR}/${hostname}.result"
+        if [[ ! -f "$result_f" ]] && [[ ! -v auth_failed_devices[$hostname] ]]; then
+          all_done=false
+          break
+        fi
+      done
+      [[ "$all_done" == true ]] && break
+    done
+  ) &
+  MONITOR_PID=$!
+  wait 2>/dev/null || true
+  kill "$MONITOR_PID" 2>/dev/null || true
+  wait "$MONITOR_PID" 2>/dev/null || true
+else
+  wait 2>/dev/null || true
+  _monitor_ota_auth_failures
+fi
+
+# ── Per-device flash result ──────────────────────────────────────────────────
 for HOSTNAME in "${FLASH_LIST[@]}"; do
-  dim "── ${HOSTNAME} ──────────────────────────────────────"
-  cat "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null || true
+  if [[ "$VERBOSE" == true ]]; then
+    dim "── ${HOSTNAME} ──────────────────────────────────────"
+    cat "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null || true
+  fi
   if [[ "$(cat "$WORK_DIR/${HOSTNAME}.result" 2>/dev/null)" == ok ]]; then
-    # Show device identifier and image hash
-    hash="${DEVICE_HASHES[$HOSTNAME]:-unknown}"
+    # Pre-flash mDNS hash (missing on failsafe during reassign); fall back to build hash.
+    hash="${DEVICE_HASHES[$HOSTNAME]:-}"
+    if [[ -z "$hash" && -n "$NEW_CONFIG_HASH" ]]; then
+      hash="$NEW_CONFIG_HASH"
+    fi
+    [[ -z "$hash" ]] && hash="unknown"
     hash_short="${hash:0:8}"
     ok "${HOSTNAME}: flash successful. (hash: ${hash_short})"
     OK_LIST+=("$HOSTNAME")
@@ -1458,7 +1570,6 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
       echo
     fi
   fi
-  echo
 done
 
 # ── Copy OTA logs to persistent log directory ───────────────────────────────
@@ -1468,72 +1579,33 @@ if [[ -n "$FLASH_LOG_DIR" ]]; then
   done
 fi
 
-# ── Final report ─────────────────────────────────────────────────────────────
-total=$(( ${#OK_LIST[@]} + ${#FAIL_LIST[@]} + ${#SKIP_LIST[@]} ))
-echo
-echo "════════════════════════════════════════════════════════"
-printf " %-6s  %-30s  %s\n" "RESULT" "DEVICE" "HASH / VERSION"
-echo "────────────────────────────────────────────────────────"
-for h in "${SKIP_LIST[@]}"; do
-  info="${DEVICE_HASHES[$h]:-${DEVICE_VERSIONS[$h]:-?}}"
-  printf " ${DIM}%-6s  %-30s  %s${RST}\n" "–" "$h" "$info"
-done
-for h in "${OK_LIST[@]}"; do
-  info="${DEVICE_HASHES[$h]:+${DEVICE_HASHES[$h]} → ${NEW_CONFIG_HASH}}"
-  info="${info:-flashed}"
-  printf " ${GRN}%-6s${RST}  %-30s  %s\n" "✓" "$h" "$info"
-done
-for h in "${FAIL_LIST[@]}"; do
-  printf " ${RED}%-6s${RST}  %-30s\n" "✗" "$h"
-done
-echo "════════════════════════════════════════════════════════"
-printf " %d device(s): " "$total"
-[[ ${#OK_LIST[@]}   -gt 0 ]] && printf "${GRN}%d flashed${RST}  "  "${#OK_LIST[@]}"
-[[ ${#SKIP_LIST[@]} -gt 0 ]] && printf "${DIM}%d skipped${RST}  " "${#SKIP_LIST[@]}"
-[[ ${#FAIL_LIST[@]} -gt 0 ]] && printf "${RED}%d FAILED${RST}"    "${#FAIL_LIST[@]}"
-echo
-echo "════════════════════════════════════════════════════════"
-
-# In reassign mode, auto-configure any discovered devices before updating entity IDs
-# This ensures discovered devices get configured with API key and create new entities with role_id
-if [[ "$DRY_RUN" == false ]] && [[ "$REASSIGN_MODE" == true ]]; then
-  if [[ -n "$HA_URL" && -n "$HA_TOKEN" && -n "$API_KEY" ]]; then
-    warn "Auto-configuring discovered devices with encryption key..."
-    auto_configure_discovered_esphome "$HA_URL" "$HA_TOKEN" "$API_KEY"
-    # Wait a moment for HA to process the new devices
-    sleep 2
-  fi
-fi
-
-# Recreate entity IDs for flashed devices, force-update if requested, or all devices in reassign mode
-# In dry-run mode, skip recreation but still verify consistency below
-if [[ "$DRY_RUN" == false ]] && { [[ ${#OK_LIST[@]} -gt 0 ]] || [[ "$FORCE_UPDATE_ENTITIES" == true ]] || [[ "$REASSIGN_MODE" == true ]]; }; then
-  ENTITIES_TO_UPDATE=""
-  if [[ "$FORCE_UPDATE_ENTITIES" == true ]] || [[ "$REASSIGN_MODE" == true ]]; then
-    ENTITIES_TO_UPDATE="$HOSTNAMES"
-  else
-    ENTITIES_TO_UPDATE="$(printf '%s ' "${OK_LIST[@]}")"
-  fi
-  recreate_entity_ids "$HA_URL" "$HA_TOKEN" "$ENTITIES_TO_UPDATE"
-fi
-
-# Verify entity ID consistency for all discovered devices (always, even in dry-run)
-echo
-echo "════════════════════════════════════════════════════════"
-CONSISTENCY_OUTPUT=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$BASE_NAME" "$HOSTNAMES" 2>&1)
-if [[ -n "$CONSISTENCY_OUTPUT" ]]; then
-  if echo "$CONSISTENCY_OUTPUT" | grep -q "WARNING"; then
-    if [[ "$DRY_RUN" == true ]]; then
-      warn "Entity ID inconsistencies would need fixing:"
-      echo "$CONSISTENCY_OUTPUT" | grep -v "^WARNING:" | sed 's/^/  /'
+# HA entity work for production OTA updates only (not failsafe --reassign).
+if [[ "$REASSIGN_MODE" != true ]]; then
+  # Recreate entity IDs for flashed devices, or all when --force-update-entities
+  if [[ "$DRY_RUN" == false ]] && { [[ ${#OK_LIST[@]} -gt 0 ]] || [[ "$FORCE_UPDATE_ENTITIES" == true ]]; }; then
+    ENTITIES_TO_UPDATE=""
+    if [[ "$FORCE_UPDATE_ENTITIES" == true ]]; then
+      ENTITIES_TO_UPDATE="$HOSTNAMES"
     else
-      echo "$CONSISTENCY_OUTPUT"
+      ENTITIES_TO_UPDATE="$(printf '%s ' "${OK_LIST[@]}")"
     fi
-  else
-    ok "Entity ID consistency: All entity IDs match device names"
+    recreate_entity_ids "$HA_URL" "$HA_TOKEN" "$ENTITIES_TO_UPDATE"
+  fi
+
+  CONSISTENCY_OUTPUT=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$YAML_FILE" "$HOSTNAMES" 2>&1)
+  if [[ -n "$CONSISTENCY_OUTPUT" ]]; then
+    if echo "$CONSISTENCY_OUTPUT" | grep -q "WARNING"; then
+      if [[ "$DRY_RUN" == true ]]; then
+        warn "Entity ID inconsistencies would need fixing:"
+        echo "$CONSISTENCY_OUTPUT" | grep -v "^WARNING:" | sed 's/^/  /'
+      else
+        echo "$CONSISTENCY_OUTPUT"
+      fi
+    else
+      ok "Entity ID consistency: All entity IDs match device names"
+    fi
   fi
 fi
-echo "════════════════════════════════════════════════════════"
 
 if [[ ${#FAIL_LIST[@]} -gt 0 ]]; then
   exit 1

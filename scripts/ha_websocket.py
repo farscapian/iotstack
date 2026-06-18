@@ -8,8 +8,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import ssl
 import sys
 import time
+import urllib.error
+import urllib.request
 from typing import Any
 
 
@@ -123,6 +127,198 @@ def query(ha_url: str, token: str, msg_type: str, fields: dict[str, Any] | None 
         return client.send_command(msg_type, **(fields or {}))
 
 
+def _ssl_context() -> ssl.SSLContext:
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    return ctx
+
+
+def _http_config_flow_request(
+    ha_url: str,
+    token: str,
+    flow_id: str,
+    *,
+    method: str = "GET",
+    user_input: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Submit a config-flow step (HA exposes step handling via authenticated REST)."""
+    url = f"{ha_url.rstrip('/')}/api/config/config_entries/flow/{flow_id}"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    data = None
+    if method == "POST":
+        data = json.dumps(user_input if user_input is not None else {}).encode()
+
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
+            body = resp.read().decode()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        raise HAWebSocketError(
+            f"Config flow HTTP {exc.code}: {detail or exc.reason}"
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise HAWebSocketError(f"Config flow HTTP request failed: {exc}") from exc
+
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise HAWebSocketError(f"Invalid JSON from config flow: {body[:200]}") from exc
+
+
+def _mac_suffix_from_hostname(hostname: str) -> str | None:
+    match = re.search(r"([0-9a-f]{6})$", hostname.strip().lower())
+    return match.group(1) if match else None
+
+
+def _normalize_ha_host(value: str) -> str:
+    return value.strip().lower().removesuffix(".local")
+
+
+def _ha_label_matches_hostname(label: str, hostname: str) -> bool:
+    """True when an HA title/device_name refers to the same device as hostname."""
+    target = _normalize_ha_host(hostname)
+    text = _normalize_ha_host(label)
+    if not target or not text:
+        return False
+    if text == target or target in text or text in target:
+        return True
+    mac = _mac_suffix_from_hostname(target)
+    if mac:
+        compact = re.sub(r"[^0-9a-f]", "", text)
+        if mac in compact:
+            return True
+    return False
+
+
+def _find_esphome_flow(flows: list[dict[str, Any]], hostname: str) -> dict[str, Any] | None:
+    for flow in flows:
+        if flow.get("handler") != "esphome":
+            continue
+        context = flow.get("context") or {}
+        title = str(context.get("title", ""))
+        placeholders = context.get("title_placeholders") or {}
+        name = str(placeholders.get("name", ""))
+        if _ha_label_matches_hostname(title, hostname) or _ha_label_matches_hostname(
+            name, hostname
+        ):
+            return flow
+    return None
+
+
+def _esphome_entry_exists(ha_url: str, token: str, hostname: str) -> bool:
+    target = _normalize_ha_host(hostname)
+    mac = _mac_suffix_from_hostname(target)
+
+    entries = query(ha_url, token, "config_entries/get", {"domain": "esphome"}) or []
+    for entry in entries:
+        data = entry.get("data") or {}
+        for field in (
+            str(data.get("device_name", "")),
+            str(data.get("host", "")),
+            str(entry.get("title", "")),
+        ):
+            if _ha_label_matches_hostname(field, hostname):
+                return True
+
+    devices = query(ha_url, token, "config/device_registry/list") or []
+    for device in devices:
+        for identifier_set in device.get("identifiers") or []:
+            if not isinstance(identifier_set, (list, tuple)) or len(identifier_set) < 2:
+                continue
+            if str(identifier_set[0]).lower() != "esphome":
+                continue
+            if _ha_label_matches_hostname(str(identifier_set[1]), hostname):
+                return True
+
+    return False
+
+
+def _flow_input_for_step(step_id: str, noise_psk: str) -> dict[str, Any]:
+    if step_id == "discovery_confirm":
+        return {}
+    if step_id == "encryption_key":
+        return {"noise_psk": noise_psk}
+    if step_id == "authenticate":
+        return {"password": ""}
+    if step_id == "reauth_confirm":
+        return {"noise_psk": noise_psk}
+    raise HAWebSocketError(f"Unsupported ESPHome config-flow step: {step_id}")
+
+
+def register_esphome_device(
+    ha_url: str,
+    token: str,
+    hostname: str,
+    noise_psk: str,
+    *,
+    poll_timeout: float = 90.0,
+) -> dict[str, Any]:
+    """Complete HA ESPHome discovery for a production device.
+
+    Uses WebSocket (flow/progress, config_entries/get) to find the device and
+    authenticated REST to advance config-flow steps (HA has no WS submit API).
+    """
+    if _esphome_entry_exists(ha_url, token, hostname):
+        return {"status": "already_registered", "hostname": hostname}
+
+    deadline = time.time() + poll_timeout
+    flow: dict[str, Any] | None = None
+    while time.time() < deadline:
+        flows = query(ha_url, token, "config_entries/flow/progress") or []
+        flow = _find_esphome_flow(flows, hostname)
+        if flow:
+            break
+        time.sleep(5)
+
+    if not flow:
+        # No zeroconf flow when the device is already integrated (common on re-flash).
+        if _esphome_entry_exists(ha_url, token, hostname):
+            return {"status": "already_registered", "hostname": hostname}
+        raise HAWebSocketError(
+            f"No ESPHome discovery flow for {hostname} after {int(poll_timeout)}s"
+        )
+
+    flow_id = flow["flow_id"]
+    result = _http_config_flow_request(ha_url, token, flow_id, method="GET")
+
+    for _ in range(20):
+        step_type = result.get("type")
+        if step_type == "create_entry":
+            return result
+        if step_type == "abort":
+            reason = result.get("reason", "unknown")
+            if reason in {
+                "already_configured",
+                "already_configured_updates",
+                "already_configured_detailed",
+            }:
+                return {"status": "already_configured", "reason": reason}
+            raise HAWebSocketError(f"ESPHome config flow aborted: {reason}")
+        if step_type == "form":
+            step_id = result.get("step_id", "")
+            user_input = _flow_input_for_step(step_id, noise_psk)
+            result = _http_config_flow_request(
+                ha_url, token, flow_id, method="POST", user_input=user_input
+            )
+            continue
+        if step_type == "menu":
+            options = result.get("menu_options") or []
+            if not options:
+                raise HAWebSocketError("ESPHome config flow menu has no options")
+            result = _http_config_flow_request(
+                ha_url, token, flow_id, method="POST", user_input={"next_step_id": options[0]}
+            )
+            continue
+        raise HAWebSocketError(f"Unexpected config-flow response type: {step_type}")
+
+    raise HAWebSocketError(f"ESPHome config flow for {hostname} did not complete")
+
+
 def call_service(
     ha_url: str,
     token: str,
@@ -169,6 +365,24 @@ def main() -> int:
     service_parser.add_argument("--target", default="", help="target JSON object")
     service_parser.set_defaults(func=lambda args: _cmd_call_service(args))
 
+    register_parser = sub.add_parser(
+        "register-esphome",
+        help="Complete ESPHome zeroconf discovery in Home Assistant",
+    )
+    register_parser.add_argument("--hostname", required=True)
+    register_parser.add_argument(
+        "--noise-psk",
+        required=True,
+        help="Device API encryption key (base64 noise_psk for HA)",
+    )
+    register_parser.add_argument(
+        "--poll-timeout",
+        type=float,
+        default=90.0,
+        help="Seconds to wait for HA discovery flow",
+    )
+    register_parser.set_defaults(func=lambda args: _cmd_register_esphome(args))
+
     args = parser.parse_args()
     try:
         args.func(args)
@@ -188,6 +402,21 @@ def _cmd_query(args: argparse.Namespace) -> None:
     result = query(args.ha_url, args.ha_token, args.msg_type, fields)
     json.dump(result, sys.stdout)
     print()
+
+
+def _cmd_register_esphome(args: argparse.Namespace) -> None:
+    result = register_esphome_device(
+        args.ha_url,
+        args.ha_token,
+        args.hostname,
+        args.noise_psk,
+        poll_timeout=args.poll_timeout,
+    )
+    if result.get("status") in {"already_registered", "already_configured"}:
+        print(f"[OK] Home Assistant already has {args.hostname}")
+        return
+    title = (result.get("result") or {}).get("title", args.hostname)
+    print(f"[OK] Home Assistant registered: {title}")
 
 
 def _cmd_call_service(args: argparse.Namespace) -> None:

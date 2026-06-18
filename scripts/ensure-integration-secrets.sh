@@ -29,10 +29,11 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
   BLU=$'\033[0;34m'
   RST=$'\033[0m'
 
-  err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
-  ok()   { echo -e "${GRN}[OK]${RST} $*" >&2; }
-  info() { echo -e "${BLU}[INFO]${RST} $*" >&2; }
-  warn() { echo -e "${YLW}[WARN]${RST} $*" >&2; }
+  # Namespaced so sourcing from iotstack.sh does not clobber its logging helpers.
+  _ies_err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
+  _ies_ok()   { echo -e "${GRN}[OK]${RST} $*" >&2; }
+  _ies_info() { echo -e "${BLU}[INFO]${RST} $*" >&2; }
+  _ies_warn() { echo -e "${YLW}[WARN]${RST} $*" >&2; }
 
   is_unconfigured() {
     local value="${1:-}"
@@ -48,7 +49,36 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     local pass_path="$1"
     local value="$2"
     { echo "$value"; echo "$value"; } | pass insert -f "$pass_path" >/dev/null 2>&1 \
-      || err "Failed to store credential in pass: $pass_path"
+      || _ies_err "Failed to store credential in pass: $pass_path"
+  }
+
+  is_ha_token_auth_failure() {
+    # True when HA rejected the long-lived access token (not a network/URL failure).
+    local output="$1"
+    grep -qiE 'Home Assistant authentication failed|invalid access token|invalid auth' <<<"$output"
+  }
+
+  invalidate_ha_token() {
+    if ! command -v pass &>/dev/null; then
+      _ies_warn "pass not available; cannot invalidate Home Assistant token in pass store"
+      HA_TOKEN=""
+      export HA_TOKEN
+      return 0
+    fi
+    store_pass_secret "iotstack/common/ha_token" "$PLACEHOLDER_VALUE"
+    HA_TOKEN=""
+    export HA_TOKEN
+    _ies_info "Invalidated iotstack/common/ha_token in pass (set to ${PLACEHOLDER_VALUE})"
+  }
+
+  invalidate_ha_token_if_auth_failure() {
+    # Reset pass token to the setup placeholder when HA rejects authentication.
+    local output="$1"
+    if is_ha_token_auth_failure "$output"; then
+      invalidate_ha_token
+      return 0
+    fi
+    return 1
   }
 
   prompt_value() {
@@ -80,7 +110,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       value="$(prompt_value "$prompt_text" "$is_secret")"
       if [[ -z "$value" ]]; then
         if [[ "$required" == "true" ]]; then
-          err "Credential required: $pass_path"
+          _ies_err "Credential required: $pass_path"
         fi
         echo ""
         return 0
@@ -90,7 +120,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
         validate_ha_url "$value"
       fi
       store_pass_secret "$pass_path" "$value"
-      info "Stored credential: $pass_path"
+      _ies_info "Stored credential: $pass_path"
     fi
 
     echo "$value"
@@ -121,7 +151,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
   validate_ha_url() {
     local url="$1"
     if [[ ! "$url" =~ ^https?://[^/[:space:]]+ ]]; then
-      err "Invalid Home Assistant URL: $url (expected host:8123 or http(s)://host:8123)"
+      _ies_err "Invalid Home Assistant URL: $url (expected host:8123 or http(s)://host:8123)"
     fi
   }
 
@@ -137,23 +167,23 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       return 0
     fi
 
-    info "python3 websocket-client is required for Home Assistant integration"
-    info "Installing websocket-client..."
+    _ies_info "python3 websocket-client is required for Home Assistant integration"
+    _ies_info "Installing websocket-client..."
 
     if python3 -m pip install websocket-client >/dev/null 2>&1 \
       || pip3 install websocket-client >/dev/null 2>&1; then
-      ok "websocket-client installed via pip"
+      _ies_ok "websocket-client installed via pip"
       return 0
     fi
 
     if command -v apt-get &>/dev/null \
       && sudo apt-get update -qq \
       && sudo apt-get install -y python3-websocket >/dev/null 2>&1; then
-      ok "python3-websocket installed via apt"
+      _ies_ok "python3-websocket installed via apt"
       return 0
     fi
 
-    err "python3 websocket-client is required. Install with: pip3 install websocket-client"
+    _ies_err "python3 websocket-client is required. Install with: pip3 install websocket-client"
   }
 
   test_ha_websocket() {
@@ -217,7 +247,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
   ensure_ha_integration() {
     local skip_test="${1:-false}"
 
-    command -v pass &>/dev/null || err "pass is required but not installed"
+    command -v pass &>/dev/null || _ies_err "pass is required but not installed"
 
     HA_URL="$(ensure_pass_secret \
       "iotstack/common/ha_url" \
@@ -234,16 +264,19 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     validate_ha_url "$HA_URL"
 
     if [[ "$skip_test" != "true" ]]; then
-      info "Testing Home Assistant WebSocket connection to ${HA_URL}..."
+      _ies_info "Testing Home Assistant WebSocket connection to ${HA_URL}..."
       local test_output=""
       if ! test_output="$(test_ha_websocket "$HA_URL" "$HA_TOKEN" 2>&1)"; then
         echo "$test_output" >&2
         if grep -qi "websocket-client is required" <<<"$test_output"; then
-          err "Home Assistant WebSocket dependency missing (see above)"
+          _ies_err "Home Assistant WebSocket dependency missing (see above)"
         fi
-        err "Cannot connect to Home Assistant. Check URL, token, and network access."
+        if invalidate_ha_token_if_auth_failure "$test_output"; then
+          _ies_err "Home Assistant access token is invalid — iotstack/common/ha_token reset to ${PLACEHOLDER_VALUE}. Configure a new token and retry."
+        fi
+        _ies_err "Cannot connect to Home Assistant. Check URL, token, and network access."
       fi
-      ok "Home Assistant connection verified (${test_output})"
+      _ies_ok "Home Assistant connection verified (${test_output})"
     fi
 
     export HA_URL HA_TOKEN
@@ -259,7 +292,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       prompt="Thread operational dataset TLV (optional, press Enter to skip)"
     fi
 
-    command -v pass &>/dev/null || err "pass is required but not installed"
+    command -v pass &>/dev/null || _ies_err "pass is required but not installed"
 
     THREAD_TLV="$(ensure_pass_secret \
       "iotstack/common/thread_tlv" \
@@ -268,7 +301,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       "$required")"
 
     if [[ "$optional" != "true" && -z "$THREAD_TLV" ]]; then
-      err "Thread TLV is required"
+      _ies_err "Thread TLV is required"
     fi
 
     export THREAD_TLV
@@ -319,7 +352,7 @@ main() {
         return 0
         ;;
       *)
-        err "Unknown option: $1"
+        _ies_err "Unknown option: $1"
         ;;
     esac
     shift
