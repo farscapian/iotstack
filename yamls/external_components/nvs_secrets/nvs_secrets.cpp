@@ -139,7 +139,8 @@ void NVSSecrets::apply_api_encryption_key_() {
              (unsigned) api_encryption_key_.size());
     return;
   }
-  if (global_api_server == nullptr) {
+  esphome::api::APIServer *api_server = esphome::api::global_api_server;
+  if (api_server == nullptr) {
     ESP_LOGW(TAG, "[NVS] API server unavailable; cannot apply encryption key from NVS");
     return;
   }
@@ -156,7 +157,7 @@ void NVSSecrets::apply_api_encryption_key_() {
     psk[i] = static_cast<uint8_t>(byte);
   }
 
-  if (global_api_server->save_noise_psk(psk, true)) {
+  if (api_server->save_noise_psk(psk, true)) {
     ESP_LOGI(TAG, "[NVS] API encryption enabled (key loaded from '%s')", api_nvs_key_.c_str());
   } else {
     ESP_LOGW(TAG, "[NVS] Failed to apply API encryption key from NVS");
