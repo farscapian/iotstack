@@ -35,8 +35,12 @@ flash_partition_offset_from_csv() {
   local csv_file="$1"
   local part_name="$2"
   [[ -f "$csv_file" ]] || return 1
+  # Match partition name exactly on $1 -- substring match hits comment lines
+  # that mention "failsafe" / "production" in prose above the data rows.
   awk -F',' -v name="$part_name" '
-    $1 ~ name {
+    {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1)
+      if ($1 != name) next
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4)
       print $4
       exit
