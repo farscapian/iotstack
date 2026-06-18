@@ -2256,7 +2256,11 @@ cmd_verify() {
         echo "────────────────────────────────────────────────────────────"
         info "Verifying: $yaml"
         echo "────────────────────────────────────────────────────────────"
-        if _run_update_devices --verify "$yaml"; then
+        declare -a _verify_cmd=()
+        mapfile -t _verify_inh < <(_update_devices_inherited_flags)
+        [[ ${#_verify_inh[@]} -gt 0 ]] && _verify_cmd+=("${_verify_inh[@]}")
+        _verify_cmd+=(--verify "$yaml")
+        if _run_update_devices "${_verify_cmd[@]}"; then
           found=$((found + 1))
         else
           failed=$((failed + 1))
@@ -2278,7 +2282,11 @@ cmd_verify() {
     fi
 
     info "Verifying: $yaml_file"
-    _run_update_devices --verify "$yaml_file"
+    declare -a _verify_cmd=()
+    mapfile -t _verify_inh < <(_update_devices_inherited_flags)
+    [[ ${#_verify_inh[@]} -gt 0 ]] && _verify_cmd+=("${_verify_inh[@]}")
+    _verify_cmd+=(--verify "$yaml_file")
+    _run_update_devices "${_verify_cmd[@]}"
   fi
 }
 

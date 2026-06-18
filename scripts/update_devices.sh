@@ -73,7 +73,7 @@ DIM='\033[2m'
 RST='\033[0m'
 
 info() { echo -e "${BLU}[INFO]${RST}  $*"; }
-log()  { [[ "$VERBOSE" == true ]] && info "$@"; }
+log()  { if [[ "$VERBOSE" == true ]]; then info "$@"; fi; return 0; }
 ok()   { echo -e "${GRN}[OK]${RST}    $*"; }
 warn() { echo -e "${YLW}[WARN]${RST}  $*"; }
 err()  { echo -e "${RED}[ERR]${RST}   $*" >&2; }
@@ -122,7 +122,7 @@ _compile_log_banner() {
   # Written when esphome compile actually starts (not at script startup).
   local banner="── $(date '+%Y-%m-%d %H:%M:%S') Compiling $(basename "$YAML_FILE") ──"
   echo "$banner" >> "$COMPILE_LOG_FILE"
-  [[ "$VERBOSE" == true ]] && echo "$banner"
+  if [[ "$VERBOSE" == true ]]; then echo "$banner"; fi
 }
 
 # Animate dots while waiting (1 to 5 dots, repeating)
@@ -893,8 +893,8 @@ EXPECTED_VERSION=$(awk '/^\s+project:/{found=1; next} found && /version:/{print;
   | sed 's/.*version:[[:space:]]*//' | tr -d '"')
 EXPECTED_VERSION=$(resolve_subs "$EXPECTED_VERSION")
 
-[[ -n "$EXPECTED_PROJECT" ]] && log "Project : ${EXPECTED_PROJECT}"
-[[ -n "$EXPECTED_VERSION" ]] && log "Version : ${EXPECTED_VERSION}"
+if [[ -n "$EXPECTED_PROJECT" ]]; then log "Project : ${EXPECTED_PROJECT}"; fi
+if [[ -n "$EXPECTED_VERSION" ]]; then log "Version : ${EXPECTED_VERSION}"; fi
 
 # ── Discover devices ─────────────────────────────────────────────────────────
 BASE_NAME=$(awk '/^esphome:/{found=1; next} found && /^\s+name:/{print; found=0}' "$YAML_FILE" \
@@ -907,7 +907,9 @@ if [[ -z "$BASE_NAME" ]]; then
 fi
 
 if [[ "$REASSIGN_MODE" == true ]]; then
-  log "Discovering devices to reassign: ${REASSIGN_MACS[*]}"
+  info "Discovering devices to reassign: ${REASSIGN_MACS[*]}"
+elif [[ "$VERIFY" == true ]]; then
+  info "Discovering ${BASE_NAME}-* devices via mDNS..."
 else
   log "Discovering ${BASE_NAME}-* devices via mDNS..."
 fi
@@ -956,10 +958,14 @@ fi
 if [[ -z "$HOSTNAMES" ]]; then
   if [[ "$REASSIGN_MODE" == true ]]; then
     warn "No devices found with MAC suffixes: ${REASSIGN_MACS[*]}"
+    exit 1
+  elif [[ "$VERIFY" == true ]]; then
+    warn "No ${BASE_NAME}-* devices found on the network — nothing to verify."
+    exit 1
   else
     warn "No ${BASE_NAME}-* devices found on the network."
+    exit 0
   fi
-  exit 0
 fi
 
 # In reassign mode, check if all requested MACs were found
@@ -1237,7 +1243,7 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
         printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
           "$YAML_SHA256" "$ESPHOME_VERSION" "$NEW_CONFIG_HASH" > "$CACHE_FILE"
         setup_flash_logs "$NEW_CONFIG_HASH"
-        [[ -n "$NEW_CONFIG_HASH" ]] && ok "Build config_hash: ${NEW_CONFIG_HASH}"
+        if [[ -n "$NEW_CONFIG_HASH" ]]; then ok "Build config_hash: ${NEW_CONFIG_HASH}"; fi
       else
         err "Compilation failed — aborting."
         exit 1
@@ -1264,7 +1270,7 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
         printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
           "$YAML_SHA256" "$ESPHOME_VERSION" "$NEW_CONFIG_HASH" > "$CACHE_FILE"
         setup_flash_logs "$NEW_CONFIG_HASH"
-        [[ -n "$NEW_CONFIG_HASH" ]] && ok "Build config_hash: ${NEW_CONFIG_HASH}"
+        if [[ -n "$NEW_CONFIG_HASH" ]]; then ok "Build config_hash: ${NEW_CONFIG_HASH}"; fi
       else
         printf '\r  ⚙ Compiling %s✗%s\n' "$RED" "$RST" >&2
         err "Compilation failed:"
@@ -1361,11 +1367,14 @@ done <<< "$HOSTNAMES"
 if [[ "$VERIFY" == true ]]; then
   echo
   echo "────────────────────────────────────────"
-  [[ -n "$NEW_CONFIG_HASH" ]] && log "Expected hash    : ${NEW_CONFIG_HASH}"
-  [[ -n "$EXPECTED_VERSION" ]] && log "Expected version : ${EXPECTED_VERSION}"
-  [[ ${#VERIFY_OK_LIST[@]}      -gt 0 ]] && ok  "Matched  : ${VERIFY_OK_LIST[*]}"
-  [[ ${#VERIFY_FAIL_LIST[@]}    -gt 0 ]] && err "Mismatch : ${VERIFY_FAIL_LIST[*]}"
-  [[ ${#VERIFY_UNKNOWN_LIST[@]} -gt 0 ]] && warn "Unknown  : ${VERIFY_UNKNOWN_LIST[*]}"
+  if [[ -n "$NEW_CONFIG_HASH" ]]; then info "Expected hash    : ${NEW_CONFIG_HASH}"; fi
+  if [[ -n "$EXPECTED_VERSION" ]]; then info "Expected version : ${EXPECTED_VERSION}"; fi
+  if [[ ${#VERIFY_OK_LIST[@]} -gt 0 ]]; then ok  "Matched  : ${VERIFY_OK_LIST[*]}"; fi
+  if [[ ${#VERIFY_FAIL_LIST[@]} -gt 0 ]]; then err "Mismatch : ${VERIFY_FAIL_LIST[*]}"; fi
+  if [[ ${#VERIFY_UNKNOWN_LIST[@]} -gt 0 ]]; then warn "Unknown  : ${VERIFY_UNKNOWN_LIST[*]}"; fi
+  if [[ ${#VERIFY_OK_LIST[@]} -eq 0 && ${#VERIFY_FAIL_LIST[@]} -eq 0 && ${#VERIFY_UNKNOWN_LIST[@]} -eq 0 ]]; then
+    warn "No devices were checked."
+  fi
 
   if [[ ${#VERIFY_FAIL_LIST[@]} -gt 0 || ${#VERIFY_UNKNOWN_LIST[@]} -gt 0 ]]; then
     exit 1
