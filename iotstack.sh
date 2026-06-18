@@ -1656,7 +1656,8 @@ _flash_assess_device_on_flash_action() {
         fi
       fi
     fi
-  elif _flash_production_matches_build "$prod_hostname" "$yaml_path" "$tty_device"; then
+  elif [[ "${FLASH_ANYWAY:-0}" != "1" ]] \
+     && _flash_production_matches_build "$prod_hostname" "$yaml_path" "$tty_device"; then
     FLASH_ASSESS_FLASH_CURRENT=1
     running_hash="${mdns_hash:-unknown}"
   fi
@@ -3450,7 +3451,7 @@ cmd_flash() {
         shift
         ;;
       --flash-anyway)
-        FLASH_ANYWAY=1
+        export FLASH_ANYWAY=1
         shift
         ;;
       --panel-count=*)
