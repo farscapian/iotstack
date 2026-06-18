@@ -285,8 +285,15 @@ smart_compile() {
   # measure, regenerate the table, then recompile so partitions.bin matches.
   if [[ $cached -eq 1 && -f "$firmware_bin" ]]; then
     _smart_compile_cache_hit_notice "$device_name" "failsafe"
-    local fs_size; fs_size=$(_failsafe_part_size "$firmware_bin")
-    IOTSTACK_FAILSAFE_PART_SIZE="$fs_size" _update_partition_table_file
+    local build_csv="${YAMLS_DIR}/.esphome/build/failsafe/partitions.csv"
+    if [[ -f "$build_csv" ]] && grep -qE '^production,' "$build_csv" 2>/dev/null; then
+      cp "$build_csv" "$PARTITION_TABLE"
+      _ensure_partition_table_symlink "$PARTITION_TABLE"
+      debug "Partition table synced from failsafe build (production offset $(flash_partition_offset production 2>/dev/null))"
+    else
+      local fs_size; fs_size=$(_failsafe_part_size "$firmware_bin")
+      IOTSTACK_FAILSAFE_PART_SIZE="$fs_size" _update_partition_table_file
+    fi
     return 0
   fi
 
@@ -1135,7 +1142,7 @@ _flash_production_firmware_current() {
 
   build_name=$(basename "$yaml_path" .yaml)
   build_dir="${YAMLS_DIR}/.esphome/build/${build_name}/.pioenvs/${build_name}"
-  production_offset=$(awk -F',' '/^production[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
+  production_offset=$(flash_partition_offset production 2>/dev/null) || return 1
   [[ -n "$production_offset" && -d "$build_dir" ]] || return 1
   chip=$(esp_detect_chip "$tty_device" 2>/dev/null) || return 1
   flash_production_matches_device "$tty_device" "$chip" "$build_dir" "$production_offset"
@@ -1215,7 +1222,13 @@ _flash_production_partition_paths() {
   build_name=$(basename "$yaml_path" .yaml)
   _FLASH_PROD_BUILD_DIR="${YAMLS_DIR}/.esphome/build/${build_name}/.pioenvs/${build_name}"
   _FLASH_PROD_FIRMWARE="${_FLASH_PROD_BUILD_DIR}/firmware.bin"
-  _FLASH_PROD_OFFSET=$(awk -F',' '/^production[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
+  _FLASH_PROD_OFFSET=$(flash_partition_offset production 2>/dev/null) || _FLASH_PROD_OFFSET=""
+  if [[ -n "$_FLASH_PROD_OFFSET" ]]; then
+    local _part_csv
+    _part_csv=$(flash_partition_table_csv_for_device 2>/dev/null) || true
+    [[ "$_part_csv" == *"/build/failsafe/partitions.csv" ]] \
+      && debug "On-flash production offset ${_FLASH_PROD_OFFSET} (from failsafe build partition table)"
+  fi
 }
 
 _flash_read_production_partition_md5() {
@@ -1244,7 +1257,7 @@ _flash_failsafe_image_hash_on_device() {
   local build_dir="${YAMLS_DIR}/.esphome/build/failsafe/.pioenvs/failsafe"
   local firmware_file="${build_dir}/firmware.bin"
   local failsafe_offset chip file_size md5
-  failsafe_offset=$(awk -F',' '/^failsafe[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
+  failsafe_offset=$(flash_partition_offset failsafe 2>/dev/null) || failsafe_offset=""
   [[ -f "$firmware_file" && -n "$failsafe_offset" ]] || return 1
   chip=$(esp_detect_chip "$tty_device" 2>/dev/null) || return 1
   file_size=$(stat -c%s "$firmware_file" 2>/dev/null) || return 1
@@ -1365,49 +1378,47 @@ _flash_assess_device_on_flash_action() {
   local yaml_path="$2"
   local device_mac="$3"
   local prod_hostname="$4"
-  local running_hash build_hash mdns_hash device_md5 local_md5 firmware_file
+  local running_hash build_hash mdns_hash device_md5 local_md5 local_image_hash firmware_file
 
   FLASH_ASSESS_FLASH_CURRENT=0
   mdns_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || true
   build_hash=$(_build_config_hash_for_yaml "$yaml_path" 2>/dev/null) || build_hash=""
   running_hash="unknown"
+  local_image_hash=""
 
   _flash_production_partition_paths "$yaml_path"
   firmware_file="$_FLASH_PROD_FIRMWARE"
+  if [[ -f "$firmware_file" ]]; then
+    local_md5=$(flash_file_md5 "$firmware_file") || true
+    [[ -n "$local_md5" ]] && local_image_hash="${local_md5:0:8}"
+  fi
   if [[ -f "$firmware_file" && -n "$_FLASH_PROD_OFFSET" ]]; then
-    info "  Reading on-flash production partition via USB..."
+    info "  Reading on-flash production partition via USB (offset ${_FLASH_PROD_OFFSET})..."
     device_md5=$(_flash_read_production_partition_md5 "$tty_device" "$yaml_path" 2>/dev/null) || device_md5=""
     if [[ -n "$device_md5" ]]; then
       running_hash="${device_md5:0:8}"
-      if [[ "${FLASH_ANYWAY:-0}" != "1" ]]; then
-        local_md5=$(flash_file_md5 "$firmware_file") || true
-        [[ -n "$local_md5" && "$local_md5" == "$device_md5" ]] && FLASH_ASSESS_FLASH_CURRENT=1
+      if [[ "${FLASH_ANYWAY:-0}" != "1" && -n "$local_md5" && "$local_md5" == "$device_md5" ]]; then
+        FLASH_ASSESS_FLASH_CURRENT=1
       fi
     fi
   fi
 
   if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
     if [[ -n "$build_hash" ]]; then
-      info "  On-flash production: matches build (hash ${build_hash})"
+      info "  On-flash production: matches build (image ${running_hash}, config_hash ${build_hash})"
     else
-      info "  On-flash production: matches build"
+      info "  On-flash production: matches build (image ${running_hash})"
     fi
+  elif [[ -n "$local_image_hash" && "$running_hash" != "unknown" ]]; then
+    if [[ -n "$mdns_hash" && "$mdns_hash" == "$build_hash" ]]; then
+      info "  On-flash production: image ${running_hash} ≠ build image ${local_image_hash} (runtime config_hash ${mdns_hash} matches build)"
+    else
+      info "  On-flash production: image ${running_hash} ≠ build image ${local_image_hash} (config_hash ${build_hash:-unknown})"
+    fi
+  elif [[ -n "$build_hash" ]]; then
+    info "  On-flash production: differs from build (config_hash ${build_hash})"
   else
-    if [[ -n "$build_hash" && "$running_hash" != "unknown" ]]; then
-      if [[ "$running_hash" == "$build_hash" ]]; then
-        if [[ -n "$mdns_hash" && "$mdns_hash" == "$build_hash" ]]; then
-          info "  On-flash production: differs from build (mDNS config_hash ${mdns_hash} matches build; on-flash image differs)"
-        else
-          info "  On-flash production: differs from build (on-flash hash ${running_hash} matches build; image layout still differs)"
-        fi
-      else
-        info "  On-flash production: outdated (on-flash hash ${running_hash}, build hash ${build_hash})"
-      fi
-    elif [[ -n "$build_hash" ]]; then
-      info "  On-flash production: differs from build (build hash ${build_hash})"
-    else
-      info "  On-flash production: differs from build"
-    fi
+    info "  On-flash production: differs from build"
   fi
 
   if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
@@ -3000,8 +3011,8 @@ _flash_failsafe_to_tty() {
   [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
 
   local failsafe_offset
-  failsafe_offset=$(awk -F',' '/^failsafe[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
-  [[ -z "$failsafe_offset" ]] && err "Could not find failsafe partition offset in: $PARTITION_TABLE"
+  failsafe_offset=$(flash_partition_offset failsafe 2>/dev/null) || true
+  [[ -z "$failsafe_offset" ]] && err "Could not resolve failsafe partition offset (build failsafe/partitions.csv or ${PARTITION_TABLE})"
 
   local esptool_chip="${IOTSTACK_ESPTOOL_CHIP:-$variant}"
   flash_assess_failsafe_device "$tty_device" "$esptool_chip" "$build_dir" "$failsafe_offset"

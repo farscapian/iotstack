@@ -19,6 +19,41 @@ flash_file_md5() {
   md5sum "$file" | awk '{print $1}'
 }
 
+flash_partition_table_csv_for_device() {
+  # Prefer the compiled failsafe build table — matches partitions.bin on the device.
+  # The generated ~/.iotstack artifact can lag (firmware-size estimate vs pass-2 layout).
+  local failsafe_csv="${YAMLS_DIR}/.esphome/build/failsafe/partitions.csv"
+  if [[ -f "$failsafe_csv" ]] && grep -qE '^production,' "$failsafe_csv" 2>/dev/null; then
+    printf '%s\n' "$failsafe_csv"
+    return 0
+  fi
+  [[ -n "${PARTITION_TABLE:-}" && -f "$PARTITION_TABLE" ]] || return 1
+  printf '%s\n' "$PARTITION_TABLE"
+}
+
+flash_partition_offset_from_csv() {
+  local csv_file="$1"
+  local part_name="$2"
+  [[ -f "$csv_file" ]] || return 1
+  awk -F',' -v name="$part_name" '
+    $1 ~ name {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4)
+      print $4
+      exit
+    }
+  ' "$csv_file"
+}
+
+flash_partition_offset() {
+  # Echo hex offset for failsafe or production from the best available table.
+  local part_name="$1"
+  local csv offset
+  csv=$(flash_partition_table_csv_for_device) || return 1
+  offset=$(flash_partition_offset_from_csv "$csv" "$part_name")
+  [[ -n "$offset" ]] || return 1
+  printf '%s\n' "$offset"
+}
+
 flash_read_region_md5() {
   # Read flash region and return MD5 of the first file_size bytes.
   # Usage: flash_read_region_md5 <tty> <chip> <offset_hex> <file_size>
@@ -116,9 +151,13 @@ flash_production_matches_device() {
   local tty_device="$1"
   local esptool_chip="$2"
   local build_dir="$3"
-  local production_offset="$4"
+  local production_offset="${4:-}"
 
   [[ "${FLASH_ANYWAY:-0}" == "1" ]] && return 1
+
+  if [[ -z "$production_offset" ]]; then
+    production_offset=$(flash_partition_offset production) || return 1
+  fi
 
   local firmware_file="${build_dir}/firmware.bin"
   flash_region_matches_device "$tty_device" "$esptool_chip" "$production_offset" "$firmware_file"
