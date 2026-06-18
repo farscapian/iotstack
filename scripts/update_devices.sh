@@ -79,6 +79,45 @@ warn() { echo -e "${YLW}[WARN]${RST}  $*"; }
 err()  { echo -e "${RED}[ERR]${RST}   $*" >&2; }
 dim()  { echo -e "${DIM}$*${RST}"; }
 
+_config_hash_from_build_info() {
+  local build_name="$1"
+  local build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
+  [[ -f "$build_info" ]] || return 1
+  python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
+}
+
+_config_hash_from_compilation_cache() {
+  # Prefer compilation-cache.csv (same source as iotstack flash assessment).
+  local yaml_file="$1"
+  local yaml_name hash
+  yaml_name=$(basename "$yaml_file")
+  [[ -f "$COMPILATION_CACHE" ]] || return 1
+  hash=$(awk -F, -v name="$yaml_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
+  [[ -n "$hash" ]] && echo "$hash"
+}
+
+_resolve_build_config_hash() {
+  # Authoritative build config_hash when compile is skipped (cache hit).
+  local yaml_file="$1"
+  local build_name="$2"
+  local cached_hash="${3:-}"
+  local hash
+
+  hash=$(_config_hash_from_compilation_cache "$yaml_file" 2>/dev/null) || true
+  [[ -n "$hash" ]] && { echo "$hash"; return 0; }
+  hash=$(_config_hash_from_build_info "$build_name" 2>/dev/null) || true
+  [[ -n "$hash" ]] && { echo "$hash"; return 0; }
+  [[ -n "$cached_hash" ]] && echo "$cached_hash"
+}
+
+_sync_build_cache_config_hash() {
+  local resolved_hash="$1"
+  [[ -n "$resolved_hash" && "$resolved_hash" != "$CACHED_CONFIG_HASH" ]] || return 0
+  mkdir -p "$(dirname "$CACHE_FILE")"
+  printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
+    "$YAML_SHA256" "$ESPHOME_VERSION" "$resolved_hash" > "$CACHE_FILE"
+}
+
 _compile_log_banner() {
   # Written when esphome compile actually starts (not at script startup).
   local banner="── $(date '+%Y-%m-%d %H:%M:%S') Compiling $(basename "$YAML_FILE") ──"
@@ -1181,8 +1220,9 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
      && "$CACHED_YAML_SHA256" == "$YAML_SHA256" \
      && "$CACHED_ESPHOME_VER" == "$ESPHOME_VERSION" ]]; then
     log "YAML unchanged, ESPHome ${ESPHOME_VERSION} — skipping compilation."
-    log "Cached config_hash: ${CACHED_CONFIG_HASH}"
-    NEW_CONFIG_HASH="$CACHED_CONFIG_HASH"
+    NEW_CONFIG_HASH=$(_resolve_build_config_hash "$ORIGINAL_YAML_FILE" "$YAML_NAME" "$CACHED_CONFIG_HASH")
+    _sync_build_cache_config_hash "$NEW_CONFIG_HASH"
+    log "Build config_hash: ${NEW_CONFIG_HASH}"
     COMPILED=true
     setup_flash_logs "$NEW_CONFIG_HASH"
   else
