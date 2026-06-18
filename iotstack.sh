@@ -225,6 +225,12 @@ _esphome_compile() {
   fi
 }
 
+_smart_compile_cache_hit_notice() {
+  local device_name="$1"
+  local firmware_kind="$2"  # e.g. production, failsafe
+  info "Compilation cache hit — ${firmware_kind} firmware (${device_name}) already built; compile skipped"
+}
+
 _smart_compile_cache_miss_notice() {
   # Log why smart_compile cannot reuse a cached build (called before esphome compile).
   local device_name="$1"
@@ -259,7 +265,7 @@ smart_compile() {
   if ! _is_failsafe_yaml "$yaml_file"; then
     if [[ $cached -eq 1 ]]; then
       ensure_partition_table_artifact
-      debug "Production firmware for ${device_name} already compiled (cached)"
+      _smart_compile_cache_hit_notice "$device_name" "production"
       return 0
     fi
     _update_partition_table_file
@@ -277,7 +283,7 @@ smart_compile() {
   # partitions.bin (not the position-independent app image), so we compile,
   # measure, regenerate the table, then recompile so partitions.bin matches.
   if [[ $cached -eq 1 && -f "$firmware_bin" ]]; then
-    debug "Failsafe firmware already compiled (cached)"
+    _smart_compile_cache_hit_notice "$device_name" "failsafe"
     local fs_size; fs_size=$(_failsafe_part_size "$firmware_bin")
     IOTSTACK_FAILSAFE_PART_SIZE="$fs_size" _update_partition_table_file
     return 0
@@ -2820,7 +2826,6 @@ _flash_failsafe_to_tty() {
 
   info "Failsafe target: ${variant} on ${tty_device}"
   info "Artifact: ${failsafe_yaml}"
-  info "Compiling failsafe firmware (${variant})..."
   smart_compile "$failsafe_yaml" "$build_name" || return 1
 
   local flash_log_dir="$HOME/.iotstack/logs/flash"
@@ -2844,18 +2849,17 @@ _flash_failsafe_to_tty() {
 
   local esptool_output device_mac skip_serial="$FLASH_ASSESS_SKIP_SERIAL"
   if [[ "$skip_serial" -eq 1 ]]; then
-    ok "On-device partition table and failsafe image match compiled build — skipping erase and serial reflash"
-    info "(Compile step refreshed local build artifacts; flash contents unchanged on device)"
+    info "Failsafe image on device matches build — serial upload not required"
+    debug "On-device partition table also matches compiled build"
     esptool_output=$(esp_esptool_chip_id "$tty_device") || err "Could not read chip ID from $tty_device"
     device_mac=$(esp_mac_from_esptool_output "$esptool_output")
     [[ -z "$device_mac" || ! "$device_mac" =~ ^[0-9a-f]{6}$ ]] && err "Failed to extract MAC address from device"
-    ok "Device MAC: $device_mac (failsafe partition on flash unchanged)"
+    ok "Device MAC: $device_mac"
   else
-    if [[ "$FLASH_ASSESS_PARTITION_MATCH" -eq 0 ]]; then
-      info "On-device partition table differs from compiled build — full erase required"
-    fi
     if [[ "$FLASH_ASSESS_FAILSAFE_MATCH" -eq 0 ]]; then
-      info "On-device failsafe image differs from compiled build — full erase required"
+      info "Failsafe image on device differs from build — serial upload required"
+    elif [[ "$FLASH_ASSESS_PARTITION_MATCH" -eq 0 ]]; then
+      info "On-device partition table differs from build — serial upload required"
     fi
     _flash_failsafe_esptool "$tty_device" "$flash_log" "$build_dir" "$failsafe_offset" "$FLASH_ASSESS_NEED_ERASE"
     esptool_output="$create_log_esptool_output"
