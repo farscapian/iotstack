@@ -22,6 +22,13 @@ from aioesphomeapi.model import TextSensorInfo
 
 logging.getLogger("aioesphomeapi").setLevel(logging.ERROR)
 
+_ERR_RED = "\033[0;31m"
+_ERR_RST = "\033[0m"
+
+
+def _eprint_error(msg: str) -> None:
+    print(f"{_ERR_RED}[ERROR]{_ERR_RST} {msg}", file=sys.stderr)
+
 
 def _plaintext_protocol_mismatch(exc: BaseException) -> bool:
     if isinstance(exc, EncryptionPlaintextAPIError):
@@ -70,10 +77,10 @@ async def read_text_sensors(
                 and _plaintext_protocol_mismatch(exc)
             ):
                 continue
-            print(f"[ERROR] could not connect to {host}:6053: {exc}", file=sys.stderr)
+            _eprint_error(f"could not connect to {host}:6053: {exc}")
             return {}, list(object_ids)
     else:
-        print(f"[ERROR] could not connect to {host}:6053", file=sys.stderr)
+        _eprint_error(f"could not connect to {host}:6053")
         return {}, list(object_ids)
 
     assert cli is not None

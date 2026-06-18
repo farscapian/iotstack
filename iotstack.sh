@@ -1779,6 +1779,7 @@ _ensure_device_on_failsafe() {
   local mac="$1"
   local is_dry_run="${2:-false}"
   local tty_device="${3:-}"
+  local production_role="${4:-}"
   local switch_failed=false
   local wait_timeout=90
   if [[ "$is_dry_run" == true ]]; then
@@ -1795,7 +1796,7 @@ _ensure_device_on_failsafe() {
         info "[$mac] 1/4 switching $production_hostname to failsafe..."
         local attempt
         for attempt in 1 2 3; do
-          if _call_production_api_service "$production_hostname" "$mac" switch_to_failsafe; then
+          if _call_production_api_service "$production_hostname" "$mac" switch_to_failsafe "$tty_device"; then
             switch_failed=false
             break
           fi
@@ -1813,13 +1814,16 @@ _ensure_device_on_failsafe() {
     fi
   fi
 
+  if [[ "$switch_failed" == true && -n "$tty_device" ]]; then
+    info "[$mac] USB serial fallback -- refreshing failsafe firmware on ${tty_device}..."
+    _flash_failsafe_to_tty "$tty_device" "" "$production_role" || return 1
+    switch_failed=false
+    wait_timeout=90
+  fi
+
   if [[ "$switch_failed" == true ]]; then
     wait_timeout=30
-    if [[ -n "$tty_device" ]]; then
-      info "[$mac] 2/4 waiting ${wait_timeout}s for failsafe-$mac (then USB serial fallback)..."
-    else
-      info "[$mac] 2/4 waiting ${wait_timeout}s for failsafe-$mac on the network..."
-    fi
+    info "[$mac] 2/4 waiting ${wait_timeout}s for failsafe-$mac on the network..."
   else
     info "[$mac] 2/4 waiting for failsafe-$mac on the network..."
   fi
@@ -1921,13 +1925,13 @@ _ota_via_failsafe() {
     is_dry_run=true
   fi
 
-  if ! _ensure_device_on_failsafe "$mac" "$is_dry_run" "$tty_device"; then
+  local conf_role
+  conf_role=$(basename "$yaml_file" .yaml)
+  if ! _ensure_device_on_failsafe "$mac" "$is_dry_run" "$tty_device" "$conf_role"; then
     return 1
   fi
 
   if [[ "$is_dry_run" != true ]]; then
-    local conf_role
-    conf_role=$(basename "$yaml_file" .yaml)
     if _failsafe_update_nvs_device_role "$mac" "$conf_role"; then
       debug "[$mac] NVS device_role set to $conf_role"
       sleep 3
@@ -3005,33 +3009,66 @@ _device_api_noise_psk_b64() {
   python3 -c "import binascii,base64,sys; print(base64.b64encode(binascii.unhexlify(sys.argv[1])).decode())" "$hex"
 }
 
+_device_api_noise_psk_from_nvs_tty() {
+  # prod_api_key from device NVS (USB). Fallback when pass-derived key mismatches.
+  local tty_device="$1"
+  local hex
+  hex=$("$SCRIPT_DIR/scripts/read-nvs-secrets.sh" prod_api_key "$tty_device" 2>/dev/null) || return 1
+  hex=$(echo "$hex" | tr -d '[:space:]')
+  [[ "$hex" =~ ^[0-9a-fA-F]{64}$ ]] || return 1
+  python3 -c "import binascii,base64,sys; print(base64.b64encode(binascii.unhexlify(sys.argv[1])).decode())" "$hex"
+}
+
+_invoke_production_api_service() {
+  local api_host="$1"
+  local service="$2"
+  local noise_psk="${3:-}"
+  local api_src="esphome:api:${service}"
+
+  if [[ -n "$noise_psk" ]]; then
+    if create_log_child_output_piped; then
+      IOTSTACK_API_NOISE_PSK="$noise_psk" \
+        create_log_run "$api_src" "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service"
+      return $?
+    fi
+    IOTSTACK_API_NOISE_PSK="$noise_psk" \
+      "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service"
+    return $?
+  fi
+  if create_log_child_output_piped; then
+    create_log_run "$api_src" "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service"
+    return $?
+  fi
+  "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service"
+}
+
 _call_production_api_service() {
   # Invoke a native-API user service on a running production device.
   local production_hostname="$1"
   local mac="$2"
   local service="$3"
-  local role noise_psk api_host api_src
+  local tty_device="${4:-}"
+  local role noise_psk nvs_psk api_host
 
   role="${production_hostname%-${mac}}"
   api_host="${production_hostname}.local"
-  api_src="esphome:api:${service}"
   noise_psk=$(_device_api_noise_psk_b64 "$role" "$mac" 2>/dev/null) || true
   if [[ -n "$noise_psk" ]]; then
-    if create_log_child_output_piped; then
-      IOTSTACK_API_NOISE_PSK="$noise_psk" \
-        create_log_run "$api_src" "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service"
-    else
-      IOTSTACK_API_NOISE_PSK="$noise_psk" \
-        "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service"
+    if _invoke_production_api_service "$api_host" "$service" "$noise_psk"; then
+      return 0
     fi
-  else
-    warn "[$mac] no API encryption key in pass for role ${role}; trying plaintext API"
-    if create_log_child_output_piped; then
-      create_log_run "$api_src" "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service"
-    else
-      "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service"
+    if [[ -n "$tty_device" ]]; then
+      nvs_psk=$(_device_api_noise_psk_from_nvs_tty "$tty_device" 2>/dev/null) || nvs_psk=""
+      if [[ -n "$nvs_psk" && "$nvs_psk" != "$noise_psk" ]]; then
+        debug "[$mac] retrying ${service} with prod_api_key from device NVS"
+        _invoke_production_api_service "$api_host" "$service" "$nvs_psk"
+        return $?
+      fi
     fi
+    return 1
   fi
+  warn "[$mac] no API encryption key in pass for role ${role}; trying plaintext API"
+  _invoke_production_api_service "$api_host" "$service" ""
 }
 
 _ha_register_esphome_device() {
@@ -3460,7 +3497,7 @@ _flash_matrix_layout_update_via_failsafe_if_needed() {
   fi
 
   info "Step 1: Switching ${prod_hostname} to failsafe for NVS update..."
-  if ! _ensure_device_on_failsafe "$device_mac" false "$tty_device"; then
+  if ! _ensure_device_on_failsafe "$device_mac" false "$tty_device" "$device"; then
     if [[ -n "$tty_device" ]]; then
       warn "Network switch to failsafe failed -- refreshing failsafe firmware on ${tty_device}..."
       local _mac_file
@@ -4052,7 +4089,21 @@ _flash_production_smart() {
         smart_compile "$yaml_path" "$device" || err "Production compile failed"
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
 
-        if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 && "${FLASH_ERASE:-0}" != "1" ]]; then
+        if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
+          info "Step 1: Erasing flash and flashing failsafe firmware on ${tty_device}..."
+          local _mac_file
+          _mac_file=$(mktemp)
+          _flash_failsafe_to_tty "$tty_device" "$_mac_file" "$device" \
+            || err "Failsafe serial erase/flash failed"
+          if [[ -f "$_mac_file" ]]; then
+            device_mac=$(tr -d '[:space:]' < "$_mac_file")
+            rm -f "$_mac_file"
+          fi
+          FLASH_ASSESS_PROD_ONLINE=0
+          FLASH_ASSESS_FLASH_CURRENT=0
+          prod_hostname="${device}-${device_mac}"
+          info "Step 2: Reassigning failsafe device to ${device} production firmware..."
+        elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
           local img_hash layout_rc=0 want_cols want_w want_h
           set +e
           _flash_matrix_layout_update_via_failsafe_if_needed "$device" "$tty_device" "$device_mac" "$prod_hostname"
@@ -4071,8 +4122,7 @@ _flash_production_smart() {
           _ha_after_production_online "$yaml_path" "$prod_hostname"
           ok "Production firmware setup complete!"
           return
-        fi
-
+        else
         local try_network_ota=false
         if _production_api_reachable "$prod_hostname"; then
           try_network_ota=true
@@ -4147,6 +4197,7 @@ _flash_production_smart() {
           rm -f "$_mac_file"
           info "Step 2: Waiting for device to appear on network..."
         fi
+        fi
       else
         info "Could not read device MAC -- provisioning via failsafe serial path"
         info "Step 1: Flashing failsafe-wifi firmware..."
@@ -4172,7 +4223,8 @@ _flash_production_smart() {
 
       # Device may boot production while failsafe partition on flash is unchanged
       # (skip-serial path). Never wait for failsafe OTA in that case.
-      if [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]] || _wait_for_production_online "$prod_hostname" 10; then
+      if [[ "${FLASH_ERASE:-0}" != "1" ]] \
+          && { [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]] || _wait_for_production_online "$prod_hostname" 10; }; then
         if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 0 ]]; then
           _flash_report_device_assessment "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
           echo ""
@@ -4261,7 +4313,8 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
           ok "Production partition matches build -- skipping OTA"
           skip_production_ota=1
         fi
-      elif _flash_production_matches_build "$prod_hostname" "$yaml_path" "$tty_device"; then
+      elif [[ "${FLASH_ERASE:-0}" != "1" ]] \
+          && _flash_production_matches_build "$prod_hostname" "$yaml_path" "$tty_device"; then
         ok "Production firmware matches build (runtime config_hash) -- skipping OTA"
         skip_production_ota=1
       fi

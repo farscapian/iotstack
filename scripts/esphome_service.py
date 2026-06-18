@@ -23,6 +23,13 @@ from aioesphomeapi import APIClient
 logging.getLogger("aioesphomeapi").setLevel(logging.ERROR)
 from aioesphomeapi.core import EncryptionPlaintextAPIError
 
+_ERR_RED = "\033[0;31m"
+_ERR_RST = "\033[0m"
+
+
+def _eprint_error(msg: str) -> None:
+    print(f"{_ERR_RED}[ERROR]{_ERR_RST} {msg}", file=sys.stderr)
+
 
 def _plaintext_protocol_mismatch(exc: BaseException) -> bool:
     if isinstance(exc, EncryptionPlaintextAPIError):
@@ -67,10 +74,10 @@ async def call_service(
                         file=sys.stderr,
                     )
                 continue
-            print(f"[ERROR] could not connect to {host}:6053: {exc}", file=sys.stderr)
+            _eprint_error(f"could not connect to {host}:6053: {exc}")
             return 1
     else:
-        print(f"[ERROR] could not connect to {host}:6053", file=sys.stderr)
+        _eprint_error(f"could not connect to {host}:6053")
         return 1
     assert cli is not None
     try:
@@ -78,10 +85,9 @@ async def call_service(
         svc = next((s for s in services if s.name == service_name), None)
         if svc is None:
             available = ", ".join(s.name for s in services) or "(none)"
-            print(
-                f"[ERROR] service '{service_name}' not found on {host}; "
-                f"available: {available}",
-                file=sys.stderr,
+            _eprint_error(
+                f"service '{service_name}' not found on {host}; "
+                f"available: {available}"
             )
             return 2
         try:
@@ -110,7 +116,7 @@ def main() -> int:
         try:
             variables = json.loads(sys.argv[4])
         except json.JSONDecodeError as exc:
-            print(f"[ERROR] invalid JSON variables: {exc}", file=sys.stderr)
+            _eprint_error(f"invalid JSON variables: {exc}")
             return 64
     noise_psk = os.environ.get("IOTSTACK_API_NOISE_PSK") or None
     return asyncio.run(call_service(host, service, password, variables, noise_psk))
