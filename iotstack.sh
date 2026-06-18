@@ -1153,7 +1153,7 @@ _flash_production_ota_update() {
   dev_pwd=$(_failsafe_device_ota_password "$device_mac") \
     || err "Could not derive failsafe OTA password for ${device_mac} (provision failsafe first?)"
 
-  info "Production firmware outdated — switching to failsafe, then OTA into production slot..."
+  info "Updating production partition — switching to failsafe, then OTA into production slot..."
   declare -a extra_args=(--upgrade-delta)
   [[ "${FLASH_ANYWAY:-0}" == "1" ]] && extra_args+=(--flash-anyway)
   _ota_via_failsafe "$device_mac" "$yaml_path" "$dev_pwd" "$prod_hostname" "${extra_args[@]}"
@@ -3198,7 +3198,6 @@ _flash_production_smart() {
     fi
 
     info "Flash target: ${device} production firmware on ${tty_device}"
-    echo ""
 
     # Check if user wants to skip recovery
     local device_mac="" prod_hostname=""
@@ -3212,7 +3211,6 @@ _flash_production_smart() {
         _flash_assess_device_runtime "$device_mac" "$prod_hostname" "$tty_device"
         smart_compile "$yaml_path" "$device" || err "Production compile failed"
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
-        echo ""
 
         if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
           local img_hash

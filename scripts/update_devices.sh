@@ -45,7 +45,6 @@ cleanup() {
   if [[ -n "${COMPILE_LOG}" && -f "${COMPILE_LOG}" ]]; then
     rm -f "${COMPILE_LOG}"
   fi
-  printf "\n" 2>/dev/null
 }
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT
@@ -951,9 +950,7 @@ if [[ "$REASSIGN_MODE" == true ]]; then
 fi
 
 DEVICE_COUNT=$(echo "$HOSTNAMES" | wc -l | tr -d ' ')
-info "Found ${DEVICE_COUNT} device(s) on network:"
-echo "$HOSTNAMES" | while read -r h; do echo "  $h"; done
-echo
+info "Found ${DEVICE_COUNT} device(s) on network: $(echo "$HOSTNAMES" | paste -sd', ' -)"
 
 # ── Parse config_hash and project_version from mDNS TXT records ─────────────
 # config_hash is the primary comparison key; project_version is the fallback.
@@ -1188,7 +1185,6 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
     NEW_CONFIG_HASH="$CACHED_CONFIG_HASH"
     COMPILED=true
     setup_flash_logs "$NEW_CONFIG_HASH"
-    echo
   else
     if [[ "$VERBOSE" == true ]]; then
       _compile_log_banner
@@ -1239,7 +1235,6 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
         exit 1
       fi
     fi
-    echo
   fi
 fi
 
@@ -1312,6 +1307,9 @@ while IFS= read -r HOSTNAME; do
       warn "${HOSTNAME}: version ${RUNNING_VERSION} → ${EXPECTED_VERSION} — will flash."
       FLASH_LIST+=("$HOSTNAME")
     fi
+  elif [[ "$REASSIGN_MODE" == true ]]; then
+    log "${HOSTNAME}: uploading production image via failsafe OTA"
+    FLASH_LIST+=("$HOSTNAME")
   else
     warn "${HOSTNAME}: no hash or version info — will flash."
     FLASH_LIST+=("$HOSTNAME")
@@ -1360,8 +1358,6 @@ else
   fi
 fi
 
-echo
-
 # ── Compile (only if not already done above) ─────────────────────────────────
 if [[ "$COMPILED" == false ]]; then
   if [[ "$VERBOSE" == true ]]; then
@@ -1391,7 +1387,6 @@ if [[ "$COMPILED" == false ]]; then
       exit 1
     fi
   fi
-  echo
 fi
 
 WORK_DIR=$(mktemp -d)
@@ -1421,7 +1416,6 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   done
 
   FQDN="${HOSTNAME}.local"
-  [[ "$VERBOSE" == true ]] && dim "  started → ${HOSTNAME}"
 
   # Extract device name from ORIGINAL YAML filename (not temp file)
   # IMPORTANT: Use ORIGINAL_YAML_FILE because YAML_FILE might be a temp file with OTA password
@@ -1532,7 +1526,6 @@ fi
 # ── Per-device flash result ──────────────────────────────────────────────────
 for HOSTNAME in "${FLASH_LIST[@]}"; do
   if [[ "$VERBOSE" == true ]]; then
-    dim "── ${HOSTNAME} ──────────────────────────────────────"
     cat "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null || true
   fi
   if [[ "$(cat "$WORK_DIR/${HOSTNAME}.result" 2>/dev/null)" == ok ]]; then

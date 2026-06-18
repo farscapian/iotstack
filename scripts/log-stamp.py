@@ -63,6 +63,8 @@ def main() -> int:
             if not raw:
                 break
             line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
+            if not line.strip():
+                continue
             if args.console and not args.log_only:
                 sys.stdout.write(_stamp_console_line(line) + "\n")
                 sys.stdout.flush()
