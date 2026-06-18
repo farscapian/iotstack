@@ -3150,13 +3150,14 @@ _flash_read_matrix_layout_from_device() {
 
   _cols_ref="" _w_ref="" _h_ref=""
   noise_psk=$(_device_api_noise_psk_b64 "$role" "$mac" 2>/dev/null) || true
+  local -a _layout_sensor_ids=(panel_count matrix_panel_width matrix_panel_height)
   if [[ -n "$noise_psk" ]]; then
     output=$(IOTSTACK_API_NOISE_PSK="$noise_psk" \
       "$SCRIPT_DIR/scripts/esphome_text_sensors.py" "$api_host" \
-      matrix_panel_columns matrix_panel_width matrix_panel_height 2>/dev/null) || return 1
+      "${_layout_sensor_ids[@]}" 2>/dev/null) || output=""
   else
     output=$("$SCRIPT_DIR/scripts/esphome_text_sensors.py" "$api_host" \
-      matrix_panel_columns matrix_panel_width matrix_panel_height 2>/dev/null) || return 1
+      "${_layout_sensor_ids[@]}" 2>/dev/null) || output=""
   fi
 
   while IFS= read -r line; do
@@ -3164,11 +3165,26 @@ _flash_read_matrix_layout_from_device() {
     key="${line%%=*}"
     val="${line#*=}"
     case "$key" in
-      matrix_panel_columns) _cols_ref="$val" ;;
+      panel_count) _cols_ref="$val" ;;
       matrix_panel_width) _w_ref="$val" ;;
       matrix_panel_height) _h_ref="$val" ;;
     esac
   done <<< "$output"
+
+  # Pre-rename firmware used object_id matrix_panel_columns for the same sensor.
+  if [[ -z "$_cols_ref" ]]; then
+    local legacy_output
+    if [[ -n "$noise_psk" ]]; then
+      legacy_output=$(IOTSTACK_API_NOISE_PSK="$noise_psk" \
+        "$SCRIPT_DIR/scripts/esphome_text_sensors.py" "$api_host" \
+        matrix_panel_columns 2>/dev/null) || legacy_output=""
+    else
+      legacy_output=$("$SCRIPT_DIR/scripts/esphome_text_sensors.py" "$api_host" \
+        matrix_panel_columns 2>/dev/null) || legacy_output=""
+    fi
+    _cols_ref="${legacy_output#matrix_panel_columns=}"
+    [[ "$_cols_ref" == "$legacy_output" ]] && _cols_ref=""
+  fi
 
   [[ -n "$_cols_ref" && -n "$_w_ref" && -n "$_h_ref" ]]
 }

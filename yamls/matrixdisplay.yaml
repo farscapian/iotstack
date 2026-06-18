@@ -191,8 +191,8 @@ sensor:
 
 text_sensor:
   - platform: template
-    name: "Matrix Panel Columns"
-    id: matrix_panel_cols
+    name: "Panel Count"
+    id: panel_count
     entity_category: diagnostic
     update_interval: 60s
     lambda: |-

@@ -23,7 +23,7 @@ Flash options (matrixdisplay only; written to NVS via write-nvs-secrets.sh):
   --matrix-panel-height=N  Panel height in pixels (default 32)
 
 Panel layout is stored in NVS, not in firmware config_hash. Diagnostic text
-sensors (Matrix Panel Columns/Width/Height) report the active layout via the
+sensors (Panel Count, Matrix Panel Width/Height) report the active layout via the
 production API. On flash, iotstack compares those runtime values to the target
 (flags → pass → defaults). On mismatch it switches to failsafe, rewrites NVS
 over USB, and boots production again — no production firmware reflash required.
