@@ -1197,8 +1197,10 @@ _wait_for_production_online() {
 }
 
 _mdns_config_hash_for_hostname() {
-  # ESPHome config_hash from _esphomelib._tcp TXT (same value shown in iotstack devices).
+  # ESPHome config_hash from mDNS TXT (same value shown in iotstack devices / failsafe).
+  # Production: _esphomelib._tcp; failsafe recovery: _iotstack-failsafe._tcp.
   local hostname="$1"
+  local mdns_service="${2:-_esphomelib._tcp}"
   local line current_hostname="" hash=""
   while IFS= read -r line; do
     if [[ $line =~ hostname\ =\ \[([^\]]+)\] ]]; then
@@ -1211,8 +1213,29 @@ _mdns_config_hash_for_hostname() {
         return 0
       fi
     fi
-  done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+  done < <(avahi-browse -t -r "$mdns_service" 2>/dev/null)
   return 1
+}
+
+_flash_production_matches_build() {
+  # Return 0 when on-device production firmware matches the local build.
+  # Default: mDNS config_hash (fast, same as iotstack devices).
+  # --on-flash-verify: full USB read-flash MD5 of the production partition.
+  local prod_hostname="$1"
+  local yaml_path="$2"
+  local tty_device="${3:-}"
+
+  [[ "${FLASH_ANYWAY:-0}" == "1" ]] && return 1
+
+  if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" ]]; then
+    [[ -n "$tty_device" ]] && _flash_production_firmware_current "$tty_device" "$yaml_path"
+    return $?
+  fi
+
+  local mdns_hash build_hash
+  mdns_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || return 1
+  build_hash=$(_build_config_hash_for_yaml "$yaml_path" 2>/dev/null) || return 1
+  [[ -n "$mdns_hash" && -n "$build_hash" && "$mdns_hash" == "$build_hash" ]]
 }
 
 _flash_production_partition_paths() {
@@ -1354,17 +1377,25 @@ _flash_assess_device_runtime() {
   info "Assessment result:"
   info "  MAC suffix: ${device_mac}"
   failsafe_hostname="failsafe-${device_mac}"
-  if [[ -n "$tty_device" ]]; then
+  if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" && -n "$tty_device" ]]; then
     info "  Reading on-flash failsafe partition via USB..."
     failsafe_hash=$(_flash_failsafe_image_hash_on_device "$tty_device" 2>/dev/null) || failsafe_hash="unknown"
     info "  On-flash failsafe: ${failsafe_hostname} (image hash ${failsafe_hash})"
+  elif [[ $FLASH_ASSESS_FAILSAFE_ONLINE -eq 1 ]]; then
+    failsafe_hash=$(_mdns_config_hash_for_hostname "$failsafe_hostname" "_iotstack-failsafe._tcp" 2>/dev/null) \
+      || failsafe_hash="unknown"
+    info "  Runtime failsafe: ${failsafe_hostname} (config_hash ${failsafe_hash})"
+  elif [[ -n "$tty_device" ]]; then
+    info "  Failsafe: not on WiFi (use --on-flash-verify for USB partition check)"
   fi
   if [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local running_hash
     running_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || running_hash="unknown"
     info "  Runtime: production API online (${prod_hostname}, config_hash ${running_hash})"
   elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]]; then
-    info "  Runtime: production on mDNS only (${prod_hostname}, API port 6053 not reachable)"
+    local mdns_only_hash
+    mdns_only_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || mdns_only_hash="unknown"
+    info "  Runtime: production on mDNS only (${prod_hostname}, config_hash ${mdns_only_hash}, API port 6053 not reachable)"
   elif [[ $FLASH_ASSESS_FAILSAFE_ONLINE -eq 1 ]]; then
     info "  Runtime: failsafe online (failsafe-${device_mac}, OTA port 3232)"
   else
@@ -1392,33 +1423,47 @@ _flash_assess_device_on_flash_action() {
     local_md5=$(flash_file_md5 "$firmware_file") || true
     [[ -n "$local_md5" ]] && local_image_hash="${local_md5:0:8}"
   fi
-  if [[ -f "$firmware_file" && -n "$_FLASH_PROD_OFFSET" ]]; then
-    info "  Reading on-flash production partition via USB (offset ${_FLASH_PROD_OFFSET})..."
-    device_md5=$(_flash_read_production_partition_md5 "$tty_device" "$yaml_path" 2>/dev/null) || device_md5=""
-    if [[ -n "$device_md5" ]]; then
-      running_hash="${device_md5:0:8}"
-      if [[ "${FLASH_ANYWAY:-0}" != "1" && -n "$local_md5" && "$local_md5" == "$device_md5" ]]; then
-        FLASH_ASSESS_FLASH_CURRENT=1
+
+  if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" ]]; then
+    if [[ -f "$firmware_file" && -n "$_FLASH_PROD_OFFSET" ]]; then
+      info "  Reading on-flash production partition via USB (offset ${_FLASH_PROD_OFFSET})..."
+      device_md5=$(_flash_read_production_partition_md5 "$tty_device" "$yaml_path" 2>/dev/null) || device_md5=""
+      if [[ -n "$device_md5" ]]; then
+        running_hash="${device_md5:0:8}"
+        if [[ "${FLASH_ANYWAY:-0}" != "1" && -n "$local_md5" && "$local_md5" == "$device_md5" ]]; then
+          FLASH_ASSESS_FLASH_CURRENT=1
+        fi
       fi
     fi
+  elif _flash_production_matches_build "$prod_hostname" "$yaml_path" "$tty_device"; then
+    FLASH_ASSESS_FLASH_CURRENT=1
+    running_hash="${mdns_hash:-unknown}"
   fi
 
   if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
-    if [[ -n "$build_hash" ]]; then
-      info "  On-flash production: matches build (image ${running_hash}, config_hash ${build_hash})"
+    if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" ]]; then
+      if [[ -n "$build_hash" ]]; then
+        info "  On-flash production: matches build (image ${running_hash}, config_hash ${build_hash})"
+      else
+        info "  On-flash production: matches build (image ${running_hash})"
+      fi
+    elif [[ -n "$mdns_hash" && -n "$build_hash" ]]; then
+      info "  Production: matches build (runtime config_hash ${mdns_hash})"
     else
-      info "  On-flash production: matches build (image ${running_hash})"
+      info "  Production: matches build"
     fi
-  elif [[ -n "$local_image_hash" && "$running_hash" != "unknown" ]]; then
+  elif [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" && -n "$local_image_hash" && "$running_hash" != "unknown" ]]; then
     if [[ -n "$mdns_hash" && "$mdns_hash" == "$build_hash" ]]; then
       info "  On-flash production: image ${running_hash} ≠ build image ${local_image_hash} (runtime config_hash ${mdns_hash} matches build)"
     else
       info "  On-flash production: image ${running_hash} ≠ build image ${local_image_hash} (config_hash ${build_hash:-unknown})"
     fi
+  elif [[ -n "$mdns_hash" && -n "$build_hash" ]]; then
+    info "  Production: runtime config_hash ${mdns_hash} ≠ build config_hash ${build_hash}"
   elif [[ -n "$build_hash" ]]; then
-    info "  On-flash production: differs from build (config_hash ${build_hash})"
+    info "  Production: differs from build (config_hash ${build_hash}; runtime hash unavailable)"
   else
-    info "  On-flash production: differs from build"
+    info "  Production: differs from build"
   fi
 
   if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
@@ -2790,6 +2835,7 @@ _flash_matrix_layout_applicable() {
 cmd_flash() {
   local device="" tty_device_or_role="" skip_recovery=""
   export FLASH_ANYWAY=0
+  export FLASH_ON_FLASH_VERIFY=0
   export MATRIX_COLS=""
   export MATRIX_PANEL_W=""
   export MATRIX_PANEL_H=""
@@ -2802,6 +2848,10 @@ cmd_flash() {
         ;;
       --ota-only)
         skip_recovery="--ota-only"
+        shift
+        ;;
+      --on-flash-verify)
+        FLASH_ON_FLASH_VERIFY=1
         shift
         ;;
       --flash-anyway)
@@ -3309,8 +3359,10 @@ _flash_production_smart() {
       if [[ -n "$device_mac" ]]; then
         prod_hostname="${device}-${device_mac}"
         info "Assessing connected device on ${tty_device}..."
-        _ensure_failsafe_build_for_assess "$tty_device" "$device" \
-          || warn "Could not prepare failsafe build — on-flash failsafe hash may be unknown"
+        if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" ]]; then
+          _ensure_failsafe_build_for_assess "$tty_device" "$device" \
+            || warn "Could not prepare failsafe build — on-flash failsafe hash may be unknown"
+        fi
         _flash_assess_device_runtime "$device_mac" "$prod_hostname" "$tty_device"
         smart_compile "$yaml_path" "$device" || err "Production compile failed"
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
@@ -3490,7 +3542,7 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
       production_build_dir="${YAMLS_DIR}/.esphome/build/${production_build_name}/.pioenvs/${production_build_name}"
       production_offset=$(awk -F',' '/^production[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
 
-      if [[ -n "$production_offset" && -d "$production_build_dir" ]]; then
+      if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" && -n "$production_offset" && -d "$production_build_dir" ]]; then
         local prod_chip="${IOTSTACK_ESPTOOL_CHIP:-}"
         [[ -z "$prod_chip" ]] && prod_chip=$(esp_detect_chip "$tty_device" 2>/dev/null) || true
         info "  Reading on-flash production partition via USB..."
@@ -3499,6 +3551,9 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
           ok "Production partition matches build — skipping OTA"
           skip_production_ota=1
         fi
+      elif _flash_production_matches_build "$prod_hostname" "$yaml_path" "$tty_device"; then
+        ok "Production firmware matches build (runtime config_hash) — skipping OTA"
+        skip_production_ota=1
       fi
 
       if [[ "$skip_production_ota" -eq 1 ]]; then

@@ -29,6 +29,20 @@ separate partition. If production firmware fails, the device can always boot
 into failsafe for troubleshooting.
 
 
+Firmware Assessment
+===================
+
+By default, iotstack flash compares the device's runtime config_hash from
+mDNS against the compiled build cache — the same hash shown by
+`iotstack devices` and `iotstack failsafe`. This is fast (seconds) and
+skips OTA when the running firmware already matches.
+
+Pass `--on-flash-verify` to read the production and failsafe partitions
+over USB and compare full image MD5 sums instead. That is slower (~1–2
+minutes) but confirms what is physically on the flash chip, even when the
+device is not on WiFi.
+
+
 Serial Flash Timing
 ===================
 
