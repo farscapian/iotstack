@@ -1,15 +1,15 @@
 #!/bin/bash
-# failsafe-yaml.sh -- Variant-specific failsafe YAML artifacts for iotstack flash
+# bootstrap-yaml.sh -- Variant-specific bootstrap YAML artifacts for iotstack flash
 #
 # Detects the chip on a serial port (or reads a production role YAML), renders
-# yamls/.iotstack-failsafe-<variant>.yaml from yamls/failsafe.yaml, and
+# yamls/.iotstack-bootstrap-<variant>.yaml from yamls/bootstrap.yaml, and
 # exposes build/flash parameters. Each variant artifact is cached separately in
-# compilation-cache.csv (yaml_name=failsafe-esp32c6.yaml, etc.).
+# compilation-cache.csv (yaml_name=bootstrap-esp32c6.yaml, etc.).
 #
 # Requires config.sh, esp-serial.sh, and yaml-info.sh to be sourced first.
 
-[[ -n "${_FAILSAFE_YAML_LOADED:-}" ]] && return 0
-_FAILSAFE_YAML_LOADED=1
+[[ -n "${_BOOTSTRAP_YAML_LOADED:-}" ]] && return 0
+_BOOTSTRAP_YAML_LOADED=1
 
 _SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/esp-serial.sh
@@ -17,7 +17,7 @@ _SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/yaml-info.sh
 [[ -z "${_YAML_INFO_LOADED:-}" ]] && source "${_SCRIPTS_DIR}/yaml-info.sh"
 
-FAILSAFE_TEMPLATE="${FAILSAFE_TEMPLATE:-${YAMLS_DIR}/failsafe.yaml}"
+BOOTSTRAP_TEMPLATE="${BOOTSTRAP_TEMPLATE:-$(iotstack_bootstrap_template_path)}"
 
 _IOTSTACK_YAML_CLEANUP_TRAP_REGISTERED=0
 
@@ -25,7 +25,8 @@ iotstack_cleanup_generated_yamls() {
   # Remove runtime artifacts under yamls/ (gitignored; recreated per invocation).
   local yamls_dir="${YAMLS_DIR:-}"
   [[ -z "$yamls_dir" || ! -d "$yamls_dir" ]] && return 0
-  rm -f "${yamls_dir}"/.iotstack-failsafe-*.yaml \
+  rm -f "${yamls_dir}"/.iotstack-"$(iotstack_bootstrap_role)"-*.yaml \
+        "${yamls_dir}"/.iotstack-bootstrap-*.yaml \
         "${yamls_dir}"/.temp-ota-upload-*.yaml \
         "${yamls_dir}"/.temp-compile-*.yaml 2>/dev/null || true
 }
@@ -50,7 +51,7 @@ iotstack_register_yaml_cleanup_trap() {
   fi
 }
 
-failsafe_boot_button_pin() {
+bootstrap_boot_button_pin() {
   # BOOT button GPIO for the reference board of each variant.
   local variant="$1"
   case "$variant" in
@@ -59,7 +60,7 @@ failsafe_boot_button_pin() {
   esac
 }
 
-failsafe_chip_defaults() {
+bootstrap_chip_defaults() {
   # board|flash_size|framework for a variant when no production role is given
   local variant="$1"
   case "$variant" in
@@ -69,7 +70,7 @@ failsafe_chip_defaults() {
     esp32s2)  printf '%s\n' "esp32-s3-devkitc-1|4MB|arduino" ;;
     esp32)    printf '%s\n' "esp32dev|4MB|arduino" ;;
     *)
-      echo "Unsupported ESP32 variant for failsafe: $variant" >&2
+      echo "Unsupported ESP32 variant for bootstrap: $variant" >&2
       return 1
       ;;
   esac
@@ -102,27 +103,27 @@ yaml_esp32_profile() {
   printf '%s|%s|%s|%s\n' "$variant" "$board" "$flash_size" "$framework"
 }
 
-failsafe_profile_from_role() {
+bootstrap_profile_from_role() {
   local role="$1"
   local yaml_file
   yaml_file=$(yaml_path_for_role "$role") || return 1
   yaml_esp32_profile "$yaml_file"
 }
 
-failsafe_profile_from_tty() {
+bootstrap_profile_from_tty() {
   local tty="$1"
   local variant defaults board flash_size framework
   variant=$(esp_detect_chip "$tty") || return 1
-  defaults=$(failsafe_chip_defaults "$variant") || return 1
+  defaults=$(bootstrap_chip_defaults "$variant") || return 1
   board=$(echo "$defaults" | cut -d'|' -f1)
   flash_size=$(echo "$defaults" | cut -d'|' -f2)
   framework=$(echo "$defaults" | cut -d'|' -f3)
   printf '%s|%s|%s|%s\n' "$variant" "$board" "$flash_size" "$framework"
 }
 
-failsafe_resolve_profile() {
+bootstrap_resolve_profile() {
   # Resolve chip profile for a serial flash.
-  # Usage: failsafe_resolve_profile <tty> [production_role]
+  # Usage: bootstrap_resolve_profile <tty> [production_role]
   # Emits: variant|board|flash_size|framework|esptool_chip|flash_hex
   local tty="$1"
   local production_role="${2:-}"
@@ -139,7 +140,7 @@ failsafe_resolve_profile() {
   }
 
   if [[ -n "$production_role" ]]; then
-    role_profile=$(failsafe_profile_from_role "$production_role") || {
+    role_profile=$(bootstrap_profile_from_role "$production_role") || {
       echo "Could not read esp32 profile for role: $production_role" >&2
       return 1
     }
@@ -150,12 +151,12 @@ failsafe_resolve_profile() {
       echo "Chip mismatch: $tty is ${port_variant} but role '${production_role}' requires ${variant}" >&2
       return 1
     fi
-    # Failsafe framework is per-chip (e.g. esp32s3 -> arduino), not the production role's.
-    role_profile=$(failsafe_chip_defaults "$variant") || return 1
+    # Bootstrap framework is per-chip (e.g. esp32s3 -> arduino), not the production role's.
+    role_profile=$(bootstrap_chip_defaults "$variant") || return 1
     framework=$(echo "$role_profile" | cut -d'|' -f3)
   else
     variant="$port_variant"
-    role_profile=$(failsafe_chip_defaults "$variant") || return 1
+    role_profile=$(bootstrap_chip_defaults "$variant") || return 1
     board=$(echo "$role_profile" | cut -d'|' -f1)
     flash_size=$(echo "$role_profile" | cut -d'|' -f2)
     framework=$(echo "$role_profile" | cut -d'|' -f3)
@@ -166,29 +167,37 @@ failsafe_resolve_profile() {
   printf '%s|%s|%s|%s|%s|%s\n' "$variant" "$board" "$flash_size" "$framework" "$variant" "$flash_hex"
 }
 
-failsafe_render_yaml() {
-  # Render yamls/.iotstack-failsafe-<variant>.yaml from the template.
+bootstrap_render_yaml() {
+  # Render yamls/.iotstack-bootstrap-<variant>.yaml from the template.
   # Must live under yamls/ so !include common/... resolves correctly.
   # Args: variant board flash_size framework
   local variant="$1" board="$2" flash_size="$3" framework="$4"
-  local boot_pin dst
-  boot_pin=$(failsafe_boot_button_pin "$variant") || return 1
-  dst="${YAMLS_DIR}/.iotstack-failsafe-${variant}.yaml"
+  local boot_pin dst role mdns_base friendly_name
+  boot_pin=$(bootstrap_boot_button_pin "$variant") || return 1
+  dst="${YAMLS_DIR}/$(iotstack_bootstrap_artifact_name "$variant")"
+  role=$(iotstack_bootstrap_role)
+  mdns_base=$(iotstack_bootstrap_mdns_service_base)
+  friendly_name=$(iotstack_bootstrap_friendly_name)
 
-  [[ -f "$FAILSAFE_TEMPLATE" ]] || {
-    echo "Failsafe template not found: $FAILSAFE_TEMPLATE" >&2
+  [[ -f "$BOOTSTRAP_TEMPLATE" ]] || {
+    echo "Bootstrap template not found: $BOOTSTRAP_TEMPLATE" >&2
     return 1
   }
   mkdir -p "$ARTIFACTS_DIR"
 
-  awk -v variant="$variant" -v board="$board" -v flash="$flash_size" -v framework="$framework" -v boot_pin="$boot_pin" '
-    /^  chip_variant:/   { print "  chip_variant: " variant; next }
-    /^  chip_board:/     { print "  chip_board: " board; next }
-    /^  chip_flash_size:/{ print "  chip_flash_size: " flash; next }
-    /^  chip_framework:/ { print "  chip_framework: " framework; next }
-    /^  boot_button_pin:/ { print "  boot_button_pin: " boot_pin; next }
+  awk -v variant="$variant" -v board="$board" -v flash="$flash_size" -v framework="$framework" \
+      -v boot_pin="$boot_pin" -v role="$role" -v mdns_base="$mdns_base" -v friendly_name="$friendly_name" '
+    /^  bootstrap_role:/     { print "  bootstrap_role: " role; next }
+    /^  device_role:/        { print "  device_role: " role; next }
+    /^  friendly_name:/      { print "  friendly_name: \"" friendly_name "\""; next }
+    /^  bootstrap_mdns_service_base:/ { print "  bootstrap_mdns_service_base: " mdns_base; next }
+    /^  chip_variant:/       { print "  chip_variant: " variant; next }
+    /^  chip_board:/         { print "  chip_board: " board; next }
+    /^  chip_flash_size:/    { print "  chip_flash_size: " flash; next }
+    /^  chip_framework:/     { print "  chip_framework: " framework; next }
+    /^  boot_button_pin:/    { print "  boot_button_pin: " boot_pin; next }
     { print }
-  ' "$FAILSAFE_TEMPLATE" > "$dst"
+  ' "$BOOTSTRAP_TEMPLATE" > "$dst"
   _iotstack_set_project_version_in_yaml "$dst" "$(iotstack_project_version)"
 
   # Do not register EXIT trap here -- callers often capture this path via $(...)
@@ -197,34 +206,34 @@ failsafe_render_yaml() {
   printf '%s\n' "$dst"
 }
 
-failsafe_apply_profile_to_env() {
+bootstrap_apply_profile_to_env() {
   # Parse profile line into env vars used by flash/partition code.
   local profile="$1"
-  export IOTSTACK_FAILSAFE_VARIANT
-  export IOTSTACK_FAILSAFE_BOARD
-  export IOTSTACK_FAILSAFE_FLASH_SIZE
-  export IOTSTACK_FAILSAFE_FRAMEWORK
+  export IOTSTACK_BOOTSTRAP_VARIANT
+  export IOTSTACK_BOOTSTRAP_BOARD
+  export IOTSTACK_BOOTSTRAP_FLASH_SIZE
+  export IOTSTACK_BOOTSTRAP_FRAMEWORK
   export IOTSTACK_ESPTOOL_CHIP
   export IOTSTACK_FLASH_SIZE
 
-  IOTSTACK_FAILSAFE_VARIANT=$(echo "$profile" | cut -d'|' -f1)
-  IOTSTACK_FAILSAFE_BOARD=$(echo "$profile" | cut -d'|' -f2)
-  IOTSTACK_FAILSAFE_FLASH_SIZE=$(echo "$profile" | cut -d'|' -f3)
-  IOTSTACK_FAILSAFE_FRAMEWORK=$(echo "$profile" | cut -d'|' -f4)
+  IOTSTACK_BOOTSTRAP_VARIANT=$(echo "$profile" | cut -d'|' -f1)
+  IOTSTACK_BOOTSTRAP_BOARD=$(echo "$profile" | cut -d'|' -f2)
+  IOTSTACK_BOOTSTRAP_FLASH_SIZE=$(echo "$profile" | cut -d'|' -f3)
+  IOTSTACK_BOOTSTRAP_FRAMEWORK=$(echo "$profile" | cut -d'|' -f4)
   IOTSTACK_ESPTOOL_CHIP=$(echo "$profile" | cut -d'|' -f5)
   IOTSTACK_FLASH_SIZE=$(echo "$profile" | cut -d'|' -f6)
 }
 
-failsafe_prepare_for_tty() {
+bootstrap_prepare_for_tty() {
   # Detect chip, render YAML artifact, set partition/flash env.
-  # Usage: failsafe_prepare_for_tty <tty> [production_role]
-  # Prints: artifact_yaml_path|build_name (build_name is always "failsafe")
+  # Usage: bootstrap_prepare_for_tty <tty> [production_role]
+  # Prints: artifact_yaml_path|build_name (build_name is always the bootstrap role)
   local tty="$1"
   local production_role="${2:-}"
-  local profile
+  local profile build_name
 
-  profile=$(failsafe_resolve_profile "$tty" "$production_role") || return 1
-  failsafe_apply_profile_to_env "$profile"
+  profile=$(bootstrap_resolve_profile "$tty" "$production_role") || return 1
+  bootstrap_apply_profile_to_env "$profile"
 
   local variant board flash_size framework
   variant=$(echo "$profile" | cut -d'|' -f1)
@@ -232,15 +241,17 @@ failsafe_prepare_for_tty() {
   flash_size=$(echo "$profile" | cut -d'|' -f3)
   framework=$(echo "$profile" | cut -d'|' -f4)
 
-  failsafe_render_yaml "$variant" "$board" "$flash_size" "$framework" >/dev/null || return 1
+  bootstrap_render_yaml "$variant" "$board" "$flash_size" "$framework" >/dev/null || return 1
   iotstack_register_yaml_cleanup_trap
-  printf '%s|failsafe\n' "${YAMLS_DIR}/.iotstack-failsafe-${variant}.yaml"
+  build_name=$(iotstack_bootstrap_role)
+  printf '%s|%s\n' "${YAMLS_DIR}/$(iotstack_bootstrap_artifact_name "$variant")" "$build_name"
 }
 
-failsafe_is_artifact_yaml() {
+bootstrap_is_artifact_yaml() {
   local yaml_file="$1"
-  local base
+  local base role
   base=$(basename "$yaml_file")
-  [[ "$base" =~ ^failsafe(-[a-z0-9]+)?\.yaml$ ]] \
-    || [[ "$base" =~ ^\.iotstack-failsafe-[a-z0-9]+\.yaml$ ]]
+  role=$(iotstack_bootstrap_role)
+  [[ "$base" =~ ^${role}(-[a-z0-9]+)?\.yaml$ ]] \
+    || [[ "$base" =~ ^\.iotstack-${role}-[a-z0-9]+\.yaml$ ]]
 }

@@ -1,5 +1,5 @@
-# Production-only partition controls. Includes switch_to_failsafe so iotstack update
-# can move a running production device into failsafe (ota_0) before OTA.
+# Production-only partition controls. Includes switch_to_bootstrap so iotstack update
+# can move a running production device into bootstrap (ota_0) before OTA.
 packages:
   partition_base: !include partition_manager_base.yaml
 
@@ -7,6 +7,6 @@ api:
   # prod_api_key from NVS is applied at boot by nvs_secrets (no key in firmware binary).
   encryption: {}
   services:
-    - service: switch_to_failsafe
+    - service: switch_to_bootstrap
       then:
-        - lambda: "id(partition_mgr).boot_failsafe();"
+        - lambda: "id(partition_mgr).boot_bootstrap();"

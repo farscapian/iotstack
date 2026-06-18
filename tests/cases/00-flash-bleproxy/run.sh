@@ -1,5 +1,5 @@
 #!/bin/bash
-# TEST_DESC: Flash bleproxy via serial (failsafe + production OTA)
+# TEST_DESC: Flash bleproxy via serial (bootstrap + production OTA)
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 

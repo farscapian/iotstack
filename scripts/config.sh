@@ -50,20 +50,20 @@ export PARTITION_TABLE_CSV="${PARTITION_TABLE_CSV:-iotstack_partition_table.csv}
 export PARTITION_TABLE="${PARTITION_TABLE:-${ARTIFACTS_DIR}/${PARTITION_TABLE_CSV}}"
 export PARTITION_TABLE_SYMLINK="${PARTITION_TABLE_SYMLINK:-${YAMLS_DIR}/${PARTITION_TABLE_CSV}}"
 
-# Partition layout (2-partition scheme: permanent failsafe ota_0 + production
-# ota_1). All OTA updates run from failsafe, so production (ota_1) is always the
-# OTA target and failsafe is never overwritten. Production absorbs all flash
-# left after the (fixed-size) failsafe partition -- so these adapt to the board:
+# Partition layout (2-partition scheme: permanent bootstrap ota_0 + production
+# ota_1). All OTA updates run from bootstrap, so production (ota_1) is always the
+# OTA target and bootstrap is never overwritten. Production absorbs all flash
+# left after the (fixed-size) bootstrap partition -- so these adapt to the board:
 # on 4MB flash production is ~2.8MB; on 8MB it is ~6.8MB.
 export IOTSTACK_FLASH_SIZE="${IOTSTACK_FLASH_SIZE:-0x400000}"        # total flash (4MB default)
 export IOTSTACK_APP_OFFSET="${IOTSTACK_APP_OFFSET:-0x30000}"         # first app partition offset
-# Failsafe (ota_0) is sized dynamically to the compiled failsafe firmware plus
-# IOTSTACK_FAILSAFE_MARGIN (rounded up to 64KB); production (ota_1) gets the
-# rest. IOTSTACK_FAILSAFE_PART_SIZE is the fallback/initial size used for the
+# Bootstrap (ota_0) is sized dynamically to the compiled bootstrap firmware plus
+# IOTSTACK_BOOTSTRAP_MARGIN (rounded up to 64KB); production (ota_1) gets the
+# rest. IOTSTACK_BOOTSTRAP_PART_SIZE is the fallback/initial size used for the
 # first compile pass and if the firmware can't be measured.
-export IOTSTACK_FAILSAFE_PART_SIZE="${IOTSTACK_FAILSAFE_PART_SIZE:-0xe0000}"   # tuned for current failsafe (~800KB + margin)
-export IOTSTACK_FAILSAFE_PART_SIZE_GENEROUS="${IOTSTACK_FAILSAFE_PART_SIZE_GENEROUS:-0x180000}"  # pass-1 fallback if tight table fails
-export IOTSTACK_FAILSAFE_MARGIN="${IOTSTACK_FAILSAFE_MARGIN:-0x10000}"         # headroom above firmware (64KB)
+export IOTSTACK_BOOTSTRAP_PART_SIZE="${IOTSTACK_BOOTSTRAP_PART_SIZE:-0xe0000}"   # tuned for current bootstrap (~800KB + margin)
+export IOTSTACK_BOOTSTRAP_PART_SIZE_GENEROUS="${IOTSTACK_BOOTSTRAP_PART_SIZE_GENEROUS:-0x180000}"  # pass-1 fallback if tight table fails
+export IOTSTACK_BOOTSTRAP_MARGIN="${IOTSTACK_BOOTSTRAP_MARGIN:-0x10000}"         # headroom above firmware (64KB)
 
 # ESPHome build directories (for verification scripts)
 export ESPHOME_BUILD_DIR="${ESPHOME_BUILD_DIR:-${YAMLS_DIR}/.esphome/build}"
@@ -81,6 +81,9 @@ mkdir -p "$IOTSTACK_HOME" "$LOGS_DIR" "$ARTIFACTS_DIR" "$PASS_STORE_DIR" 2>/dev/
 
 # shellcheck source=scripts/iotstack-version.sh
 source "${SCRIPTS_DIR}/iotstack-version.sh"
+
+# shellcheck source=scripts/iotstack-bootstrap.sh
+source "${SCRIPTS_DIR}/iotstack-bootstrap.sh"
 
 # Stub partition table artifact + yamls/ symlink (generated tables live in artifacts/)
 # shellcheck source=scripts/partition-table.sh

@@ -1,10 +1,10 @@
-# Universal Failsafe Firmware - All ESP32 device roles (variant selected at flash time)
-# This is the FAILSAFE image - deployed to a separate partition on all devices
+# Universal Bootstrap Firmware - All ESP32 device roles (variant selected at flash time)
+# This is the BOOTSTRAP image - deployed to a separate partition on all devices
 # Use ONLY when production firmware is unavailable/broken
 #
 # Key features:
 # - Works for ALL device roles (bleproxy, mmwave, threadrouter, etc.)
-# - Device-specific OTA password from NVS (failsafe-derived, unique per device)
+# - Device-specific OTA password from NVS (bootstrap-derived, unique per device)
 # - Minimal functionality to save flash space
 # - Single firmware binary for all devices (secrets from NVS)
 # - Can OTA flash any production firmware back
@@ -13,15 +13,17 @@
 
 substitutions:
   development_status: "prod"
-  device_role: "failsafe"
-  friendly_name: "Failsafe Mode"
-  heartbeat_interval: "5s"   # failsafe-only aliveness beacon (see interval: below)
-  # Chip profile -- overridden in yamls/.iotstack-failsafe-<variant>.yaml at flash time
+  bootstrap_role: "bootstrap"  # overridden at render from IOTSTACK_BOOTSTRAP_ROLE
+  device_role: "${bootstrap_role}"
+  friendly_name: "Bootstrap Mode"  # overridden at render via iotstack_bootstrap_friendly_name
+  heartbeat_interval: "5s"   # bootstrap-only aliveness beacon (see interval: below)
+  bootstrap_mdns_service_base: "_iotstack-bootstrap"  # overridden at render
+  # Chip profile -- overridden in yamls/.iotstack-bootstrap-<variant>.yaml at flash time
   chip_variant: esp32c6
   chip_board: seeed_xiao_esp32c6
   chip_flash_size: 4MB
   chip_framework: esp-idf
-  boot_button_pin: GPIO9  # overridden per chip in .iotstack-failsafe-<variant>.yaml
+  boot_button_pin: GPIO9  # overridden per chip in .iotstack-bootstrap-<variant>.yaml
   project_version: "0.0.0-dev"  # overridden at compile time from git tag
 
 # External components (replaces deprecated custom_components folder)
@@ -31,9 +33,9 @@ external_components:
       path: ./external_components
     components: [nvs_secrets, partition_manager]
 
-# Boot-button / restart / partition-toggle (no switch_to_failsafe -- already on failsafe)
+# Boot-button / restart / partition-toggle (no switch_to_bootstrap -- already on bootstrap)
 packages:
-  partition_mgmt: !include common/partition_manager_failsafe.yaml
+  partition_mgmt: !include common/partition_manager_bootstrap.yaml
   boot_button: !include common/boot_button.yaml
 
 esphome:
@@ -64,7 +66,7 @@ esp32:
   flash_size: ${chip_flash_size}
   variant: ${chip_variant}
   # PARTITION TABLE CONFIGURATION
-  # Includes: bootloader, app0 (failsafe), app1 (production), nvs
+  # Includes: bootloader, app0 (bootstrap), app1 (production), nvs
   # NVS partition at 0x3d000 (24KB) for device-specific secrets
   partitions: iotstack_partition_table.csv
 
@@ -78,26 +80,26 @@ wifi:
   reboot_timeout: 3min
   on_connect:
     - lambda: |-
-        // Remove _esphomelib._tcp so HA does not auto-discover failsafe devices.
-        // iotstack finds failsafe devices via _iotstack-failsafe._tcp (see mdns: below).
+        // Remove _esphomelib._tcp so HA does not auto-discover bootstrap devices.
+        // iotstack finds bootstrap devices via _iotstack-bootstrap._tcp (see mdns: below).
         mdns_service_remove("_esphomelib", "_tcp");
 
-# Advertise a failsafe-specific mDNS service so iotstack can discover failsafe
+# Advertise a bootstrap-specific mDNS service so iotstack can discover bootstrap
 # devices without Home Assistant auto-discovering and offering to onboard them.
 mdns:
   services:
-    - service: "_iotstack-failsafe"
+    - service: "${bootstrap_mdns_service_base}"
       protocol: "_tcp"
       port: 6053
 
 api:
-  # No API encryption key for failsafe -- only iotstack tools connect to it.
+  # No API encryption key for bootstrap -- only iotstack tools connect to it.
   # Production images use prod_api_key from NVS for HA API authentication.
   services:
     # Write NVS secrets without USB (iotstack preferred path). Pass only the keys
     # you want to change; empty string = leave unchanged. Includes matrix_cols,
     # matrix_panel_w, matrix_panel_h for matrixdisplay layout updates.
-    # Device reboots automatically after commit. Failsafe firmware only.
+    # Device reboots automatically after commit. Bootstrap firmware only.
     - service: update_nvs_secrets
       variables:
         wifi_ssid: string
@@ -123,7 +125,7 @@ api:
 nvs_secrets:
   id: nvs
 
-# OTA Configuration for failsafe partition
+# OTA Configuration for bootstrap partition
 # Password is dynamically set by nvs_secrets component from NVS
 # Each device has a unique OTA password derived at flash time
 ota:
@@ -144,14 +146,14 @@ sensor:
     update_interval: 60s
     entity_category: diagnostic
 
-# Aliveness beacon (failsafe only). Lets `iotstack logs` confirm the device is
-# alive and in failsafe without a reboot; the free-heap reading also surfaces a
+# Aliveness beacon (bootstrap only). Lets `iotstack logs` confirm the device is
+# alive and in bootstrap without a reboot; the free-heap reading also surfaces a
 # slow leak. Interval is the heartbeat_interval substitution above.
 interval:
   - interval: ${heartbeat_interval}
     then:
       - lambda: |-
-          ESP_LOGI("heartbeat", "failsafe alive - up %us, free heap %u B",
+          ESP_LOGI("heartbeat", "bootstrap alive - up %us, free heap %u B",
                    (unsigned) (millis() / 1000), (unsigned) esp_get_free_heap_size());
 
 logger:

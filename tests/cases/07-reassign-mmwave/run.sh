@@ -1,5 +1,5 @@
 #!/bin/bash
-# TEST_DESC: Reassign test device to mmwave via failsafe OTA
+# TEST_DESC: Reassign test device to mmwave via bootstrap OTA
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 

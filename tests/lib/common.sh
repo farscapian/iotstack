@@ -20,8 +20,8 @@ fi
 source "${SCRIPTS_DIR}/esp-serial.sh"
 # shellcheck source=scripts/yaml-info.sh
 source "${SCRIPTS_DIR}/yaml-info.sh"
-# shellcheck source=scripts/failsafe-yaml.sh
-source "${SCRIPTS_DIR}/failsafe-yaml.sh"
+# shellcheck source=scripts/bootstrap-yaml.sh
+source "${SCRIPTS_DIR}/bootstrap-yaml.sh"
 
 export TESTS_DIR="${TESTS_DIR:-${_TESTS_ROOT}}"
 export IOTSTACK_BIN="${IOTSTACK_BIN:-${PROJECT_ROOT}/iotstack.sh}"
@@ -82,8 +82,8 @@ test_role_variant() {
   yaml_variant_for_role "$role"
 }
 
-test_failsafe_variant() {
-  yaml_variant_for_failsafe
+test_bootstrap_variant() {
+  yaml_variant_for_bootstrap
 }
 
 test_scan_serial_devices() {
@@ -130,17 +130,17 @@ test_require_tty_for_role() {
   test_info "Role ${role} -> ${variant} -> ${tty}"
 }
 
-test_require_tty_failsafe() {
-  # Failsafe flash targets a chip-specific port (defaults to esp32c6).
+test_require_tty_bootstrap() {
+  # Bootstrap flash targets a chip-specific port (defaults to esp32c6).
   local variant="${1:-esp32c6}"
   local tty
   tty=$(test_tty_for_variant "$variant") || {
-    test_fail "No USB ${variant} device for failsafe flash (set IOTSTACK_TEST_TTY_C6 / _S3)"
+    test_fail "No USB ${variant} device for bootstrap flash (set IOTSTACK_TEST_TTY_C6 / _S3)"
     return 1
   }
   export IOTSTACK_TEST_TTY="$tty"
   export IOTSTACK_TEST_VARIANT="$variant"
-  test_info "Failsafe (${variant}) -> ${tty}"
+  test_info "Bootstrap (${variant}) -> ${tty}"
 }
 
 test_iotstack() {

@@ -18,11 +18,11 @@ class PartitionManager : public Component {
   void loop() override;
   void toggle_boot_partition();
 
-  // Set the boot slot to failsafe (ota_0) and reboot. Used by the
-  // switch_to_failsafe API service so `iotstack update` can move a running
-  // production device into failsafe before OTA (OTA never writes the running
-  // partition, so updating from failsafe always targets production).
-  void boot_failsafe();
+  // Set the boot slot to bootstrap (ota_0) and reboot. Used by the
+  // switch_to_bootstrap API service so `iotstack update` can move a running
+  // production device into bootstrap before OTA (OTA never writes the running
+  // partition, so updating from bootstrap always targets production).
+  void boot_bootstrap();
 
  protected:
   uint32_t press_time_{0};

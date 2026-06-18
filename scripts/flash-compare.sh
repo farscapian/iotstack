@@ -20,11 +20,14 @@ flash_file_md5() {
 }
 
 flash_partition_table_csv_for_device() {
-  # Prefer the compiled failsafe build table -- matches partitions.bin on the device.
+  # Prefer the compiled bootstrap build table -- matches partitions.bin on the device.
   # The generated ~/.iotstack artifact can lag (firmware-size estimate vs pass-2 layout).
-  local failsafe_csv="${YAMLS_DIR}/.esphome/build/failsafe/partitions.csv"
-  if [[ -f "$failsafe_csv" ]] && grep -qE '^production,' "$failsafe_csv" 2>/dev/null; then
-    printf '%s\n' "$failsafe_csv"
+  local bootstrap_role build_name bootstrap_csv
+  bootstrap_role=$(iotstack_bootstrap_role)
+  build_name="$bootstrap_role"
+  bootstrap_csv="${YAMLS_DIR}/.esphome/build/${build_name}/partitions.csv"
+  if [[ -f "$bootstrap_csv" ]] && grep -qE '^production,' "$bootstrap_csv" 2>/dev/null; then
+    printf '%s\n' "$bootstrap_csv"
     return 0
   fi
   [[ -n "${PARTITION_TABLE:-}" && -f "$PARTITION_TABLE" ]] || return 1
@@ -36,7 +39,7 @@ flash_partition_offset_from_csv() {
   local part_name="$2"
   [[ -f "$csv_file" ]] || return 1
   # Match partition name exactly on $1 -- substring match hits comment lines
-  # that mention "failsafe" / "production" in prose above the data rows.
+  # that mention "bootstrap" / "production" in prose above the data rows.
   awk -F',' -v name="$part_name" '
     {
       gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1)
@@ -49,9 +52,12 @@ flash_partition_offset_from_csv() {
 }
 
 flash_partition_offset() {
-  # Echo hex offset for failsafe or production from the best available table.
+  # Echo hex offset for bootstrap or production from the best available table.
   local part_name="$1"
   local csv offset
+  if [[ "$part_name" == "bootstrap" ]]; then
+    part_name=$(iotstack_bootstrap_role)
+  fi
   csv=$(flash_partition_table_csv_for_device) || return 1
   offset=$(flash_partition_offset_from_csv "$csv" "$part_name")
   [[ -n "$offset" ]] || return 1
@@ -110,18 +116,18 @@ flash_region_matches_device() {
   [[ "$local_md5" == "$device_md5" ]]
 }
 
-flash_assess_failsafe_device() {
-  # Compare local failsafe build with device flash. Sets assessment globals.
-  # Usage: flash_assess_failsafe_device <tty> <chip> <build_dir> <failsafe_offset>
-  # Sets: FLASH_ASSESS_PARTITION_MATCH, FLASH_ASSESS_FAILSAFE_MATCH,
+flash_assess_bootstrap_device() {
+  # Compare local bootstrap build with device flash. Sets assessment globals.
+  # Usage: flash_assess_bootstrap_device <tty> <chip> <build_dir> <bootstrap_offset>
+  # Sets: FLASH_ASSESS_PARTITION_MATCH, FLASH_ASSESS_BOOTSTRAP_MATCH,
   #       FLASH_ASSESS_NEED_ERASE, FLASH_ASSESS_SKIP_SERIAL
   local tty_device="$1"
   local esptool_chip="$2"
   local build_dir="$3"
-  local failsafe_offset="$4"
+  local bootstrap_offset="$4"
 
   FLASH_ASSESS_PARTITION_MATCH=0
-  FLASH_ASSESS_FAILSAFE_MATCH=0
+  FLASH_ASSESS_BOOTSTRAP_MATCH=0
   FLASH_ASSESS_NEED_ERASE=1
   FLASH_ASSESS_SKIP_SERIAL=0
 
@@ -137,32 +143,15 @@ flash_assess_failsafe_device() {
     FLASH_ASSESS_PARTITION_MATCH=1
   fi
 
-  if flash_region_matches_device "$tty_device" "$esptool_chip" "$failsafe_offset" "$firmware_file"; then
-    FLASH_ASSESS_FAILSAFE_MATCH=1
+  if flash_region_matches_device "$tty_device" "$esptool_chip" "$bootstrap_offset" "$firmware_file"; then
+    FLASH_ASSESS_BOOTSTRAP_MATCH=1
   fi
 
-  if [[ "$FLASH_ASSESS_PARTITION_MATCH" -eq 1 && "$FLASH_ASSESS_FAILSAFE_MATCH" -eq 1 ]]; then
+  if [[ "$FLASH_ASSESS_PARTITION_MATCH" -eq 1 && "$FLASH_ASSESS_BOOTSTRAP_MATCH" -eq 1 ]]; then
     FLASH_ASSESS_NEED_ERASE=0
     FLASH_ASSESS_SKIP_SERIAL=1
   else
     FLASH_ASSESS_NEED_ERASE=1
     FLASH_ASSESS_SKIP_SERIAL=0
   fi
-}
-
-flash_production_matches_device() {
-  # Return 0 when production partition on device matches local firmware.bin.
-  local tty_device="$1"
-  local esptool_chip="$2"
-  local build_dir="$3"
-  local production_offset="${4:-}"
-
-  [[ "${FLASH_ERASE:-0}" == "1" ]] && return 1
-
-  if [[ -z "$production_offset" ]]; then
-    production_offset=$(flash_partition_offset production) || return 1
-  fi
-
-  local firmware_file="${build_dir}/firmware.bin"
-  flash_region_matches_device "$tty_device" "$esptool_chip" "$production_offset" "$firmware_file"
 }

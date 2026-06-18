@@ -1,5 +1,5 @@
 #!/bin/bash
-# TEST_DESC: Reassign S3 device to silentnotify via failsafe OTA
+# TEST_DESC: Reassign S3 device to silentnotify via bootstrap OTA
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 

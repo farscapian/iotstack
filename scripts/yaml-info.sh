@@ -44,8 +44,15 @@ yaml_variant_for_role() {
   printf '%s\n' "$info" | cut -d'|' -f2
 }
 
-yaml_variant_for_failsafe() {
-  yaml_variant_for_role failsafe 2>/dev/null || printf '%s\n' esp32c6
+yaml_variant_for_bootstrap() {
+  local yaml_file info
+  yaml_file="$(iotstack_bootstrap_template_path)"
+  if [[ -f "$yaml_file" ]]; then
+    info=$(yaml_device_info "$yaml_file")
+    printf '%s\n' "$info" | cut -d'|' -f2
+    return 0
+  fi
+  printf '%s\n' esp32c6
 }
 
 yaml_resolve_value() {

@@ -53,12 +53,12 @@ void PartitionManager::toggle_boot_partition() {
 
   // Verify the target holds a valid app image first. Without this check
   // esp_ota_set_boot_partition() "succeeds", but the bootloader rejects an
-  // empty/invalid image and silently falls back to failsafe.
+  // empty/invalid image and silently falls back to bootstrap.
   esp_app_desc_t app_desc;
   esp_err_t img_err = esp_ota_get_partition_description(next, &app_desc);
   if (img_err != ESP_OK) {
     ESP_LOGW(TAG, "No valid image on '%s' (%s) - NOT switching", next->label, esp_err_to_name(img_err));
-    ESP_LOGW(TAG, "Boot partition remains in FAILSAFE mode. Flash production firmware first.");
+    ESP_LOGW(TAG, "Boot partition remains in BOOTSTRAP mode. Flash production firmware first.");
     return;
   }
 
@@ -68,20 +68,20 @@ void PartitionManager::toggle_boot_partition() {
   App.safe_reboot();
 }
 
-void PartitionManager::boot_failsafe() {
+void PartitionManager::boot_bootstrap() {
   const esp_partition_t *running = esp_ota_get_running_partition();
   if (running != nullptr && running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
-    ESP_LOGI(TAG, "Already running failsafe (ota_0); no switch needed");
+    ESP_LOGI(TAG, "Already running bootstrap (ota_0); no switch needed");
     return;
   }
-  const esp_partition_t *fs =
+  const esp_partition_t *bs =
       esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, nullptr);
-  if (fs == nullptr) {
-    ESP_LOGE(TAG, "Failsafe partition (ota_0) not found");
+  if (bs == nullptr) {
+    ESP_LOGE(TAG, "Bootstrap partition (ota_0) not found");
     return;
   }
-  esp_ota_set_boot_partition(fs);
-  ESP_LOGW(TAG, "Switching to failsafe (ota_0) and rebooting for OTA update");
+  esp_ota_set_boot_partition(bs);
+  ESP_LOGW(TAG, "Switching to bootstrap (ota_0) and rebooting for OTA update");
   App.safe_reboot();
 }
 

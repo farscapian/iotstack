@@ -1,4 +1,4 @@
-# Physical BOOT button -> partition_manager. Include on every production/failsafe device.
+# Physical BOOT button -> partition_manager. Include on every production/bootstrap device.
 #
 #   - short press -> graceful restart (soft reset; keeps USB CDC alive)
 #   - hold 3s+    -> toggle to the other OTA slot

@@ -1,14 +1,14 @@
 #!/bin/bash
 # write-nvs-secrets.sh
 # Write device-specific secrets to NVS partition after firmware flash.
-# Computes both failsafe-derived and (optionally) production-derived secrets.
+# Computes both bootstrap-derived and (optionally) production-derived secrets.
 #
 # Usage:
 #   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 device_mac [production_role]
 #   ./scripts/write-nvs-secrets.sh --print-api-json device_mac [production_role]
 # Examples:
-#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c              # failsafe only (USB)
-#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c bleproxy     # failsafe + production (USB)
+#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c              # bootstrap only (USB)
+#   ./scripts/write-nvs-secrets.sh /dev/ttyACM0 1af95c bleproxy     # bootstrap + production (USB)
 #   ./scripts/write-nvs-secrets.sh --print-api-json 1af95c bleproxy  # JSON for update_nvs_secrets API
 
 set -euo pipefail
@@ -136,10 +136,10 @@ if [[ -z "$THREAD_TLV" || "$THREAD_TLV" == "CONFIGURE_ME" ]]; then
   fi
 fi
 
-# -- Derive failsafe device-specific OTA password --------------------------
-info "Computing failsafe secrets for device: $DEVICE_MAC"
-FAILSAFE_OTA_BASE=$(_get_or_generate_role_ota_password "iotstack/roles/failsafe/ota_password" "failsafe")
-FAILSAFE_OTA_PASSWORD=$(echo -n "${FAILSAFE_OTA_BASE}|${DEVICE_MAC}" | sha256sum | cut -c1-32)
+# -- Derive bootstrap device-specific OTA password --------------------------
+info "Computing bootstrap secrets for device: $DEVICE_MAC"
+BOOTSTRAP_OTA_BASE=$(_get_or_generate_role_ota_password "$(iotstack_bootstrap_pass_ota_path)" "bootstrap")
+BOOTSTRAP_OTA_PASSWORD=$(echo -n "${BOOTSTRAP_OTA_BASE}|${DEVICE_MAC}" | sha256sum | cut -c1-32)
 
 # -- Derive production device-specific API key (if production role given) --
 PROD_API_KEY=""
@@ -162,7 +162,7 @@ if [[ -n "$PRODUCTION_ROLE" ]]; then
 fi
 
 info "Device secrets ready"
-ok "Failsafe OTA password: (derived)"
+ok "Bootstrap OTA password: (derived)"
 if [[ -n "$PRODUCTION_ROLE" ]]; then
   ok "Production API key: (derived for role: $PRODUCTION_ROLE)"
 fi
@@ -194,7 +194,7 @@ if [[ "$PRODUCTION_ROLE" == "matrixdisplay" ]] || \
 fi
 
 if [[ "$PRINT_API_JSON" == "1" ]]; then
-  export WIFI_SSID WIFI_PASSWORD FAILSAFE_OTA_PASSWORD PROD_API_KEY THREAD_TLV \
+  export WIFI_SSID WIFI_PASSWORD BOOTSTRAP_OTA_PASSWORD PROD_API_KEY THREAD_TLV \
          WRITE_MATRIX_LAYOUT MATRIX_COLS MATRIX_PANEL_W MATRIX_PANEL_H PRODUCTION_ROLE
   python3 - <<'PY'
 import json, os
@@ -202,7 +202,7 @@ import json, os
 payload = {
     "wifi_ssid": os.environ["WIFI_SSID"],
     "wifi_password": os.environ["WIFI_PASSWORD"],
-    "ota_password": os.environ["FAILSAFE_OTA_PASSWORD"],
+    "ota_password": os.environ["BOOTSTRAP_OTA_PASSWORD"],
     "api_key": os.environ.get("PROD_API_KEY", ""),
     "thread_tlv": os.environ.get("THREAD_TLV", ""),
 }
@@ -222,7 +222,7 @@ fi
 info "Writing NVS partition to device..."
 
 export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
-       FAILSAFE_OTA_PASSWORD="$FAILSAFE_OTA_PASSWORD" \
+       BOOTSTRAP_OTA_PASSWORD="$BOOTSTRAP_OTA_PASSWORD" \
        PROD_API_KEY="$PROD_API_KEY" \
        THREAD_TLV="$THREAD_TLV" DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE" \
        NVS_SIZE="$NVS_SIZE" WRITE_MATRIX_LAYOUT="$WRITE_MATRIX_LAYOUT" \
@@ -241,7 +241,7 @@ import sys
 # Get environment variables
 wifi_ssid = os.environ['WIFI_SSID']
 wifi_password = os.environ['WIFI_PASSWORD']
-failsafe_ota_password = os.environ['FAILSAFE_OTA_PASSWORD']
+bootstrap_ota_password = os.environ['BOOTSTRAP_OTA_PASSWORD']
 prod_api_key = os.environ.get('PROD_API_KEY', '')
 thread_tlv = os.environ.get('THREAD_TLV', '')
 production_role = os.environ.get('PRODUCTION_ROLE', '')
@@ -266,8 +266,8 @@ with open(nvs_csv_path, 'w') as f:
     f.write("iotstack,namespace,,\n")
     f.write(f"wifi_ssid,data,string,{wifi_ssid}\n")
     f.write(f"wifi_password,data,string,{wifi_password}\n")
-    # failsafe reads this key for OTA authentication
-    f.write(f"ota_password,data,string,{failsafe_ota_password}\n")
+    # bootstrap reads this key for OTA authentication
+    f.write(f"ota_password,data,string,{bootstrap_ota_password}\n")
     if prod_api_key:
         f.write(f"prod_api_key,data,string,{prod_api_key}\n")
     if thread_tlv:

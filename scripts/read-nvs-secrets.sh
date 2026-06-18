@@ -51,7 +51,7 @@ Arguments:
 Keys:
  wifi_ssid WiFi network name
  wifi_password WiFi password
- ota_password Device-specific OTA password (derived from failsafe role secret)
+ ota_password Device-specific OTA password (derived from bootstrap role secret)
  prod_api_key Device-specific production API encryption key
  thread_tlv Thread operational dataset TLVs (hex string)
  device_role Provisioned iotstack role (roles.conf name, e.g. bleproxy, mmwave)

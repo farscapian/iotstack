@@ -1,4 +1,4 @@
 # Production partition package (backward-compatible include path).
-# Failsafe images must use partition_manager_failsafe.yaml instead.
+# Bootstrap images must use partition_manager_bootstrap.yaml instead.
 packages:
   partition_production: !include partition_manager_production.yaml

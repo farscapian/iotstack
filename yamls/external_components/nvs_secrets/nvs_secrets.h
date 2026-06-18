@@ -27,7 +27,7 @@ class NVSSecrets : public Component {
   std::string get_thread_tlv() const { return thread_tlv_; }
 
   // Write a subset of NVS secrets without serial access (used by the
-  // update_nvs_secrets API service on the failsafe firmware).
+  // update_nvs_secrets API service on the bootstrap firmware).
   // Empty string for any parameter means "leave that key unchanged".
   // Commits immediately; caller is responsible for triggering a reboot so the
   // new values take effect at the next setup() call.

@@ -1,0 +1,62 @@
+#!/bin/bash
+# iotstack-bootstrap.sh -- Bootstrap role helpers for iotstack scripts
+#
+# Centralizes bootstrap role naming: hostnames, mDNS, pass paths, YAML artifacts.
+# Override the role with IOTSTACK_BOOTSTRAP_ROLE (default: bootstrap).
+
+[[ -n "${_IOTSTACK_BOOTSTRAP_LOADED:-}" ]] && return 0
+_IOTSTACK_BOOTSTRAP_LOADED=1
+
+export IOTSTACK_BOOTSTRAP_ROLE="${IOTSTACK_BOOTSTRAP_ROLE:-bootstrap}"
+
+iotstack_bootstrap_role() {
+  printf '%s\n' "${IOTSTACK_BOOTSTRAP_ROLE}"
+}
+
+iotstack_bootstrap_hostname() {
+  local mac="$1"
+  printf '%s-%s\n' "$(iotstack_bootstrap_role)" "$mac"
+}
+
+iotstack_bootstrap_mdns_service() {
+  local role
+  role=$(iotstack_bootstrap_role)
+  printf '_iotstack-%s._tcp\n' "$role"
+}
+
+iotstack_bootstrap_mdns_service_base() {
+  local role
+  role=$(iotstack_bootstrap_role)
+  printf '_iotstack-%s\n' "$role"
+}
+
+iotstack_bootstrap_pass_ota_path() {
+  local role
+  role=$(iotstack_bootstrap_role)
+  printf 'iotstack/roles/%s/ota_password\n' "$role"
+}
+
+iotstack_bootstrap_friendly_name() {
+  local role first
+  role=$(iotstack_bootstrap_role)
+  first=$(printf '%s' "$role" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')
+  printf '%s Mode\n' "$first"
+}
+
+iotstack_bootstrap_template_path() {
+  local yamls_dir="${YAMLS_DIR:-}"
+  if [[ -z "$yamls_dir" ]]; then
+    local root="${PROJECT_ROOT:-}"
+    if [[ -z "$root" ]]; then
+      root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+    fi
+    yamls_dir="${root}/yamls"
+  fi
+  printf '%s/bootstrap.yaml\n' "$yamls_dir"
+}
+
+iotstack_bootstrap_artifact_name() {
+  local variant="$1" role
+  role=$(iotstack_bootstrap_role)
+  printf '.iotstack-%s-%s.yaml\n' "$role" "$variant"
+}

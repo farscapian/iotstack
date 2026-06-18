@@ -55,7 +55,7 @@ network:
 nvs_secrets:
   api_nvs_key: prod_api_key
 
-# 4. API -- native ESPHome over IPv6/Thread (OTA is failsafe-only)
+# 4. API -- native ESPHome over IPv6/Thread (OTA is bootstrap-only)
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
 

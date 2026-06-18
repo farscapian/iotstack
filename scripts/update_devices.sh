@@ -28,8 +28,8 @@ set -euo pipefail
 _UPDATE_DEVICES_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/config.sh
 source "${_UPDATE_DEVICES_SCRIPT_DIR}/config.sh"
-# shellcheck source=scripts/failsafe-yaml.sh
-source "${_UPDATE_DEVICES_SCRIPT_DIR}/failsafe-yaml.sh"
+# shellcheck source=scripts/bootstrap-yaml.sh
+source "${_UPDATE_DEVICES_SCRIPT_DIR}/bootstrap-yaml.sh"
 
 # -- Cleanup on exit ----------------------------------------------------------
 WORK_DIR=""
@@ -754,7 +754,7 @@ if [[ ! -f "$YAML_FILE" ]]; then
   exit 1
 fi
 
-# Standalone: entity-ID work after device has booted production (not failsafe).
+# Standalone: entity-ID work after device has booted production (not bootstrap).
 if [[ -n "$HA_FINALIZE_HOSTNAME" ]]; then
   run_ha_production_finalize "$YAML_FILE" "$HA_FINALIZE_HOSTNAME"
   exit 0
@@ -776,19 +776,19 @@ All secrets must be stored in NVS (via write-nvs-secrets.sh), not in YAML files.
 Remove the 'password: !secret ...' line(s) and re-run."
 fi
 
-# Production firmware must not expose an OTA server -- updates run from failsafe only.
-_yaml_is_failsafe() {
+# Production firmware must not expose an OTA server -- updates run from bootstrap only.
+_yaml_is_bootstrap() {
   local yaml_file="$1"
-  [[ "$(basename "$yaml_file")" == "failsafe.yaml" ]] && return 0
-  grep -qE '^\s*device_role:\s*"?failsafe"?\s*$' "$yaml_file" 2>/dev/null
+  [[ "$(basename "$yaml_file")" == "bootstrap.yaml" ]] && return 0
+  grep -qE "^[[:space:]]*device_role:[[:space:]]*\"?$(iotstack_bootstrap_role)\"?[[:space:]]*$" "$yaml_file" 2>/dev/null
 }
 
 UPLOAD_YAML=""
 OTA_UPLOAD_TEMP=""
 
-if ! _yaml_is_failsafe "$YAML_FILE"; then
+if ! _yaml_is_bootstrap "$YAML_FILE"; then
   if grep -qE '^ota:' "$YAML_FILE"; then
-    err "$(basename "$YAML_FILE") must not include 'ota:' -- OTA is failsafe-only.
+    err "$(basename "$YAML_FILE") must not include 'ota:' -- OTA is bootstrap-only.
 Remove the ota: section from this production YAML."
   fi
   if grep -qE 'platform:[[:space:]]+factory_reset' "$YAML_FILE"; then
@@ -802,13 +802,13 @@ if grep -qE '^safe_mode:' "$YAML_FILE"; then
 Remove the safe_mode: section from this YAML."
 fi
 
-if _yaml_is_failsafe "$YAML_FILE"; then
+if _yaml_is_bootstrap "$YAML_FILE"; then
   if grep -qE 'partition_manager\.yaml|partition_manager_production\.yaml' "$YAML_FILE"; then
-    err "$(basename "$YAML_FILE") must use partition_manager_failsafe.yaml -- switch_to_failsafe is production-only."
+    err "$(basename "$YAML_FILE") must use partition_manager_bootstrap.yaml -- switch_to_bootstrap is production-only."
   fi
 else
-  if grep -qE 'partition_manager_failsafe\.yaml' "$YAML_FILE"; then
-    err "$(basename "$YAML_FILE") must use partition_manager.yaml -- production requires switch_to_failsafe API."
+  if grep -qE 'partition_manager_bootstrap\.yaml' "$YAML_FILE"; then
+    err "$(basename "$YAML_FILE") must use partition_manager.yaml -- production requires switch_to_bootstrap API."
   fi
 fi
 
@@ -911,15 +911,15 @@ else
 fi
 
 if [[ "$REASSIGN_MODE" == true ]]; then
-  # Reassign always OTA's from failsafe, which advertises _iotstack-failsafe._tcp only.
-  # Dry-run may run before the device has been switched to failsafe, so also scan
+  # Reassign always OTA's from bootstrap, which advertises "$(iotstack_bootstrap_mdns_service)" only.
+  # Dry-run may run before the device has been switched to bootstrap, so also scan
   # production mDNS to allow compile/plan when the device is still on production.
   if [[ "$DRY_RUN" == true ]]; then
     RAW=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null || true)
-    RAW_FAILSAFE=$(avahi-browse -t -r _iotstack-failsafe._tcp 2>/dev/null || true)
-    RAW="${RAW}"$'\n'"${RAW_FAILSAFE}"
+    RAW_BOOTSTRAP=$(avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null || true)
+    RAW="${RAW}"$'\n'"${RAW_BOOTSTRAP}"
   else
-    RAW=$(avahi-browse -t -r _iotstack-failsafe._tcp 2>/dev/null || true)
+    RAW=$(avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null || true)
   fi
 else
   RAW=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null || true)
@@ -1019,7 +1019,7 @@ done < <(awk '
 
 # -- Home Assistant registry check -------------------------------------------
 # Runs immediately after discovery so it always prints, even when no devices.
-# Skipped in --reassign mode: the device is still on failsafe; HA is handled
+# Skipped in --reassign mode: the device is still on bootstrap; HA is handled
 # after production boot via iotstack.sh -> --ha-finalize <prod-hostname>.
 HA_URL=""
 HA_TOKEN=""
@@ -1339,7 +1339,7 @@ while IFS= read -r HOSTNAME; do
       FLASH_LIST+=("$HOSTNAME")
     fi
   elif [[ "$REASSIGN_MODE" == true ]]; then
-    log "${HOSTNAME}: uploading production image via failsafe OTA"
+    log "${HOSTNAME}: uploading production image via bootstrap OTA"
     FLASH_LIST+=("$HOSTNAME")
   else
     warn "${HOSTNAME}: no hash or version info -- will flash."
@@ -1432,8 +1432,8 @@ WORK_DIR=$(mktemp -d)
 # Upload config: production YAMLs omit ota: (no OTA server in firmware) but
 # esphome upload requires ota: for the client. Compile uses YAML_FILE; upload
 # uses UPLOAD_YAML (temp with OTA client password when --ota-password is set).
-if ! _yaml_is_failsafe "$ORIGINAL_YAML_FILE"; then
-  # Must live under yamls/ so !include common/... resolves (same as failsafe artifacts).
+if ! _yaml_is_bootstrap "$ORIGINAL_YAML_FILE"; then
+  # Must live under yamls/ so !include common/... resolves (same as bootstrap artifacts).
   OTA_UPLOAD_TEMP="$(dirname "$ORIGINAL_YAML_FILE")/.temp-ota-upload-$(basename "$ORIGINAL_YAML_FILE")"
   mkdir -p "$(dirname "$OTA_UPLOAD_TEMP")"
   create_ota_upload_yaml "$ORIGINAL_YAML_FILE" "$OTA_PASSWORD" "$OTA_UPLOAD_TEMP"
@@ -1567,7 +1567,7 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
     cat "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null || true
   fi
   if [[ "$(cat "$WORK_DIR/${HOSTNAME}.result" 2>/dev/null)" == ok ]]; then
-    # Pre-flash mDNS hash (missing on failsafe during reassign); fall back to build hash.
+    # Pre-flash mDNS hash (missing on bootstrap during reassign); fall back to build hash.
     hash="${DEVICE_HASHES[$HOSTNAME]:-}"
     if [[ -z "$hash" && -n "$NEW_CONFIG_HASH" ]]; then
       hash="$NEW_CONFIG_HASH"
@@ -1613,7 +1613,7 @@ if [[ -n "$FLASH_LOG_DIR" ]]; then
   done
 fi
 
-# HA entity work for production OTA updates only (not failsafe --reassign).
+# HA entity work for production OTA updates only (not bootstrap --reassign).
 if [[ "$REASSIGN_MODE" != true ]]; then
   # Recreate entity IDs for flashed devices, or all when --force-update-entities
   if [[ "$DRY_RUN" == false ]] && { [[ ${#OK_LIST[@]} -gt 0 ]] || [[ "$FORCE_UPDATE_ENTITIES" == true ]]; }; then

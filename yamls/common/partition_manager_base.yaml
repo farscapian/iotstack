@@ -1,4 +1,4 @@
-# Shared partition_manager component and HA buttons (included by production and failsafe).
+# Shared partition_manager component and HA buttons (included by production and bootstrap).
 partition_manager:
   id: partition_mgr
 
