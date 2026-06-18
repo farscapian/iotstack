@@ -37,6 +37,22 @@ esp_mac_from_esptool_output() {
   printf '%s\n' "${mac: -6}"
 }
 
+esp_mac_suffix_resolve() {
+  # MAC suffix from esptool capture (write-flash) or chip-id probe on the port.
+  local port="$1"
+  local esptool_capture="${2:-}"
+  local mac=""
+
+  if [[ -n "$esptool_capture" ]]; then
+    mac=$(esp_mac_from_esptool_output "$esptool_capture" 2>/dev/null) || mac=""
+    if [[ -n "$mac" && "$mac" =~ ^[0-9a-f]{6}$ ]]; then
+      printf '%s\n' "$mac"
+      return 0
+    fi
+  fi
+  esp_mac_suffix_from_port "$port"
+}
+
 esp_esptool_chip_id() {
   # Run esptool chip-id with auto-reset. Tries 115200 then 9600 for detection.
   local port="$1"

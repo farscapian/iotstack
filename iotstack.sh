@@ -3799,13 +3799,11 @@ _flash_failsafe_to_tty() {
   local esptool_chip="${IOTSTACK_ESPTOOL_CHIP:-$variant}"
   flash_assess_failsafe_device "$tty_device" "$esptool_chip" "$build_dir" "$failsafe_offset"
 
-  local esptool_output device_mac skip_serial="$FLASH_ASSESS_SKIP_SERIAL"
+  local device_mac skip_serial="$FLASH_ASSESS_SKIP_SERIAL"
   if [[ "$skip_serial" -eq 1 ]]; then
     info "Failsafe image on device matches build -- serial upload not required"
     debug "On-device partition table also matches compiled build"
-    esptool_output=$(esp_esptool_chip_id "$tty_device") || err "Could not read chip ID from $tty_device"
-    device_mac=$(esp_mac_from_esptool_output "$esptool_output")
-    [[ -z "$device_mac" || ! "$device_mac" =~ ^[0-9a-f]{6}$ ]] && err "Failed to extract MAC address from device"
+    device_mac=$(esp_mac_suffix_resolve "$tty_device") || err "Could not read chip MAC from $tty_device"
     ok "Device MAC: $device_mac"
   else
     if [[ "$FLASH_ASSESS_FAILSAFE_MATCH" -eq 0 ]]; then
@@ -3814,9 +3812,8 @@ _flash_failsafe_to_tty() {
       info "On-device partition table differs from build -- serial upload required"
     fi
     _flash_failsafe_esptool "$tty_device" "$flash_log" "$build_dir" "$failsafe_offset" "$FLASH_ASSESS_NEED_ERASE"
-    esptool_output="$create_log_esptool_output"
-    device_mac=$(esp_mac_from_esptool_output "$esptool_output")
-    [[ -z "$device_mac" || ! "$device_mac" =~ ^[0-9a-f]{6}$ ]] && err "Failed to extract MAC address from device"
+    device_mac=$(esp_mac_suffix_resolve "$tty_device" "$create_log_esptool_output") \
+      || err "Failed to extract MAC address from device (try: esptool --port $tty_device chip-id)"
     ok "Failsafe firmware (${variant}) flashed to: $device_mac"
 
     info "Waiting for device to boot..."
