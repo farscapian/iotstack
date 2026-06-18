@@ -190,6 +190,8 @@ esphome:
 
 **Injection points:** `iotstack.sh` `_esphome_compile`, `update_devices.sh`, `failsafe-yaml.sh` (variant artifacts). Source YAMLs in git stay at `0.0.0-dev`; only compile-time copies get the real tag.
 
+**Gotcha:** compile-time copies must live under `yamls/` (e.g. `yamls/.temp-compile-matrixdisplay.yaml.<pid>`), not `/tmp`, because ESPHome resolves `!include common/...` relative to the YAML file path.
+
 `project_version` is advertised in mDNS TXT and used as a **fallback** when `config_hash` is unavailable. It is not the primary flash/update comparison key.
 
 ## Features

@@ -74,7 +74,8 @@ iotstack_prepare_compile_yaml() {
     return 0
   fi
 
-  compile_yaml="${TMPDIR:-/tmp}/iotstack-compile-${base}.$$"
+  # Must live under yamls/ (same dir as source) so !include common/... resolves.
+  compile_yaml="$(cd "$(dirname "$src_yaml")" && pwd)/.temp-compile-${base}.$$"
   cp "$src_yaml" "$compile_yaml"
   _iotstack_set_project_version_in_yaml "$compile_yaml" "$(iotstack_project_version)"
   printf '%s\n' "$compile_yaml"

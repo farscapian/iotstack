@@ -26,7 +26,8 @@ iotstack_cleanup_generated_yamls() {
   local yamls_dir="${YAMLS_DIR:-}"
   [[ -z "$yamls_dir" || ! -d "$yamls_dir" ]] && return 0
   rm -f "${yamls_dir}"/.iotstack-failsafe-*.yaml \
-        "${yamls_dir}"/.temp-ota-upload-*.yaml 2>/dev/null || true
+        "${yamls_dir}"/.temp-ota-upload-*.yaml \
+        "${yamls_dir}"/.temp-compile-*.yaml 2>/dev/null || true
 }
 
 iotstack_register_yaml_cleanup_trap() {

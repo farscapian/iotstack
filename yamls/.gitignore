@@ -9,3 +9,4 @@
 /iotstack_partition_table.csv
 /.iotstack-failsafe-*.yaml
 /.temp-ota-upload-*.yaml
+/.temp-compile-*.yaml
