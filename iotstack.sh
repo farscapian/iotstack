@@ -1143,20 +1143,29 @@ _flash_production_firmware_current() {
 
 _flash_production_ota_update() {
   # OTA into the production partition via failsafe (production images have no OTA server).
-  # Usage: _flash_production_ota_update <mac_suffix> <yaml_path> [device_role]
+  # Usage: _flash_production_ota_update <mac_suffix> <yaml_path> [device_role] [tty_device]
   local device_mac="$1"
   local yaml_path="$2"
   local device_role="${3:-}"
+  local tty_device="${4:-}"
   local dev_pwd prod_hostname
   [[ -z "$device_role" ]] && device_role=$(_yaml_device_role "$yaml_path")
   prod_hostname="${device_role}-${device_mac}"
   dev_pwd=$(_failsafe_device_ota_password "$device_mac") \
     || err "Could not derive failsafe OTA password for ${device_mac} (provision failsafe first?)"
 
+  if ! _production_api_reachable "$prod_hostname" && ! _failsafe_ota_reachable "$device_mac"; then
+    warn "Production API and failsafe OTA are unreachable — network switch may fail"
+  fi
+
   info "Updating production partition — switching to failsafe, then OTA into production slot..."
   declare -a extra_args=(--upgrade-delta)
   [[ "${FLASH_ANYWAY:-0}" == "1" ]] && extra_args+=(--flash-anyway)
-  _ota_via_failsafe "$device_mac" "$yaml_path" "$dev_pwd" "$prod_hostname" "${extra_args[@]}"
+  if [[ -n "$tty_device" ]]; then
+    _ota_via_failsafe "$device_mac" "$yaml_path" "$dev_pwd" "$prod_hostname" "$tty_device" "${extra_args[@]}"
+  else
+    _ota_via_failsafe "$device_mac" "$yaml_path" "$dev_pwd" "$prod_hostname" "${extra_args[@]}"
+  fi
 }
 
 _wait_for_production_online() {
@@ -1244,11 +1253,21 @@ _production_running_image_hash() {
   echo "unknown"
 }
 
-_production_reachable_now() {
-  # Quick probe (no wait loop) — production API 6053 or _esphomelib._tcp mDNS.
+_production_api_reachable() {
+  # Production native API accepts TCP on 6053.
   local hostname="$1"
-  timeout 3 bash -c "echo > /dev/tcp/${hostname}.local/6053" 2>/dev/null \
-    || avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "$hostname"
+  timeout 3 bash -c "echo > /dev/tcp/${hostname}.local/6053" 2>/dev/null
+}
+
+_production_mdns_advertised() {
+  local hostname="$1"
+  avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "$hostname"
+}
+
+_production_reachable_now() {
+  # Quick probe (no wait loop) — API preferred; mDNS alone is weaker signal.
+  local hostname="$1"
+  _production_api_reachable "$hostname" || _production_mdns_advertised "$hostname"
 }
 
 _build_config_hash_for_yaml() {
@@ -1270,6 +1289,7 @@ _build_config_hash_for_yaml() {
 
 # Set by _flash_report_device_assessment for _flash_production_smart branching.
 FLASH_ASSESS_PROD_ONLINE=0
+FLASH_ASSESS_PROD_MDNS=0
 FLASH_ASSESS_FAILSAFE_ONLINE=0
 FLASH_ASSESS_FLASH_CURRENT=0
 
@@ -1282,10 +1302,11 @@ _flash_assess_device_runtime() {
   local waited=0 failsafe_hash failsafe_hostname
 
   FLASH_ASSESS_PROD_ONLINE=0
+  FLASH_ASSESS_PROD_MDNS=0
   FLASH_ASSESS_FAILSAFE_ONLINE=0
 
   while true; do
-    if _production_reachable_now "$prod_hostname"; then
+    if _production_api_reachable "$prod_hostname"; then
       FLASH_ASSESS_PROD_ONLINE=1
       break
     fi
@@ -1294,6 +1315,9 @@ _flash_assess_device_runtime() {
       break
     fi
     if (( waited >= max_retry )); then
+      if _production_mdns_advertised "$prod_hostname"; then
+        FLASH_ASSESS_PROD_MDNS=1
+      fi
       break
     fi
     sleep 3
@@ -1309,8 +1333,10 @@ _flash_assess_device_runtime() {
   fi
   if [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local running_hash
-    running_hash=$(_production_running_image_hash "$prod_hostname" "" "")
-    info "  Runtime: production online (${prod_hostname}, image hash ${running_hash})"
+    running_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || running_hash="unknown"
+    info "  Runtime: production API online (${prod_hostname}, config_hash ${running_hash})"
+  elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]]; then
+    info "  Runtime: production on mDNS only (${prod_hostname}, API port 6053 not reachable)"
   elif [[ $FLASH_ASSESS_FAILSAFE_ONLINE -eq 1 ]]; then
     info "  Runtime: failsafe online (failsafe-${device_mac}, OTA port 3232)"
   else
@@ -1324,10 +1350,11 @@ _flash_assess_device_on_flash_action() {
   local yaml_path="$2"
   local device_mac="$3"
   local prod_hostname="$4"
-  local running_hash build_hash
+  local running_hash build_hash mdns_hash
 
   FLASH_ASSESS_FLASH_CURRENT=0
-  running_hash=$(_production_running_image_hash "$prod_hostname" "$tty_device" "$yaml_path")
+  mdns_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || true
+  running_hash=$(_flash_production_image_hash_on_device "$tty_device" "$yaml_path" 2>/dev/null) || running_hash="unknown"
   build_hash=$(_build_config_hash_for_yaml "$yaml_path" 2>/dev/null) || build_hash=""
 
   if _flash_production_firmware_current "$tty_device" "$yaml_path"; then
@@ -1343,9 +1370,13 @@ _flash_assess_device_on_flash_action() {
   else
     if [[ -n "$build_hash" && "$running_hash" != "unknown" ]]; then
       if [[ "$running_hash" == "$build_hash" ]]; then
-        info "  On-flash production: differs from build (runtime hash ${running_hash} matches build; on-flash image differs)"
+        if [[ -n "$mdns_hash" && "$mdns_hash" == "$build_hash" ]]; then
+          info "  On-flash production: differs from build (mDNS config_hash ${mdns_hash} matches build; on-flash image differs)"
+        else
+          info "  On-flash production: differs from build (on-flash hash ${running_hash} matches build; image layout still differs)"
+        fi
       else
-        info "  On-flash production: outdated (device hash ${running_hash}, build hash ${build_hash})"
+        info "  On-flash production: outdated (on-flash hash ${running_hash}, build hash ${build_hash})"
       fi
     elif [[ -n "$build_hash" ]]; then
       info "  On-flash production: differs from build (build hash ${build_hash})"
@@ -1358,6 +1389,8 @@ _flash_assess_device_on_flash_action() {
     info "  Action: none required — device is current"
   elif [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     info "  Action: OTA update via failsafe partition"
+  elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]]; then
+    info "  Action: serial failsafe path (mDNS visible, API unreachable), then OTA production image"
   elif [[ $FLASH_ASSESS_FAILSAFE_ONLINE -eq 1 ]]; then
     info "  Action: refresh failsafe on serial if needed, then OTA production image"
   else
@@ -1399,28 +1432,57 @@ _ensure_device_on_failsafe() {
   # Switch a production device into failsafe and wait for its OTA service.
   local mac="$1"
   local is_dry_run="${2:-false}"
+  local tty_device="${3:-}"
+  local switch_failed=false
+  local wait_timeout=90
   if [[ "$is_dry_run" == true ]]; then
     return 0
   fi
 
-  if _device_on_failsafe "$mac"; then
+  if _failsafe_ota_reachable "$mac" || _device_on_failsafe "$mac"; then
     info "[$mac] already on failsafe"
   else
     local production_hostname
     production_hostname=$(_find_production_hostname_for_mac "$mac" || true)
     if [[ -n "$production_hostname" ]]; then
-      info "[$mac] 1/4 switching $production_hostname to failsafe..."
-      if ! _call_production_api_service "$production_hostname" "$mac" switch_to_failsafe; then
-        warn "[$mac] could not call switch_to_failsafe (offline or already in failsafe?); will still wait"
+      if _production_api_reachable "$production_hostname"; then
+        info "[$mac] 1/4 switching $production_hostname to failsafe..."
+        local attempt
+        for attempt in 1 2 3; do
+          if _call_production_api_service "$production_hostname" "$mac" switch_to_failsafe; then
+            switch_failed=false
+            break
+          fi
+          switch_failed=true
+          (( attempt < 3 )) && sleep 5
+        done
+        [[ "$switch_failed" == true ]] && warn "[$mac] switch_to_failsafe failed after 3 attempts"
+      else
+        switch_failed=true
+        warn "[$mac] production API unreachable — cannot call switch_to_failsafe"
       fi
     else
-      warn "[$mac] not found in production mDNS; waiting for failsafe-$mac..."
+      switch_failed=true
+      warn "[$mac] not found in production mDNS"
     fi
   fi
 
-  info "[$mac] 2/4 waiting for failsafe-$mac on the network..."
-  if ! _wait_for_device "failsafe-$mac" 90; then
-    warn "[$mac] failsafe-$mac did not appear"
+  if [[ "$switch_failed" == true ]]; then
+    wait_timeout=30
+    if [[ -n "$tty_device" ]]; then
+      info "[$mac] 2/4 waiting ${wait_timeout}s for failsafe-$mac (then USB serial fallback)..."
+    else
+      info "[$mac] 2/4 waiting ${wait_timeout}s for failsafe-$mac on the network..."
+    fi
+  else
+    info "[$mac] 2/4 waiting for failsafe-$mac on the network..."
+  fi
+  if ! _wait_for_device "failsafe-$mac" "$wait_timeout"; then
+    if [[ -n "$tty_device" ]]; then
+      warn "[$mac] failsafe-$mac did not appear — use USB serial fallback"
+    else
+      warn "[$mac] failsafe-$mac did not appear"
+    fi
     return 1
   fi
 
@@ -1435,12 +1497,17 @@ _ensure_device_on_failsafe() {
 
 _ota_via_failsafe() {
   # OTA into the production slot via failsafe (partition-safe path).
-  # Usage: _ota_via_failsafe <mac> <yaml_file> <ota_password> <post_ota_hostname> [update_args...]
+  # Usage: _ota_via_failsafe <mac> <yaml_file> <ota_password> <post_ota_hostname> [tty_device] [update_args...]
   local mac="$1"
   local yaml_file="$2"
   local ota_password="$3"
   local post_ota_hostname="$4"
   shift 4
+  local tty_device=""
+  if [[ "${1:-}" == /dev/* ]]; then
+    tty_device="$1"
+    shift
+  fi
   declare -a ota_update_args=("$@")
 
   local is_dry_run=false
@@ -1448,7 +1515,7 @@ _ota_via_failsafe() {
     is_dry_run=true
   fi
 
-  if ! _ensure_device_on_failsafe "$mac" "$is_dry_run"; then
+  if ! _ensure_device_on_failsafe "$mac" "$is_dry_run" "$tty_device"; then
     return 1
   fi
 
@@ -3221,20 +3288,26 @@ _flash_production_smart() {
           return
         fi
 
-        if [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]] || _wait_for_production_online "$prod_hostname" 15; then
+        local try_network_ota=false
+        if _production_api_reachable "$prod_hostname"; then
+          try_network_ota=true
+        elif _wait_for_production_online "$prod_hostname" 15 && _production_api_reachable "$prod_hostname"; then
+          try_network_ota=true
+        fi
+
+        if [[ "$try_network_ota" == true ]]; then
           if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
             ok "Production firmware on flash matches build — nothing to do"
             _ha_after_production_online "$yaml_path" "$prod_hostname"
             ok "Production firmware setup complete!"
             return
           fi
-          if _flash_production_ota_update "$device_mac" "$yaml_path" "$device"; then
+          if _flash_production_ota_update "$device_mac" "$yaml_path" "$device" "$tty_device"; then
             ok "Production firmware setup complete!"
             return
           fi
           warn "Production OTA via network failed — trying serial failsafe path"
           info "Step 1: Refreshing failsafe-wifi firmware on ${tty_device}..."
-          echo ""
           local _mac_file
           _mac_file=$(mktemp)
           _flash_failsafe_to_tty "$tty_device" "$_mac_file" "$device" \
@@ -3243,9 +3316,19 @@ _flash_production_smart() {
             device_mac=$(tr -d '[:space:]' < "$_mac_file")
             rm -f "$_mac_file"
           fi
-          echo ""
           info "Step 2: Reassigning failsafe device to ${device} production firmware..."
-          echo ""
+        elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]] || _production_mdns_advertised "$prod_hostname"; then
+          warn "Production visible on mDNS but API unreachable — using serial failsafe path"
+          info "Step 1: Refreshing failsafe-wifi firmware on ${tty_device}..."
+          local _mac_file
+          _mac_file=$(mktemp)
+          _flash_failsafe_to_tty "$tty_device" "$_mac_file" "$device" \
+            || err "Failsafe serial flash failed"
+          if [[ -f "$_mac_file" ]]; then
+            device_mac=$(tr -d '[:space:]' < "$_mac_file")
+            rm -f "$_mac_file"
+          fi
+          info "Step 2: Reassigning failsafe device to ${device} production firmware..."
         elif [[ $FLASH_ASSESS_FAILSAFE_ONLINE -eq 1 ]] || _failsafe_ota_reachable "$device_mac"; then
           info "Device is on failsafe firmware (failsafe-${device_mac} OTA is reachable)"
           local _mac_file
@@ -3255,21 +3338,16 @@ _flash_production_smart() {
             device_mac=$(tr -d '[:space:]' < "$_mac_file")
             rm -f "$_mac_file"
           fi
-          echo ""
           info "Step 2: Reassigning failsafe device to ${device} production firmware..."
-          echo ""
         else
           info "Device not on WiFi yet — provisioning via failsafe serial path"
           info "Step 1: Flashing failsafe-wifi firmware..."
-          echo ""
           local _mac_file
           _mac_file=$(mktemp)
           _flash_recovery "$tty_device" "$_mac_file" "$device"
           device_mac=$(tr -d '[:space:]' < "$_mac_file")
           rm -f "$_mac_file"
-          echo ""
           info "Step 2: Waiting for device to appear on network..."
-          echo ""
         fi
       else
         info "Could not read device MAC — provisioning via failsafe serial path"
@@ -3307,7 +3385,7 @@ _flash_production_smart() {
           ok "Production firmware setup complete!"
           return
         fi
-        _flash_production_ota_update "$device_mac" "$yaml_path" "$device" \
+        _flash_production_ota_update "$device_mac" "$yaml_path" "$device" "$tty_device" \
           || err "Production OTA update failed"
         ok "Production firmware setup complete!"
         return

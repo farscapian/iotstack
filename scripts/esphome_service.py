@@ -14,10 +14,13 @@ success — the caller verifies the result by watching mDNS.
 """
 import asyncio
 import json
+import logging
 import os
 import sys
 
 from aioesphomeapi import APIClient
+
+logging.getLogger("aioesphomeapi").setLevel(logging.ERROR)
 from aioesphomeapi.core import EncryptionPlaintextAPIError
 
 
