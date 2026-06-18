@@ -3358,7 +3358,10 @@ _flash_matrix_layout_mismatch() {
   fi
 
   # Runtime sensors unavailable -- only update when layout flags were passed explicitly.
-  _flash_matrix_layout_flags_set
+  if _flash_matrix_layout_flags_set; then
+    return 1
+  fi
+  return 0
 }
 
 _flash_matrix_layout_update_via_failsafe_if_needed() {
@@ -3371,7 +3374,10 @@ _flash_matrix_layout_update_via_failsafe_if_needed() {
   local prod_hostname="$4"
   local want_cols want_w want_h cur_cols cur_w cur_h verify_cols verify_w verify_h
 
-  _flash_matrix_layout_mismatch "$device" "$device_mac" "$prod_hostname" || return 0
+  # mismatch returns 0 when layouts already match; 1 when NVS update is needed.
+  if ! _flash_matrix_layout_mismatch "$device" "$device_mac" "$prod_hostname"; then
+    return 0
+  fi
   _flash_resolve_matrix_layout "$device" want_cols want_w want_h
 
   if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
