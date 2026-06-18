@@ -2,7 +2,6 @@
 
 substitutions:
   development_status: "prod"
-  dev_status: "${development_status}"
   device_role: "mmwave"
   friendly_name: "mmWave Presense Detector"
 
@@ -24,7 +23,7 @@ esphome:
   friendly_name: ${friendly_name}
   name_add_mac_suffix: true
   project:
-    name: "iotstack.${device_role}-${dev_status}"
+    name: "iotstack.${device_role}-${development_status}"
     version: "1.5.0"
   on_boot:
     priority: -100
@@ -278,9 +277,6 @@ button:
     on_press:
       - script.execute: identify_pulse
   # "Restart" and "Toggle Boot Partition" buttons come from partition_mgmt package
-  - platform: factory_reset
-    name: "Factory Reset"
-    entity_category: config
 
 # 7. Sensor Controls
 switch:

@@ -1,6 +1,5 @@
 substitutions:
   development_status: "dev"
-  dev_status: "${development_status}"
   device_role: "sendspinspeaker"
   friendly_name: "SendSpin Speaker"
   boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
@@ -10,7 +9,7 @@ esphome:
   friendly_name: "${friendly_name}"
   name_add_mac_suffix: true
   project:
-    name: "iotstack.${device_role}-${dev_status}"
+    name: "iotstack.${device_role}-${development_status}"
     version: "1.0.0"
 
 esp32:
@@ -137,10 +136,4 @@ sensor:
     update_interval: 60s
     entity_category: diagnostic
 
-# 8. Buttons
-
-button:
-  # "Restart" and "Toggle Boot Partition" buttons come from partition_mgmt package
-  - platform: factory_reset
-    name: "Factory Reset"
-    entity_category: config
+# 8. Buttons — "Restart" and "Toggle Boot Partition" come from partition_mgmt package

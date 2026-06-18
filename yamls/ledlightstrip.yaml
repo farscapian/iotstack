@@ -1,6 +1,5 @@
 substitutions:
   development_status: "dev"
-  dev_status: "${development_status}"
   device_role: "ledstrip"
   friendly_name: "LED Light Strip"
   boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
@@ -22,7 +21,7 @@ esphome:
   name: ledstrip
   friendly_name: ${friendly_name}
   project:
-    name: "iotstack.${device_role}-${dev_status}"
+    name: "iotstack.${device_role}-${development_status}"
     version: 1.0.0
   name_add_mac_suffix: true
 

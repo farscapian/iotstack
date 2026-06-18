@@ -1,7 +1,6 @@
 # ESP32-C6 Thread Router
 substitutions:
   development_status: "dev"
-  dev_status: "${development_status}"
   device_role: "threadrouter"
   friendly_name: "Thread Router"
 
@@ -10,7 +9,7 @@ esphome:
   friendly_name: ${friendly_name}
   name_add_mac_suffix: true
   project:
-    name: "iotstack.${device_role}-${dev_status}"
+    name: "iotstack.${device_role}-${development_status}"
     version: "1.5.0"
 
 esp32:
