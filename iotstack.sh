@@ -267,6 +267,36 @@ Or manually: press Ctrl+A then D to detach screen, then run the command above."
   fi
 }
 
+_hex_sizes_equal() {
+  local a="${1,,}" b="${2,,}"
+  [[ -n "$a" && "$a" == "$b" ]]
+}
+
+_partition_table_failsafe_size() {
+  # Failsafe (ota_0) size from the persisted partition table artifact (~/.iotstack/artifacts/).
+  # Survives `iotstack clean` (unlike compilation-cache.csv) so pass 1 can start exact.
+  [[ -f "$PARTITION_TABLE" ]] || return 1
+  local size
+  size=$(awk -F, '
+    $1 ~ /^[[:space:]]*failsafe[[:space:]]*$/ {
+      gsub(/ /, "", $5)
+      print $5
+      exit
+    }
+  ' "$PARTITION_TABLE")
+  [[ -n "$size" && "$size" =~ ^0x[0-9a-fA-F]+$ ]] || return 1
+  printf '%s' "$size"
+}
+
+_sync_failsafe_partition_table_from_build() {
+  local build_csv="${YAMLS_DIR}/.esphome/build/failsafe/partitions.csv"
+  if [[ -f "$build_csv" ]] && grep -qE '^production,' "$build_csv" 2>/dev/null; then
+    cp "$build_csv" "$PARTITION_TABLE"
+    _ensure_partition_table_symlink "$PARTITION_TABLE"
+    debug "Partition table synced from failsafe build (production offset $(flash_partition_offset production 2>/dev/null))"
+  fi
+}
+
 _failsafe_part_size() {
   # Echo the failsafe (ota_0) partition size as hex for a given firmware.bin:
   # round_up_64KB(firmware_size + IOTSTACK_FAILSAFE_MARGIN). Falls back to
@@ -362,36 +392,52 @@ smart_compile() {
   if [[ $cached -eq 1 && -f "$firmware_bin" ]]; then
     _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
     _smart_compile_cache_hit_notice "$device_name" "failsafe"
-    local build_csv="${YAMLS_DIR}/.esphome/build/failsafe/partitions.csv"
-    if [[ -f "$build_csv" ]] && grep -qE '^production,' "$build_csv" 2>/dev/null; then
-      cp "$build_csv" "$PARTITION_TABLE"
-      _ensure_partition_table_symlink "$PARTITION_TABLE"
-      debug "Partition table synced from failsafe build (production offset $(flash_partition_offset production 2>/dev/null))"
-    else
-      local fs_size; fs_size=$(_failsafe_part_size "$firmware_bin")
-      IOTSTACK_FAILSAFE_PART_SIZE="$fs_size" _update_partition_table_file
-    fi
+    _sync_failsafe_partition_table_from_build \
+      || { local fs_size; fs_size=$(_failsafe_part_size "$firmware_bin")
+           IOTSTACK_FAILSAFE_PART_SIZE="$fs_size" _update_partition_table_file; }
     return 0
   fi
 
-  # Pass 1: compile against a generous failsafe partition so it definitely fits
+  # Pass 1: compile (prefer persisted partition size; fall back to generous default).
+  local pass1_size fs_size fw_bytes partitions_bin
   _smart_compile_cache_miss_notice "$device_name" "failsafe"
-  IOTSTACK_FAILSAFE_PART_SIZE="${IOTSTACK_FAILSAFE_PART_SIZE:-0x180000}" _update_partition_table_file
-  info "Compiling failsafe-wifi firmware (pass 1/2: measuring size)..."
-  _esphome_compile "$yaml_file" || return 1
+  pass1_size=$(_partition_table_failsafe_size 2>/dev/null) || pass1_size="0x180000"
+  if [[ -n "${IOTSTACK_FAILSAFE_PART_SIZE:-}" ]]; then
+    pass1_size="$IOTSTACK_FAILSAFE_PART_SIZE"
+  fi
+  export IOTSTACK_FAILSAFE_PART_SIZE="$pass1_size"
+  _update_partition_table_file
+  if _hex_sizes_equal "$pass1_size" "0x180000"; then
+    info "Compiling failsafe-wifi firmware (pass 1/2: measuring size)..."
+  else
+    info "Compiling failsafe-wifi firmware (pass 1: partition table ${pass1_size} from artifact)..."
+  fi
+  if ! _esphome_compile "$yaml_file"; then
+    if _hex_sizes_equal "$pass1_size" "0x180000"; then
+      return 1
+    fi
+    warn "Failsafe compile failed with partition ${pass1_size} — retrying with generous 0x180000"
+    export IOTSTACK_FAILSAFE_PART_SIZE="0x180000"
+    _update_partition_table_file
+    info "Compiling failsafe-wifi firmware (pass 1/2: measuring size)..."
+    _esphome_compile "$yaml_file" || return 1
+  fi
 
-  # Size the failsafe partition to the measured firmware, regenerate the table
-  local fs_size fw_bytes
   fs_size=$(_failsafe_part_size "$firmware_bin")
   fw_bytes=$(stat -c%s "$firmware_bin" 2>/dev/null || echo "?")
   info "Failsafe firmware ${fw_bytes} bytes -> failsafe partition ${fs_size}"
-  export IOTSTACK_FAILSAFE_PART_SIZE="$fs_size"
-  _update_partition_table_file
+  partitions_bin="${YAMLS_DIR}/.esphome/build/failsafe/.pioenvs/failsafe/partitions.bin"
 
-  # Pass 2: recompile so partitions.bin reflects the exact table (app image is
-  # cached/unchanged, so this only regenerates the partition binary)
-  info "Compiling failsafe-wifi firmware (pass 2/2: applying exact partition table)..."
-  _esphome_compile "$yaml_file" || return 1
+  if _hex_sizes_equal "$fs_size" "$IOTSTACK_FAILSAFE_PART_SIZE" && [[ -f "$partitions_bin" ]]; then
+    _sync_failsafe_partition_table_from_build
+    info "Failsafe partition table already exact (${fs_size}) — skipping pass 2"
+  else
+    export IOTSTACK_FAILSAFE_PART_SIZE="$fs_size"
+    _update_partition_table_file
+    info "Compiling failsafe-wifi firmware (pass 2/2: applying exact partition table)..."
+    _esphome_compile "$yaml_file" || return 1
+    _sync_failsafe_partition_table_from_build
+  fi
 
   local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
   if [[ -n "$binary_sha" ]]; then
