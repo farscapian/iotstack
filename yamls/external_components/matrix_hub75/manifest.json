@@ -1,0 +1,6 @@
+{
+  "version": "1.0.0",
+  "documentation": "https://github.com/iotstack/iotstack",
+  "dependencies": ["esp32"],
+  "codeowners": ["@iotstack"]
+}

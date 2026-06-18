@@ -2,14 +2,19 @@ substitutions:
   development_status: "dev"
   device_role: "matrixdisplay"
   friendly_name: "Matrix Display"
-  # boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
+  boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
+  # Adaptive brightness: HA sets "Room Illuminance" (lx); device maps linearly to pixel brightness.
+  matrix_brightness_cap: "170"       # Max pixel brightness (matches display.brightness headroom)
+  matrix_brightness_floor: "8"     # Pixel brightness at matrix_illuminance_min_lx (very dim)
+  matrix_illuminance_min_lx: "1"   # Below this → floor brightness
+  matrix_illuminance_max_lx: "30"  # At/above this → cap brightness
 
 # External components (replaces deprecated custom_components folder)
 external_components:
   - source:
       type: local
       path: ./external_components
-    components: [nvs_secrets, partition_manager]
+    components: [nvs_secrets, partition_manager, matrix_hub75]
 
 # Shared boot-button / restart / partition-toggle behavior (same on every device)
 packages:
@@ -17,12 +22,22 @@ packages:
   boot_button: !include common/boot_button.yaml
 
 esphome:
-  name: ledstrip
+  name: matrixdisplay
   friendly_name: ${friendly_name}
   project:
     name: "iotstack.${device_role}-${development_status}"
     version: 1.0.0
   name_add_mac_suffix: true
+  on_boot:
+    - priority: 600
+      then:
+        - if:
+            condition:
+              switch.is_on: adaptive_brightness
+            then:
+              - script.execute:
+                  id: apply_adaptive_brightness
+                  illuminance_lx: !lambda 'return id(room_illuminance).state;'
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -51,11 +66,6 @@ api:
 logger:
   baud_rate: 115200
 
-
-
-
-####################3
-
 font:
   - file: "gfonts://Roboto"
     id: font_small
@@ -73,11 +83,15 @@ font:
 # (Rev 2.2 corresponds to the "V2.x" table on that page for the
 # ESP32-S3-DevKitC-1 wiring diagram.)
 display:
-  - platform: hub75
+  # matrix_hub75 reads panel count + dimensions from NVS at boot (see write-nvs-secrets.sh).
+  # HUB75 panels cannot self-report; set matrix_cols / matrix_panel_w / matrix_panel_h per device.
+  - platform: matrix_hub75
     id: matrix_display
     panel_width: 64
     panel_height: 32
-    brightness: 170  # ~67%, matches the headroom budget discussed earlier
+    max_layout_cols: 2
+    default_layout_cols: 1
+    brightness: ${matrix_brightness_cap}  # Cap for adaptive brightness mapping
     r1_pin: GPIO18
     g1_pin: GPIO8
     b1_pin: GPIO17
@@ -94,4 +108,112 @@ display:
     # e_pin omitted: your panel is 1/16 scan ("16S" on the panel label),
     # so the E row-select line isn't used.
     lambda: |-
-      it.print(0, 8, id(font_small), "Hello!");
+      it.printf(0, 8, id(font_small), "%ux%u", it.get_width(), it.get_height());
+
+# Home Assistant: push room illuminance from any sensor, e.g.
+#   action: number.set_value
+#   target:
+#     entity_id: number.matrix_display_<mac>_room_illuminance
+#   data:
+#     value: "{{ states('sensor.living_room_illuminance') | float(1) }}"
+script:
+  - id: apply_adaptive_brightness
+    parameters:
+      illuminance_lx: float
+    then:
+      - if:
+          condition:
+            switch.is_on: adaptive_brightness
+          then:
+            - lambda: |-
+                float lux = illuminance_lx;
+                const float min_lux = ${matrix_illuminance_min_lx};
+                const float max_lux = ${matrix_illuminance_max_lx};
+                const uint8_t cap = ${matrix_brightness_cap};
+                const uint8_t floor = ${matrix_brightness_floor};
+                uint8_t b;
+                if (lux <= min_lux) {
+                  b = floor;
+                } else if (lux >= max_lux) {
+                  b = cap;
+                } else {
+                  float t = (lux - min_lux) / (max_lux - min_lux);
+                  b = floor + (uint8_t) (t * (float) (cap - floor));
+                }
+                id(matrix_display).set_brightness(b);
+                id(pixel_brightness).publish_state(b);
+
+switch:
+  - platform: template
+    name: "Adaptive Brightness"
+    id: adaptive_brightness
+    icon: "mdi:brightness-auto"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    turn_on_action:
+      - script.execute:
+          id: apply_adaptive_brightness
+          illuminance_lx: !lambda 'return id(room_illuminance).state;'
+    turn_off_action:
+      - matrix_hub75.set_brightness:
+          id: matrix_display
+          brightness: ${matrix_brightness_cap}
+
+number:
+  - platform: template
+    name: "Room Illuminance"
+    id: room_illuminance
+    optimistic: true
+    restore_value: true
+    initial_value: ${matrix_illuminance_max_lx}
+    min_value: 0
+    max_value: 100000
+    step: 0.1
+    unit_of_measurement: "lx"
+    device_class: illuminance
+    mode: box
+    on_value:
+      - script.execute:
+          id: apply_adaptive_brightness
+          illuminance_lx: !lambda 'return x;'
+
+sensor:
+  - platform: template
+    name: "Pixel Brightness"
+    id: pixel_brightness
+    icon: "mdi:brightness-6"
+    entity_category: diagnostic
+    accuracy_decimals: 0
+    update_interval: never
+    lambda: 'return ${matrix_brightness_cap};'
+
+text_sensor:
+  - platform: template
+    name: "Matrix Panel Columns"
+    id: matrix_panel_cols
+    entity_category: diagnostic
+    update_interval: 60s
+    lambda: |-
+      return std::to_string(id(matrix_display).get_layout_cols());
+  - platform: template
+    name: "Matrix Panel Width"
+    id: matrix_panel_width
+    entity_category: diagnostic
+    update_interval: 60s
+    lambda: |-
+      return std::to_string(id(matrix_display).get_panel_width());
+  - platform: template
+    name: "Matrix Panel Height"
+    id: matrix_panel_height
+    entity_category: diagnostic
+    update_interval: 60s
+    lambda: |-
+      return std::to_string(id(matrix_display).get_panel_height());
+  - platform: template
+    name: "Matrix Display Size"
+    id: matrix_display_size
+    entity_category: diagnostic
+    update_interval: 60s
+    lambda: |-
+      return std::to_string(id(matrix_display).get_display_width()) + "x" +
+             std::to_string(id(matrix_display).get_display_height());
