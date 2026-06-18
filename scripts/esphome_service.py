@@ -18,6 +18,16 @@ import os
 import sys
 
 from aioesphomeapi import APIClient
+from aioesphomeapi.core import EncryptionPlaintextAPIError
+
+
+def _plaintext_protocol_mismatch(exc: BaseException) -> bool:
+    if isinstance(exc, EncryptionPlaintextAPIError):
+        return True
+    if "plaintext protocol" in str(exc).lower():
+        return True
+    cause = exc.__cause__
+    return bool(cause and _plaintext_protocol_mismatch(cause))
 
 
 async def call_service(
@@ -27,12 +37,38 @@ async def call_service(
     variables: dict,
     noise_psk: str | None = None,
 ) -> int:
-    cli = APIClient(host, 6053, password or "", noise_psk=noise_psk or None)
-    try:
-        await asyncio.wait_for(cli.connect(login=True), timeout=15.0)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[ERROR] could not connect to {host}:6053: {exc}", file=sys.stderr)
+    psk_attempts: list[str | None] = [noise_psk] if noise_psk else [None]
+    if noise_psk:
+        psk_attempts.append(None)
+
+    cli: APIClient | None = None
+    for attempt, psk in enumerate(psk_attempts):
+        cli = APIClient(host, 6053, password or "", noise_psk=psk)
+        try:
+            await asyncio.wait_for(cli.connect(login=True), timeout=15.0)
+            if attempt > 0:
+                print(
+                    f"[INFO] {host}: connected via plaintext API (device has no encryption)",
+                    file=sys.stderr,
+                )
+            break
+        except Exception as exc:  # noqa: BLE001
+            if (
+                psk
+                and attempt + 1 < len(psk_attempts)
+                and _plaintext_protocol_mismatch(exc)
+            ):
+                print(
+                    f"[INFO] {host}: device uses plaintext API; retrying without encryption",
+                    file=sys.stderr,
+                )
+                continue
+            print(f"[ERROR] could not connect to {host}:6053: {exc}", file=sys.stderr)
+            return 1
+    else:
+        print(f"[ERROR] could not connect to {host}:6053", file=sys.stderr)
         return 1
+    assert cli is not None
     try:
         _, services = await cli.list_entities_services()
         svc = next((s for s in services if s.name == service_name), None)
