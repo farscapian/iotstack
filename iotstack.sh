@@ -1202,6 +1202,20 @@ _flash_production_image_hash_on_device() {
   echo "${md5:0:8}"
 }
 
+_flash_failsafe_image_hash_on_device() {
+  # First 8 hex chars of the failsafe-partition MD5 read from serial flash.
+  local tty_device="$1"
+  local build_dir="${YAMLS_DIR}/.esphome/build/failsafe/.pioenvs/failsafe"
+  local firmware_file="${build_dir}/firmware.bin"
+  local failsafe_offset chip file_size md5
+  failsafe_offset=$(awk -F',' '/^failsafe[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
+  [[ -f "$firmware_file" && -n "$failsafe_offset" ]] || return 1
+  chip=$(esp_detect_chip "$tty_device" 2>/dev/null) || return 1
+  file_size=$(stat -c%s "$firmware_file" 2>/dev/null) || return 1
+  md5=$(flash_read_region_md5 "$tty_device" "$chip" "$failsafe_offset" "$file_size") || return 1
+  echo "${md5:0:8}"
+}
+
 _production_running_image_hash() {
   # Prefer live mDNS config_hash; fall back to on-flash MD5 prefix from serial.
   local prod_hostname="$1"
@@ -1250,8 +1264,9 @@ _flash_assess_device_runtime() {
   # Quick WiFi/runtime probe (no compile). Sets FLASH_ASSESS_PROD_ONLINE / FAILSAFE_ONLINE.
   local device_mac="$1"
   local prod_hostname="$2"
-  local max_retry="${3:-12}"
-  local waited=0
+  local tty_device="${3:-}"
+  local max_retry="${4:-12}"
+  local waited=0 failsafe_hash failsafe_hostname
 
   FLASH_ASSESS_PROD_ONLINE=0
   FLASH_ASSESS_FAILSAFE_ONLINE=0
@@ -1274,6 +1289,11 @@ _flash_assess_device_runtime() {
 
   info "Assessment result:"
   info "  MAC suffix: ${device_mac}"
+  failsafe_hostname="failsafe-${device_mac}"
+  if [[ -n "$tty_device" ]]; then
+    failsafe_hash=$(_flash_failsafe_image_hash_on_device "$tty_device" 2>/dev/null) || failsafe_hash="unknown"
+    info "  On-flash failsafe: ${failsafe_hostname} (image hash ${failsafe_hash})"
+  fi
   if [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local running_hash
     running_hash=$(_production_running_image_hash "$prod_hostname" "" "")
@@ -1335,7 +1355,7 @@ _flash_report_device_assessment() {
   local device_mac="$3"
   local prod_hostname="$4"
 
-  _flash_assess_device_runtime "$device_mac" "$prod_hostname" 0
+  _flash_assess_device_runtime "$device_mac" "$prod_hostname" "$tty_device" 0
   _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
 }
 
@@ -2798,6 +2818,24 @@ _flash_failsafe_esptool() {
   esptool_output="$create_log_esptool_output"
 }
 
+_ensure_failsafe_build_for_assess() {
+  # Ensure failsafe firmware.bin exists so on-flash MD5 can be read during assessment.
+  local tty_device="$1"
+  local production_role="$2"
+  local profile variant board flash_size framework failsafe_yaml
+
+  profile=$(failsafe_resolve_profile "$tty_device" "$production_role") || return 1
+  failsafe_apply_profile_to_env "$profile"
+  variant=$(echo "$profile" | cut -d'|' -f1)
+  board=$(echo "$profile" | cut -d'|' -f2)
+  flash_size=$(echo "$profile" | cut -d'|' -f3)
+  framework=$(echo "$profile" | cut -d'|' -f4)
+  failsafe_yaml="${YAMLS_DIR}/.iotstack-failsafe-${variant}.yaml"
+  failsafe_render_yaml "$variant" "$board" "$flash_size" "$framework" >/dev/null || return 1
+  iotstack_register_yaml_cleanup_trap
+  smart_compile "$failsafe_yaml" failsafe
+}
+
 _flash_failsafe_to_tty() {
   # Compile variant-specific failsafe, flash, write NVS, wait for WiFi.
   # Returns MAC suffix via stdout or mac_return_file.
@@ -3141,7 +3179,9 @@ _flash_production_smart() {
       if [[ -n "$device_mac" ]]; then
         prod_hostname="${device}-${device_mac}"
         info "Assessing connected device on ${tty_device}..."
-        _flash_assess_device_runtime "$device_mac" "$prod_hostname"
+        _ensure_failsafe_build_for_assess "$tty_device" "$device" \
+          || warn "Could not prepare failsafe build — on-flash failsafe hash may be unknown"
+        _flash_assess_device_runtime "$device_mac" "$prod_hostname" "$tty_device"
         smart_compile "$yaml_path" "$device" || err "Production compile failed"
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
         echo ""
