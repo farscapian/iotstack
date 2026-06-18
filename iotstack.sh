@@ -1709,7 +1709,7 @@ _flash_assess_device_on_flash_action() {
   fi
 
   if [[ "${FLASH_ERASE:-0}" == "1" && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
-    info "  Action: erase partitions and reflash production firmware (--erase)"
+    info "  Action: erase flash and install ${assess_role} firmware (--erase)"
   elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local assess_role="${prod_hostname%-${device_mac}}"
     local want_cols want_w want_h cur_cols cur_w cur_h
@@ -1720,13 +1720,13 @@ _flash_assess_device_on_flash_action() {
         info "  Matrix layout (runtime): ${cur_cols} panel(s), ${cur_w}x${cur_h} px"
         if [[ "$cur_cols" != "$want_cols" || "$cur_w" != "$want_w" || "$cur_h" != "$want_h" ]]; then
           info "  Matrix layout (target) : ${want_cols} panel(s), ${want_w}x${want_h} px"
-          info "  Action: switch to failsafe and update matrix layout NVS (firmware is current)"
+          info "  Action: update matrix layout on device (firmware is current)"
         else
           info "  Action: none required -- device is current"
         fi
       elif _flash_matrix_layout_flags_set; then
         info "  Matrix layout (target) : ${want_cols} panel(s), ${want_w}x${want_h} px"
-        info "  Action: switch to failsafe and update matrix layout NVS (firmware is current)"
+        info "  Action: update matrix layout on device (firmware is current)"
       else
         info "  Action: none required -- device is current"
       fi
@@ -3496,10 +3496,10 @@ _flash_matrix_layout_update_via_failsafe_if_needed() {
     info "Matrix layout: writing target ${want_cols} panel(s), ${want_w}x${want_h} px to NVS"
   fi
 
-  info "Step 1: Switching ${prod_hostname} to failsafe for NVS update..."
+  info "Step 1: Preparing ${prod_hostname} for layout update..."
   if ! _ensure_device_on_failsafe "$device_mac" false "$tty_device" "$device"; then
     if [[ -n "$tty_device" ]]; then
-      warn "Network switch to failsafe failed -- refreshing failsafe firmware on ${tty_device}..."
+      warn "Network layout update failed -- preparing device on ${tty_device}..."
       local _mac_file
       _mac_file=$(mktemp)
       _flash_failsafe_to_tty "$tty_device" "$_mac_file" "$device" \
@@ -3689,6 +3689,36 @@ _wait_for_serial_signal() {
     --reconnect --stop-on "wifi cleared Warning flag" "$tty"
 }
 
+# User-facing flash progress (dual-partition details stay in debug/logs).
+_flash_msg_step_erase() {
+  info "Step ${1}: Erasing flash on ${2}..."
+}
+
+_flash_msg_step_prepare_usb() {
+  local step="$1" tty="$2" mac="${3:-}"
+  if [[ -n "$mac" ]]; then
+    info "Step ${step}: Preparing device ${mac} on ${tty}..."
+  else
+    info "Step ${step}: Preparing device on ${tty}..."
+  fi
+}
+
+_flash_msg_step_update_production() {
+  info "Step ${1}: Updating production firmware on device ${2} to ${3}..."
+}
+
+_flash_msg_step_wait_online() {
+  info "Step ${2}: Waiting for device ${1} to come online..."
+}
+
+_flash_msg_upload_production() {
+  info "Uploading ${2} firmware to device ${1}..."
+}
+
+_flash_msg_waiting_for_upload() {
+  info "Waiting for device ${1} to accept firmware upload..."
+}
+
 _flash_failsafe_esptool() {
   # Write failsafe binaries; erase first only when requested. Sets esptool_output.
   # Requires: IOTSTACK_ESPTOOL_CHIP, IOTSTACK_FAILSAFE_FLASH_SIZE, build_dir, failsafe_offset
@@ -3715,7 +3745,7 @@ _flash_failsafe_esptool() {
     warn "Skipping flash erase (not required for this update)"
   fi
 
-  info "Flashing failsafe firmware (${esptool_chip})..."
+  info "Writing recovery image (${esptool_chip})..."
   if [[ $VERBOSE -eq 1 ]] && ! create_log_enabled; then
     info "Detailed output: tail -f $flash_log"
   fi
@@ -3776,8 +3806,8 @@ _flash_failsafe_to_tty() {
     ok "Build directory cleaned"
   fi
 
-  info "Failsafe target: ${variant} on ${tty_device}"
-  info "Artifact: ${failsafe_yaml}"
+  debug "Recovery image: ${variant} on ${tty_device}"
+  debug "YAML: ${failsafe_yaml}"
   smart_compile "$failsafe_yaml" "$build_name" || return 1
 
   local flash_log_dir="$HOME/.iotstack/logs/flash"
@@ -3816,7 +3846,7 @@ _flash_failsafe_to_tty() {
     _flash_failsafe_esptool "$tty_device" "$flash_log" "$build_dir" "$failsafe_offset" "$FLASH_ASSESS_NEED_ERASE"
     device_mac=$(esp_mac_suffix_resolve "$tty_device" "$create_log_esptool_output") \
       || err "Failed to extract MAC address from device (try: esptool --port $tty_device chip-id)"
-    ok "Failsafe firmware (${variant}) flashed to: $device_mac"
+    ok "Device ${device_mac} prepared for firmware update"
 
     info "Waiting for device to boot..."
     sleep 5
@@ -4089,11 +4119,11 @@ _flash_production_smart() {
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
 
         if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
-          info "Step 1: Erasing flash and flashing failsafe firmware on ${tty_device}..."
+          _flash_msg_step_erase 1 "$tty_device"
           local _mac_file
           _mac_file=$(mktemp)
           _flash_failsafe_to_tty "$tty_device" "$_mac_file" "$device" \
-            || err "Failsafe serial erase/flash failed"
+            || err "Serial erase/flash failed"
           if [[ -f "$_mac_file" ]]; then
             device_mac=$(tr -d '[:space:]' < "$_mac_file")
             rm -f "$_mac_file"
@@ -4101,7 +4131,7 @@ _flash_production_smart() {
           FLASH_ASSESS_PROD_ONLINE=0
           FLASH_ASSESS_FLASH_CURRENT=0
           prod_hostname="${device}-${device_mac}"
-          info "Step 2: Reassigning failsafe device to ${device} production firmware..."
+          _flash_msg_step_update_production 2 "$device_mac" "$device"
         elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
           local img_hash layout_rc=0 want_cols want_w want_h
           set +e
@@ -4153,31 +4183,31 @@ _flash_production_smart() {
             ok "Production firmware setup complete!"
             return
           fi
-          warn "Production OTA via network failed -- trying serial failsafe path"
-          info "Step 1: Refreshing failsafe-wifi firmware on ${tty_device}..."
+          warn "Network update failed -- preparing device on ${tty_device}"
+          _flash_msg_step_prepare_usb 1 "$tty_device" "$device_mac"
           local _mac_file
           _mac_file=$(mktemp)
           _flash_failsafe_to_tty "$tty_device" "$_mac_file" "$device" \
-            || err "Failsafe serial flash failed"
+            || err "Serial flash failed"
           if [[ -f "$_mac_file" ]]; then
             device_mac=$(tr -d '[:space:]' < "$_mac_file")
             rm -f "$_mac_file"
           fi
-          info "Step 2: Reassigning failsafe device to ${device} production firmware..."
+          _flash_msg_step_update_production 2 "$device_mac" "$device"
         elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]] || _production_mdns_advertised "$prod_hostname"; then
-          warn "Production visible on mDNS but API unreachable -- using serial failsafe path"
-          info "Step 1: Refreshing failsafe-wifi firmware on ${tty_device}..."
+          warn "Device visible on network but API unreachable -- preparing device on ${tty_device}"
+          _flash_msg_step_prepare_usb 1 "$tty_device" "$device_mac"
           local _mac_file
           _mac_file=$(mktemp)
           _flash_failsafe_to_tty "$tty_device" "$_mac_file" "$device" \
-            || err "Failsafe serial flash failed"
+            || err "Serial flash failed"
           if [[ -f "$_mac_file" ]]; then
             device_mac=$(tr -d '[:space:]' < "$_mac_file")
             rm -f "$_mac_file"
           fi
-          info "Step 2: Reassigning failsafe device to ${device} production firmware..."
+          _flash_msg_step_update_production 2 "$device_mac" "$device"
         elif [[ $FLASH_ASSESS_FAILSAFE_ONLINE -eq 1 ]] || _failsafe_ota_reachable "$device_mac"; then
-          info "Device is on failsafe firmware (failsafe-${device_mac} OTA is reachable)"
+          info "Device ${device_mac} is online and ready for firmware update"
           local _mac_file
           _mac_file=$(mktemp)
           _flash_failsafe_to_tty "$tty_device" "$_mac_file" "$device" || rm -f "$_mac_file"
@@ -4185,21 +4215,21 @@ _flash_production_smart() {
             device_mac=$(tr -d '[:space:]' < "$_mac_file")
             rm -f "$_mac_file"
           fi
-          info "Step 2: Reassigning failsafe device to ${device} production firmware..."
+          _flash_msg_step_update_production 2 "$device_mac" "$device"
         else
-          info "Device not on WiFi yet -- provisioning via failsafe serial path"
-          info "Step 1: Flashing failsafe-wifi firmware..."
+          info "Device not on WiFi yet -- provisioning over USB"
+          _flash_msg_step_prepare_usb 1 "$tty_device" "$device_mac"
           local _mac_file
           _mac_file=$(mktemp)
           _flash_recovery "$tty_device" "$_mac_file" "$device"
           device_mac=$(tr -d '[:space:]' < "$_mac_file")
           rm -f "$_mac_file"
-          info "Step 2: Waiting for device to appear on network..."
+          _flash_msg_step_wait_online "$device_mac" 2
         fi
         fi
       else
-        info "Could not read device MAC -- provisioning via failsafe serial path"
-        info "Step 1: Flashing failsafe-wifi firmware..."
+        info "Could not read device MAC -- provisioning over USB"
+        _flash_msg_step_prepare_usb 1 "$tty_device"
         echo ""
         local _mac_file
         _mac_file=$(mktemp)
@@ -4207,7 +4237,7 @@ _flash_production_smart() {
         device_mac=$(tr -d '[:space:]' < "$_mac_file")
         rm -f "$_mac_file"
         echo ""
-        info "Step 2: Waiting for device to appear on network..."
+        _flash_msg_step_wait_online "${device_mac:-unknown}" 2
         echo ""
       fi
     else
@@ -4241,9 +4271,9 @@ _flash_production_smart() {
       fi
 
       if _failsafe_ota_reachable "$device_mac"; then
-        ok "failsafe-$device_mac OTA service is up; starting production OTA..."
+        ok "Device ${device_mac} ready -- starting firmware upload"
       else
-        info "Waiting for failsafe-$device_mac OTA service to come online..."
+        _flash_msg_waiting_for_upload "$device_mac"
         # The device is ready once its OTA service (port 3232) accepts a
         # connection. Probe the mDNS name directly: this confirms exactly what the
         # OTA needs and is far more reliable than polling 'avahi-browse -t' in a
@@ -4263,19 +4293,19 @@ _flash_production_smart() {
           sleep 3
           waited=$((waited + 3))
           if (( waited % 15 == 0 )); then
-            info "  Still waiting for failsafe-$device_mac OTA service ($waited/${max_wait}s)..."
+            info "  Still waiting for device ${device_mac} ($waited/${max_wait}s)..."
           fi
         done
 
         if [[ "$found" != "true" ]]; then
-          err "Failsafe device (failsafe-$device_mac) OTA service not reachable after ${max_wait}s.
+          err "Device ${device_mac} did not come online for firmware upload after ${max_wait}s.
 The device is likely unable to connect to WiFi.
 It will auto-reboot in ~3 minutes to retry WiFi. Once it connects, run:
   iotstack update $device
 Or monitor it now: iotstack logs /dev/ttyACM0"
         fi
 
-        ok "failsafe-$device_mac OTA service is up; starting production OTA..."
+        ok "Device ${device_mac} ready -- starting firmware upload"
       fi
 
       # Resolve the failsafe device's IP now, before OTA changes the hostname.
@@ -4333,7 +4363,7 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
         return
       fi
 
-      info "Reassigning failsafe-$device_mac to $device firmware..."
+      _flash_msg_upload_production "$device_mac" "$device"
 
       # Retrieve failsafe role-based OTA password from pass store. The failsafe
       # device authenticates OTA with its device-specific password derived from
