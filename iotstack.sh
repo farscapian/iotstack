@@ -1208,19 +1208,33 @@ _mdns_config_hash_for_hostname() {
   return 1
 }
 
-_flash_production_image_hash_on_device() {
-  # First 8 hex chars of the production-partition MD5 read from serial flash.
+_flash_production_partition_paths() {
+  # Set reply vars for production build artifacts: build_dir, firmware_file, production_offset.
+  local yaml_path="$1"
+  local build_name
+  build_name=$(basename "$yaml_path" .yaml)
+  _FLASH_PROD_BUILD_DIR="${YAMLS_DIR}/.esphome/build/${build_name}/.pioenvs/${build_name}"
+  _FLASH_PROD_FIRMWARE="${_FLASH_PROD_BUILD_DIR}/firmware.bin"
+  _FLASH_PROD_OFFSET=$(awk -F',' '/^production[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
+}
+
+_flash_read_production_partition_md5() {
+  # Full MD5 of the production partition on serial flash (one esptool read-flash).
   local tty_device="$1"
   local yaml_path="$2"
-  local build_name build_dir production_offset chip firmware_file file_size md5
-  build_name=$(basename "$yaml_path" .yaml)
-  build_dir="${YAMLS_DIR}/.esphome/build/${build_name}/.pioenvs/${build_name}"
-  firmware_file="${build_dir}/firmware.bin"
-  production_offset=$(awk -F',' '/^production[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
-  [[ -f "$firmware_file" && -n "$production_offset" ]] || return 1
+  local chip firmware_file file_size
+  _flash_production_partition_paths "$yaml_path"
+  firmware_file="$_FLASH_PROD_FIRMWARE"
+  [[ -f "$firmware_file" && -n "$_FLASH_PROD_OFFSET" ]] || return 1
   chip=$(esp_detect_chip "$tty_device" 2>/dev/null) || return 1
   file_size=$(stat -c%s "$firmware_file" 2>/dev/null) || return 1
-  md5=$(flash_read_region_md5 "$tty_device" "$chip" "$production_offset" "$file_size") || return 1
+  flash_read_region_md5 "$tty_device" "$chip" "$_FLASH_PROD_OFFSET" "$file_size"
+}
+
+_flash_production_image_hash_on_device() {
+  # First 8 hex chars of the production-partition MD5 read from serial flash.
+  local md5
+  md5=$(_flash_read_production_partition_md5 "$1" "$2") || return 1
   echo "${md5:0:8}"
 }
 
@@ -1328,6 +1342,7 @@ _flash_assess_device_runtime() {
   info "  MAC suffix: ${device_mac}"
   failsafe_hostname="failsafe-${device_mac}"
   if [[ -n "$tty_device" ]]; then
+    info "  Reading on-flash failsafe partition via USB..."
     failsafe_hash=$(_flash_failsafe_image_hash_on_device "$tty_device" 2>/dev/null) || failsafe_hash="unknown"
     info "  On-flash failsafe: ${failsafe_hostname} (image hash ${failsafe_hash})"
   fi
@@ -1350,15 +1365,25 @@ _flash_assess_device_on_flash_action() {
   local yaml_path="$2"
   local device_mac="$3"
   local prod_hostname="$4"
-  local running_hash build_hash mdns_hash
+  local running_hash build_hash mdns_hash device_md5 local_md5 firmware_file
 
   FLASH_ASSESS_FLASH_CURRENT=0
   mdns_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || true
-  running_hash=$(_flash_production_image_hash_on_device "$tty_device" "$yaml_path" 2>/dev/null) || running_hash="unknown"
   build_hash=$(_build_config_hash_for_yaml "$yaml_path" 2>/dev/null) || build_hash=""
+  running_hash="unknown"
 
-  if _flash_production_firmware_current "$tty_device" "$yaml_path"; then
-    FLASH_ASSESS_FLASH_CURRENT=1
+  _flash_production_partition_paths "$yaml_path"
+  firmware_file="$_FLASH_PROD_FIRMWARE"
+  if [[ -f "$firmware_file" && -n "$_FLASH_PROD_OFFSET" ]]; then
+    info "  Reading on-flash production partition via USB..."
+    device_md5=$(_flash_read_production_partition_md5 "$tty_device" "$yaml_path" 2>/dev/null) || device_md5=""
+    if [[ -n "$device_md5" ]]; then
+      running_hash="${device_md5:0:8}"
+      if [[ "${FLASH_ANYWAY:-0}" != "1" ]]; then
+        local_md5=$(flash_file_md5 "$firmware_file") || true
+        [[ -n "$local_md5" && "$local_md5" == "$device_md5" ]] && FLASH_ASSESS_FLASH_CURRENT=1
+      fi
+    fi
   fi
 
   if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
@@ -3457,6 +3482,7 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
       if [[ -n "$production_offset" && -d "$production_build_dir" ]]; then
         local prod_chip="${IOTSTACK_ESPTOOL_CHIP:-}"
         [[ -z "$prod_chip" ]] && prod_chip=$(esp_detect_chip "$tty_device" 2>/dev/null) || true
+        info "  Reading on-flash production partition via USB..."
         if [[ -n "$prod_chip" ]] && flash_production_matches_device \
             "$tty_device" "$prod_chip" "$production_build_dir" "$production_offset"; then
           ok "Production partition matches build — skipping OTA"
