@@ -1342,7 +1342,11 @@ _flash_assess_device_on_flash_action() {
     fi
   else
     if [[ -n "$build_hash" && "$running_hash" != "unknown" ]]; then
-      info "  On-flash production: outdated (device hash ${running_hash}, build hash ${build_hash})"
+      if [[ "$running_hash" == "$build_hash" ]]; then
+        info "  On-flash production: differs from build (runtime hash ${running_hash} matches build; on-flash image differs)"
+      else
+        info "  On-flash production: outdated (device hash ${running_hash}, build hash ${build_hash})"
+      fi
     elif [[ -n "$build_hash" ]]; then
       info "  On-flash production: differs from build (build hash ${build_hash})"
     else
@@ -2492,16 +2496,27 @@ _call_production_api_service() {
   local production_hostname="$1"
   local mac="$2"
   local service="$3"
-  local role noise_psk
+  local role noise_psk api_host api_src
 
   role="${production_hostname%-${mac}}"
+  api_host="${production_hostname}.local"
+  api_src="esphome:api:${service}"
   noise_psk=$(_device_api_noise_psk_b64 "$role" "$mac" 2>/dev/null) || true
   if [[ -n "$noise_psk" ]]; then
-    IOTSTACK_API_NOISE_PSK="$noise_psk" \
-      "$SCRIPT_DIR/scripts/esphome-service.sh" "${production_hostname}.local" "$service"
+    if create_log_child_output_piped; then
+      IOTSTACK_API_NOISE_PSK="$noise_psk" \
+        create_log_run "$api_src" "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service"
+    else
+      IOTSTACK_API_NOISE_PSK="$noise_psk" \
+        "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service"
+    fi
   else
     warn "[$mac] no API encryption key in pass for role ${role}; trying plaintext API"
-    "$SCRIPT_DIR/scripts/esphome-service.sh" "${production_hostname}.local" "$service"
+    if create_log_child_output_piped; then
+      create_log_run "$api_src" "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service"
+    else
+      "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service"
+    fi
   fi
 }
 
