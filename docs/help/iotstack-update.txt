@@ -40,3 +40,4 @@ Examples:
 
 For detailed help including security best practices, see:
   docs/help/iotstack-update-detailed.txt
+

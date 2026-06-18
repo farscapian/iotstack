@@ -44,3 +44,4 @@ Examples:
 
 For detailed help, see:
   docs/help/iotstack-commission-detailed.txt
+

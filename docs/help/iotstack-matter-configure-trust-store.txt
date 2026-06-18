@@ -44,3 +44,4 @@ Environment overrides (commission time):
 
 Help:
   iotstack matter configure-trust-store help
+

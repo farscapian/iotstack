@@ -150,3 +150,4 @@ On retry:
 
 To inspect fabric nodes:
   grep -o 'f/1/s/[0-9a-f]*' ~/.iotstack/chip-tool/common/chip_tool_config*.ini
+

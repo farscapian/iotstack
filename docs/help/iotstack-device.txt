@@ -27,3 +27,4 @@ Notes:
   - MAC suffix targets are resolved by scanning USB serial ports (esptool chip-id).
   - Partition offset/size come from ~/.iotstack/artifacts/iotstack_partition_table.csv.
   - Compile or flash once if the partition table is missing.
+

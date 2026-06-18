@@ -40,3 +40,4 @@ See also:
   docs/help/iotstack-commission-detailed.txt   (Matter commissioning deep dive)
 
 Note: 'iotstack commission' still works but is deprecated.
+

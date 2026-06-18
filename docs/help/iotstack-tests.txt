@@ -67,3 +67,4 @@ Failsafe firmware is compiled per chip variant (yamls/.iotstack-failsafe-esp32c6
 etc.) with separate compilation-cache entries.
 `iotstack flash` detects the chip on each /dev/ttyACM* port and substitutes the
 matching profile before compile.
+

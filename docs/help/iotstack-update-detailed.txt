@@ -72,3 +72,4 @@ This is useful when:
 
 Format: 6 hex digits (last 6 chars of MAC address)
 Find MACs: iotstack devices --id
+

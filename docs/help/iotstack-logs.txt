@@ -25,3 +25,4 @@ Notes:
   - Network streaming uses 'esphome logs' under the hood (ESPHome API).
   - Multiple devices are prefixed like '[bleproxy-1a7cfc] ...' and interleaved.
   - Press Ctrl-C to stop.
+

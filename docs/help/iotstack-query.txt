@@ -17,3 +17,4 @@ Examples:
 
 For detailed help including setup and dependencies, see:
   docs/help/iotstack-query-detailed.txt
+

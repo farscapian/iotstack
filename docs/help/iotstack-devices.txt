@@ -18,3 +18,4 @@ Examples:
   iotstack devices --id           # Output all device IDs
   iotstack devices bleproxy --id  # Output bleproxy device IDs
   iotstack devices other --id     # Output IDs of unmatched devices
+

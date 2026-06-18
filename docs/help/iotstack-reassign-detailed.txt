@@ -62,3 +62,4 @@ All reassignments:
   - Leave other devices untouched
   - Update entity IDs in HA if configured
   - Take effect immediately (no reboot needed)
+

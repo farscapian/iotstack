@@ -19,3 +19,4 @@ Examples:
   iotstack failsafe              # Table of failsafe devices on the network
   iotstack failsafe --id         # MAC suffixes only (for scripts)
   iotstack flash failsafe /dev/ttyACM0   # Flash failsafe image via serial
+

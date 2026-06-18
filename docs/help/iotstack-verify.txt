@@ -18,3 +18,4 @@ Per-role help:
 Examples:
   iotstack verify bleproxy  # Check if devices are up-to-date
   iotstack verify all       # Check entire fleet
+

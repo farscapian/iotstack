@@ -12,3 +12,4 @@ Arguments:
 
 Example:
   iotstack verify-flash failsafe /dev/ttyACM0
+

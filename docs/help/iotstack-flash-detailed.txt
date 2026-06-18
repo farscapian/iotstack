@@ -89,3 +89,4 @@ Recovery workflow:
 
 The failsafe partition (recovery.yaml) is read-only and shared by all devices,
 so it's nearly impossible to brick a device—you can always reflash via serial.
+
