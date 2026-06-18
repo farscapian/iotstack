@@ -153,7 +153,7 @@ fi
 
 # ── Matrix panel layout (matrix_hub75 reads these at boot) ───────────────────
 # Set via flash flags, env override, or pass per role:
-#   iotstack flash matrixdisplay /dev/ttyACM0 --matrix-columns=2 --matrix-panel-width=64 --matrix-panel-height=32
+#   iotstack flash matrixdisplay /dev/ttyACM0 --panel-count=2 --matrix-panel-width=64 --matrix-panel-height=32
 #   MATRIX_COLS=2 iotstack flash matrixdisplay /dev/ttyACM0
 #   pass: iotstack/roles/matrixdisplay/matrix_{cols,panel_w,panel_h}
 WRITE_MATRIX_LAYOUT=0

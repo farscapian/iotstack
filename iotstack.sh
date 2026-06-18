@@ -3105,12 +3105,12 @@ cmd_flash() {
         FLASH_ANYWAY=1
         shift
         ;;
-      --matrix-columns=*)
+      --panel-count=*)
         MATRIX_COLS="${1#*=}"
         shift
         ;;
-      --matrix-columns)
-        [[ $# -lt 2 ]] && err "Missing value for --matrix-columns"
+      --panel-count)
+        [[ $# -lt 2 ]] && err "Missing value for --panel-count"
         MATRIX_COLS="$2"
         shift 2
         ;;
@@ -3152,7 +3152,7 @@ cmd_flash() {
 
   if [[ -n "$MATRIX_COLS$MATRIX_PANEL_W$MATRIX_PANEL_H" ]]; then
     if ! _flash_matrix_layout_applicable "$device" "$tty_device_or_role"; then
-      warn "Matrix layout options (--matrix-columns, --matrix-panel-width, --matrix-panel-height) apply only to matrixdisplay; ignoring"
+      warn "Matrix layout options (--panel-count, --matrix-panel-width, --matrix-panel-height) apply only to matrixdisplay; ignoring"
       MATRIX_COLS=""
       MATRIX_PANEL_W=""
       MATRIX_PANEL_H=""

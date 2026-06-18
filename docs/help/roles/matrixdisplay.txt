@@ -18,14 +18,14 @@ Commands (shared help for flash, update, reassign, verify):
 
 Flash options (matrixdisplay only; written to NVS via write-nvs-secrets.sh):
 
-  --matrix-columns=N       HUB75 panel count (1 or 2)
+  --panel-count=N          HUB75 panel count (1 or 2)
   --matrix-panel-width=N   Panel width in pixels (default 64)
   --matrix-panel-height=N  Panel height in pixels (default 32)
 
 Examples:
 
   iotstack flash matrixdisplay /dev/ttyACM0
-  iotstack flash matrixdisplay /dev/ttyACM0 --matrix-columns=2 --matrix-panel-width=64 --matrix-panel-height=32
+  iotstack flash matrixdisplay /dev/ttyACM0 --panel-count=2 --matrix-panel-width=64 --matrix-panel-height=32
   iotstack update matrixdisplay --dry-run
   iotstack reassign 8238cc matrixdisplay
 
