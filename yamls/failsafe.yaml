@@ -104,9 +104,13 @@ api:
         ota_password: string
         api_key: string
         thread_tlv: string
+        matrix_cols: string
+        matrix_panel_w: string
+        matrix_panel_h: string
       then:
         - lambda: |-
-            id(nvs).update_secrets(wifi_ssid, wifi_password, ota_password, api_key, thread_tlv);
+            id(nvs).update_secrets(wifi_ssid, wifi_password, ota_password, api_key, thread_tlv,
+              matrix_cols, matrix_panel_w, matrix_panel_h);
         - delay: 500ms
         - lambda: |-
             App.safe_reboot();

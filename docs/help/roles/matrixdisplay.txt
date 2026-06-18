@@ -25,8 +25,10 @@ Flash options (matrixdisplay only; written to NVS via write-nvs-secrets.sh):
 Panel layout is stored in NVS, not in firmware config_hash. Diagnostic text
 sensors (Panel Count, Matrix Panel Width/Height) report the active layout via the
 production API. On flash, iotstack compares those runtime values to the target
-(flags → pass → defaults). On mismatch it switches to failsafe, rewrites NVS
-over USB, and boots production again — no production firmware reflash required.
+(flags → pass → defaults). On mismatch it switches to failsafe, calls the
+update_nvs_secrets API service to write matrix_cols/matrix_panel_w/matrix_panel_h,
+and boots production again — no USB and no production firmware reflash required.
+USB (write-nvs-secrets.sh) is used only when failsafe lacks the API service.
 
 Examples:
 

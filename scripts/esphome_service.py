@@ -6,7 +6,7 @@ Usage: esphome_service.py <host> <service_name> [api_password [json_variables]]
 json_variables is an optional JSON object whose keys/values match the ESPHome
 service variable names.  Example:
   esphome_service.py failsafe-abc123.local update_nvs_secrets '' \
-    '{"ota_password":"...","api_key":"..."}'
+    '{"matrix_cols":"2","matrix_panel_w":"64","matrix_panel_h":"32"}'
 
 Exits 0 if the service was sent. The service may reboot the device (e.g.
 switch_to_failsafe), so a missing ack / disconnect afterwards is treated as

@@ -3189,12 +3189,55 @@ _flash_read_matrix_layout_from_device() {
   [[ -n "$_cols_ref" && -n "$_w_ref" && -n "$_h_ref" ]]
 }
 
+_call_failsafe_api_service() {
+  # Invoke a native-API user service on failsafe firmware (plaintext API, port 6053).
+  local device_mac="$1"
+  local service="$2"
+  local json_vars="${3:-}"
+  local api_host="failsafe-${device_mac}.local"
+  local api_src="esphome:api:${service}"
+
+  if create_log_child_output_piped; then
+    create_log_run "$api_src" "$SCRIPT_DIR/scripts/esphome-service.sh" \
+      "$api_host" "$service" "" "$json_vars"
+    return $?
+  fi
+  "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service" "" "$json_vars"
+}
+
+_failsafe_update_nvs_matrix_layout() {
+  # Write matrix_cols / matrix_panel_w / matrix_panel_h via update_nvs_secrets API.
+  local device_mac="$1"
+  local cols="$2"
+  local w="$3"
+  local h="$4"
+  local json_vars failsafe_host="failsafe-${device_mac}"
+
+  if ! _production_api_reachable "$failsafe_host"; then
+    return 1
+  fi
+
+  json_vars=$(
+    MATRIX_COLS="$cols" MATRIX_PANEL_W="$w" MATRIX_PANEL_H="$h" python3 - <<'PY'
+import json, os
+print(json.dumps({
+    "matrix_cols": os.environ["MATRIX_COLS"],
+    "matrix_panel_w": os.environ["MATRIX_PANEL_W"],
+    "matrix_panel_h": os.environ["MATRIX_PANEL_H"],
+}))
+PY
+  ) || return 1
+
+  info "Updating matrix layout NVS via ${failsafe_host}.local (update_nvs_secrets API)..."
+  _call_failsafe_api_service "$device_mac" update_nvs_secrets "$json_vars"
+}
+
 _flash_write_nvs_secrets() {
   local tty_device="$1"
   local device_mac="$2"
   local production_role="${3:-}"
 
-  info "Writing device-specific secrets to NVS..."
+  info "Writing device-specific secrets to NVS via USB..."
   if create_log_child_output_piped; then
     create_log_run "write-nvs-secrets" "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" \
       "$tty_device" "$device_mac" "$production_role" \
@@ -3242,7 +3285,8 @@ _flash_matrix_layout_mismatch() {
 }
 
 _flash_matrix_layout_update_via_failsafe_if_needed() {
-  # Query production API sensors; on mismatch, switch to failsafe and rewrite NVS over USB.
+  # Query production API sensors; on mismatch, switch to failsafe and update NVS
+  # via update_nvs_secrets API (USB esptool write is fallback only).
   # Returns 0 if unchanged, 2 if NVS was updated, 1 on failure.
   local device="$1"
   local tty_device="$2"
@@ -3278,8 +3322,19 @@ _flash_matrix_layout_update_via_failsafe_if_needed() {
     fi
   fi
 
-  info "Step 2: Writing matrix layout to NVS via ${tty_device}..."
-  _flash_write_nvs_secrets "$tty_device" "$device_mac" "$device"
+  info "Step 2: Updating matrix layout in NVS..."
+  if _failsafe_update_nvs_matrix_layout "$device_mac" "$want_cols" "$want_w" "$want_h"; then
+    ok "Matrix layout NVS updated via failsafe API (device rebooting)"
+    sleep 5
+    _wait_for_device "failsafe-${device_mac}" 60 || true
+  elif [[ -n "$tty_device" ]]; then
+    warn "Failsafe API NVS update unavailable — falling back to USB write on ${tty_device}"
+    warn "Refresh failsafe firmware when possible so update_nvs_secrets supports matrix layout"
+    _flash_write_nvs_secrets "$tty_device" "$device_mac" "$device"
+  else
+    err "Failsafe API NVS update failed and no USB device was provided"
+    return 1
+  fi
   _flash_store_matrix_layout_pass "$device" "$want_cols" "$want_w" "$want_h"
 
   info "Step 3: Booting production firmware with updated NVS..."

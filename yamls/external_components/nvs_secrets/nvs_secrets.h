@@ -35,7 +35,10 @@ class NVSSecrets : public Component {
                       const std::string &wifi_password,
                       const std::string &ota_password,
                       const std::string &api_key,
-                      const std::string &thread_tlv);
+                      const std::string &thread_tlv,
+                      const std::string &matrix_cols = "",
+                      const std::string &matrix_panel_w = "",
+                      const std::string &matrix_panel_h = "");
 
  private:
   std::string ota_nvs_key_{"ota_password"};
@@ -49,6 +52,8 @@ class NVSSecrets : public Component {
 
   std::string read_nvs_string(const char* key);
   void write_nvs_string(nvs_handle_t handle, const char* key, const std::string &value);
+  void write_nvs_u8_if_set(nvs_handle_t handle, const char* key, const std::string &value);
+  void write_nvs_u16_if_set(nvs_handle_t handle, const char* key, const std::string &value, uint16_t max_val);
   // Apply the Thread operational dataset (hex TLVs) from NVS to the OpenThread
   // stack at runtime. No-op build unless USE_OPENTHREAD is defined.
   void apply_thread_dataset_();

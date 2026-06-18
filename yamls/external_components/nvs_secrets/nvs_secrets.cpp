@@ -225,11 +225,46 @@ void NVSSecrets::write_nvs_string(nvs_handle_t handle, const char* key, const st
     ESP_LOGI(TAG, "[NVS-UPDATE] '%s' updated", key);
 }
 
+void NVSSecrets::write_nvs_u8_if_set(nvs_handle_t handle, const char* key, const std::string &value) {
+  if (value.empty())
+    return;
+  int parsed = atoi(value.c_str());
+  if (parsed < 1 || parsed > 2) {
+    ESP_LOGW(TAG, "[NVS-UPDATE] invalid %s=%s (expected 1 or 2)", key, value.c_str());
+    return;
+  }
+  uint8_t v = static_cast<uint8_t>(parsed);
+  esp_err_t err = nvs_set_u8(handle, key, v);
+  if (err != ESP_OK)
+    ESP_LOGW(TAG, "[NVS-UPDATE] write '%s' failed: %s", key, esp_err_to_name(err));
+  else
+    ESP_LOGI(TAG, "[NVS-UPDATE] '%s' updated to %u", key, v);
+}
+
+void NVSSecrets::write_nvs_u16_if_set(nvs_handle_t handle, const char* key, const std::string &value, uint16_t max_val) {
+  if (value.empty())
+    return;
+  int parsed = atoi(value.c_str());
+  if (parsed < 8 || parsed > max_val) {
+    ESP_LOGW(TAG, "[NVS-UPDATE] invalid %s=%s (expected 8-%u)", key, value.c_str(), max_val);
+    return;
+  }
+  uint16_t v = static_cast<uint16_t>(parsed);
+  esp_err_t err = nvs_set_u16(handle, key, v);
+  if (err != ESP_OK)
+    ESP_LOGW(TAG, "[NVS-UPDATE] write '%s' failed: %s", key, esp_err_to_name(err));
+  else
+    ESP_LOGI(TAG, "[NVS-UPDATE] '%s' updated to %u", key, v);
+}
+
 void NVSSecrets::update_secrets(const std::string &wifi_ssid,
                                 const std::string &wifi_password,
                                 const std::string &ota_password,
                                 const std::string &api_key,
-                                const std::string &thread_tlv) {
+                                const std::string &thread_tlv,
+                                const std::string &matrix_cols,
+                                const std::string &matrix_panel_w,
+                                const std::string &matrix_panel_h) {
   nvs_handle_t handle;
   esp_err_t err = nvs_open(NAMESPACE, NVS_READWRITE, &handle);
   if (err != ESP_OK) {
@@ -242,6 +277,9 @@ void NVSSecrets::update_secrets(const std::string &wifi_ssid,
   if (!api_nvs_key_.empty())
     write_nvs_string(handle, api_nvs_key_.c_str(), api_key);
   write_nvs_string(handle, "thread_tlv",    thread_tlv);
+  write_nvs_u8_if_set(handle, "matrix_cols", matrix_cols);
+  write_nvs_u16_if_set(handle, "matrix_panel_w", matrix_panel_w, 256);
+  write_nvs_u16_if_set(handle, "matrix_panel_h", matrix_panel_h, 128);
   err = nvs_commit(handle);
   if (err != ESP_OK)
     ESP_LOGE(TAG, "[NVS-UPDATE] nvs_commit failed: %s", esp_err_to_name(err));
