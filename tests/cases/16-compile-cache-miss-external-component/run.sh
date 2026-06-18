@@ -1,5 +1,5 @@
 #!/bin/bash
-# TEST_DESC: Compilation cache miss after external_components change (partition_manager)
+# TEST_DESC: Compilation cache miss after external_components change (iotstack flash)
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
@@ -11,31 +11,33 @@ cleanup() {
 }
 trap cleanup EXIT
 
-test_info "Seeding compilation cache for ${role}"
-test_run_step "smart_compile ${role} (seed)" test_run_smart_compile "$role"
+test_require_tty_for_role "$role"
 
-test_info "smart_compile ${role} (confirm cache hit)"
+test_run_step "iotstack flash ${role} ${IOTSTACK_TEST_TTY} (seed)" \
+  test_iotstack flash "$role" "$IOTSTACK_TEST_TTY"
+
+test_info "iotstack flash ${role} ${IOTSTACK_TEST_TTY} (confirm cache hit)"
 output=""
 set +e
-output=$(test_run_smart_compile "$role" 2>&1)
+output=$(test_iotstack flash "$role" "$IOTSTACK_TEST_TTY" 2>&1)
 rc=$?
 set -e
 [[ -n "$output" ]] && printf '%s\n' "$output"
-[[ $rc -eq 0 ]] || { test_fail "smart_compile ${role} failed"; exit 1; }
+[[ $rc -eq 0 ]] || { test_fail "iotstack flash ${role} failed"; exit 1; }
 test_assert_output_contains "Compilation cache hit" "$output"
 
 test_bump_external_component_for_cache_miss
 
 before_sha=$(test_compilation_cache_row "$yaml_name" | awk -F, '{ print $2 }')
 
-test_info "smart_compile ${role} (expect cache miss after partition_manager bump)"
+test_info "iotstack flash ${role} ${IOTSTACK_TEST_TTY} (expect cache miss after partition_manager bump)"
 output=""
 set +e
-output=$(test_run_smart_compile "$role" 2>&1)
+output=$(test_iotstack flash "$role" "$IOTSTACK_TEST_TTY" 2>&1)
 rc=$?
 set -e
 [[ -n "$output" ]] && printf '%s\n' "$output"
-[[ $rc -eq 0 ]] || { test_fail "smart_compile ${role} failed after bump"; exit 1; }
+[[ $rc -eq 0 ]] || { test_fail "iotstack flash ${role} failed after bump"; exit 1; }
 
 test_assert_output_contains "Compilation cache miss" "$output"
 test_assert_output_contains "Compiling production firmware" "$output"

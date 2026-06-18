@@ -10,6 +10,7 @@ Commands:
   update              Compile and flash device(s) over-the-air (OTA)
   reassign            Flash specific devices to a different configuration
   verify              Check if devices match the current build hash
+  verify-flash        Compare on-device flash checksums to build artifacts (USB)
   flash               Flash device via serial/USB (for bricked devices)
   logs                Stream device logs (serial, or over the network by role)
   query               Query Home Assistant device and entity registry

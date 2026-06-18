@@ -746,6 +746,10 @@ help_verify() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-verify.txt"
 }
 
+help_verify_flash() {
+  cat "${SCRIPT_DIR}/docs/help/iotstack-verify-flash.txt"
+}
+
 help_devices() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-devices.txt"
 }
@@ -2200,6 +2204,40 @@ cmd_verify() {
     info "Verifying: $yaml_file"
     _run_update_devices --verify "$yaml_file"
   fi
+}
+
+cmd_verify_flash() {
+  if [[ "${1:-}" == "help" ]]; then
+    help_verify_flash
+    return 0
+  fi
+
+  local role="${1:-}"
+  local tty="${2:-}"
+  if [[ -z "$role" || -z "$tty" ]]; then
+    help_verify_flash
+    exit 1
+  fi
+  if [[ ! -e "$tty" ]]; then
+    err "TTY device not found: $tty"
+  fi
+
+  local variant
+  variant=$(yaml_variant_for_role "$role" 2>/dev/null) || variant=""
+  if [[ -z "$variant" ]]; then
+    variant=$(esp_detect_chip "$tty" 2>/dev/null) || variant=""
+  fi
+  case "$variant" in
+    esp32c6) export ESP_VERIFY_CHIP=esp32c6 ;;
+    esp32s3) export ESP_VERIFY_CHIP=esp32s3 ;;
+  esac
+
+  info "Verifying on-device flash checksums: ${role} @ ${tty}"
+  if create_log_child_output_piped; then
+    create_log_run "verify-flash.sh" bash "${SCRIPTS_DIR}/verify-flash.sh" "$tty" "$role"
+    return $?
+  fi
+  bash "${SCRIPTS_DIR}/verify-flash.sh" "$tty" "$role"
 }
 
 cmd_query() {
@@ -4219,6 +4257,10 @@ main() {
       shift
       cmd_verify "$@"
       ;;
+    verify-flash)
+      shift
+      cmd_verify_flash "$@"
+      ;;
     reassign)
       shift
       cmd_reassign "$@"
@@ -4295,6 +4337,7 @@ main() {
         case "$2" in
           update)           help_update ;;
           verify)           help_verify ;;
+          verify-flash)     help_verify_flash ;;
           reassign)         help_reassign ;;
           devices)          help_devices ;;
           failsafe)         help_failsafe ;;

@@ -240,18 +240,6 @@ test_run_step() {
   return 1
 }
 
-test_source_iotstack_functions() {
-  [[ -n "${_IOTSTACK_FUNCTIONS_LOADED:-}" ]] && return 0
-  # shellcheck source=iotstack.sh
-  source "${PROJECT_ROOT}/iotstack.sh"
-  _IOTSTACK_FUNCTIONS_LOADED=1
-}
-
-test_role_yaml_file() {
-  local role="${1:-bleproxy}"
-  printf '%s/%s.yaml' "$YAMLS_DIR" "$role"
-}
-
 test_compilation_cache_row() {
   local yaml_name="${1:-bleproxy.yaml}"
   [[ -f "$COMPILATION_CACHE" ]] || return 1
@@ -277,36 +265,6 @@ test_strip_compilation_cache_config_hash() {
     printf '%s,%s,%s,\n' "$yaml_name" "$yaml_sha" "$binary_sha"
   } > "$tmp"
   mv "$tmp" "$COMPILATION_CACHE"
-}
-
-test_begin_session_log() {
-  # Mirror iotstack --log-id session logging for direct smart_compile / verify-flash calls.
-  local role="${1:-}"
-  local log_id="${IOTSTACK_TEST_LOG_ID:-}"
-  [[ -n "$log_id" && "$log_id" != "0" ]] || return 0
-
-  export IOTSTACK_LOG_ID="$log_id"
-  export IOTSTACK_CREATE_LOG=1
-  export IOTSTACK_TIMESTAMP=1
-  export VERBOSE=1
-  export QUIET=0
-  export IOTSTACK_VERBOSE=1
-
-  test_source_iotstack_functions
-
-  IOTSTACK_ARGV=(tests run "$log_id")
-  [[ -n "$role" ]] && IOTSTACK_ARGV+=(smart_compile "$role")
-  create_log_setup "tests"
-  test_link_session_log
-  test_info "Session log: ${IOTSTACK_LOG_FILE}"
-}
-
-test_run_smart_compile() {
-  local role="${1:-bleproxy}"
-  local yaml
-  yaml=$(test_role_yaml_file "$role")
-  test_begin_session_log "$role"
-  smart_compile "$yaml" "$role"
 }
 
 test_assert_output_contains() {
@@ -337,23 +295,4 @@ test_bump_external_component_for_cache_miss() {
 test_restore_external_component_cache_bump() {
   git -C "$PROJECT_ROOT" checkout -- yamls/external_components/partition_manager/partition_manager.cpp 2>/dev/null \
     || true
-}
-
-test_verify_flash() {
-  local role="${1:-failsafe}"
-  local tty="${2:-${IOTSTACK_TEST_TTY:-}}"
-  local variant="${3:-${IOTSTACK_TEST_VARIANT:-$(test_role_variant "$role")}}"
-  local chip flash_size
-
-  test_begin_session_log "verify-flash ${role}"
-
-  chip="$variant"
-  case "$variant" in
-    esp32c6) flash_size=4MB ;;
-    esp32s3) flash_size=16MB ;;
-    *) flash_size=4MB ;;
-  esac
-
-  ESP_VERIFY_CHIP="$chip" ESP_VERIFY_FLASH_SIZE="$flash_size" \
-    "${SCRIPTS_DIR}/verify-flash.sh" "$tty" "$role"
 }

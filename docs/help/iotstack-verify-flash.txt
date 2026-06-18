@@ -1,0 +1,14 @@
+iotstack verify-flash — Compare on-device flash checksums to build artifacts
+
+Reads bootloader and firmware regions over USB and compares checksums to the
+compiled build in yamls/.esphome/build/<role>/.
+
+Usage:
+  iotstack verify-flash <role> <tty>
+
+Arguments:
+  role              Device role (e.g. failsafe, bleproxy)
+  tty               Serial port (e.g. /dev/ttyACM0)
+
+Example:
+  iotstack verify-flash failsafe /dev/ttyACM0
