@@ -102,7 +102,7 @@ for i in {0..1}; do
     read_md5=$(md5sum "${read_file}.exact" | awk '{print $1}')
 
     if [[ "$original_md5" == "$read_md5" ]]; then
-      ok "$file: checksum matches ✓"
+      ok "$file: checksum matches"
     else
       echo -e "${RED}[FAIL]${RST} $file: checksum mismatch"
       echo "  Original: $original_md5"

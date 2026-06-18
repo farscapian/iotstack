@@ -465,7 +465,7 @@ if inconsistent:
         )
     sys.exit(0)
 
-print('✓ All entity IDs are consistent with device names.')
+print('All entity IDs are consistent with device names.')
 VERIFYEOF
 }
 
@@ -1288,18 +1288,18 @@ while IFS= read -r HOSTNAME; do
   if [[ "$VERIFY" == true ]]; then
     if [[ -n "$NEW_CONFIG_HASH" && -n "$DEVICE_HASH" ]]; then
       if [[ "$DEVICE_HASH" == "$NEW_CONFIG_HASH" ]]; then
-        ok "${HOSTNAME}: hash ${DEVICE_HASH} ✓"
+        ok "${HOSTNAME}: hash ${DEVICE_HASH} matches"
         VERIFY_OK_LIST+=("$HOSTNAME")
       else
-        err "${HOSTNAME}: hash ${DEVICE_HASH} ≠ ${NEW_CONFIG_HASH}"
+        err "${HOSTNAME}: hash ${DEVICE_HASH} != ${NEW_CONFIG_HASH}"
         VERIFY_FAIL_LIST+=("$HOSTNAME")
       fi
     elif [[ -n "$RUNNING_VERSION" && -n "$EXPECTED_VERSION" ]]; then
       if [[ "$RUNNING_VERSION" == "$EXPECTED_VERSION" ]]; then
-        ok "${HOSTNAME}: version ${RUNNING_VERSION} ✓  (no hash available)"
+        ok "${HOSTNAME}: version ${RUNNING_VERSION} matches (no hash available)"
         VERIFY_OK_LIST+=("$HOSTNAME")
       else
-        err "${HOSTNAME}: version ${RUNNING_VERSION} ≠ ${EXPECTED_VERSION}  (no hash available)"
+        err "${HOSTNAME}: version ${RUNNING_VERSION} != ${EXPECTED_VERSION} (no hash available)"
         VERIFY_FAIL_LIST+=("$HOSTNAME")
       fi
     else
@@ -1505,27 +1505,27 @@ if [[ "$VERBOSE" == true ]]; then
 
         if [[ -f "$log_f" ]] && grep -q "Authentication invalid" "$log_f" 2>/dev/null; then
           echo fail > "$result_f"
-          parts+=("${RED}✗${RST} ${hostname} (auth failed)")
+          parts+=("${RED}FAIL${RST} ${hostname} (auth failed)")
           auth_failed_devices[$hostname]=true
           continue
         fi
 
         if [[ -f "$result_f" ]]; then
           if [[ "$(cat "$result_f")" == ok ]]; then
-            parts+=("${GRN}✓${RST} ${hostname}")
+            parts+=("${GRN}OK${RST} ${hostname}")
           else
-            parts+=("${RED}✗${RST} ${hostname}")
+            parts+=("${RED}FAIL${RST} ${hostname}")
           fi
         elif [[ -f "$log_f" ]]; then
           pct=$(grep -oE '[0-9]+(\.[0-9]+)? ?%' "$log_f" 2>/dev/null \
                 | tr -d ' ' | tail -1)
           if [[ -n "$pct" ]]; then
-            parts+=("${BLU}↑${RST} ${hostname} ${pct}")
+            parts+=("${BLU}${hostname} ${pct}${RST}")
           else
-            parts+=("${DIM}… ${hostname}${RST}")
+            parts+=("${DIM}... ${hostname}${RST}")
           fi
         else
-          parts+=("${DIM}… ${hostname} (queued)${RST}")
+          parts+=("${DIM}... ${hostname} (queued)${RST}")
         fi
       done
       line=""
@@ -1581,11 +1581,11 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
     if grep -q "Authentication invalid" "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null || \
        grep -q "timed out" "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null; then
       echo
-      echo "  ⚠️  OTA Authentication Failed (Wrong OTA Password?)"
+      echo "  [WARN] OTA Authentication Failed (Wrong OTA Password?)"
       echo
       echo "  The device rejected the OTA password. This likely means:"
-      echo "  • The device is using a different OTA password than expected"
-      echo "  • The device's previous password hasn't been rotated yet"
+      echo "  - The device is using a different OTA password than expected"
+      echo "  - The device's previous password hasn't been rotated yet"
       echo
       echo "  Solution: Provide the device's CURRENT OTA password using CLI:"
       mac_suffix="${HOSTNAME##*-}"

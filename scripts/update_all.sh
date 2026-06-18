@@ -104,10 +104,10 @@ echo "════════════════════════�
 echo " UPDATE ALL — COMPLETE"
 echo "────────────────────────────────────────────────────────"
 for y in "${PASS[@]}"; do
-  printf " ${GRN}✓${RST}  %s\n" "$y"
+  ok "$y"
 done
 for y in "${FAIL[@]}"; do
-  printf " ${RED}✗${RST}  %s\n" "$y"
+  echo -e "${RED}[FAIL]${RST}  $y" >&2
 done
 echo "════════════════════════════════════════════════════════"
 

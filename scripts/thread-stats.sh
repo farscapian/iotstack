@@ -29,20 +29,20 @@ HA_TOKEN="${HA_TOKEN:-}"
 #######################################
 
 die() {
-  echo -e "${RED}✗ Error: $*${NC}" >&2
+  echo -e "${RED}[ERR] $*${NC}" >&2
   exit 1
 }
 
 info() {
-  echo -e "${BLUE}ℹ $*${NC}"
+  echo -e "${BLUE}[INFO] $*${NC}"
 }
 
 success() {
-  echo -e "${GREEN}✓ $*${NC}"
+  echo -e "${GREEN}[OK] $*${NC}"
 }
 
 warn() {
-  echo -e "${YELLOW}⚠ $*${NC}"
+  echo -e "${YELLOW}[WARN] $*${NC}"
 }
 
 debug() {

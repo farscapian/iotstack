@@ -1690,12 +1690,12 @@ _flash_assess_device_on_flash_action() {
     fi
   elif [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" && -n "$local_image_hash" && "$running_hash" != "unknown" ]]; then
     if [[ -n "$mdns_hash" && "$mdns_hash" == "$build_hash" ]]; then
-      info "  On-flash production: image ${running_hash} ≠ build image ${local_image_hash} (runtime config_hash ${mdns_hash} matches build)"
+      info "  On-flash production: image ${running_hash} != build image ${local_image_hash} (runtime config_hash ${mdns_hash} matches build)"
     else
-      info "  On-flash production: image ${running_hash} ≠ build image ${local_image_hash} (config_hash ${build_hash:-unknown})"
+      info "  On-flash production: image ${running_hash} != build image ${local_image_hash} (config_hash ${build_hash:-unknown})"
     fi
   elif [[ -n "$mdns_hash" && -n "$build_hash" ]]; then
-    info "  Production: runtime config_hash ${mdns_hash} ≠ build config_hash ${build_hash}"
+    info "  Production: runtime config_hash ${mdns_hash} != build config_hash ${build_hash}"
   elif [[ -n "$build_hash" ]]; then
     info "  Production: differs from build (config_hash ${build_hash}; runtime hash unavailable)"
   else
@@ -3749,7 +3749,7 @@ _flash_recovery() {
   if [[ ${#tty_devices[@]} -eq 0 ]]; then
     local vm_warning=""
     if pgrep -l "VirtualBox|qemu|vboxheadless" >/dev/null 2>&1; then
-      vm_warning=$'\n\n⚠️  Virtual machine(s) detected. USB devices may be passed through to a VM.\n   Stop the VM or disconnect devices from it to use them on the host.'
+      vm_warning=$'\n\n[WARN] Virtual machine(s) detected. USB devices may be passed through to a VM.\n   Stop the VM or disconnect devices from it to use them on the host.'
     fi
     err "No USB serial devices found. Plug in device(s) and try again.${vm_warning}"
   fi
