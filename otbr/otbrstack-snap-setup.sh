@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # otbr-setup.sh
 # Detects ESP32 RCP device, verifies spinel firmware, configures and restarts OTBR snap.
-# Run as normal user — sudo is invoked only when needed for snap commands.
+# Run as normal user -- sudo is invoked only when needed for snap commands.
 
 set -euo pipefail
 
@@ -19,7 +19,7 @@ ESPRESSIF_VENDOR_ID="303a"
 SONOFF_VENDOR_ID="10c4"
 SONOFF_PRODUCT_ID="ea60"
 # Env is loaded by otbr before invoking this script.
-[[ -n "${THREAD_DATASET_TLV:-}" ]] || { echo "[ERROR] THREAD_DATASET_TLV not set — run via 'otbr snap'" >&2; exit 1; }
+[[ -n "${THREAD_DATASET_TLV:-}" ]] || { echo "[ERROR] THREAD_DATASET_TLV not set -- run via 'otbr snap'" >&2; exit 1; }
 
 # ---------------------------------------------------------------------------
 # 2. Helpers
@@ -130,7 +130,7 @@ check_serial_group() {
     done
 
     if ! getent group "$group" &>/dev/null; then
-        warn "Group '$group' not found on this system — skipping group check."
+        warn "Group '$group' not found on this system -- skipping group check."
         return
     fi
 
@@ -139,23 +139,23 @@ check_serial_group() {
         log "Adding $USER to group '$group'..."
         sudo usermod -aG "$group" "$USER"
         echo ""
-        echo "  ╔══════════════════════════════════════════════════════╗"
-        echo "  ║  Added $USER to '$group'.                            "
-        echo "  ║  You must log out and log back in for this           "
-        echo "  ║  to take effect, then re-run this script.            "
-        echo "  ╚══════════════════════════════════════════════════════╝"
+        echo "  +========================================================+"
+        echo "  |  Added $USER to '$group'.                            "
+        echo "  |  You must log out and log back in for this           "
+        echo "  |  to take effect, then re-run this script.            "
+        echo "  +========================================================+"
         echo ""
         exit 0
     fi
 
-    # Permanent membership exists — check if active session reflects it
+    # Permanent membership exists -- check if active session reflects it
     if ! groups | grep -qw "$group"; then
         echo ""
-        echo "  ╔══════════════════════════════════════════════════════╗"
-        echo "  ║  You are in the '$group' group but your current      "
-        echo "  ║  session does not reflect it yet.                    "
-        echo "  ║  Please log out and log back in, then re-run.        "
-        echo "  ╚══════════════════════════════════════════════════════╝"
+        echo "  +========================================================+"
+        echo "  |  You are in the '$group' group but your current      "
+        echo "  |  session does not reflect it yet.                    "
+        echo "  |  Please log out and log back in, then re-run.        "
+        echo "  +========================================================+"
         echo ""
         exit 0
     fi
@@ -174,12 +174,12 @@ ensure_kernel_modules() {
     for mod in "${modules[@]}"; do
         if ! lsmod | grep -q "^${mod}"; then
             # Try loading; if modprobe reports the module is not found, the
-            # module files are missing — install linux-modules-extra and retry.
+            # module files are missing -- install linux-modules-extra and retry.
             if ! sudo modprobe "$mod" 2>/dev/null; then
                 if ! modinfo "$mod" &>/dev/null; then
                     local extras
                     extras="linux-modules-extra-$(uname -r)"
-                    log "Module $mod not found — installing $extras..."
+                    log "Module $mod not found -- installing $extras..."
                     if [[ -n "${HTTP_PROXY:-}" ]]; then
                         echo "Acquire::http::Proxy \"${HTTP_PROXY}\";" \
                             | sudo tee /etc/apt/apt.conf.d/90apt-cache >/dev/null
@@ -209,7 +209,7 @@ ensure_kernel_modules() {
 # 7. Stop OTBR snap if running (to free the serial port)
 # ---------------------------------------------------------------------------
 
-# OTBR_SNAP_STOPPED — set by ensure_otbr_stopped:
+# OTBR_SNAP_STOPPED -- set by ensure_otbr_stopped:
 #   false  : snap was not running (or not installed)
 #   true   : snap was running and has been stopped
 OTBR_SNAP_STOPPED=false
@@ -256,7 +256,7 @@ reload_rcp_device() {
     done
 
     if [[ -z "$usb_dev" || ! -f "${usb_dev}/authorized" ]]; then
-        warn "Cannot locate USB device in sysfs for $tty_dev — waiting 3s for port to settle."
+        warn "Cannot locate USB device in sysfs for $tty_dev -- waiting 3s for port to settle."
         sleep 3
         return 0
     fi
@@ -273,12 +273,12 @@ reload_rcp_device() {
         sleep 1
         (( i++ ))
     done
-    warn "$tty_dev did not reappear — it may have re-enumerated under a different node."
+    warn "$tty_dev did not reappear -- it may have re-enumerated under a different node."
 }
 
 
 # ---------------------------------------------------------------------------
-# 7. Pyspinel venv — created on first run, reused thereafter.
+# 7. Pyspinel venv -- created on first run, reused thereafter.
 # ---------------------------------------------------------------------------
 ensure_pyspinel_venv() {
     if "${PYSPINEL_VENV}/bin/python3" -c "import serial" 2>/dev/null; then
@@ -293,7 +293,7 @@ ensure_pyspinel_venv() {
 
 # ---------------------------------------------------------------------------
 # 7b. Verify RCP firmware via Spinel PROP_VALUE_GET(NCP_VERSION).
-#     Delegates to scripts/verify_rcp.py — the single canonical probe.
+#     Delegates to scripts/verify_rcp.py -- the single canonical probe.
 # ---------------------------------------------------------------------------
 verify_rcp() {
     local port="$1"
@@ -320,7 +320,7 @@ configure_otbr() {
 
     # Install snap if not present
     if ! snap list openthread-border-router &>/dev/null; then
-        log "openthread-border-router snap not installed — installing..."
+        log "openthread-border-router snap not installed -- installing..."
         sudo snap install openthread-border-router --channel=latest/edge --devmode
         changed=1
     fi
@@ -372,7 +372,7 @@ configure_otbr() {
     fi
 
     if [[ "$changed" -eq 1 ]]; then
-        log "Configuration changed — restarting OTBR snap..."
+        log "Configuration changed -- restarting OTBR snap..."
         sudo snap restart openthread-border-router
         sleep 2
         sudo snap services openthread-border-router
@@ -386,7 +386,7 @@ configure_otbr() {
             sleep 2
             sudo snap services openthread-border-router
         else
-            log "No configuration changes needed — services already running."
+            log "No configuration changes needed -- services already running."
         fi
     fi
 }
@@ -423,7 +423,7 @@ ensure_snap_connections() {
     done
 
     if [[ "$reconnected" -eq 1 ]]; then
-        log "Interfaces changed — restarting snap..."
+        log "Interfaces changed -- restarting snap..."
         sudo snap restart openthread-border-router
         sleep 2
     fi
@@ -434,21 +434,21 @@ ensure_snap_connections() {
 # ---------------------------------------------------------------------------
 configure_ufw() {
     if ! command -v ufw &>/dev/null; then
-        log "ufw not found — skipping firewall configuration."
+        log "ufw not found -- skipping firewall configuration."
         return 0
     fi
 
     local ufw_status
     ufw_status=$(sudo ufw status | head -1)
     if [[ "$ufw_status" != "Status: active" ]]; then
-        log "ufw is not active — skipping firewall configuration."
+        log "ufw is not active -- skipping firewall configuration."
         return 0
     fi
 
     log "Configuring UFW rules for OTBR..."
 
     # IPv6 forwarding: Thread (wpan0) <-> upstream interface
-    # UFW persists route rules in its own config — no extra step needed.
+    # UFW persists route rules in its own config -- no extra step needed.
     if ! sudo ufw status verbose | grep -q "Anywhere on wpan0"; then
         log "Adding UFW route rules for wpan0..."
         sudo ufw route allow in on wpan0
@@ -476,7 +476,7 @@ configure_ufw() {
     fi
 
     # mDNS: needed for Thread SRP / service discovery
-    # UFW persists allow rules in its own config — no extra step needed.
+    # UFW persists allow rules in its own config -- no extra step needed.
     if ! sudo ufw status | grep -q "5353/udp"; then
         log "Allowing mDNS (UDP 5353)..."
         sudo ufw allow 5353/udp
@@ -508,7 +508,7 @@ join_thread_network() {
         local state
         state=$($ot state 2>/dev/null | head -1 || true)
         if [[ "$state" == "router" || "$state" == "child" || "$state" == "leader" ]]; then
-            log "Thread attached — state: $state"
+            log "Thread attached -- state: $state"
             return 0
         fi
         sleep 1
@@ -517,12 +517,12 @@ join_thread_network() {
 
     local final_state
     final_state=$($ot state 2>/dev/null | head -1 || true)
-    warn "Thread did not attach within 30s — current state: $final_state"
+    warn "Thread did not attach within 30s -- current state: $final_state"
     warn "Check: sudo snap logs openthread-border-router.otbr-agent -f"
 }
 
 # ---------------------------------------------------------------------------
-# 13. Install chip-tool snap (Matter commissioning — BLE+Thread and Thread-only)
+# 13. Install chip-tool snap (Matter commissioning -- BLE+Thread and Thread-only)
 # ---------------------------------------------------------------------------
 install_chiptool() {
     if snap list chip-tool &>/dev/null; then
@@ -538,7 +538,7 @@ install_chiptool() {
 # 14. Main
 # ---------------------------------------------------------------------------
 main() {
-    [[ "$EUID" -eq 0 ]] && die "Do not run as root. Run as your normal user — sudo will be invoked as needed."
+    [[ "$EUID" -eq 0 ]] && die "Do not run as root. Run as your normal user -- sudo will be invoked as needed."
     require snap
 
     log "THREAD_DATASET_TLV loaded (${#THREAD_DATASET_TLV} hex chars)."
@@ -586,7 +586,7 @@ main() {
                     if verify_rcp "$THREAD_DEVICE_PORT"; then
                         _flash_ok=1; break
                     fi
-                    warn "Spinel probe attempt $_attempt/3 failed — retrying in 5s ..."
+                    warn "Spinel probe attempt $_attempt/3 failed -- retrying in 5s ..."
                     sleep 5
                 done
                 if [[ "$_flash_ok" -eq 0 ]]; then
@@ -594,7 +594,7 @@ main() {
                     warn "Try: unplug the ESP32-C6 USB cable, plug it back in, then re-run."
                     warn "If the problem persists, verify the USB JTAG interface is functional:"
                     warn "  idf.py -p $THREAD_DEVICE_PORT monitor"
-                    die "Flashing failed — RCP firmware not responding to Spinel."
+                    die "Flashing failed -- RCP firmware not responding to Spinel."
                 fi
             else
                 die "No spinel response from $THREAD_DEVICE_PORT. Flash RCP firmware and re-run."

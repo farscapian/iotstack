@@ -309,7 +309,7 @@ node_persisted_after_commission() {
         return 0
     fi
     if commission_output_confirms_node "${node_id}" "${output}" && chip_tool_fabric_ini_present; then
-        warn "Fabric persisted for node ${node_id} (f/1/n present; f/1/s session not written yet — normal with --skip-commissioning-complete)"
+        warn "Fabric persisted for node ${node_id} (f/1/n present; f/1/s session not written yet -- normal with --skip-commissioning-complete)"
         return 0
     fi
     return 1
@@ -399,7 +399,7 @@ device_reachable_on_thread() {
     if ! output="$(timeout "${OPERATIONAL_CHIP_TOOL_TIMEOUT_SECS}" \
         run_chip_tool basicinformation read vendor-name "${node_id}" 0 2>&1)"; then
         if [[ "${mdns_visible}" -eq 1 ]]; then
-            warn "Matter mDNS visible for node ${node_id} but CASE read timed out — wake the sensor and retry"
+            warn "Matter mDNS visible for node ${node_id} but CASE read timed out -- wake the sensor and retry"
         fi
         return 1
     fi
@@ -433,7 +433,7 @@ wait_for_operational_node() {
 
     while [[ "${waited}" -lt "${OPERATIONAL_DISCOVERY_WAIT_SECS}" ]]; do
         if chip_tool_operational_mdns_visible "${node_id}" "${OPERATIONAL_MDNS_BROWSE_SECS}"; then
-            info "Operational mDNS visible for node ${node_id} (${waited}s) — establishing CASE session..."
+            info "Operational mDNS visible for node ${node_id} (${waited}s) -- establishing CASE session..."
             if device_reachable_on_thread "${node_id}"; then
                 info "Device reachable on Thread after ${waited}s"
                 return 0
@@ -451,9 +451,9 @@ wait_for_operational_node() {
             info "Still waiting for operational discovery (${waited}/${OPERATIONAL_DISCOVERY_WAIT_SECS}s)..."
             if [[ -n "${mdns_instance}" ]]; then
                 if chip_tool_operational_mdns_visible "${node_id}" "${OPERATIONAL_MDNS_BROWSE_SECS}"; then
-                    info "mDNS shows ${mdns_instance} but CASE not up yet — trigger the sensor to keep MYGGSPRAY awake"
+                    info "mDNS shows ${mdns_instance} but CASE not up yet -- trigger the sensor to keep MYGGSPRAY awake"
                 else
-                    info "No _matter._tcp match for ${mdns_instance} on this host yet — keep triggering the sensor (sleepy ICD); browse listens ${OPERATIONAL_MDNS_BROWSE_SECS}s per poll"
+                    info "No _matter._tcp match for ${mdns_instance} on this host yet -- keep triggering the sensor (sleepy ICD); browse listens ${OPERATIONAL_MDNS_BROWSE_SECS}s per poll"
                 fi
             fi
         fi
@@ -522,7 +522,7 @@ if tlv.lower().startswith("4a03"):
 if not tlv.lower().startswith("0e"):
     print(
         "thread dataset does not start with Active Timestamp TLV (0x0e); "
-        "copy fresh hex from HA Settings → Thread or ot-ctl dataset active -x",
+        "copy fresh hex from HA Settings -> Thread or ot-ctl dataset active -x",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -549,7 +549,7 @@ log_matter_setup_payload_summary() {
         info "Setup payload: VID=${vendor} PID=${product} discriminator=${long_disc:-?} discovery=${discovery:-?}"
     fi
     if [[ "${discovery}" == "0x02" ]]; then
-        info "Device advertises BLE-only commissioning — keep it in pairing mode and stay within ~1m of pangolin"
+        info "Device advertises BLE-only commissioning -- keep it in pairing mode and stay within ~1m of pangolin"
     fi
 }
 
@@ -649,7 +649,7 @@ THREAD_TLV="$(get_pass_secret "iotstack/common/thread_tlv")"
 export THREAD_TLV
 
 # ---------------------------------------------------------------------------
-# 3. Parse args — pairing input
+# 3. Parse args -- pairing input
 # ---------------------------------------------------------------------------
 MATTER_VERBOSE=0
 MATTER_FORCE=0
@@ -697,7 +697,7 @@ done
 INPUT="${POSITIONAL[0]}"
 
 # ---------------------------------------------------------------------------
-# 4. Get Matter onboarding payload — image file, manual code, or MT: string
+# 4. Get Matter onboarding payload -- image file, manual code, or MT: string
 # ---------------------------------------------------------------------------
 MT_PAYLOAD=""
 INPUT_KIND=""
@@ -775,7 +775,7 @@ else
     if [[ ${COMMISSION_STATUS} -ne 0 ]]; then
         if commission_output_thread_joined "${COMMISSION_OUTPUT}"; then
             if node_on_local_fabric "${NODE_ID}" || chip_tool_fabric_ini_present; then
-                warn "Device joined Thread; chip-tool exited non-zero during operational CASE but fabric persisted for node ${NODE_ID} — continuing"
+                warn "Device joined Thread; chip-tool exited non-zero during operational CASE but fabric persisted for node ${NODE_ID} -- continuing"
             else
                 die "Device joined Thread but chip-tool could not persist the fabric. Factory-reset the device, trigger motion to keep it awake, ensure pangolin receives Matter mDNS from your OTBR (try: iotstack matter mdns 1), then retry."
             fi
@@ -791,7 +791,7 @@ else
 
     ensure_chip_tool_compressed_fabric_id "${COMMISSION_OUTPUT}" || true
     info "chip-tool fabric saved under ${CHIP_TOOL_STORAGE} (shutdown 'Forgetting fabric' in chip-tool logs is normal)"
-    info "Giving Thread/mDNS ${OPERATIONAL_POST_COMMISSION_GRACE_SECS}s after BLE teardown — trigger the sensor now to keep it awake"
+    info "Giving Thread/mDNS ${OPERATIONAL_POST_COMMISSION_GRACE_SECS}s after BLE teardown -- trigger the sensor now to keep it awake"
     sleep "${OPERATIONAL_POST_COMMISSION_GRACE_SECS}"
 
     wait_for_operational_node "${NODE_ID}" \

@@ -1,4 +1,4 @@
-iotstack matter mdns — Check chip-tool operational mDNS
+iotstack matter mdns -- Check chip-tool operational mDNS
 
 Checks whether a device on the chip-tool Matter fabric is visible on this host
 via _matter._tcp (avahi-browse). Use after commissioning to confirm operational

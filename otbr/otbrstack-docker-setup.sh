@@ -24,7 +24,7 @@ die()     { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; exit 1; }
 validate_config() {
     # Validate required variables
     for var in DONGLE_VENDOR DONGLE_PRODUCT DONGLE_SERIAL THREAD_DATASET_TLV; do
-        [[ -n "${!var:-}" ]] || die "Required variable '${var}' not set — run via 'otbr docker'"
+        [[ -n "${!var:-}" ]] || die "Required variable '${var}' not set -- run via 'otbr docker'"
     done
 
     # Optional overrides with defaults
@@ -72,7 +72,7 @@ load_kernel_modules() {
 
     for mod in ip6table_filter ip6_tables; do
         if ! lsmod | grep -q "^${mod}"; then
-            sudo modprobe "$mod" || warn "Could not load $mod — may already be built-in."
+            sudo modprobe "$mod" || warn "Could not load $mod -- may already be built-in."
         fi
     done
 
@@ -183,7 +183,7 @@ launch_container() {
 
     # Remove existing container if present
     if sudo docker ps -a --format '{{.Names}}' | grep -q "^${OTBR_CONTAINER}$"; then
-        warn "Existing container '${OTBR_CONTAINER}' found — removing."
+        warn "Existing container '${OTBR_CONTAINER}' found -- removing."
         sudo docker stop "$OTBR_CONTAINER" || true
         sudo docker rm "$OTBR_CONTAINER"
     fi
@@ -248,7 +248,7 @@ setup_firewall() {
     info "12. Configuring ufw firewall rules ..."
 
     if ! command -v ufw &>/dev/null; then
-        warn "ufw not found — skipping firewall setup."
+        warn "ufw not found -- skipping firewall setup."
         return
     fi
 
@@ -259,13 +259,13 @@ setup_firewall() {
     sudo ufw allow from "$HA_IP" to any port "$NGINX_REST_PORT" comment 'OTBR REST API for HA'
     sudo ufw allow from "$HA_IP" to any port "$NGINX_WEB_PORT"  comment 'OTBR Web UI for HA'
 
-    # TREL (Thread Radio Encapsulation Link) — UDP on ephemeral ports between border routers
+    # TREL (Thread Radio Encapsulation Link) -- UDP on ephemeral ports between border routers
     sudo ufw allow from "$HA_IP" to any proto udp comment 'TREL Thread traffic from HA'
 
-    # Thread mDNS multicast — service discovery between border routers
+    # Thread mDNS multicast -- service discovery between border routers
     sudo ufw allow in on "$BACKBONE_IF" proto udp to ff12::/16 comment 'Thread mDNS multicast'
 
-    # Thread border agent port — used by HA to reach the border agent directly
+    # Thread border agent port -- used by HA to reach the border agent directly
     sudo ufw allow from "$HA_IP" to any port 49191 proto udp comment 'Thread border agent'
 
     success "ufw rules added for HA at ${HA_IP}."
@@ -314,7 +314,7 @@ join_thread_network() {
 }
 
 # -----------------------------------------------------------------------------
-# 14. chip-tool snap (Matter commissioning — BLE+Thread and Thread-only)
+# 14. chip-tool snap (Matter commissioning -- BLE+Thread and Thread-only)
 # -----------------------------------------------------------------------------
 
 install_chiptool() {
@@ -345,7 +345,7 @@ print_summary() {
     echo "  Web UI             : http://${host_ip}:${NGINX_WEB_PORT}"
     echo ""
     echo "  Add to Home Assistant:"
-    echo "  Settings → System → Thread → Add Border Router"
+    echo "  Settings -> System -> Thread -> Add Border Router"
     echo "  URL: http://${host_ip}:${NGINX_REST_PORT}"
     echo "============================================================"
 }

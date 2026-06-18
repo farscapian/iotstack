@@ -71,7 +71,7 @@ cp .env.example ~/.otbrstack/env/.env
 
 The two required values are:
 
-- **`THREAD_DATASET_TLV`** — your Thread network's Active Operational Dataset (a hex string).
+- **`THREAD_DATASET_TLV`** -- your Thread network's Active Operational Dataset (a hex string).
   If you don't have one yet, generate a new one:
 
   ```bash
@@ -88,10 +88,10 @@ The two required values are:
   ot-ctl dataset active -x
   ```
 
-- **`SSH_PUBKEY`** — your SSH public key (the contents of `~/.ssh/id_ed25519.pub` or
+- **`SSH_PUBKEY`** -- your SSH public key (the contents of `~/.ssh/id_ed25519.pub` or
   similar). This is injected into the Pi image so you can SSH in without a password.
 
-Everything else in `.env` has sensible defaults. Wi-Fi credentials are optional —
+Everything else in `.env` has sensible defaults. Wi-Fi credentials are optional --
 if you're using Ethernet, leave `WIFI_SSID` and `WIFI_PASSWORD` blank.
 
 ### 3. Add an SSH config entry for your Pi
@@ -114,10 +114,10 @@ Host otbrstack-raspi4
 
 Insert the microSD card into your Linux host and identify its device path
 (`lsblk` or `dmesg | tail` after inserting). It will look like `/dev/sdb`
-or `/dev/mmcblk0` — **never** `/dev/sda` (that's usually your main drive).
+or `/dev/mmcblk0` -- **never** `/dev/sda` (that's usually your main drive).
 
 ```bash
-# Standard flash — asks for confirmation before writing
+# Standard flash -- asks for confirmation before writing
 otbrstack flash /dev/sdX
 
 # Force a full reflash even if Ubuntu is already on the card
@@ -141,7 +141,7 @@ otbrstack flash --hostname=otbrstack-kitchen /dev/sdX
 ### What happens during the flash
 
 1. Downloads `ubuntu-26.04-preinstalled-server-arm64+raspi.img.xz` from
-   Canonical (cached in `cache/ubuntu/server/` — only downloaded once).
+   Canonical (cached in `cache/ubuntu/server/` -- only downloaded once).
 2. Verifies the SHA-256 of the downloaded image.
 3. Expands the root partition to fill the SD card.
 4. Runs an arm64 chroot to pre-install packages (`git`, `cmake`, `python3`, etc.)
@@ -157,7 +157,7 @@ otbrstack flash --hostname=otbrstack-kitchen /dev/sdX
 
 Insert the SD card into the Pi, connect the ESP32-C6 via USB, and power on.
 
-First boot takes **5–15 minutes** depending on internet speed (the Pi may still
+First boot takes **5-15 minutes** depending on internet speed (the Pi may still
 need to pull some packages). You can watch progress over SSH:
 
 ```bash
@@ -171,20 +171,20 @@ sudo tail -f /var/log/otbrstack-firstboot.log
 
 ### What happens on first boot
 
-1. **Networking** — eth0 comes up via DHCP (preferred). If Wi-Fi credentials
+1. **Networking** -- eth0 comes up via DHCP (preferred). If Wi-Fi credentials
    were set, wlan0 is configured as a fallback.
-2. **RCP firmware** — `otbrstack-rcp-update.sh` waits for the ESP32-C6 to enumerate,
+2. **RCP firmware** -- `otbrstack-rcp-update.sh` waits for the ESP32-C6 to enumerate,
    then fetches the latest ESP-IDF release, builds the `ot_rcp` firmware, and
    flashes it to the ESP32-C6 if the firmware has changed. Identical firmware
    is detected by SHA-256 and skipped.
-3. **Snap install** — `openthread-border-router` is installed from the pre-loaded
+3. **Snap install** -- `openthread-border-router` is installed from the pre-loaded
    copy on the SD card (no store download needed). `chip-tool` is also installed
    for Matter commissioning.
-4. **OTBR configuration** — snap interfaces are connected, the radio URL is set,
+4. **OTBR configuration** -- snap interfaces are connected, the radio URL is set,
    the backbone interface is configured, and the service is started.
-5. **Thread dataset** — the TLV from your `.env` is committed and the Thread
+5. **Thread dataset** -- the TLV from your `.env` is committed and the Thread
    interface is brought up.
-6. **Firewall** — UFW is enabled. SSH is allowed from the CIDRs in
+6. **Firewall** -- UFW is enabled. SSH is allowed from the CIDRs in
    `SSH_MGMT_CIDRS` (or from anywhere if that's empty).
 
 After first boot, `otbrstack-rcp-update.service` runs on every subsequent boot to
@@ -229,7 +229,7 @@ otbrstack shutdown otbrstack-raspi4
 ## Testing without hardware (Incus VM)
 
 `otbrstack vm x64` provisions an Incus VM with the same OTBR first-boot
-sequence — no Raspberry Pi or ESP32-C6 needed. A simulated RCP (`ot-rcp`) is
+sequence -- no Raspberry Pi or ESP32-C6 needed. A simulated RCP (`ot-rcp`) is
 built from OpenThread source and used instead of the physical ESP32-C6.
 
 **Prerequisites:** Incus installed, current user in the `incus` group.
@@ -258,14 +258,14 @@ sudo ./tests/test_otbrstack_vm.sh --no-peer-test  # skip neighbor exchange (T6)
 
 Six tests verify: Ubuntu 26.04 running, OTBR snap installed, all services
 active, Thread state is leader/router/child, dataset TLV committed, and
-neighbor table has ≥1 entry (T6, requires `ot-cli` binary).
+neighbor table has >=1 entry (T6, requires `ot-cli` binary).
 
 ---
 
 ## Bare-metal snap (`otbrstack snap`)
 
 Installs and configures the `openthread-border-router` snap on any Ubuntu host
-with a USB Thread radio attached. Runs as your normal user — `sudo` is invoked
+with a USB Thread radio attached. Runs as your normal user -- `sudo` is invoked
 internally only where needed.
 
 **Supported radios (auto-detected):**
@@ -338,7 +338,7 @@ annotated list. Key variables:
 ## Repository layout
 
 ```
-otbrstack.sh               # Shell function — source this to get the otbrstack command
+otbrstack.sh               # Shell function -- source this to get the otbrstack command
 flash-piotbrstack.sh       # Raspberry Pi SD card flasher (called by otbrstack flash)
 provision_incus.sh    # Incus VM/container provisioner (called by otbrstack vm)
 otbrstack-snap-setup.sh    # Bare-metal snap provisioner (called by otbrstack snap)
@@ -348,7 +348,7 @@ scripts/
   verify_rcp.py       # Spinel probe (checks if RCP firmware responds correctly)
 tests/
   test_otbrstack_vm.sh     # Integration test suite for Incus provisioning
-.env.example          # Annotated template — copy to ~/.otbrstack/env/ and edit
+.env.example          # Annotated template -- copy to ~/.otbrstack/env/ and edit
 .env          # Example env for a specific host (copy to ~/.otbrstack/env/ and adapt)
 
 ~/.otbrstack/              # Runtime data (created by setup.sh / on first run)

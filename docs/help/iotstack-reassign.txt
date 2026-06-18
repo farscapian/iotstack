@@ -1,4 +1,4 @@
-iotstack reassign — Flash specific devices to a different configuration
+iotstack reassign -- Flash specific devices to a different configuration
 
 Flashes one or more devices (by MAC address) to a different role or YAML config
 and updates Home Assistant entity IDs to match. Other devices on the network are

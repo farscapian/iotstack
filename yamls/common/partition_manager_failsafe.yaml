@@ -1,3 +1,3 @@
-# Failsafe partition controls — no switch_to_failsafe API (device is already on failsafe).
+# Failsafe partition controls -- no switch_to_failsafe API (device is already on failsafe).
 packages:
   partition_base: !include partition_manager_base.yaml

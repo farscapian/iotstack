@@ -1,4 +1,4 @@
-iotstack commission — Deprecated alias for matter commission
+iotstack commission -- Deprecated alias for matter commission
 
 Same as iotstack matter commission: commissions a Matter device onto Thread
 from a QR image or pairing code, then hands it off to Home Assistant. Prefer

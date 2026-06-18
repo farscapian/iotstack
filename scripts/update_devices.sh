@@ -31,7 +31,7 @@ source "${_UPDATE_DEVICES_SCRIPT_DIR}/config.sh"
 # shellcheck source=scripts/failsafe-yaml.sh
 source "${_UPDATE_DEVICES_SCRIPT_DIR}/failsafe-yaml.sh"
 
-# ── Cleanup on exit ──────────────────────────────────────────────────────────
+# -- Cleanup on exit ----------------------------------------------------------
 WORK_DIR=""
 COMPILE_YAML=""
 COMPILE_LOG=""
@@ -53,7 +53,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'cleanup; exit 130' INT
 
-# ── Defaults ────────────────────────────────────────────────────────────────
+# -- Defaults ----------------------------------------------------------------
 UPGRADE_DELTA=true
 FLASH_ANYWAY=false
 VERIFY=false
@@ -69,7 +69,7 @@ HA_FINALIZE_HOSTNAME=""
 declare -a REASSIGN_MACS=()
 REASSIGN_YAML=""
 
-# ── Colours ─────────────────────────────────────────────────────────────────
+# -- Colours -----------------------------------------------------------------
 RED=$'\033[0;31m'
 GRN=$'\033[0;32m'
 YLW=$'\033[0;33m'
@@ -125,12 +125,12 @@ _sync_build_cache_config_hash() {
 
 _compile_log_banner() {
   # Written when esphome compile actually starts (not at script startup).
-  local banner="── $(date '+%Y-%m-%d %H:%M:%S') Compiling $(basename "$YAML_FILE") ──"
+  local banner="-- $(date '+%Y-%m-%d %H:%M:%S') Compiling $(basename "$YAML_FILE") --"
   echo "$banner" >> "$COMPILE_LOG_FILE"
   if [[ "$VERBOSE" == true ]]; then echo "$banner"; fi
 }
 
-# ── Ensure websocket-client library is installed ────────────────────────────
+# -- Ensure websocket-client library is installed ----------------------------
 ensure_websocket_client() {
   if python3 -c "import websocket" 2>/dev/null; then
     return 0
@@ -158,7 +158,7 @@ ensure_websocket_client() {
   fi
 }
 
-# ── Report discovered ESPHome config flows via WebSocket API ────────────────
+# -- Report discovered ESPHome config flows via WebSocket API ----------------
 # Home Assistant exposes discovery flows over WebSocket (config_entries/flow/progress).
 # Completing a config flow step is not available via the public WebSocket API, so this
 # function only detects pending ESPHome discoveries and reports them.
@@ -213,13 +213,13 @@ for flow in flows:
         continue
     title = flow.get("context", {}).get("title") or flow.get("flow_id", "unknown")
     print(f"Discovered ESPHome device pending in Home Assistant: {title}")
-    print("  Complete in HA: Settings → Devices & Services → Discovered")
+    print("  Complete in HA: Settings -> Devices & Services -> Discovered")
 
 sys.exit(0)
 PYEOF
 }
 
-# ── Create temporary YAML with device_new_name injected ─────────────────────
+# -- Create temporary YAML with device_new_name injected ---------------------
 create_temp_yaml_with_device_id() {
   local orig_yaml="$1"
   local device_id_value="$2"
@@ -268,9 +268,9 @@ with open(temp_yaml, 'w') as f:
 PYTHONEOF
 }
 
-# ── Create upload-only YAML with OTA client config ────────────────────────────
+# -- Create upload-only YAML with OTA client config ----------------------------
 # Production firmware must not include an OTA server (compiled from ORIGINAL_YAML_FILE).
-# esphome upload still requires ota: in the config it reads — this temp file is
+# esphome upload still requires ota: in the config it reads -- this temp file is
 # used only for the upload command, never for compilation.
 create_ota_upload_yaml() {
   local orig_yaml="$1"
@@ -306,7 +306,7 @@ with open(temp_yaml, 'w') as f:
 PYTHONEOF
 }
 
-# ── Update YAML device_name substitution ─────────────────────────────────────
+# -- Update YAML device_name substitution -------------------------------------
 update_yaml_device_name() {
   local yaml_file="$1"
   local new_device_name="$2"
@@ -318,7 +318,7 @@ update_yaml_device_name() {
   fi
 }
 
-# ── Post-production HA: entity IDs + consistency (production hostname only) ─
+# -- Post-production HA: entity IDs + consistency (production hostname only) -
 run_ha_production_finalize() {
   local yaml_file="$1"
   local prod_hostname="$2"
@@ -345,7 +345,7 @@ run_ha_production_finalize() {
   fi
 }
 
-# ── Verify entity ID consistency with device name ──────────────────────────────
+# -- Verify entity ID consistency with device name ------------------------------
 verify_entity_id_consistency() {
   local ha_url="$1"
   local ha_token="$2"
@@ -473,7 +473,7 @@ print('All entity IDs are consistent with device names.')
 VERIFYEOF
 }
 
-# ── Recreate entity IDs for renamed devices ────────────────────────────────
+# -- Recreate entity IDs for renamed devices --------------------------------
 recreate_entity_ids() {
   local ha_url="$1"
   local ha_token="$2"
@@ -621,7 +621,7 @@ for device_id, hostname, new_name in updated_devices:
 
         result = json.loads(ws.recv())
         if result.get('success'):
-            print(f'Updated device: {hostname} → {new_name}')
+            print(f'Updated device: {hostname} -> {new_name}')
     except Exception:
         pass
 
@@ -682,7 +682,7 @@ for old_id, new_id in id_mapping.items():
 
         result = json.loads(ws.recv())
         if result.get('success'):
-            print(f'Recreated: {old_id} → {new_id}')
+            print(f'Recreated: {old_id} -> {new_id}')
             updated_count += 1
         else:
             print(f'WARNING: Failed to update {old_id}: {result.get("error")}', file=sys.stderr)
@@ -695,13 +695,13 @@ if updated_count > 0:
 PYEOF
 }
 
-# ── Help ────────────────────────────────────────────────────────────────────
+# -- Help --------------------------------------------------------------------
 usage() {
   grep '^#' "$0" | head -20 | sed 's/^# \{0,1\}//'
   exit 0
 }
 
-# ── Argument parsing ────────────────────────────────────────────────────────
+# -- Argument parsing --------------------------------------------------------
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --upgrade-delta)         UPGRADE_DELTA=true;  shift ;;
@@ -734,7 +734,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Validate inputs ─────────────────────────────────────────────────────────
+# -- Validate inputs ---------------------------------------------------------
 if [[ "$REASSIGN_MODE" == true ]]; then
   if [[ -z "$REASSIGN_YAML" ]] || [[ ${#REASSIGN_MACS[@]} -eq 0 ]]; then
     err "--reassign requires: <MAC1> [MAC2 ...] <yaml-file>"
@@ -760,7 +760,7 @@ if [[ -n "$HA_FINALIZE_HOSTNAME" ]]; then
   exit 0
 fi
 
-# ── Handle custom OTA password for authentication ─────────────────────────
+# -- Handle custom OTA password for authentication -------------------------
 # If user provided a custom OTA password, create a temporary YAML with it
 # The OTA password is used to authenticate the OTA upload from the current device
 # IMPORTANT: Save original YAML name for caching (before temp file creation)
@@ -768,7 +768,7 @@ ORIGINAL_YAML_FILE="$YAML_FILE"
 COMPILE_YAML=$(iotstack_prepare_compile_yaml "$ORIGINAL_YAML_FILE")
 YAML_FILE="$COMPILE_YAML"
 
-# All secrets must come from NVS at runtime — !secret references in YAML are
+# All secrets must come from NVS at runtime -- !secret references in YAML are
 # forbidden. Catch them early so the build never silently embeds credentials.
 if grep -qE 'password:[[:space:]]+!secret[[:space:]]+\S' "$YAML_FILE"; then
   err "$(basename "$YAML_FILE") contains '!secret' password references.
@@ -776,7 +776,7 @@ All secrets must be stored in NVS (via write-nvs-secrets.sh), not in YAML files.
 Remove the 'password: !secret ...' line(s) and re-run."
 fi
 
-# Production firmware must not expose an OTA server — updates run from failsafe only.
+# Production firmware must not expose an OTA server -- updates run from failsafe only.
 _yaml_is_failsafe() {
   local yaml_file="$1"
   [[ "$(basename "$yaml_file")" == "failsafe.yaml" ]] && return 0
@@ -788,27 +788,27 @@ OTA_UPLOAD_TEMP=""
 
 if ! _yaml_is_failsafe "$YAML_FILE"; then
   if grep -qE '^ota:' "$YAML_FILE"; then
-    err "$(basename "$YAML_FILE") must not include 'ota:' — OTA is failsafe-only.
+    err "$(basename "$YAML_FILE") must not include 'ota:' -- OTA is failsafe-only.
 Remove the ota: section from this production YAML."
   fi
   if grep -qE 'platform:[[:space:]]+factory_reset' "$YAML_FILE"; then
-    err "$(basename "$YAML_FILE") must not include a factory_reset button — physical reset is handled by boot_button.yaml.
+    err "$(basename "$YAML_FILE") must not include a factory_reset button -- physical reset is handled by boot_button.yaml.
 Remove the factory_reset button from this production YAML."
   fi
 fi
 
 if grep -qE '^safe_mode:' "$YAML_FILE"; then
-  err "$(basename "$YAML_FILE") must not include 'safe_mode:' — boot-loop recovery is handled by partition_manager.
+  err "$(basename "$YAML_FILE") must not include 'safe_mode:' -- boot-loop recovery is handled by partition_manager.
 Remove the safe_mode: section from this YAML."
 fi
 
 if _yaml_is_failsafe "$YAML_FILE"; then
   if grep -qE 'partition_manager\.yaml|partition_manager_production\.yaml' "$YAML_FILE"; then
-    err "$(basename "$YAML_FILE") must use partition_manager_failsafe.yaml — switch_to_failsafe is production-only."
+    err "$(basename "$YAML_FILE") must use partition_manager_failsafe.yaml -- switch_to_failsafe is production-only."
   fi
 else
   if grep -qE 'partition_manager_failsafe\.yaml' "$YAML_FILE"; then
-    err "$(basename "$YAML_FILE") must use partition_manager.yaml — production requires switch_to_failsafe API."
+    err "$(basename "$YAML_FILE") must use partition_manager.yaml -- production requires switch_to_failsafe API."
   fi
 fi
 
@@ -817,7 +817,7 @@ if ! [[ "$MAX_JOBS" =~ ^[1-9][0-9]*$ ]]; then
   exit 1
 fi
 
-# ── Disable parallelism for Thread devices ──────────────────────────────────
+# -- Disable parallelism for Thread devices ----------------------------------
 # Thread OTA is slow; parallelism causes contention on the mesh rather than
 # speeding up flashing. Force --jobs 1 unless explicitly overridden by user.
 if [[ "$YAML_FILE" == *"/thread/"* || "$YAML_FILE" == "thread-"* ]]; then
@@ -826,7 +826,7 @@ if [[ "$YAML_FILE" == *"/thread/"* || "$YAML_FILE" == "thread-"* ]]; then
   fi
 fi
 
-# ── Logging ──────────────────────────────────────────────────────────────────
+# -- Logging ------------------------------------------------------------------
 # Use original YAML file for cache key (before any temp file creation)
 # This ensures cache is consistent across reassign runs with different OTA passwords
 YAML_NAME="$(basename "${ORIGINAL_YAML_FILE%.yaml}")"
@@ -850,7 +850,7 @@ setup_flash_logs() {
   mkdir -p "$FLASH_LOG_DIR"
 }
 
-# ── Parse substitutions ──────────────────────────────────────────────────────
+# -- Parse substitutions ------------------------------------------------------
 declare -A SUBS
 while IFS= read -r line; do
   key=$(echo "$line" | sed 's/:.*//' | tr -d ' ')
@@ -867,7 +867,7 @@ resolve_subs() {
   echo "$s"
 }
 
-# ── Resolve esphome binary ───────────────────────────────────────────────────
+# -- Resolve esphome binary ---------------------------------------------------
 ESPHOME_BIN="${HOME}/.local/esphome/venv/bin/esphome"
 
 if [[ ! -x "$ESPHOME_BIN" ]]; then
@@ -881,7 +881,7 @@ fi
 
 log "Using esphome: ${ESPHOME_BIN}"
 
-# ── Parse yaml project info (display only) ──────────────────────────────────
+# -- Parse yaml project info (display only) ----------------------------------
 EXPECTED_PROJECT=$(awk '/^\s+project:/{found=1; next} found && /name:/{print; found=0}' "$YAML_FILE" \
   | sed 's/.*name:[[:space:]]*//' | tr -d '"')
 EXPECTED_PROJECT=$(resolve_subs "$EXPECTED_PROJECT")
@@ -892,7 +892,7 @@ EXPECTED_VERSION=$(resolve_subs "$EXPECTED_VERSION")
 if [[ -n "$EXPECTED_PROJECT" ]]; then log "Project : ${EXPECTED_PROJECT}"; fi
 if [[ -n "$EXPECTED_VERSION" ]]; then log "Version : ${EXPECTED_VERSION}"; fi
 
-# ── Discover devices ─────────────────────────────────────────────────────────
+# -- Discover devices ---------------------------------------------------------
 BASE_NAME=$(awk '/^esphome:/{found=1; next} found && /^\s+name:/{print; found=0}' "$YAML_FILE" \
   | sed 's/.*name:[[:space:]]*//' | tr -d '"')
 BASE_NAME=$(resolve_subs "$BASE_NAME")
@@ -956,7 +956,7 @@ if [[ -z "$HOSTNAMES" ]]; then
     warn "No devices found with MAC suffixes: ${REASSIGN_MACS[*]}"
     exit 1
   elif [[ "$VERIFY" == true ]]; then
-    warn "No ${BASE_NAME}-* devices found on the network — nothing to verify."
+    warn "No ${BASE_NAME}-* devices found on the network -- nothing to verify."
     exit 1
   else
     warn "No ${BASE_NAME}-* devices found on the network."
@@ -993,7 +993,7 @@ fi
 DEVICE_COUNT=$(echo "$HOSTNAMES" | wc -l | tr -d ' ')
 info "Found ${DEVICE_COUNT} device(s) on network: $(echo "$HOSTNAMES" | paste -sd', ' -)"
 
-# ── Parse config_hash and project_version from mDNS TXT records ─────────────
+# -- Parse config_hash and project_version from mDNS TXT records -------------
 # config_hash is the primary comparison key; project_version is the fallback.
 declare -A DEVICE_HASHES
 declare -A DEVICE_VERSIONS
@@ -1017,10 +1017,10 @@ done < <(awk '
   }
 ' <<< "$RAW")
 
-# ── Home Assistant registry check ───────────────────────────────────────────
+# -- Home Assistant registry check -------------------------------------------
 # Runs immediately after discovery so it always prints, even when no devices.
 # Skipped in --reassign mode: the device is still on failsafe; HA is handled
-# after production boot via iotstack.sh → --ha-finalize <prod-hostname>.
+# after production boot via iotstack.sh -> --ha-finalize <prod-hostname>.
 HA_URL=""
 HA_TOKEN=""
 
@@ -1121,14 +1121,14 @@ for entity in all_entities:
 for d in sorted(registered_devices):
     print(d)
 PYEOF
-  ) || { warn "Home Assistant query failed — skipping registry check."; HA_DEVICE_LIST=""; }
+  ) || { warn "Home Assistant query failed -- skipping registry check."; HA_DEVICE_LIST=""; }
 
   echo
-  echo "════════════════════════════════════════════════════════"
+  echo "========================================================"
   if [[ -z "$HA_DEVICE_LIST" ]]; then
     printf " %-22s  %s\n" "HA registered" "0 device(s)"
     printf " %-22s  %s\n" "Seen on network" "$(echo "$HOSTNAMES" | wc -l | tr -d ' ') device(s)"
-    echo "════════════════════════════════════════════════════════"
+    echo "========================================================"
     ok "No devices of this type registered in HA yet."
   else
     HA_COUNT=$(echo "$HA_DEVICE_LIST" | wc -l | tr -d ' ')
@@ -1141,7 +1141,7 @@ PYEOF
 
     printf " %-22s  %s\n" "HA registered" "${HA_COUNT} device(s)"
     printf " %-22s  %s\n" "Seen on network" "${MDNS_COUNT} device(s)"
-    echo "════════════════════════════════════════════════════════"
+    echo "========================================================"
     if [[ ${#OFFLINE[@]} -gt 0 ]]; then
       warn "Registered in HA but not found on network (${#OFFLINE[@]}):"
       for d in "${OFFLINE[@]}"; do
@@ -1155,7 +1155,7 @@ PYEOF
 fi
 fi
 
-# ── Compile (with SHA256 cache to skip unnecessary builds) ───────────────────
+# -- Compile (with SHA256 cache to skip unnecessary builds) -------------------
 # Cache key: SHA256 of the ORIGINAL YAML file + ESPHome version.
 # If both match a prior successful build, skip compilation and reuse the
 # stored config_hash. Invalidated by any YAML edit or ESPHome upgrade.
@@ -1172,7 +1172,7 @@ CACHED_CONFIG_HASH=$(grep '^config_hash='     "$CACHE_FILE" 2>/dev/null | cut -d
 NEW_CONFIG_HASH=""
 COMPILED=false
 
-# ── Ensure YAML has computed role_id ────────────────────────────────────────
+# -- Ensure YAML has computed role_id ----------------------------------------
 extract_role_name_from_yaml() {
   local yaml_file="$1"
   grep '^[[:space:]]*role_name:' "$yaml_file" \
@@ -1221,7 +1221,7 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
   if [[ -n "$CACHED_CONFIG_HASH" \
      && "$CACHED_YAML_SHA256" == "$YAML_SHA256" \
      && "$CACHED_ESPHOME_VER" == "$ESPHOME_VERSION" ]]; then
-    log "YAML unchanged, ESPHome ${ESPHOME_VERSION} — skipping compilation."
+    log "YAML unchanged, ESPHome ${ESPHOME_VERSION} -- skipping compilation."
     NEW_CONFIG_HASH=$(_resolve_build_config_hash "$ORIGINAL_YAML_FILE" "$YAML_NAME" "$CACHED_CONFIG_HASH")
     _sync_build_cache_config_hash "$NEW_CONFIG_HASH"
     log "Build config_hash: ${NEW_CONFIG_HASH}"
@@ -1241,7 +1241,7 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
         setup_flash_logs "$NEW_CONFIG_HASH"
         if [[ -n "$NEW_CONFIG_HASH" ]]; then ok "Build config_hash: ${NEW_CONFIG_HASH}"; fi
       else
-        err "Compilation failed — aborting."
+        err "Compilation failed -- aborting."
         exit 1
       fi
     else
@@ -1269,7 +1269,7 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
   fi
 fi
 
-# ── Reassign mode: filter to specified MACs, then proceed normally ──────────────
+# -- Reassign mode: filter to specified MACs, then proceed normally --------------
 if [[ "$REASSIGN_MODE" == true ]]; then
   if [[ -z "$HOSTNAMES" ]]; then
     err "No devices found to reassign."
@@ -1278,7 +1278,7 @@ if [[ "$REASSIGN_MODE" == true ]]; then
 
 fi
 
-# ── Per-device triage ────────────────────────────────────────────────────────
+# -- Per-device triage --------------------------------------------------------
 FLASH_LIST=()
 SKIP_LIST=()
 OK_LIST=()
@@ -1323,35 +1323,35 @@ while IFS= read -r HOSTNAME; do
   # Primary: config_hash comparison
   if [[ -n "$NEW_CONFIG_HASH" && -n "$DEVICE_HASH" ]]; then
     if [[ "$DEVICE_HASH" == "$NEW_CONFIG_HASH" ]]; then
-      ok "${HOSTNAME}: hash ${DEVICE_HASH} matches — skipping."
+      ok "${HOSTNAME}: hash ${DEVICE_HASH} matches -- skipping."
       SKIP_LIST+=("$HOSTNAME")
     else
-      warn "${HOSTNAME}: hash ${DEVICE_HASH} → ${NEW_CONFIG_HASH} — will flash."
+      warn "${HOSTNAME}: hash ${DEVICE_HASH} -> ${NEW_CONFIG_HASH} -- will flash."
       FLASH_LIST+=("$HOSTNAME")
     fi
   # Fallback: project_version comparison (devices without config_hash in TXT)
   elif [[ -n "$RUNNING_VERSION" && -n "$EXPECTED_VERSION" ]]; then
     if [[ "$RUNNING_VERSION" == "$EXPECTED_VERSION" ]]; then
-      ok "${HOSTNAME}: version ${RUNNING_VERSION} matches — skipping."
+      ok "${HOSTNAME}: version ${RUNNING_VERSION} matches -- skipping."
       SKIP_LIST+=("$HOSTNAME")
     else
-      warn "${HOSTNAME}: version ${RUNNING_VERSION} → ${EXPECTED_VERSION} — will flash."
+      warn "${HOSTNAME}: version ${RUNNING_VERSION} -> ${EXPECTED_VERSION} -- will flash."
       FLASH_LIST+=("$HOSTNAME")
     fi
   elif [[ "$REASSIGN_MODE" == true ]]; then
     log "${HOSTNAME}: uploading production image via failsafe OTA"
     FLASH_LIST+=("$HOSTNAME")
   else
-    warn "${HOSTNAME}: no hash or version info — will flash."
+    warn "${HOSTNAME}: no hash or version info -- will flash."
     FLASH_LIST+=("$HOSTNAME")
   fi
 
 done <<< "$HOSTNAMES"
 
-# ── Verify report ────────────────────────────────────────────────────────────
+# -- Verify report ------------------------------------------------------------
 if [[ "$VERIFY" == true ]]; then
   echo
-  echo "────────────────────────────────────────"
+  echo "----------------------------------------"
   if [[ -n "$NEW_CONFIG_HASH" ]]; then info "Expected hash    : ${NEW_CONFIG_HASH}"; fi
   if [[ -n "$EXPECTED_VERSION" ]]; then info "Expected version : ${EXPECTED_VERSION}"; fi
   if [[ ${#VERIFY_OK_LIST[@]} -gt 0 ]]; then ok  "Matched  : ${VERIFY_OK_LIST[*]}"; fi
@@ -1367,7 +1367,7 @@ if [[ "$VERIFY" == true ]]; then
   exit 0
 fi
 
-# ── OTA flash plan ───────────────────────────────────────────────────────────
+# -- OTA flash plan -----------------------------------------------------------
 if [[ ${#FLASH_LIST[@]} -eq 0 ]]; then
   if [[ ${#OK_LIST[@]} -eq 0 && ${#FAIL_LIST[@]} -eq 0 ]]; then
     ok "All devices are up to date. Nothing to do."
@@ -1387,18 +1387,18 @@ if [[ ${#FLASH_LIST[@]} -eq 0 ]]; then
   # USB was flashed; skip OTA
 else
   if [[ "$DRY_RUN" == true ]]; then
-    warn "Dry run — no OTA devices will be flashed."
+    warn "Dry run -- no OTA devices will be flashed."
     exit 0
   fi
 fi
 
-# ── Compile (only if not already done above) ─────────────────────────────────
+# -- Compile (only if not already done above) ---------------------------------
 if [[ "$COMPILED" == false ]]; then
   if [[ "$VERBOSE" == true ]]; then
     _compile_log_banner
     info "Compiling firmware..."
     if ! "$ESPHOME_BIN" compile "$YAML_FILE" 2>&1 | tee -a "$COMPILE_LOG_FILE"; then
-      err "Compilation failed — aborting."
+      err "Compilation failed -- aborting."
       exit 1
     fi
     NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG_FILE" \
@@ -1442,7 +1442,7 @@ else
   UPLOAD_YAML="$YAML_FILE"
 fi
 
-# ── Parallel flash ───────────────────────────────────────────────────────────
+# -- Parallel flash -----------------------------------------------------------
 # Note: USB devices are NOT flashed here. Use 'iotstack flash' for serial flashing.
 
 slot_count=0
@@ -1485,7 +1485,7 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
 done
 
 
-# ── Wait for OTA jobs (progress monitor only in verbose mode) ────────────────
+# -- Wait for OTA jobs (progress monitor only in verbose mode) ----------------
 _monitor_ota_auth_failures() {
   local hostname result_f log_f
   for hostname in "${FLASH_LIST[@]}"; do
@@ -1561,7 +1561,7 @@ else
   _monitor_ota_auth_failures
 fi
 
-# ── Per-device flash result ──────────────────────────────────────────────────
+# -- Per-device flash result --------------------------------------------------
 for HOSTNAME in "${FLASH_LIST[@]}"; do
   if [[ "$VERBOSE" == true ]]; then
     cat "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null || true
@@ -1606,7 +1606,7 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   fi
 done
 
-# ── Copy OTA logs to persistent log directory ───────────────────────────────
+# -- Copy OTA logs to persistent log directory -------------------------------
 if [[ -n "$FLASH_LOG_DIR" ]]; then
   for hostname in "${OK_LIST[@]}" "${FAIL_LIST[@]}"; do
     [[ -f "$WORK_DIR/${hostname}.log" ]] && cp "$WORK_DIR/${hostname}.log" "$FLASH_LOG_DIR/${hostname}.log" 2>/dev/null || true

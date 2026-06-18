@@ -1,5 +1,5 @@
 #!/bin/bash
-# failsafe-yaml.sh — Variant-specific failsafe YAML artifacts for iotstack flash
+# failsafe-yaml.sh -- Variant-specific failsafe YAML artifacts for iotstack flash
 #
 # Detects the chip on a serial port (or reads a production role YAML), renders
 # yamls/.iotstack-failsafe-<variant>.yaml from yamls/failsafe.yaml, and
@@ -149,7 +149,7 @@ failsafe_resolve_profile() {
       echo "Chip mismatch: $tty is ${port_variant} but role '${production_role}' requires ${variant}" >&2
       return 1
     fi
-    # Failsafe framework is per-chip (e.g. esp32s3 → arduino), not the production role's.
+    # Failsafe framework is per-chip (e.g. esp32s3 -> arduino), not the production role's.
     role_profile=$(failsafe_chip_defaults "$variant") || return 1
     framework=$(echo "$role_profile" | cut -d'|' -f3)
   else
@@ -190,7 +190,7 @@ failsafe_render_yaml() {
   ' "$FAILSAFE_TEMPLATE" > "$dst"
   _iotstack_set_project_version_in_yaml "$dst" "$(iotstack_project_version)"
 
-  # Do not register EXIT trap here — callers often capture this path via $(...)
+  # Do not register EXIT trap here -- callers often capture this path via $(...)
   # which runs in a subshell; the trap would delete the artifact when that
   # subshell exits, before compile/flash. Register in the parent shell instead.
   printf '%s\n' "$dst"

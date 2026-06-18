@@ -2,7 +2,7 @@
 # ensure-chip-tool-trust-store.sh
 # Interactive Matter attestation trust store for chip-tool commissioning.
 #
-# Trust anchors (PAA roots, CSA CD signing keys) — not per-device DAC certs.
+# Trust anchors (PAA roots, CSA CD signing keys) -- not per-device DAC certs.
 # Source from matter-commission.sh / matter-configure-trust-store.sh
 # or run: ./matter-configure-trust-store.sh
 
@@ -344,7 +344,7 @@ if [[ -z "${_IOTSTACK_CHIP_TOOL_TRUST_LOADED:-}" ]]; then
         echo "" >&2
         echo "Matter device attestation (chip-tool trust store)" >&2
         echo "  Trust anchors verify the device's DAC/PAI chain during commissioning." >&2
-        echo "  You do not add the device's unique DAC — only PAA/CD roots." >&2
+        echo "  You do not add the device's unique DAC -- only PAA/CD roots." >&2
         echo "" >&2
         echo "  1) Install CSA CD keys + vendor PAA (recommended; prompts for VID if needed)" >&2
         echo "  2) Add certificate from file path" >&2

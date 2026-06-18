@@ -1,4 +1,4 @@
-iotstack flash — Additional Documentation
+iotstack flash -- Additional Documentation
 
 Extended reference for iotstack flash: dual-partition layout, recovery vs
 production firmware, and serial flashing workflows.
@@ -8,20 +8,20 @@ Dual-Partition OTA Architecture
 
 Fresh devices need to be set up with a dual-partition layout:
 
-  ┌──────────────────────────────────┐
-  │ ESP32 Flash Memory Layout         │
-  ├──────────────────────────────────┤
-  │ Recovery Partition (read-only)   │ ← Fallback if production fails
-  │ ├─ recovery.yaml firmware        │
-  │ └─ Always available for failsafe │
-  ├──────────────────────────────────┤
-  │ Production Partition (active)    │ ← Current device firmware
-  │ ├─ Your role (bleproxy, etc)     │
-  │ └─ Updated via OTA               │
-  ├──────────────────────────────────┤
-  │ NVS (Non-Volatile Storage)       │ ← Device secrets (encrypted)
-  │ └─ OTA password, WiFi creds      │
-  └──────────────────────────────────┘
+  +------------------------------------+
+  | ESP32 Flash Memory Layout         |
+  |------------------------------------|
+  | Recovery Partition (read-only)   | <- Fallback if production fails
+  | |-- recovery.yaml firmware        |
+  | `-- Always available for failsafe |
+  |------------------------------------|
+  | Production Partition (active)    | <- Current device firmware
+  | |-- Your role (bleproxy, etc)     |
+  | `-- Updated via OTA               |
+  |------------------------------------|
+  | NVS (Non-Volatile Storage)       | <- Device secrets (encrypted)
+  | `-- OTA password, WiFi creds      |
+  `------------------------------------+
 
 The failsafe partition holds a universal recovery.yaml firmware that all
 devices use. It can't be bricked because production firmware goes to a
@@ -33,12 +33,12 @@ Firmware Assessment
 ===================
 
 By default, iotstack flash compares the device's runtime config_hash from
-mDNS against the compiled build cache — the same hash shown by
+mDNS against the compiled build cache -- the same hash shown by
 `iotstack devices` and `iotstack failsafe`. This is fast (seconds) and
 skips OTA when the running firmware already matches.
 
 Pass `--on-flash-verify` to read the production and failsafe partitions
-over USB and compare full image MD5 sums instead. That is slower (~1–2
+over USB and compare full image MD5 sums instead. That is slower (~1-2
 minutes) but confirms what is physically on the flash chip, even when the
 device is not on WiFi.
 
@@ -88,5 +88,5 @@ Recovery workflow:
   5. Device boots into production
 
 The failsafe partition (recovery.yaml) is read-only and shared by all devices,
-so it's nearly impossible to brick a device—you can always reflash via serial.
+so it's nearly impossible to brick a device--you can always reflash via serial.
 

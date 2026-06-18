@@ -7,9 +7,9 @@ substitutions:
   matrix_brightness_cap: "170"       # Max pixel brightness at matrix_illuminance_max_lx
   matrix_brightness_default: "85"    # Target brightness at matrix_illuminance_default_lx
   matrix_brightness_floor: "8"       # Pixel brightness at matrix_illuminance_min_lx (very dim)
-  matrix_illuminance_min_lx: "1"     # Below this → floor brightness
-  matrix_illuminance_max_lx: "30"    # At/above this → cap brightness
-  matrix_illuminance_default_lx: "14.8"  # HA default input → matrix_brightness_default
+  matrix_illuminance_min_lx: "1"     # Below this -> floor brightness
+  matrix_illuminance_max_lx: "30"    # At/above this -> cap brightness
+  matrix_illuminance_default_lx: "14.8"  # HA default input -> matrix_brightness_default
   project_version: "0.0.0-dev"  # overridden at compile time from git tag
 
 # External components (replaces deprecated custom_components folder)

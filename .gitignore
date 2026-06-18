@@ -9,7 +9,7 @@ yamls/iotstack_partition_table.csv  # Symlink to ~/.iotstack/artifacts/iotstack_
 .iotstack/  # Generated artifacts (partition tables, logs, caches)
 legacy/ # old yamls and other stuff that is useful but no longer considered modern
 
-# otbr — runtime data symlink and local caches (data lives in ~/.otbrstack/)
+# otbr -- runtime data symlink and local caches (data lives in ~/.otbrstack/)
 otbr/.otbrstack
 otbr/cache/
 otbr/artifacts/
@@ -51,5 +51,5 @@ otbr/*.env
 __pycache__/
 *.pyc
 
-# Per-test session log symlinks (created at runtime → ~/.iotstack/logs/)
+# Per-test session log symlinks (created at runtime -> ~/.iotstack/logs/)
 tests/cases/*/iotstack-*.log

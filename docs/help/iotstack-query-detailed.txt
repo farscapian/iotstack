@@ -1,4 +1,4 @@
-iotstack query — Additional Documentation
+iotstack query -- Additional Documentation
 
 Extended reference for iotstack query: Home Assistant WebSocket setup,
 required secrets, and examples for inspecting device entities.
@@ -32,7 +32,7 @@ Home Assistant Configuration
 To enable iotstack query and other HA integration:
 
 1. Create a long-lived access token in Home Assistant:
-   - Settings → Developer Tools → Long-Lived Access Tokens
+   - Settings -> Developer Tools -> Long-Lived Access Tokens
    - Click "Create Token"
    - Name it "iotstack"
    - Copy the token
@@ -54,11 +54,11 @@ Entity Output Format
 
 Example output:
   Device: Kitchen RoomRemote
-  ├─ button.kitchen_roomremote_stop (button)
-  ├─ climate.kitchen_roomremote (climate, no turn_on/turn_off)
-  ├─ light.kitchen_roomremote_status_led (light, turn_on, turn_off, toggle)
-  ├─ sensor.kitchen_roomremote_battery (sensor)
-  └─ sensor.kitchen_roomremote_action (sensor)
+  |-- button.kitchen_roomremote_stop (button)
+  |-- climate.kitchen_roomremote (climate, no turn_on/turn_off)
+  |-- light.kitchen_roomremote_status_led (light, turn_on, turn_off, toggle)
+  |-- sensor.kitchen_roomremote_battery (sensor)
+  `-- sensor.kitchen_roomremote_action (sensor)
 
 Attributes shown:
   - Entity ID (platform.domain_specific_name)
@@ -85,5 +85,5 @@ Commands used:
   - config/entity_registry/list (list entities)
 
 This is more reliable than REST API for querying device information and
-requires no special permissions—any long-lived token works.
+requires no special permissions--any long-lived token works.
 

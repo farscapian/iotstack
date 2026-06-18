@@ -4,7 +4,7 @@
 /.esphome/
 
 # Runtime-generated symlinks into ~/.iotstack (machine-specific absolute
-# paths; recreated by setup.sh / iotstack.sh — must not be committed)
+# paths; recreated by setup.sh / iotstack.sh -- must not be committed)
 /.iotstack
 /iotstack_partition_table.csv
 /.iotstack-failsafe-*.yaml

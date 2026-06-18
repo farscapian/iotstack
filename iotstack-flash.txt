@@ -1,4 +1,4 @@
-iotstack flash — Serial flash tool for device setup and recovery
+iotstack flash -- Serial flash tool for device setup and recovery
 
 Flashes firmware over USB/serial when OTA is unavailable or for initial setup.
 Fresh devices get recovery and production partitions; existing devices can receive
@@ -37,7 +37,7 @@ Smart flash (default):
   differs from the current build.
 
   Use --on-flash-verify to compare by reading the full production and
-  failsafe partitions over USB instead (adds ~1–2 minutes but verifies
+  failsafe partitions over USB instead (adds ~1-2 minutes but verifies
   what is actually written to flash).
 
 Examples:

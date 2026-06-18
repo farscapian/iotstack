@@ -31,14 +31,14 @@ Each device role (bleproxy, threadrouter, mmwave, etc.) has a master secret stor
 
 ```
 ~/.iotstack/.pass/
-└── iotstack/
-    └── roles/
-        ├── bleproxy/
-        │   └── ota_password
-        ├── threadrouter/
-        │   └── ota_password
-        └── mmwave/
-            └── ota_password
+`--- iotstack/
+    `--- roles/
+        |--- bleproxy/
+        |   `--- ota_password
+        |--- threadrouter/
+        |   `--- ota_password
+        `--- mmwave/
+            `--- ota_password
 ```
 
 These master secrets are:
@@ -73,13 +73,13 @@ After flashing firmware, iotstack writes the device-specific secrets to the devi
 
 ```
 Device Flash Memory (4MB)
-├── Bootloader (32KB)
-├── NVS Partition (16KB) ← Device-specific secrets stored here
-│   ├── ota_password: "346b5d0cd072a11c68ba6eb5be55ab44"
-│   ├── api_key: "a1b2c3d4e5f6..." (derived)
-│   └── wifi credentials (if configured)
-├── Recovery Firmware (1.5MB)
-└── Production Firmware (2.25MB)
+|--- Bootloader (32KB)
+|--- NVS Partition (16KB) <- Device-specific secrets stored here
+|   |--- ota_password: "346b5d0cd072a11c68ba6eb5be55ab44"
+|   |--- api_key: "a1b2c3d4e5f6..." (derived)
+|   `--- wifi credentials (if configured)
+|--- Recovery Firmware (1.5MB)
+`--- Production Firmware (2.25MB)
 ```
 
 The NVS data:
@@ -102,7 +102,7 @@ nvs_get_str(handle, "wifi_ssid", ssid_buffer, size);
 nvs_get_str(handle, "api_key", key_buffer, size);
 ```
 
-Result: **Firmware binary contains no secrets** — all come from NVS at runtime.
+Result: **Firmware binary contains no secrets** -- all come from NVS at runtime.
 
 ## Setup
 
@@ -140,7 +140,7 @@ To enable automatic entity ID updates after device reassignment:
 
 ```bash
 # Get your Home Assistant long-lived token:
-# Settings → Developer Tools → Long-Lived Access Tokens → Create Token
+# Settings -> Developer Tools -> Long-Lived Access Tokens -> Create Token
 
 # Store it in pass
 pass insert iotstack/common/ha_token
@@ -151,17 +151,17 @@ pass insert iotstack/common/ha_url  # e.g., http://homeassistant.local:8123
 
 ### What's Protected
 
-✅ **Firmware binary extraction** → No secrets in compiled code
-✅ **Device password reuse** → Each device has unique derived secret
-✅ **Pass store compromise** → Still need device MAC to derive secrets
-✅ **Secrets at rest** → Encrypted in pass store
-✅ **Secrets in transit** → Unique per-device secrets, not shared
+[OK] **Firmware binary extraction** -> No secrets in compiled code
+[OK] **Device password reuse** -> Each device has unique derived secret
+[OK] **Pass store compromise** -> Still need device MAC to derive secrets
+[OK] **Secrets at rest** -> Encrypted in pass store
+[OK] **Secrets in transit** -> Unique per-device secrets, not shared
 
 ### What's NOT Protected
 
-⚠️ **Physical flash chip extraction** → NVS data is plaintext on flash
-⚠️ **Device physical access** → Someone with the device can read NVS
-⚠️ **Role secret compromise** → If role secret is leaked, all future devices of that role are compromised (old devices are unaffected)
+[WARN] **Physical flash chip extraction** -> NVS data is plaintext on flash
+[WARN] **Device physical access** -> Someone with the device can read NVS
+[WARN] **Role secret compromise** -> If role secret is leaked, all future devices of that role are compromised (old devices are unaffected)
 
 ### Production Hardening
 
@@ -181,7 +181,7 @@ For production deployments, consider:
    - Store in pass with device MAC in the path
    - Slightly more management overhead but maximum security
 
-See [CLAUDE.md → Flash Encryption & eFuses](../CLAUDE.md#flash-encryption--efuses---production-enhancement-todo) for implementation details.
+See [CLAUDE.md -> Flash Encryption & eFuses](../CLAUDE.md#flash-encryption--efuses---production-enhancement-todo) for implementation details.
 
 ## Troubleshooting
 

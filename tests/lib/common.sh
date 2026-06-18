@@ -1,5 +1,5 @@
 #!/bin/bash
-# common.sh — Shared helpers for iotstack overnight test cases
+# common.sh -- Shared helpers for iotstack overnight test cases
 #
 # Sourced by tests/cases/<slug>/run.sh and tests/run_test_cases.sh (do not execute directly).
 
@@ -51,7 +51,7 @@ test_session_log_file() {
 }
 
 test_link_session_log() {
-  # Symlink tests/cases/<slug>/iotstack-<slug>.log → ~/.iotstack/logs/iotstack-<slug>.log
+  # Symlink tests/cases/<slug>/iotstack-<slug>.log -> ~/.iotstack/logs/iotstack-<slug>.log
   local log_id="${1:-${IOTSTACK_TEST_LOG_ID:-}}"
   local case_dir="${2:-${IOTSTACK_TEST_CASE_DIR:-}}"
   local log_file link
@@ -91,7 +91,7 @@ test_scan_serial_devices() {
   test_info "Scanning USB serial ports for Espressif devices..."
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
-    test_info "  ${line//:/ → }"
+    test_info "  ${line//:/ -> }"
   done < <(esp_serial_scan)
 }
 
@@ -127,7 +127,7 @@ test_require_tty_for_role() {
   export IOTSTACK_TEST_TTY="$tty"
   export IOTSTACK_TEST_ROLE="$role"
   export IOTSTACK_TEST_VARIANT="$variant"
-  test_info "Role ${role} → ${variant} → ${tty}"
+  test_info "Role ${role} -> ${variant} -> ${tty}"
 }
 
 test_require_tty_failsafe() {
@@ -140,7 +140,7 @@ test_require_tty_failsafe() {
   }
   export IOTSTACK_TEST_TTY="$tty"
   export IOTSTACK_TEST_VARIANT="$variant"
-  test_info "Failsafe (${variant}) → ${tty}"
+  test_info "Failsafe (${variant}) -> ${tty}"
 }
 
 test_iotstack() {

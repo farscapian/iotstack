@@ -109,7 +109,7 @@ void NVSSecrets::setup() {
       // WiFi (priority 250) started connecting with the YAML placeholder before
       // this ran (priority 200). save_wifi_sta() saved the real credentials and
       // set connect_soon_(), but the state machine stays in its retry cycle until
-      // the current attempt resolves — which can take minutes in RETRY_HIDDEN.
+      // the current attempt resolves -- which can take minutes in RETRY_HIDDEN.
       // esp_wifi_disconnect() forces an immediate DISCONNECTED event so the
       // machine idles and picks up connect_soon_() on the next loop() call.
       esp_wifi_disconnect();

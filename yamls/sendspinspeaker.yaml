@@ -47,7 +47,7 @@ time:
   - platform: sntp
     id: device_time
 
-# 2. WiFi — power save disabled to keep audio stream stable
+# 2. WiFi -- power save disabled to keep audio stream stable
 # WiFi credentials are loaded from NVS by nvs_secrets component at startup
 
 wifi:
@@ -63,18 +63,18 @@ sendspin:
   task_stack_in_psram: false
 
 # 4. I2S audio bus + speaker
-# ── PCM5102A → 3.5mm AUX → powered/Bluetooth speaker ─────────────────────
+# -- PCM5102A -> 3.5mm AUX -> powered/Bluetooth speaker ---------------------
 #   PCM5102A    XIAO ESP32-C6
-#   BCK       → GPIO3  (bit clock)
-#   LCK       → GPIO4  (left/right clock)
-#   DIN       → GPIO5  (data)
-#   VCC       → 3.3V
-#   GND       → GND
-#   SCK       → GND    (internal clock mode — check solder jumper on board)
-#   3.5mm out → AUX cable → speaker
+#   BCK       -> GPIO3  (bit clock)
+#   LCK       -> GPIO4  (left/right clock)
+#   DIN       -> GPIO5  (data)
+#   VCC       -> 3.3V
+#   GND       -> GND
+#   SCK       -> GND    (internal clock mode -- check solder jumper on board)
+#   3.5mm out -> AUX cable -> speaker
 #
 # If your board's SCK jumper is NOT bridged to GND, uncomment i2s_mclk_pin.
-# ───────────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
 
 i2s_audio:
   - id: i2s_bus
@@ -93,7 +93,7 @@ speaker:
     channel: stereo
 
 # 5. Media player + Sendspin source
-# buffer_size reduced from 1 MB default — ESP32-C6 internal RAM only.
+# buffer_size reduced from 1 MB default -- ESP32-C6 internal RAM only.
 # Increase initial_static_delay if audio glitches on network hiccups.
 
 media_player:
@@ -137,4 +137,4 @@ sensor:
     update_interval: 60s
     entity_category: diagnostic
 
-# 8. Buttons — "Restart" and "Toggle Boot Partition" come from partition_mgmt package
+# 8. Buttons -- "Restart" and "Toggle Boot Partition" come from partition_mgmt package

@@ -1,4 +1,4 @@
-iotstack matter decode-qr — Extract MT: payload from a Matter QR image
+iotstack matter decode-qr -- Extract MT: payload from a Matter QR image
 
 Decodes a Matter QR code image and prints only the MT: setup payload string to
 stdout (suitable for piping or pasting into other commands).

@@ -32,7 +32,7 @@ openthread:
   device_type: FTD
   force_dataset: true
 
-# 3. Network — required for IPv6/Thread
+# 3. Network -- required for IPv6/Thread
 network:
   enable_ipv6: true
 
@@ -40,14 +40,14 @@ network:
 nvs_secrets:
 
 
-# 4. API — native ESPHome over IPv6/Thread; OTA rides this connection
+# 4. API -- native ESPHome over IPv6/Thread; OTA rides this connection
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
-# 5. OTA — password set dynamically by nvs_ota_password component from device NVS
+# 5. OTA -- password set dynamically by nvs_ota_password component from device NVS
 ota:
   - platform: esphome
 
-# 6. Safe mode — Thread-only node; safe mode OTA recovery requires USB serial
+# 6. Safe mode -- Thread-only node; safe mode OTA recovery requires USB serial
 #    if Thread is disrupted during update
 safe_mode:
   num_attempts: 5
@@ -58,7 +58,7 @@ logger:
   baud_rate: 9600
   # USB serial only; disable (baud_rate: 0) after initial setup if desired
 
-# 8. Onboard LED — XIAO ESP32-C6 GPIO15, active-low
+# 8. Onboard LED -- XIAO ESP32-C6 GPIO15, active-low
 output:
   - platform: gpio
     pin:
@@ -103,7 +103,7 @@ text_sensor:
     rloc16:
       name: "Thread RLOC16"
       entity_category: diagnostic
-    # network_key: omitted — exposes sensitive credentials
+    # network_key: omitted -- exposes sensitive credentials
 
 # 11. Buttons
 button:

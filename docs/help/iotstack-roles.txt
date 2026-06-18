@@ -1,4 +1,4 @@
-iotstack roles — Show available device roles and their configurations
+iotstack roles -- Show available device roles and their configurations
 
 Lists device roles defined in this project and the YAML file each role uses.
 Shows WiFi and Thread variants so you can see what firmware types are available.

@@ -1,4 +1,4 @@
-iotstack bleproxy — Bluetooth Proxy
+iotstack bleproxy -- Bluetooth Proxy
 
 ESP32-C6 WiFi device that extends Home Assistant Bluetooth reach via ESPHome
 bluetooth_proxy.

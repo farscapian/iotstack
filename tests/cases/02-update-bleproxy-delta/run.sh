@@ -1,5 +1,5 @@
 #!/bin/bash
-# TEST_DESC: OTA update bleproxy (delta — skip if hash matches)
+# TEST_DESC: OTA update bleproxy (delta -- skip if hash matches)
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 

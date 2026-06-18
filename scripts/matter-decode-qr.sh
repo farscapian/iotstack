@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# matter-decode-qr.sh — Extract Matter MT: payload from a QR code image.
+# matter-decode-qr.sh -- Extract Matter MT: payload from a QR code image.
 # Usage: matter-decode-qr.sh <path-to-image>
 
 set -euo pipefail

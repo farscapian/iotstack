@@ -1,4 +1,4 @@
-iotstack device — Read per-device data from connected hardware
+iotstack device -- Read per-device data from connected hardware
 
 Commands for inspecting device-local state over USB serial. NVS secrets cannot
 be read over the network; the device must be plugged in.

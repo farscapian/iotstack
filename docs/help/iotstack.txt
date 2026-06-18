@@ -1,4 +1,4 @@
-iotstack — Build, deploy, and maintain your Internet of Things Stack
+iotstack -- Build, deploy, and maintain your Internet of Things Stack
 
 Command-line tool for building, flashing, and maintaining an ESPHome device
 fleet. Discovers devices on the network, compiles firmware, runs OTA updates,

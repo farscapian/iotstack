@@ -1,4 +1,4 @@
-iotstack clean — Clean build artifacts and compilation caches
+iotstack clean -- Clean build artifacts and compilation caches
 
 Removes generated build output, compiler caches, and session logs. Safe to rerun;
 it never deletes source files. Use when you need a full rebuild or to reclaim

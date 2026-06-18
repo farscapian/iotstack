@@ -16,7 +16,7 @@ Root cause notes (ESP32-C6 USB Serial/JTAG):
   TID=1 (header 0x81) to get a PROP_VALUE_IS reply.
 - Opening /dev/ttyACM0 causes the kernel CDC-ACM driver to send
   SET_CONTROL_LINE_STATE(DTR=1, RTS=1).  The ESP32-C6 USB Serial/JTAG
-  peripheral is hardwired to reset on that assertion — it is not
+  peripheral is hardwired to reset on that assertion -- it is not
   configurable in firmware.  Both probe paths deassert DTR/RTS
   immediately after open, then wait 4 s for the device to reboot and
   the Spinel stack to initialise before sending the probe frame.
@@ -112,7 +112,7 @@ def main():
         except ImportError:
             resp = probe_stdlib(port, frame)
         if HDLC_FLAG in resp and len(resp) > 4:
-            print(f'RCP OK — {len(resp)}-byte Spinel response from {port}')
+            print(f'RCP OK -- {len(resp)}-byte Spinel response from {port}')
             sys.exit(0)
         print(
             f'ERROR: no Spinel response from {port} '

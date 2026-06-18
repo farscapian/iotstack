@@ -182,7 +182,7 @@ text_sensor:
     update_interval: 1s
 
 sensor:
-  # 4.2 mmWave — respiratory rate
+  # 4.2 mmWave -- respiratory rate
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     breath_rate:
@@ -194,7 +194,7 @@ sensor:
       accuracy_decimals: 0
 
 
-  # 4.3 mmWave — heart rate
+  # 4.3 mmWave -- heart rate
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     heart_rate:
@@ -206,7 +206,7 @@ sensor:
       accuracy_decimals: 0
 
 
-  # 4.4 mmWave — detection distance
+  # 4.4 mmWave -- detection distance
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     distance:
@@ -403,7 +403,7 @@ light:
             float cycle_phase = cycle_pos / cycle_time;  // 0.0 to 1.0
 
             // Smooth sine wave for natural breathing (0.2 to 0.8 brightness)
-            // sin(phase * pi) gives smooth 0→1→0 curve
+            // sin(phase * pi) gives smooth 0->1->0 curve
             float sine_value = sin(cycle_phase * 3.14159265f);
             float brightness = (0.2f + (sine_value * 0.6f)) * id(brightness_multiplier);
 

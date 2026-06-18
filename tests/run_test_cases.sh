@@ -1,5 +1,5 @@
 #!/bin/bash
-# run_test_cases.sh — Overnight iotstack integration test runner
+# run_test_cases.sh -- Overnight iotstack integration test runner
 #
 # Usage:
 #   ./tests/run_test_cases.sh [--list] [--tty DEV] [--iterations N] [--stop-on-failure] [test...]
@@ -35,7 +35,7 @@ Run iotstack integration tests against a USB-connected ESP32-C6.
 Options:
   --list              List available test cases and exit
   --tty <device>      Pin a port (auto-detect chip; sets C6 or S3 override)
-  --ports             Scan and print USB port → chip mapping, then exit
+  --ports             Scan and print USB port -> chip mapping, then exit
   --iterations <n>    Repeat the selected suite N times (default: 1)
   --stop-on-failure   Stop after the first failing test
   --verbose           Pass -v to iotstack commands
@@ -58,7 +58,7 @@ EOF
 _list_cases() {
   local f base id slug desc
   printf '%-4s  %-28s  %s\n' "ID" "SLUG" "DESCRIPTION"
-  printf '%s\n' "────────────────────────────────────────────────────────────────────────"
+  printf '%s\n' "------------------------------------------------------------------------"
   for f in "${CASES_DIR}"/[0-9][0-9]-*/run.sh; do
     [[ -f "$f" ]] || continue
     base=$(basename "$(dirname "$f")")
@@ -222,7 +222,7 @@ RUN_LOG="${IOTSTACK_TEST_LOG_DIR}/run_$(date +%Y%m%d_%H%M%S).log"
 test_info "Log file: $RUN_LOG"
 test_info "Cases: ${#SUITE[@]} | Iterations: $ITERATIONS"
 test_info "Port map: ${ESP_SERIAL_MAP}"
-test_info "iotstack logs: tests/cases/<slug>/iotstack-<slug>.log → ~/.iotstack/logs/ (--log-id)"
+test_info "iotstack logs: tests/cases/<slug>/iotstack-<slug>.log -> ~/.iotstack/logs/ (--log-id)"
 {
   echo "iotstack test run started: $(date -Is)"
   echo "ROLE=${IOTSTACK_TEST_ROLE} ITERATIONS=${ITERATIONS}"
@@ -238,8 +238,8 @@ run_failed=0
 
 for (( iter=1; iter<=ITERATIONS; iter++ )); do
   if [[ "$ITERATIONS" -gt 1 ]]; then
-    test_info "═══ Iteration $iter/$ITERATIONS ═══"
-    echo "── iteration $iter/$ITERATIONS ──" >> "$RUN_LOG"
+    test_info "=== Iteration $iter/$ITERATIONS ==="
+    echo "-- iteration $iter/$ITERATIONS --" >> "$RUN_LOG"
   fi
 
   for case_script in "${SUITE[@]}"; do
@@ -247,8 +247,8 @@ for (( iter=1; iter<=ITERATIONS; iter++ )); do
     export IOTSTACK_TEST_LOG_ID="$case_slug"
     export IOTSTACK_TEST_CASE_DIR="$(cd "$(dirname "$case_script")" && pwd)"
     test_link_session_log
-    test_info "▶ ${case_slug}/run.sh (log-id=${IOTSTACK_TEST_LOG_ID})"
-    echo "▶ ${case_slug}/run.sh (log-id=${IOTSTACK_TEST_LOG_ID})" >> "$RUN_LOG"
+    test_info "> ${case_slug}/run.sh (log-id=${IOTSTACK_TEST_LOG_ID})"
+    echo "> ${case_slug}/run.sh (log-id=${IOTSTACK_TEST_LOG_ID})" >> "$RUN_LOG"
 
     set +e
     bash "$case_script" 2>&1 | tee -a "$RUN_LOG"

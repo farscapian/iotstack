@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stream raw serial logs from an ESP device — no ESPHome YAML needed.
+"""Stream raw serial logs from an ESP device -- no ESPHome YAML needed.
 
 Usage: serial-logs.py [options] <port> [baud]
   --reconnect           Retry on port open/read error instead of exiting

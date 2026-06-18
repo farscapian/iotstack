@@ -5,7 +5,7 @@
 Recovery mechanism for ESP32-C6 devices with dual firmware partitions:
 - **Recovery Partition**: Fixed recovery firmware (never changes, well-known credentials)
 - **Production Partition**: Updatable production firmware (rotates secrets)
-- **Automatic Fallback**: If production fails → device boots recovery automatically
+- **Automatic Fallback**: If production fails -> device boots recovery automatically
 - **Remote Recovery**: User recovers device via OTA from computer (no physical visits)
 
 ## Architecture
@@ -14,7 +14,7 @@ Recovery mechanism for ESP32-C6 devices with dual firmware partitions:
 
 ```
 Address    Size      Purpose
-─────────────────────────────────
+---------------------------------
 0x0000     128KB     Bootloader
 0x20000    16KB      Partition table
 0x24000    2MB       Recovery app (fixed, never changes)
@@ -98,74 +98,74 @@ ESPHome's OTA bootloader automatically:
 #### Option 1: Automatic Fallback (No Action Needed)
 ```
 Production firmware fails
-  ↓
+  v
 Boot loop (5 attempts) detected by bootloader
-  ↓
+  v
 Bootloader auto-switches to recovery partition
-  ↓
+  v
 Device boots recovery firmware (purple LED indicator)
 ```
 
 #### Option 2: Manual Physical Button (GPIO0)
 ```
 Hold GPIO0 boot button for 3+ seconds
-  ↓
+  v
 Device logs "switching partition"
-  ↓
+  v
 ESP32 writes OTA flags to switch partition
-  ↓
+  v
 Device reboots into alternate partition
-  ↓
+  v
 Recovery firmware boots (if production was active) or vice versa
 ```
 
 #### Option 3: Home Assistant Button
 ```
 Press "Toggle Boot Partition" button in HA
-  ↓
+  v
 Device receives command via API
-  ↓
+  v
 Partition toggle code executes
-  ↓
+  v
 LED flashes 3 times to confirm
-  ↓
+  v
 Device reboots into alternate partition
 ```
 
 ### Complete Recovery Scenario
 
 ```
-┌─────────────────────────────────────────────────┐
-│ 1. Device boots production firmware             │
-│    (on ota_1 partition)                         │
-│                                                  │
-│ 2. Production firmware fails/crashes            │
-│    Boot loop detected or user initiates toggle  │
-│                                                  │
-│ 3. Choose entry method:                         │
-│    • Wait for auto-fallback (5 boot attempts)   │
-│    • Hold GPIO0 button 3+ seconds               │
-│    • Press HA "Toggle Boot Partition" button    │
-│                                                  │
-│ 4. Device boots recovery firmware               │
-│    (on ota_0 partition)                         │
-│    LED: Purple blink = recovery mode active     │
-│                                                  │
-│ 5. Device connects to WiFi                      │
-│    API available with recovery credentials      │
-│                                                  │
-│ 6. User from computer:                          │
-│    esphome upload yamls/bleproxy.yaml \\       │
-│      --device <device>.local \\                 │
-│      --ota-password IotstackRecovery2024        │
-│                                                  │
-│ 7. OTA writes production firmware to ota_1      │
-│    Set ota_1 as boot partition                  │
-│                                                  │
-│ 8. Device reboots into production               │
-│    LED: Returns to normal pattern               │
-│    Normal operation resumes                     │
-└─────────────────────────────────────────────────┘
++---------------------------------------------------+
+| 1. Device boots production firmware             |
+|    (on ota_1 partition)                         |
+|                                                  |
+| 2. Production firmware fails/crashes            |
+|    Boot loop detected or user initiates toggle  |
+|                                                  |
+| 3. Choose entry method:                         |
+|    - Wait for auto-fallback (5 boot attempts)   |
+|    - Hold GPIO0 button 3+ seconds               |
+|    - Press HA "Toggle Boot Partition" button    |
+|                                                  |
+| 4. Device boots recovery firmware               |
+|    (on ota_0 partition)                         |
+|    LED: Purple blink = recovery mode active     |
+|                                                  |
+| 5. Device connects to WiFi                      |
+|    API available with recovery credentials      |
+|                                                  |
+| 6. User from computer:                          |
+|    esphome upload yamls/bleproxy.yaml \\       |
+|      --device <device>.local \\                 |
+|      --ota-password IotstackRecovery2024        |
+|                                                  |
+| 7. OTA writes production firmware to ota_1      |
+|    Set ota_1 as boot partition                  |
+|                                                  |
+| 8. Device reboots into production               |
+|    LED: Returns to normal pattern               |
+|    Normal operation resumes                     |
+`---------------------------------------------------+
 ```
 
 ## Initial Device Deployment
@@ -280,8 +280,8 @@ Before rolling out to other device roles, validate bleproxy-recovery on real har
 - [ ] Cycle works reliably multiple times
 
 ### Credential Verification
-- [ ] Recovery OTA password: `IotstackRecovery2024` ✓
-- [ ] Recovery API key: `IotstackRecoveryAPIKey2024` ✓
+- [ ] Recovery OTA password: `IotstackRecovery2024` [OK]
+- [ ] Recovery API key: `IotstackRecoveryAPIKey2024` [OK]
 - [ ] Only these credentials work on recovery firmware
 - [ ] Production credentials don't affect recovery
 
@@ -293,13 +293,13 @@ Before rolling out to other device roles, validate bleproxy-recovery on real har
 
 ## Next Steps (After BLE Proxy Validation)
 
-1. ✅ Create recovery YAML (bleproxy-recovery.yaml)
-2. ✅ Create partition table (partitions/iotstack_partition_table.csv)
-3. ⏳ **TEST on real bleproxy device** (above checklist)
-4. ⏳ Create mmwave-recovery.yaml, threadrouter-recovery.yaml (copy pattern)
-5. ⏳ Update iotstack-roles.conf for recovery variants
-6. ⏳ Add recovery OTA scripts to iotstack.sh
-7. ⏳ Test full recovery workflow on all device types
+1. [OK] Create recovery YAML (bleproxy-recovery.yaml)
+2. [OK] Create partition table (partitions/iotstack_partition_table.csv)
+3. [TODO] **TEST on real bleproxy device** (above checklist)
+4. [TODO] Create mmwave-recovery.yaml, threadrouter-recovery.yaml (copy pattern)
+5. [TODO] Update iotstack-roles.conf for recovery variants
+6. [TODO] Add recovery OTA scripts to iotstack.sh
+7. [TODO] Test full recovery workflow on all device types
 
 ## References
 

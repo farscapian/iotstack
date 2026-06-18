@@ -11,5 +11,5 @@ test_run_step "iotstack flash bleproxy ${IOTSTACK_TEST_TTY}" \
 if test_discover_mac bleproxy; then
   test_ok "Discovered TEST_MAC_bleproxy=$(test_load_state TEST_MAC_bleproxy)"
 else
-  test_warn "Could not discover MAC yet — later network tests may skip or retry"
+  test_warn "Could not discover MAC yet -- later network tests may skip or retry"
 fi

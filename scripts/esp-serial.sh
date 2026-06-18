@@ -1,5 +1,5 @@
 #!/bin/bash
-# esp-serial.sh — Detect Espressif chips on USB serial ports
+# esp-serial.sh -- Detect Espressif chips on USB serial ports
 #
 # Requires config.sh to be sourced first.
 

@@ -1,4 +1,4 @@
-# SendSpin Speaker (WiFi) — In Development
+# SendSpin Speaker (WiFi) -- In Development
 
 ## Overview
 
@@ -51,7 +51,7 @@ See `yamls/wifi-sendspin.yaml` for the full configuration.
 
 ## Known Limitations
 
-- Development project — API and settings may change
+- Development project -- API and settings may change
 - Requires Music Assistant integration in Home Assistant
 - Network-dependent (WiFi stability affects audio sync)
 

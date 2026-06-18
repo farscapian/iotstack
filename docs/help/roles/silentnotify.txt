@@ -1,4 +1,4 @@
-iotstack silentnotify — Silent Notify
+iotstack silentnotify -- Silent Notify
 
 ESP32-S3 WiFi notification / alert device.
 

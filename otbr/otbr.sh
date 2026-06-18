@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # OpenThread Border Router commands for iotstack.
-# Sourced by iotstack.sh — do not execute directly.
+# Sourced by iotstack.sh -- do not execute directly.
 
 if [[ -n "${_IOTSTACK_OTBR_LOADED:-}" ]]; then
     # shellcheck disable=SC2317  # exit 0 is the fallback when not sourced
@@ -21,7 +21,7 @@ _otbr_ensure_ssh_config() {
     if grep -qE "^Host[[:space:]]+${_host}([[:space:]]|$)" "$_ssh_cfg" 2>/dev/null; then
         return 0
     fi
-    echo "[otbr] No SSH config entry for '${_host}' — appending stub to ${_ssh_cfg}"
+    echo "[otbr] No SSH config entry for '${_host}' -- appending stub to ${_ssh_cfg}"
     printf '\nHost %s\n    HostName %s.local\n    User ubuntu\n' "$_host" "$_host" >> "$_ssh_cfg"
     chmod 600 "$_ssh_cfg"
 }
@@ -74,7 +74,7 @@ _otbr_git_head() {
 
 _otbr_show_help() {
     cat <<'EOF'
-iotstack otbr — OpenThread Border Router provisioning
+iotstack otbr -- OpenThread Border Router provisioning
 
 Usage:
   iotstack otbr [--env-file=PATH] <command> [args]
@@ -181,7 +181,7 @@ cmd_otbr_dispatch() {
     case "$cmd" in
         vm)
             if ! command -v incus &>/dev/null; then
-                echo "[otbr] incus not found — running setup to install and initialize it ..."
+                echo "[otbr] incus not found -- running setup to install and initialize it ..."
                 bash "$_OTBR_DIR/setup.sh"
                 if ! command -v incus &>/dev/null; then
                     echo "[otbr] ERROR: incus still not available after setup. Aborting." >&2
@@ -220,7 +220,7 @@ cmd_otbr_dispatch() {
             local _otbr_log="${_OTBR_HOME}/logs/${_vm_log_name}/vm.log"
             mkdir -p "$(dirname "$_otbr_log")"
             echo "[otbr] Logging to: ${_otbr_log}"
-            printf '\n=== iotstack otbr vm %s %s — %s ===\n' \
+            printf '\n=== iotstack otbr vm %s %s -- %s ===\n' \
                 "$_arch" "$(date '+%Y-%m-%d %H:%M:%S')" \
                 "$(_otbr_git_head)" \
                 | tee -a "$_otbr_log"
@@ -289,7 +289,7 @@ cmd_otbr_dispatch() {
             ln -sfn "$_flash_log_slug" "${_OTBR_HOME}/logs/${_flash_log_host}/current"
             echo "[otbr] Running flash from worktree: ${_flash_wt}"
             echo "[otbr] Main working tree remains editable on its current branch."
-            printf '\n=== iotstack otbr flash %s — %s [branch: %s] [logs: %s] ===\n' \
+            printf '\n=== iotstack otbr flash %s -- %s [branch: %s] [logs: %s] ===\n' \
                 "$(date '+%Y-%m-%d %H:%M:%S')" \
                 "$(_otbr_git_head)" \
                 "$_flash_branch" \
@@ -316,7 +316,7 @@ cmd_otbr_dispatch() {
             _otbr_log="${_OTBR_HOME}/logs/$(hostname)/docker.log"
             mkdir -p "$(dirname "$_otbr_log")"
             echo "[otbr] Logging to: ${_otbr_log}"
-            printf '\n=== iotstack otbr docker %s — %s ===\n' \
+            printf '\n=== iotstack otbr docker %s -- %s ===\n' \
                 "$(date '+%Y-%m-%d %H:%M:%S')" \
                 "$(_otbr_git_head)" \
                 | tee -a "$_otbr_log"
@@ -329,7 +329,7 @@ cmd_otbr_dispatch() {
             _otbr_log="${_OTBR_HOME}/logs/$(hostname)/snap.log"
             mkdir -p "$(dirname "$_otbr_log")"
             echo "[otbr] Logging to: ${_otbr_log}"
-            printf '\n=== iotstack otbr snap %s — %s ===\n' \
+            printf '\n=== iotstack otbr snap %s -- %s ===\n' \
                 "$(date '+%Y-%m-%d %H:%M:%S')" \
                 "$(_otbr_git_head)" \
                 | tee -a "$_otbr_log"
@@ -379,9 +379,9 @@ cmd_otbr_dispatch() {
             local _otbr_log="${_log_session_dir}/firstboot.log"
             local _snap_log="${_log_session_dir}/otbr-snap.log"
             mkdir -p "$_log_session_dir"
-            echo "[otbr] Logs from ${_host} → ${_log_session_dir}/"
+            echo "[otbr] Logs from ${_host} -> ${_log_session_dir}/"
             local _hdr
-            _hdr=$(printf '\n=== iotstack otbr logs %s %s — %s [session: %s] ===' \
+            _hdr=$(printf '\n=== iotstack otbr logs %s %s -- %s [session: %s] ===' \
                 "$_host" "$(date '+%Y-%m-%d %H:%M:%S')" \
                 "$(_otbr_git_head)" \
                 "$(basename "$_log_session_dir")")

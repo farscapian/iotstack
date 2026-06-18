@@ -1,6 +1,6 @@
-# iotstack — Infrastructure for your SmartHome
+# iotstack -- Infrastructure for your SmartHome
 
-iotstack is a command-line tool for deploying and managing a collection of smart home projects built on ESP32 microcontrollers. It provides a unified interface to compile, flash, and update various device types — from ESPHome firmware configurations to Matter commissioning infrastructure and beyond.
+iotstack is a command-line tool for deploying and managing a collection of smart home projects built on ESP32 microcontrollers. It provides a unified interface to compile, flash, and update various device types -- from ESPHome firmware configurations to Matter commissioning infrastructure and beyond.
 
 With iotstack, you can:
 - Deploy and update multiple device types with a single command
@@ -38,9 +38,9 @@ Detects people in a room and their distance using millimeter-wave radar. Useful 
 
 ### In-Development Projects
 
-- **SendSpin Speaker**: Multi-room synchronized audio. [Full documentation →](docs/sendspinspeaker.md)
-- **LED Light Strip**: Addressable WS2812B LED strip control. [Full documentation →](docs/ledlightstrip.md)
-- **LED Matrix Display**: Text and animation display on LED matrices. [Development notes →](docs/ledmatrixdisplay.md)
+- **SendSpin Speaker**: Multi-room synchronized audio. [Full documentation ->](docs/sendspinspeaker.md)
+- **LED Light Strip**: Addressable WS2812B LED strip control. [Full documentation ->](docs/ledlightstrip.md)
+- **LED Matrix Display**: Text and animation display on LED matrices. [Development notes ->](docs/ledmatrixdisplay.md)
 
 ---
 
@@ -68,14 +68,14 @@ Device configurations are YAML files in the `yamls/` directory:
 
 ```
 yamls/
-├── recovery.yaml                    # Recovery/dual-partition mode
-├── bleproxy.yaml                    # BLE Proxy (WiFi)
-├── threadrouter.yaml                # Thread Router (Thread mesh)
-├── mmwave.yaml                      # Presence sensor (WiFi)
-├── ledlightstrip.yaml               # LED strip controller (WiFi)
-├── sendspin.yaml                    # Multi-room speaker (WiFi)
-└── external_components/             # Custom ESPHome components
-    ├── nvs_secrets/                 # Reads device credentials from NVS
+|--- recovery.yaml                    # Recovery/dual-partition mode
+|--- bleproxy.yaml                    # BLE Proxy (WiFi)
+|--- threadrouter.yaml                # Thread Router (Thread mesh)
+|--- mmwave.yaml                      # Presence sensor (WiFi)
+|--- ledlightstrip.yaml               # LED strip controller (WiFi)
+|--- sendspin.yaml                    # Multi-room speaker (WiFi)
+`--- external_components/             # Custom ESPHome components
+    |--- nvs_secrets/                 # Reads device credentials from NVS
 ```
 
 ---
@@ -96,7 +96,7 @@ When you run `iotstack update`, here's what happens behind the scenes:
 
 6. **Logging**: Detailed logs for each update are stored in `~/.iotstack/logs/` for troubleshooting.
 
-This architecture keeps credentials out of firmware binaries — each device has unique secrets derived at flash time and stored safely in its flash memory.
+This architecture keeps credentials out of firmware binaries -- each device has unique secrets derived at flash time and stored safely in its flash memory.
 
 ---
 

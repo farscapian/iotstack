@@ -20,7 +20,7 @@
 # PREREQUISITES
 #   incus must be installed and the current user must be in the incus group
 #   (or run as root).  Run test-vm/setup.sh first to populate cache/snap/ and
-#   cache/ot-rcp-sim/ — provision_incus.sh reuses those caches.
+#   cache/ot-rcp-sim/ -- provision_incus.sh reuses those caches.
 #
 # FILE INJECTION
 #   After the instance starts, snap cache (.snap + .assert) and sim binary are
@@ -71,7 +71,7 @@ fi
 INST="local:${INSTANCE_NAME}"
 
 # Env is loaded by otbr before invoking this script.
-[[ -n "${THREAD_DATASET_TLV:-}" ]] || { echo "[ERROR] THREAD_DATASET_TLV not set — run via 'otbr vm'" >&2; exit 1; }
+[[ -n "${THREAD_DATASET_TLV:-}" ]] || { echo "[ERROR] THREAD_DATASET_TLV not set -- run via 'otbr vm'" >&2; exit 1; }
 unset _arg
 
 BOOT_TIMEOUT="${BOOT_TIMEOUT:-300}"
@@ -87,7 +87,7 @@ RED='\033[0;31m'; GRN='\033[0;32m'; YLW='\033[1;33m'; BLU='\033[0;34m'; NC='\033
 info()  { echo -e "${GRN}[INFO ]${NC}  $*"; }
 warn()  { echo -e "${YLW}[WARN ]${NC}  $*"; }
 die()   { echo -e "${RED}[FAIL ]${NC}  $*" >&2; exit 1; }
-step()  { echo -e "\n${BLU}━━━ $* ${NC}"; }
+step()  { echo -e "\n${BLU}=== $* ${NC}"; }
 pass()  { echo -e "\n${GRN}[PASS ]${NC}  $*"; }
 
 generate_thread_tlv() {
@@ -158,7 +158,7 @@ build_and_flash_rcp() {
             local _idf_hash_after
             _idf_hash_after=$(git -C "$_idf_path" rev-parse HEAD)
             if [[ "$_idf_hash_before" != "$_idf_hash_after" ]]; then
-                info "ESP-IDF updated: ${_idf_hash_before:0:8} → ${_idf_hash_after:0:8}"
+                info "ESP-IDF updated: ${_idf_hash_before:0:8} -> ${_idf_hash_after:0:8}"
                 _src_changed=1
             else
                 info "ESP-IDF already at latest (${_idf_hash_after:0:8})."
@@ -171,7 +171,7 @@ build_and_flash_rcp() {
     local ot_rcp_dir="${_resolved_idf_path}/examples/openthread/ot_rcp"
 
     [[ -d "$ot_rcp_dir" ]] \
-        || die "ot_rcp example not found at: $ot_rcp_dir — check IDF_PATH."
+        || die "ot_rcp example not found at: $ot_rcp_dir -- check IDF_PATH."
 
     # ------------------------------------------------------------------
     # 2. Write required sdkconfig overrides.
@@ -201,10 +201,10 @@ SDKEOF
             idf.py build
         )
     else
-        info "Source unchanged — skipping rebuild."
+        info "Source unchanged -- skipping rebuild."
     fi
 
-    [[ -f "$_built" ]] || die "Build failed — ${_built} not found."
+    [[ -f "$_built" ]] || die "Build failed -- ${_built} not found."
 
     # ------------------------------------------------------------------
     # 4. Flash only if the built binary differs from the cached copy.
@@ -218,10 +218,10 @@ SDKEOF
         _sum_built=$(sha256sum "$_built" | awk '{print $1}')
         _sum_cached=$(sha256sum "$cached_bin" | awk '{print $1}')
         if [[ "$_sum_built" != "$_sum_cached" ]]; then
-            info "Firmware changed — reflashing device."
+            info "Firmware changed -- reflashing device."
             _do_flash=1
         else
-            info "Device already running latest firmware — no flash needed."
+            info "Device already running latest firmware -- no flash needed."
         fi
     fi
 
@@ -237,7 +237,7 @@ SDKEOF
         )
         mkdir -p "${OTBR_HOME}/cache/esp32/rcp"
         cp "$_built" "$cached_bin"
-        info "Flash complete — waiting for USB re-enumeration ..."
+        info "Flash complete -- waiting for USB re-enumeration ..."
         sleep 8
     fi
 }
@@ -251,7 +251,7 @@ find_rcp() {
     for p in /dev/ttyUSB* /dev/ttyACM*; do [[ -e "$p" ]] && candidates+=("$p"); done
 
     if [[ ${#candidates[@]} -eq 0 ]]; then
-        warn "No USB serial devices found — skipping RCP verification."
+        warn "No USB serial devices found -- skipping RCP verification."
         RCP_DEVICE=""; RCP_VID=""; RCP_PID=""
         return
     fi
@@ -285,7 +285,7 @@ ensure_pyspinel_venv() {
     "$PYSPINEL_VENV/bin/pip" install --quiet pyspinel
 }
 
-# Delegates to scripts/verify_rcp.py — the single canonical probe.
+# Delegates to scripts/verify_rcp.py -- the single canonical probe.
 _probe_rcp() {
     local port="$1"
     ensure_pyspinel_venv
@@ -301,7 +301,7 @@ verify_rcp() {
     if [[ -n "$holder" ]]; then
         local holder_name
         holder_name=$(ps -p "$holder" -o comm= 2>/dev/null || echo "PID $holder")
-        warn "$port held by $holder_name — skipping verification, using sim instead."
+        warn "$port held by $holder_name -- skipping verification, using sim instead."
         RCP_DEVICE=""
         return 0
     fi
@@ -311,16 +311,16 @@ verify_rcp() {
         return 0
     fi
 
-    warn "No spinel response from $port — RCP firmware not detected."
+    warn "No spinel response from $port -- RCP firmware not detected."
     if prompt_flash_rcp "$port" && flash_rcp "$port"; then
         if _probe_rcp "$port"; then
             info "RCP firmware verified after flash."
         else
-            warn "Still no spinel response — falling back to sim."
+            warn "Still no spinel response -- falling back to sim."
             RCP_DEVICE=""
         fi
     else
-        warn "Skipping flash — using sim."
+        warn "Skipping flash -- using sim."
         RCP_DEVICE=""
     fi
 }
@@ -332,7 +332,7 @@ verify_rcp() {
 step "Checking environment"
 
 if [[ -z "$THREAD_DATASET_TLV" ]]; then
-    warn "THREAD_DATASET_TLV not set — generating a random dataset."
+    warn "THREAD_DATASET_TLV not set -- generating a random dataset."
     warn "This creates an isolated Thread network, not joined to your existing one."
     THREAD_DATASET_TLV=$(generate_thread_tlv)
     info "Generated TLV: ${THREAD_DATASET_TLV:0:32}..."
@@ -390,15 +390,15 @@ if [[ -n "${RCP_DEVICE:-}" ]]; then
     if [[ "${RCP_VID:-}" == "303a" ]]; then
         verify_rcp "$RCP_DEVICE"
     else
-        info "Non-ESP32 RCP ($RCP_DEVICE) — assuming OpenThread RCP firmware present."
+        info "Non-ESP32 RCP ($RCP_DEVICE) -- assuming OpenThread RCP firmware present."
     fi
 fi
 if [[ -z "${RCP_DEVICE:-}" ]]; then
-    warn "No usable physical RCP — instance will use simulated ot-rcp (no real RF)."
+    warn "No usable physical RCP -- instance will use simulated ot-rcp (no real RF)."
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Sim binary — build from OpenThread source if not cached
+# 4. Sim binary -- build from OpenThread source if not cached
 #    The simulation ot-rcp and ot-cli binaries are Linux-native executables
 #    built from the OpenThread repository (cloned to cache/openthread/).
 #    Both are produced by a single cmake simulation build; ot-rcp is used
@@ -416,7 +416,7 @@ if [[ -z "${RCP_DEVICE:-}" ]]; then
         chmod +x "$SIM_RCP_BIN_PATH"
         info "Cached sim binary: $SIM_RCP_BIN_PATH"
     else
-        info "sim binary not found — building from OpenThread source ..."
+        info "sim binary not found -- building from OpenThread source ..."
         if [[ ! -d "$_OT_SRC" ]]; then
             info "Cloning OpenThread into ${OTBR_HOME}/cache/openthread ..."
             git -c advice.detachedHead=false clone --depth 1 \
@@ -453,17 +453,17 @@ mkdir -p "$SNAP_CACHE"
 if compgen -G "${SNAP_CACHE}/${SNAP_NAME}_*.snap" > /dev/null 2>&1; then
     info "Snap cache: $(find "${SNAP_CACHE}" -maxdepth 1 -name "${SNAP_NAME}_*.snap" | head -1 | xargs basename)"
 else
-    info "Snap cache empty — downloading ${SNAP_NAME} ..."
+    info "Snap cache empty -- downloading ${SNAP_NAME} ..."
     snap download "$SNAP_NAME" --channel=latest/edge --target-directory="$SNAP_CACHE"
     info "Snap cached."
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Reprovision — delete existing instance
+# 6. Reprovision -- delete existing instance
 # ---------------------------------------------------------------------------
 
 if [[ "$REPROVISION" -eq 1 ]]; then
-    step "Reprovisioning — deleting existing instance"
+    step "Reprovisioning -- deleting existing instance"
     if incus info "$INST" &>/dev/null; then
         incus delete "$INST" --force
         info "Deleted instance: $INSTANCE_NAME"
@@ -526,7 +526,7 @@ if [[ -n "${RCP_DEVICE:-}" ]]; then
     if [[ "$INSTANCE_MODE" == "vm" ]]; then
         # VM: USB passthrough by vendor:product ID
         [[ -n "$RCP_VID" && -n "$RCP_PID" ]] \
-            || die "Cannot determine USB VID:PID for $RCP_DEVICE — cannot pass through to VM."
+            || die "Cannot determine USB VID:PID for $RCP_DEVICE -- cannot pass through to VM."
         incus config device add "$INST" rcp usb \
             vendorid="$RCP_VID" productid="$RCP_PID"
         info "USB passthrough: ${RCP_VID}:${RCP_PID}"
@@ -572,7 +572,7 @@ done
 if [[ "$_snap_pushed" -eq 1 ]]; then
     info "Snap cache pushed to instance."
 else
-    warn "No snap files found — firstboot will install from store."
+    warn "No snap files found -- firstboot will install from store."
 fi
 unset _f _snap_pushed
 
@@ -653,7 +653,7 @@ case "$THREAD_STATE" in
         pass "Thread node is active (state: $THREAD_STATE)"
         ;;
     *)
-        warn "Thread state is '${THREAD_STATE}' — may still be joining."
+        warn "Thread state is '${THREAD_STATE}' -- may still be joining."
         warn "Check manually: incus exec local:$INSTANCE_NAME -- snap run openthread-border-router.ot-ctl state"
         ;;
 esac

@@ -1,4 +1,4 @@
-iotstack matter configure-trust-store — Matter attestation trust store
+iotstack matter configure-trust-store -- Matter attestation trust store
 
 Interactive one-time setup of chip-tool attestation trust anchors (CSA CD keys
 and vendor PAA root certificates). You add shared trust for a vendor, not
@@ -20,7 +20,7 @@ Usage:
 
 Optional pairing code:
   Helps bootstrap vendor PAA certs when the code encodes a vendor ID.
-  Manual codes (0000-000-0000) usually do not — the menu prompts for a
+  Manual codes (0000-000-0000) usually do not -- the menu prompts for a
   hex vendor ID (e.g. 117C for IKEA).
 
 Menu options:

@@ -1,5 +1,5 @@
 #!/bin/bash
-# esphome-service.sh — call a native-API user service on an ESPHome device.
+# esphome-service.sh -- call a native-API user service on an ESPHome device.
 # Runs esphome_service.py under the esphome venv python (which ships
 # aioesphomeapi).
 #

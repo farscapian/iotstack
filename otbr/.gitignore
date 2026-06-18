@@ -1,7 +1,7 @@
 # Symlink to ~/.otbr/ data home (local convenience; not shared)
 .otbr
 
-# Legacy data dirs — now live in ~/.otbr/ but may still exist here from before migration
+# Legacy data dirs -- now live in ~/.otbr/ but may still exist here from before migration
 cache/
 artifacts/
 logs/

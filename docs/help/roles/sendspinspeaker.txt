@@ -1,4 +1,4 @@
-iotstack sendspinspeaker — SendSpin Speaker
+iotstack sendspinspeaker -- SendSpin Speaker
 
 ESP32-S3 WiFi audio / notification speaker device.
 

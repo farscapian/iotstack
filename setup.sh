@@ -1,5 +1,5 @@
 #!/bin/bash
-# setup.sh — Add iotstack command to PATH
+# setup.sh -- Add iotstack command to PATH
 # This script sets up the iotstack CLI tool so you can run 'iotstack' from anywhere
 #
 # Can be executed or sourced:
@@ -128,12 +128,12 @@ if ! grep -q "GNUPGHOME=.*\.iotstack" "$BASHRC" 2>/dev/null; then
   ok "Added iotstack env vars to $BASHRC"
 fi
 
-# ── GPG Key Setup (required before pass) ──────────────────────────────────
-# ── Matter Commissioning Dependencies ──────────────────────────────────────
+# -- GPG Key Setup (required before pass) ----------------------------------
+# -- Matter Commissioning Dependencies --------------------------------------
 echo
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 echo "Checking Matter commissioning dependencies (optional)"
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 echo
 
 MISSING_DEPS=()
@@ -198,7 +198,7 @@ if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
       if command -v snap &>/dev/null; then
         # shellcheck source=scripts/ensure-chip-tool-storage.sh
         source "${SCRIPT_DIR}/scripts/ensure-chip-tool-storage.sh"
-        setup_chip_tool_snap || warn "chip-tool snap setup incomplete — see messages above"
+        setup_chip_tool_snap || warn "chip-tool snap setup incomplete -- see messages above"
       else
         warn "snap not found; install chip-tool manually:"
         echo "  https://github.com/project-chip/connectedhomeip/tree/master/examples/chip-tool"
@@ -214,7 +214,7 @@ else
   ok "All Matter commissioning dependencies installed"
 fi
 
-# ── chip-tool layout + snap interfaces ───────────────────────────────────
+# -- chip-tool layout + snap interfaces -----------------------------------
 # shellcheck source=scripts/ensure-chip-tool-storage.sh
 source "${SCRIPT_DIR}/scripts/ensure-chip-tool-storage.sh"
 if command -v snap &>/dev/null && chip_tool_snap_is_installed; then
@@ -224,23 +224,23 @@ fi
 if command -v chip-tool &>/dev/null; then
   setup_chip_tool_layout
   if chip_tool_is_snap; then
-    ok "chip-tool layout: ~/.iotstack/chip-tool → ~/snap/chip-tool"
+    ok "chip-tool layout: ~/.iotstack/chip-tool -> ~/snap/chip-tool"
   else
     ok "chip-tool layout: ~/.iotstack/chip-tool/{common,common/trust,paa-mirror}"
   fi
 elif chip_tool_snap_is_installed && chip_tool_snap_is_disabled; then
-  warn "chip-tool snap is still disabled — run: sudo snap enable chip-tool"
+  warn "chip-tool snap is still disabled -- run: sudo snap enable chip-tool"
 elif chip_tool_snap_is_installed; then
-  warn "chip-tool snap is installed but not on PATH — try: hash -r && which chip-tool"
+  warn "chip-tool snap is installed but not on PATH -- try: hash -r && which chip-tool"
 fi
 
 echo
 
-# ── GPG Key Setup (required before pass) ──────────────────────────────────
+# -- GPG Key Setup (required before pass) ----------------------------------
 echo
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 echo "Setting up GPG key (required for pass)"
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 echo
 
 # Define GNUPGHOME early (needed for both import and generation paths)
@@ -290,11 +290,11 @@ EOF
   ok "Generated GPG key in ~/.iotstack/.gnupg: $gpg_key"
 fi
 
-# ── Pass Password Manager Setup ────────────────────────────────────────────
+# -- Pass Password Manager Setup --------------------------------------------
 echo
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 echo "Initializing pass password manager"
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 echo
 
 # Check if pass is installed
@@ -354,7 +354,7 @@ for config_key in "${config_items[@]}"; do
   fi
 done
 
-# ── Create Desktop Taskbar Application ────────────────────────────────────
+# -- Create Desktop Taskbar Application ------------------------------------
 echo
 echo "Creating taskbar application..."
 APPLICATIONS_DIR="${HOME}/.local/share/applications"
@@ -409,9 +409,9 @@ if command -v gtk-update-icon-cache &>/dev/null; then
 fi
 
 echo
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 echo "Setup Complete!"
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 echo
 echo "Next steps:"
 echo
@@ -421,7 +421,7 @@ echo
 echo "2. Start using iotstack:"
 echo -e "  ${GRN}iotstack update bleproxy${RST}"
 echo -e "  ${GRN}iotstack flash bleproxy /dev/ttyACM0${RST}"
-echo -e "  ${GRN}iotstack otbr setup${RST}   (optional — OTBR / Raspberry Pi provisioning)"
+echo -e "  ${GRN}iotstack otbr setup${RST}   (optional -- OTBR / Raspberry Pi provisioning)"
 echo
 echo "Your role-based secrets are stored encrypted in:"
 echo -e "  ${GRN}${PASS_DIR}${RST}"

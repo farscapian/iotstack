@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# matter-resolve-input.sh — Resolve Matter onboarding input to an MT/manual payload.
+# matter-resolve-input.sh -- Resolve Matter onboarding input to an MT/manual payload.
 #
 # Accepts:
 #   - MT: setup payload string (from decode-qr or label)

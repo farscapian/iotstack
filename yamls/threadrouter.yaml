@@ -34,7 +34,7 @@ packages:
   boot_button: !include common/boot_button.yaml
 
 # Thread configuration.
-# tlv: is a PLACEHOLDER complete dataset — all values are fake and will never
+# tlv: is a PLACEHOLDER complete dataset -- all values are fake and will never
 # match any real Thread network. It exists only to satisfy ESPHome's config
 # validator (which requires network_key or tlv) and to give
 # esp_openthread_auto_start() a syntactically valid TLV so the stack starts
@@ -47,7 +47,7 @@ openthread:
   force_dataset: false
   tlv: "0e080000000000000001000300000f0102beef0208dead00beef00cafe0314696f74737461636b2d706c616365686f6c646572041000000000000000000000000000000000051000112233445566778899aabbccddeeff0708fd112233445566770c0402a0f8ff"
 
-# 3. Network — required for IPv6/Thread
+# 3. Network -- required for IPv6/Thread
 network:
   enable_ipv6: true
 
@@ -55,7 +55,7 @@ network:
 nvs_secrets:
   api_nvs_key: prod_api_key
 
-# 4. API — native ESPHome over IPv6/Thread (OTA is failsafe-only)
+# 4. API -- native ESPHome over IPv6/Thread (OTA is failsafe-only)
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
 
@@ -64,7 +64,7 @@ logger:
   baud_rate: 115200
   # USB serial only; disable (baud_rate: 0) after initial setup if desired
 
-# 8. Onboard LED — XIAO ESP32-C6 GPIO15, active-low
+# 8. Onboard LED -- XIAO ESP32-C6 GPIO15, active-low
 output:
   - platform: gpio
     pin:
@@ -109,6 +109,6 @@ text_sensor:
     rloc16:
       name: "Thread RLOC16"
       entity_category: diagnostic
-    # network_key: omitted — exposes sensitive credentials
+    # network_key: omitted -- exposes sensitive credentials
 
 # Buttons: "Restart" and "Toggle Boot Partition" come from partition_mgmt package.

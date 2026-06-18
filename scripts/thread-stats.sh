@@ -1,5 +1,5 @@
 #!/bin/bash
-# thread-stats.sh — Gather Thread network statistics from Home Assistant
+# thread-stats.sh -- Gather Thread network statistics from Home Assistant
 #
 # Queries Home Assistant OTBR integration for Thread network info:
 # - Border router status
@@ -67,7 +67,7 @@ load_ha_credentials() {
     if ! test_output="$(test_ha_websocket "$HA_URL" "$HA_TOKEN" 2>&1)"; then
       echo "$test_output" >&2
       if invalidate_ha_token_if_auth_failure "$test_output"; then
-        die "Home Assistant access token is invalid — iotstack/common/ha_token reset to CONFIGURE_ME. Configure a new token and retry."
+        die "Home Assistant access token is invalid -- iotstack/common/ha_token reset to CONFIGURE_ME. Configure a new token and retry."
       fi
       die "Cannot connect to Home Assistant. Check URL, token, and network access."
     fi
@@ -224,9 +224,9 @@ PYTHON
 
 show_thread_stats() {
   echo ""
-  echo -e "${BLUE}╔═══════════════════════════════════════════════════════╗${NC}"
-  echo -e "${BLUE}║          Thread Network Statistics                    ║${NC}"
-  echo -e "${BLUE}╚═══════════════════════════════════════════════════════╝${NC}"
+  echo -e "${BLUE}+=========================================================+${NC}"
+  echo -e "${BLUE}|          Thread Network Statistics                    |${NC}"
+  echo -e "${BLUE}+=========================================================+${NC}"
   echo ""
 
   # Get device data
@@ -275,7 +275,7 @@ show_thread_stats() {
 import json, sys
 data = json.loads('''$thread_entities''')
 for router in data.get("routers", []):
-    print(f"  • {router['entity_id']}: {router['state']}")
+    print(f"  - {router['entity_id']}: {router['state']}")
 PYTHON
     echo ""
   fi
@@ -287,7 +287,7 @@ PYTHON
 import json, sys
 data = json.loads('''$thread_entities''')
 for device in data.get("sleepy_devices", []):
-    print(f"  • {device['entity_id']}: {device['state']}")
+    print(f"  - {device['entity_id']}: {device['state']}")
 PYTHON
     echo ""
   fi

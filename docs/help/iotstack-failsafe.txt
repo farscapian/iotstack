@@ -1,4 +1,4 @@
-iotstack failsafe — Show devices running failsafe (recovery) firmware
+iotstack failsafe -- Show devices running failsafe (recovery) firmware
 
 Lists devices advertising the failsafe mDNS service (_iotstack-failsafe._tcp).
 These are devices currently booted into the failsafe/recovery partition, not

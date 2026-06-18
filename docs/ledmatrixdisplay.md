@@ -1,4 +1,4 @@
-# LED Matrix Display ⚠️ — Planning Stage
+# LED Matrix Display [WARN] -- Planning Stage
 
 **This project is in early planning stages and not yet implemented.**
 
@@ -8,9 +8,9 @@ Planned support for addressable LED matrix displays (like 8x8 NeoPixel matrices 
 
 ## Current Status
 
-- ❌ Not yet implemented
-- 📋 In planning phase
-- 🔍 Researching component compatibility and performance
+- [FAIL] Not yet implemented
+-  In planning phase
+-  Researching component compatibility and performance
 
 ## Planned Features
 

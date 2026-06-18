@@ -1,4 +1,4 @@
-iotstack matter — Matter device commissioning
+iotstack matter -- Matter device commissioning
 
 Commission Matter-over-Thread devices with chip-tool and hand them off to Home
 Assistant. Subcommands cover attestation trust setup, per-device commissioning,

@@ -1,5 +1,5 @@
 #!/bin/bash
-# partition-table.sh — Generate and manage the iotstack partition table artifact
+# partition-table.sh -- Generate and manage the iotstack partition table artifact
 #
 # Requires config.sh to be sourced first (PARTITION_TABLE, PARTITION_TABLE_SYMLINK,
 # IOTSTACK_* layout variables).

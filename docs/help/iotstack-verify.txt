@@ -1,4 +1,4 @@
-iotstack verify — Check if devices match the current build hash
+iotstack verify -- Check if devices match the current build hash
 
 Compares discovered devices against the current compiled build without flashing
 anything. Reports which devices are up to date and which still need an update.

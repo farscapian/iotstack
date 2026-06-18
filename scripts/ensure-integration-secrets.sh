@@ -140,7 +140,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       fi
     fi
 
-    # Base URL only — strip any path the user may have pasted.
+    # Base URL only -- strip any path the user may have pasted.
     if [[ "$url" =~ ^(https?://[^/?#]+) ]]; then
       url="${BASH_REMATCH[1]}"
     fi
@@ -272,7 +272,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
           _ies_err "Home Assistant WebSocket dependency missing (see above)"
         fi
         if invalidate_ha_token_if_auth_failure "$test_output"; then
-          _ies_err "Home Assistant access token is invalid — iotstack/common/ha_token reset to ${PLACEHOLDER_VALUE}. Configure a new token and retry."
+          _ies_err "Home Assistant access token is invalid -- iotstack/common/ha_token reset to ${PLACEHOLDER_VALUE}. Configure a new token and retry."
         fi
         _ies_err "Cannot connect to Home Assistant. Check URL, token, and network access."
       fi
@@ -285,7 +285,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
   ensure_thread_tlv() {
     local optional="${1:-false}"
     local required="true"
-    local prompt="Thread operational dataset TLV (hex string from HA Settings → Thread)"
+    local prompt="Thread operational dataset TLV (hex string from HA Settings -> Thread)"
 
     if [[ "$optional" == "true" ]]; then
       required="false"

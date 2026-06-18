@@ -1,5 +1,5 @@
 #!/bin/bash
-# iotstack.sh — CLI tool for managing iotstack ESPHome devices
+# iotstack.sh -- CLI tool for managing iotstack ESPHome devices
 # Wrapper around update_devices.sh with a cleaner interface
 
 set -euo pipefail
@@ -30,27 +30,27 @@ _update_devices_inherited_flags() {
 }
 
 # Print a table separator rule aligned to the header columns. Each argument is
-# a column width; prints that many '─' per column with single-space gaps,
+# a column width; prints that many '-' per column with single-space gaps,
 # wrapped in DIM. Dashes are built by space-padding then substitution so the
-# width is correct — printf '%-Ns' counts bytes and would mis-pad the
-# multibyte '─' (U+2500) characters.
+# width is correct -- printf '%-Ns' counts bytes and would mis-pad the
+# multibyte '-' (U+2500) characters.
 _print_table_rule() {
   local first=1 w dashes
   printf '  %s' "$DIM"
   for w in "$@"; do
     (( first )) || printf ' '
     printf -v dashes '%*s' "$w" ''
-    printf '%s' "${dashes// /─}"
+    printf '%s' "${dashes// /-}"
     first=0
   done
   printf '%s\n' "$RST"
 }
 
-# ── Compilation Cache ────────────────────────────────────────────────────────
+# -- Compilation Cache --------------------------------------------------------
 
 _get_yaml_sha() {
   # SHA256 of the YAML plus the shared external_components and common/ package
-  # includes, so a change to any of them invalidates the compile cache — the
+  # includes, so a change to any of them invalidates the compile cache -- the
   # device YAML may reference them only via !include / packages:, so hashing the
   # YAML text alone would miss those changes and reuse a stale build.
   local yaml_file="$1"
@@ -337,7 +337,7 @@ _esphome_compile() {
 _smart_compile_cache_hit_notice() {
   local device_name="$1"
   local firmware_kind="$2"  # e.g. production, failsafe
-  info "Compilation cache hit — ${firmware_kind} firmware (${device_name}) already built; compile skipped"
+  info "Compilation cache hit -- ${firmware_kind} firmware (${device_name}) already built; compile skipped"
 }
 
 _smart_compile_cache_miss_notice() {
@@ -345,9 +345,9 @@ _smart_compile_cache_miss_notice() {
   local device_name="$1"
   local firmware_kind="$2"  # e.g. production, failsafe
   if [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]]; then
-    info "Compilation cache disabled — ${firmware_kind} firmware (${device_name}) must be compiled"
+    info "Compilation cache disabled -- ${firmware_kind} firmware (${device_name}) must be compiled"
   else
-    info "Compilation cache miss — ${firmware_kind} firmware (${device_name}) must be compiled"
+    info "Compilation cache miss -- ${firmware_kind} firmware (${device_name}) must be compiled"
   fi
 }
 
@@ -367,7 +367,7 @@ smart_compile() {
   [[ "${DISABLE_COMPILATION_CACHE:-0}" != "1" ]] && _check_compilation_cache "$yaml_file" && cached=1
   [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]] && debug "Compilation cache disabled (DISABLE_COMPILATION_CACHE=1)"
 
-  # ── Non-failsafe builds ────────────────────────────────────────────────────
+  # -- Non-failsafe builds ----------------------------------------------------
   # Production firmware is OTA'd into the production partition and uses ESPHome's
   # default partition table for its build-size check, so the custom table size
   # is irrelevant to it. Just make sure a table exists, then compile.
@@ -390,7 +390,7 @@ smart_compile() {
     return 0
   fi
 
-  # ── Failsafe: size its partition dynamically to the actual firmware ─────────
+  # -- Failsafe: size its partition dynamically to the actual firmware ---------
   # The failsafe partition is sized to exactly what failsafe needs (+ margin);
   # production absorbs the rest. The partition size affects the flashed
   # partitions.bin (not the position-independent app image), so we compile,
@@ -421,7 +421,7 @@ smart_compile() {
     if _hex_sizes_equal "$pass1_size" "$generous_size"; then
       return 1
     fi
-    warn "Failsafe compile failed with partition ${pass1_size} — retrying with generous ${generous_size}"
+    warn "Failsafe compile failed with partition ${pass1_size} -- retrying with generous ${generous_size}"
     export IOTSTACK_FAILSAFE_PART_SIZE="$generous_size"
     _update_partition_table_file
     info "Compiling failsafe-wifi firmware (pass 1/2: measuring size)..."
@@ -435,7 +435,7 @@ smart_compile() {
 
   if _hex_sizes_equal "$fs_size" "$IOTSTACK_FAILSAFE_PART_SIZE" && [[ -f "$partitions_bin" ]]; then
     _sync_failsafe_partition_table_from_build
-    info "Failsafe partition table already exact (${fs_size}) — skipping pass 2"
+    info "Failsafe partition table already exact (${fs_size}) -- skipping pass 2"
   else
     export IOTSTACK_FAILSAFE_PART_SIZE="$fs_size"
     _update_partition_table_file
@@ -535,7 +535,7 @@ _is_failsafe_yaml() {
 _update_partition_table_file() {
   debug "Generating local build partition table CSV: $PARTITION_TABLE"
   update_partition_table_file
-  debug "Build partition table CSV ready (failsafe + production layout for compile — not read from device)"
+  debug "Build partition table CSV ready (failsafe + production layout for compile -- not read from device)"
 }
 
 # UPDATE_SCRIPT is provided by config.sh (scripts/update_devices.sh)
@@ -575,9 +575,9 @@ if [[ ! -d "$YAMLS_DIR" ]]; then
   err "yamls directory not found at $YAMLS_DIR"
 fi
 
-# ── Dynamic Role Discovery ──────────────────────────────────────────────────
+# -- Dynamic Role Discovery --------------------------------------------------
 # Roles are discovered from YAML filenames in yamls/ directory
-# File: yamls/bleproxy.yaml → Role: bleproxy
+# File: yamls/bleproxy.yaml -> Role: bleproxy
 
 # Resolve role name to YAML path
 # If given "bleproxy", returns "yamls/bleproxy.yaml"
@@ -703,7 +703,7 @@ get_ha_device_areas() {
   ' 2>/dev/null || echo '{}'
 }
 
-# ── Parallel Job Queue ────────────────────────────────────────────────────────
+# -- Parallel Job Queue --------------------------------------------------------
 # Helper to run multiple commands in parallel with job limiting
 # Usage: run_parallel_jobs <max_jobs> <"cmd1" "cmd2" ...>
 # Each command is executed in background, with at most max_jobs running
@@ -738,7 +738,7 @@ run_parallel_jobs() {
   done
 }
 
-# ── Subcommands ──────────────────────────────────────────────────────────────
+# -- Subcommands --------------------------------------------------------------
 
 usage() {
   cat "${SCRIPT_DIR}/docs/help/iotstack.txt"
@@ -840,7 +840,7 @@ help_role() {
   friendly=$(yaml_friendly_name_from_file "$yaml_file" 2>/dev/null) || friendly="$role"
 
   cat <<EOF
-iotstack ${role} — ${friendly}
+iotstack ${role} -- ${friendly}
 
 Config: yamls/${role}.yaml
 Chip: ${variant:-unknown}${board:+ (${board})}
@@ -949,7 +949,7 @@ list_devices() {
   # Try to get Home Assistant area info (only for production devices).
   # Normalize to a single JSON object: get_ha_device_areas can emit more than
   # one document (e.g. an empty "{}" plus a fallback "{}"), and a multi-doc
-  # input makes the per-row `jq -r` lookups emit one line per document — which
+  # input makes the per-row `jq -r` lookups emit one line per document -- which
   # would put an embedded newline into the area value and break table rows.
   local ha_areas="{}"
   if [[ "$mdns_service" == "_esphomelib._tcp" ]]; then
@@ -1275,7 +1275,7 @@ list_yaml_configs() {
   fi
 }
 
-# ── Failsafe-mediated production updates ─────────────────────────────────────
+# -- Failsafe-mediated production updates -------------------------------------
 
 _wait_for_device() {
   # Wait for an mDNS device name (e.g. failsafe-1a7cfc) to appear, up to timeout
@@ -1321,7 +1321,7 @@ _device_on_failsafe() {
 }
 
 _failsafe_device_ota_password() {
-  # NVS stores sha256(failsafe_role_secret | mac) — used for OTA from failsafe.
+  # NVS stores sha256(failsafe_role_secret | mac) -- used for OTA from failsafe.
   local mac="$1"
   local fs_secret
   fs_secret=$(pass show "iotstack/roles/failsafe/ota_password" 2>/dev/null)
@@ -1386,7 +1386,7 @@ _flash_production_ota_update() {
     || err "Could not derive failsafe OTA password for ${device_mac} (provision failsafe first?)"
 
   if ! _production_api_reachable "$prod_hostname" && ! _failsafe_ota_reachable "$device_mac"; then
-    warn "Production API and failsafe OTA are unreachable — network switch may fail"
+    warn "Production API and failsafe OTA are unreachable -- network switch may fail"
   fi
 
   declare -a extra_args=(--upgrade-delta)
@@ -1401,7 +1401,7 @@ _flash_production_ota_update() {
 _wait_for_production_online() {
   # Wait for production firmware after OTA from failsafe.
   # Production images omit ota: (no port 3232). Detect the role hostname via API
-  # (6053) and/or _esphomelib._tcp mDNS — not the failsafe IP/OTA port.
+  # (6053) and/or _esphomelib._tcp mDNS -- not the failsafe IP/OTA port.
   local hostname="$1"
   local max_wait="${2:-90}"
   local waited=0
@@ -1538,7 +1538,7 @@ _production_mdns_advertised() {
 }
 
 _production_reachable_now() {
-  # Quick probe (no wait loop) — API preferred; mDNS alone is weaker signal.
+  # Quick probe (no wait loop) -- API preferred; mDNS alone is weaker signal.
   local hostname="$1"
   _production_api_reachable "$hostname" || _production_mdns_advertised "$hostname"
 }
@@ -1678,7 +1678,7 @@ _flash_assess_device_on_flash_action() {
 
   if [[ "${FLASH_ANYWAY:-0}" == "1" ]]; then
     if [[ -n "$mdns_hash" && -n "$build_hash" && "$mdns_hash" == "$build_hash" ]]; then
-      info "  Production: matches build (config_hash ${mdns_hash}) — --flash-anyway will reflash"
+      info "  Production: matches build (config_hash ${mdns_hash}) -- --flash-anyway will reflash"
     else
       info "  Production: --flash-anyway will reflash"
     fi
@@ -1722,16 +1722,16 @@ _flash_assess_device_on_flash_action() {
           info "  Matrix layout (target) : ${want_cols} panel(s), ${want_w}x${want_h} px"
           info "  Action: switch to failsafe and update matrix layout NVS (firmware is current)"
         else
-          info "  Action: none required — device is current"
+          info "  Action: none required -- device is current"
         fi
       elif _flash_matrix_layout_flags_set; then
         info "  Matrix layout (target) : ${want_cols} panel(s), ${want_w}x${want_h} px"
         info "  Action: switch to failsafe and update matrix layout NVS (firmware is current)"
       else
-        info "  Action: none required — device is current"
+        info "  Action: none required -- device is current"
       fi
     else
-      info "  Action: none required — device is current"
+      info "  Action: none required -- device is current"
     fi
   elif [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     info "  Action: reboot into failsafe to perform update of production partition"
@@ -1805,7 +1805,7 @@ _ensure_device_on_failsafe() {
         [[ "$switch_failed" == true ]] && warn "[$mac] switch_to_failsafe failed after 3 attempts"
       else
         switch_failed=true
-        warn "[$mac] production API unreachable — cannot call switch_to_failsafe"
+        warn "[$mac] production API unreachable -- cannot call switch_to_failsafe"
       fi
     else
       switch_failed=true
@@ -1825,7 +1825,7 @@ _ensure_device_on_failsafe() {
   fi
   if ! _wait_for_device "failsafe-$mac" "$wait_timeout"; then
     if [[ -n "$tty_device" ]]; then
-      warn "[$mac] failsafe-$mac did not appear — use USB serial fallback"
+      warn "[$mac] failsafe-$mac did not appear -- use USB serial fallback"
     else
       warn "[$mac] failsafe-$mac did not appear"
     fi
@@ -2011,7 +2011,7 @@ _update_via_failsafe() {
   fi
 }
 
-# ── Command Handlers ─────────────────────────────────────────────────────────
+# -- Command Handlers ---------------------------------------------------------
 
 cmd_update() {
   _iotstack_command_help_if_requested update "$@" && return 0
@@ -2114,7 +2114,7 @@ cmd_update() {
       fi
     done < <(cat "$ROLES_CONF" 2>/dev/null || echo "")
 
-    echo "────────────────────────────────────────────────────────────"
+    echo "------------------------------------------------------------"
     if [[ $failed -eq 0 ]]; then
       ok "Updated $found device configuration(s)"
     else
@@ -2221,7 +2221,7 @@ cmd_reassign() {
       device_name=$(echo "$device_info" | awk -F' ' '{print $4}' | cut -d'.' -f1)
       local current_role="${device_name%-"$mac"}"
       if [[ "$current_role" == "$target_role" ]]; then
-        ok "Device $device_name is already assigned to $target_role — no reassign needed."
+        ok "Device $device_name is already assigned to $target_role -- no reassign needed."
         return 0
       fi
     fi
@@ -2291,9 +2291,9 @@ cmd_verify() {
     failed=0
     while IFS= read -r yaml; do
       if grep -q '^esphome:' "$yaml" 2>/dev/null; then
-        echo "────────────────────────────────────────────────────────────"
+        echo "------------------------------------------------------------"
         info "Verifying: $yaml"
-        echo "────────────────────────────────────────────────────────────"
+        echo "------------------------------------------------------------"
         declare -a _verify_cmd=()
         mapfile -t _verify_inh < <(_update_devices_inherited_flags)
         [[ ${#_verify_inh[@]} -gt 0 ]] && _verify_cmd+=("${_verify_inh[@]}")
@@ -2307,7 +2307,7 @@ cmd_verify() {
       fi
     done < <(find . -maxdepth 3 -name "*.yaml" -type f | sort)
 
-    echo "────────────────────────────────────────────────────────────"
+    echo "------------------------------------------------------------"
     if [[ $failed -eq 0 ]]; then
       ok "Verified $found device configuration(s)"
     else
@@ -2676,9 +2676,9 @@ cmd_rotate_secrets() {
   done
 
   echo
-  echo "════════════════════════════════════════════════════════"
+  echo "========================================================"
   echo "[INFO] Secret Rotation Summary"
-  echo "════════════════════════════════════════════════════════"
+  echo "========================================================"
   echo "  Role: $role"
   echo "  Total: ${#mac_suffixes[@]}"
   echo "  Success: $success_count"
@@ -2899,10 +2899,10 @@ list_roles() {
   fi
 }
 
-# ── HA device registration ──────────────────────────────────────────────────
+# -- HA device registration --------------------------------------------------
 
 _ha_after_production_online() {
-  # Home Assistant work runs only after production firmware is online — never
+  # Home Assistant work runs only after production firmware is online -- never
   # while the device is still advertising as failsafe-*.
   local yaml_path="$1"
   local prod_hostname="$2"
@@ -2917,7 +2917,7 @@ _ha_after_production_online() {
 }
 
 _derive_device_api_encryption_key() {
-  # Device-specific API key: sha256(role_secret | mac) — same as write-nvs-secrets.sh
+  # Device-specific API key: sha256(role_secret | mac) -- same as write-nvs-secrets.sh
   local role="$1"
   local mac="$2"
   local base
@@ -3011,13 +3011,13 @@ _ha_register_esphome_device() {
 
   echo "$reg_out" >&2
   if invalidate_ha_token_if_auth_failure "$reg_out"; then
-    err "Home Assistant access token is invalid — iotstack/common/ha_token reset to CONFIGURE_ME. Configure a new token and retry."
+    err "Home Assistant access token is invalid -- iotstack/common/ha_token reset to CONFIGURE_ME. Configure a new token and retry."
   fi
   err "Home Assistant registration failed for $hostname
 Complete manually: ${HA_URL}/config/integrations/dashboard"
 }
 
-# ── Flash command: serial/USB flashing ─────────────────────────────────────
+# -- Flash command: serial/USB flashing -------------------------------------
 cmd_set_boot() {
   # Set boot partition for a specific device
   # Usage: iotstack set-boot <device> <recovery|production>
@@ -3038,12 +3038,12 @@ Arguments:
 
 Examples:
   Network device (by MAC):
-    iotstack set-boot 1af95c failsafe          # Set failsafe-1af95c → failsafe
-    iotstack set-boot 9019c8 production        # Set failsafe-9019c8 → production
+    iotstack set-boot 1af95c failsafe          # Set failsafe-1af95c -> failsafe
+    iotstack set-boot 9019c8 production        # Set failsafe-9019c8 -> production
 
   USB-connected device:
-    iotstack set-boot /dev/ttyACM0 failsafe    # Set /dev/ttyACM0 → failsafe
-    iotstack set-boot /dev/ttyUSB0 production  # Set /dev/ttyUSB0 → production
+    iotstack set-boot /dev/ttyACM0 failsafe    # Set /dev/ttyACM0 -> failsafe
+    iotstack set-boot /dev/ttyUSB0 production  # Set /dev/ttyUSB0 -> production
 EOF
     exit 1
   fi
@@ -3132,7 +3132,7 @@ _flash_matrix_layout_flags_set() {
 }
 
 _flash_resolve_matrix_layout() {
-  # Resolve target panel layout (flags → pass → defaults). Sets named refs.
+  # Resolve target panel layout (flags -> pass -> defaults). Sets named refs.
   local role="$1"
   local -n _cols_ref="$2"
   local -n _w_ref="$3"
@@ -3206,9 +3206,9 @@ _flash_read_matrix_layout_from_device() {
   [[ -n "$_cols_ref" && -n "$_w_ref" && -n "$_h_ref" ]]
 }
 
-# ── NVS update policy ────────────────────────────────────────────────────────
+# -- NVS update policy --------------------------------------------------------
 # Prefer failsafe update_nvs_secrets over WiFi/API. USB (write-nvs-secrets.sh)
-# is used only when failsafe is unreachable — typical on first serial provision
+# is used only when failsafe is unreachable -- typical on first serial provision
 # before WiFi credentials exist in NVS, or when failsafe lacks the API service.
 
 _call_failsafe_api_service() {
@@ -3273,7 +3273,7 @@ _provision_device_nvs() {
     return 1
   fi
 
-  warn "Failsafe API unavailable — writing NVS via USB on ${tty_device} (required on first provision)"
+  warn "Failsafe API unavailable -- writing NVS via USB on ${tty_device} (required on first provision)"
   _flash_write_nvs_secrets_usb "$tty_device" "$device_mac" "$production_role"
 }
 
@@ -3341,7 +3341,7 @@ _flash_store_matrix_layout_pass() {
 }
 
 _flash_matrix_layout_mismatch() {
-  # Compare target layout (flags → pass → defaults) to production API text_sensors.
+  # Compare target layout (flags -> pass -> defaults) to production API text_sensors.
   # Returns 0 when layouts match or check not applicable; 1 when NVS update is needed.
   local device="$1"
   local device_mac="$2"
@@ -3357,7 +3357,7 @@ _flash_matrix_layout_mismatch() {
     return 1
   fi
 
-  # Runtime sensors unavailable — only update when layout flags were passed explicitly.
+  # Runtime sensors unavailable -- only update when layout flags were passed explicitly.
   _flash_matrix_layout_flags_set
 }
 
@@ -3376,7 +3376,7 @@ _flash_matrix_layout_update_via_failsafe_if_needed() {
 
   if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
       cur_cols cur_w cur_h; then
-    info "Matrix layout mismatch: runtime ${cur_cols} panel(s) ${cur_w}x${cur_h} px → target ${want_cols} panel(s) ${want_w}x${want_h} px"
+    info "Matrix layout mismatch: runtime ${cur_cols} panel(s) ${cur_w}x${cur_h} px -> target ${want_cols} panel(s) ${want_w}x${want_h} px"
   else
     info "Matrix layout: writing target ${want_cols} panel(s), ${want_w}x${want_h} px to NVS"
   fi
@@ -3384,7 +3384,7 @@ _flash_matrix_layout_update_via_failsafe_if_needed() {
   info "Step 1: Switching ${prod_hostname} to failsafe for NVS update..."
   if ! _ensure_device_on_failsafe "$device_mac" false "$tty_device"; then
     if [[ -n "$tty_device" ]]; then
-      warn "Network switch to failsafe failed — refreshing failsafe firmware on ${tty_device}..."
+      warn "Network switch to failsafe failed -- refreshing failsafe firmware on ${tty_device}..."
       local _mac_file
       _mac_file=$(mktemp)
       _flash_failsafe_to_tty "$tty_device" "$_mac_file" "$device" \
@@ -3405,7 +3405,7 @@ _flash_matrix_layout_update_via_failsafe_if_needed() {
     sleep 5
     _wait_for_device "failsafe-${device_mac}" 60 || true
   elif [[ -n "$tty_device" ]]; then
-    warn "Failsafe API unavailable — writing matrix layout NVS via USB on ${tty_device}"
+    warn "Failsafe API unavailable -- writing matrix layout NVS via USB on ${tty_device}"
     export MATRIX_COLS="$want_cols" MATRIX_PANEL_W="$want_w" MATRIX_PANEL_H="$want_h"
     _flash_write_nvs_secrets_usb "$tty_device" "$device_mac" "$device"
   else
@@ -3416,7 +3416,7 @@ _flash_matrix_layout_update_via_failsafe_if_needed() {
 
   info "Step 3: Booting production firmware with updated NVS..."
   if ! _boot_partition_network production "$device_mac"; then
-    warn "Could not toggle boot partition via network — try: iotstack set-boot ${device_mac} production"
+    warn "Could not toggle boot partition via network -- try: iotstack set-boot ${device_mac} production"
   fi
 
   if _wait_for_production_online "$prod_hostname" 90; then
@@ -3425,10 +3425,10 @@ _flash_matrix_layout_update_via_failsafe_if_needed() {
         && [[ "$verify_cols" == "$want_cols" && "$verify_w" == "$want_w" && "$verify_h" == "$want_h" ]]; then
       ok "Matrix layout verified via API: ${verify_cols} panel(s), ${verify_w}x${verify_h} px"
     else
-      ok "Production firmware online — matrix layout NVS written (re-query sensors if needed)"
+      ok "Production firmware online -- matrix layout NVS written (re-query sensors if needed)"
     fi
   else
-    warn "Production ${prod_hostname} did not reappear within 90s — NVS was written on failsafe"
+    warn "Production ${prod_hostname} did not reappear within 90s -- NVS was written on failsafe"
   fi
   return 2
 }
@@ -3678,7 +3678,7 @@ _flash_failsafe_to_tty() {
 
   local esptool_output device_mac skip_serial="$FLASH_ASSESS_SKIP_SERIAL"
   if [[ "$skip_serial" -eq 1 ]]; then
-    info "Failsafe image on device matches build — serial upload not required"
+    info "Failsafe image on device matches build -- serial upload not required"
     debug "On-device partition table also matches compiled build"
     esptool_output=$(esp_esptool_chip_id "$tty_device") || err "Could not read chip ID from $tty_device"
     device_mac=$(esp_mac_from_esptool_output "$esptool_output")
@@ -3686,9 +3686,9 @@ _flash_failsafe_to_tty() {
     ok "Device MAC: $device_mac"
   else
     if [[ "$FLASH_ASSESS_FAILSAFE_MATCH" -eq 0 ]]; then
-      info "Failsafe image on device differs from build — serial upload required"
+      info "Failsafe image on device differs from build -- serial upload required"
     elif [[ "$FLASH_ASSESS_PARTITION_MATCH" -eq 0 ]]; then
-      info "On-device partition table differs from build — serial upload required"
+      info "On-device partition table differs from build -- serial upload required"
     fi
     _flash_failsafe_esptool "$tty_device" "$flash_log" "$build_dir" "$failsafe_offset" "$FLASH_ASSESS_NEED_ERASE"
     esptool_output="$create_log_esptool_output"
@@ -3776,7 +3776,7 @@ _flash_recovery() {
       continue
     }
     if [[ -n "$expected_variant" && "$port_variant" != "$expected_variant" ]]; then
-      info "Skipping $tty (${port_variant}) — role '$production_role' needs ${expected_variant}"
+      info "Skipping $tty (${port_variant}) -- role '$production_role' needs ${expected_variant}"
       continue
     fi
     targets+=("$tty")
@@ -3797,14 +3797,14 @@ _flash_recovery() {
   for tty in "${targets[@]}"; do
     echo ""
     info "Flashing $tty..."
-    echo "════════════════════════════════════════════════════════"
+    echo "========================================================"
     if _flash_failsafe_to_tty "$tty" "" "$production_role"; then
       successful_ttys+=("$tty")
     else
       warn "Recovery flash FAILED on $tty"
       failed=$((failed + 1))
     fi
-    echo "════════════════════════════════════════════════════════"
+    echo "========================================================"
   done
 
   if [[ $failed -gt 0 ]]; then
@@ -3961,7 +3961,7 @@ _flash_production_smart() {
         prod_hostname="${device}-${device_mac}"
         info "Assessing connected device on ${tty_device}..."
         _ensure_failsafe_build_for_assess "$tty_device" "$device" \
-          || warn "Could not prepare failsafe build — partition table may be stale"
+          || warn "Could not prepare failsafe build -- partition table may be stale"
         _flash_assess_device_runtime "$device_mac" "$prod_hostname" "$tty_device"
         smart_compile "$yaml_path" "$device" || err "Production compile failed"
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
@@ -4008,7 +4008,7 @@ _flash_production_smart() {
               _flash_resolve_matrix_layout "$device" want_cols want_w want_h
               ok "Matrix layout updated on ${prod_hostname}: ${want_cols} panel(s), ${want_w}x${want_h} px"
             else
-              ok "Production firmware on flash matches build — nothing to do"
+              ok "Production firmware on flash matches build -- nothing to do"
             fi
             _ha_after_production_online "$yaml_path" "$prod_hostname"
             ok "Production firmware setup complete!"
@@ -4018,7 +4018,7 @@ _flash_production_smart() {
             ok "Production firmware setup complete!"
             return
           fi
-          warn "Production OTA via network failed — trying serial failsafe path"
+          warn "Production OTA via network failed -- trying serial failsafe path"
           info "Step 1: Refreshing failsafe-wifi firmware on ${tty_device}..."
           local _mac_file
           _mac_file=$(mktemp)
@@ -4030,7 +4030,7 @@ _flash_production_smart() {
           fi
           info "Step 2: Reassigning failsafe device to ${device} production firmware..."
         elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]] || _production_mdns_advertised "$prod_hostname"; then
-          warn "Production visible on mDNS but API unreachable — using serial failsafe path"
+          warn "Production visible on mDNS but API unreachable -- using serial failsafe path"
           info "Step 1: Refreshing failsafe-wifi firmware on ${tty_device}..."
           local _mac_file
           _mac_file=$(mktemp)
@@ -4052,7 +4052,7 @@ _flash_production_smart() {
           fi
           info "Step 2: Reassigning failsafe device to ${device} production firmware..."
         else
-          info "Device not on WiFi yet — provisioning via failsafe serial path"
+          info "Device not on WiFi yet -- provisioning via failsafe serial path"
           info "Step 1: Flashing failsafe-wifi firmware..."
           local _mac_file
           _mac_file=$(mktemp)
@@ -4062,7 +4062,7 @@ _flash_production_smart() {
           info "Step 2: Waiting for device to appear on network..."
         fi
       else
-        info "Could not read device MAC — provisioning via failsafe serial path"
+        info "Could not read device MAC -- provisioning via failsafe serial path"
         info "Step 1: Flashing failsafe-wifi firmware..."
         echo ""
         local _mac_file
@@ -4092,7 +4092,7 @@ _flash_production_smart() {
           echo ""
         fi
         if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
-          ok "Production firmware on flash matches build — nothing to do"
+          ok "Production firmware on flash matches build -- nothing to do"
           _ha_after_production_online "$yaml_path" "$prod_hostname"
           ok "Production firmware setup complete!"
           return
@@ -4111,7 +4111,7 @@ _flash_production_smart() {
         # connection. Probe the mDNS name directly: this confirms exactly what the
         # OTA needs and is far more reliable than polling 'avahi-browse -t' in a
         # tight loop (a fresh browse can terminate before the device replies, so
-        # the device can be online yet never matched). Allow a generous window —
+        # the device can be online yet never matched). Allow a generous window --
         # a fresh failsafe must flash, boot, apply WiFi creds from NVS, reconnect,
         # and announce over mDNS before this succeeds.
         local max_wait=180
@@ -4143,13 +4143,13 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
 
       # Resolve the failsafe device's IP now, before OTA changes the hostname.
       # After reboot the device gets the same DHCP lease, so we can probe the
-      # OTA port on this IP directly — no avahi cache invalidation needed.
+      # OTA port on this IP directly -- no avahi cache invalidation needed.
       local device_ip=""
       device_ip=$(getent hosts "failsafe-${device_mac}.local" 2>/dev/null | awk '{print $1}' | head -1)
       if [[ -z "$device_ip" ]]; then
         device_ip=$(avahi-resolve -n "failsafe-${device_mac}.local" 2>/dev/null | awk '{print $2}' | head -1)
       fi
-      [[ -n "$device_ip" ]] && debug "Resolved failsafe-$device_mac → $device_ip (will probe after reboot)"
+      [[ -n "$device_ip" ]] && debug "Resolved failsafe-$device_mac -> $device_ip (will probe after reboot)"
 
       # Wait for the OTA service to be fully ready. The /dev/tcp check above
       # confirmed the port is listening, but ESPHome needs a moment after the
@@ -4172,11 +4172,11 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
         info "  Reading on-flash production partition via USB..."
         if [[ -n "$prod_chip" ]] && flash_production_matches_device \
             "$tty_device" "$prod_chip" "$production_build_dir" "$production_offset"; then
-          ok "Production partition matches build — skipping OTA"
+          ok "Production partition matches build -- skipping OTA"
           skip_production_ota=1
         fi
       elif _flash_production_matches_build "$prod_hostname" "$yaml_path" "$tty_device"; then
-        ok "Production firmware matches build (runtime config_hash) — skipping OTA"
+        ok "Production firmware matches build (runtime config_hash) -- skipping OTA"
         skip_production_ota=1
       fi
 
@@ -4259,7 +4259,7 @@ Usage: iotstack flash $device /dev/ttyUSB0
 Note: Use 'iotstack update $device' for OTA flashing to devices already on network"
 }
 
-# ── Main ─────────────────────────────────────────────────────────────────────
+# -- Main ---------------------------------------------------------------------
 
 
 verify_wifi_credentials() {
@@ -4331,7 +4331,7 @@ cmd_logs() {
   done
   [[ ${#pos[@]} -eq 0 ]] && { help_logs; exit 1; }
 
-  # ── Serial device: raw stream, no YAML ──
+  # -- Serial device: raw stream, no YAML --
   if [[ "${pos[0]}" == /dev/* ]]; then
     local port="${pos[0]}"
     [[ -e "$port" ]] || err "Serial device not found: $port"
@@ -4348,7 +4348,7 @@ cmd_logs() {
     exec "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" "$port"
   fi
 
-  # ── Network: [mac ...] <role> via esphome logs ──
+  # -- Network: [mac ...] <role> via esphome logs --
   local role="${pos[-1]}"
   local -a macs=("${pos[@]:0:${#pos[@]}-1}")
   if ! is_valid_role "$role"; then

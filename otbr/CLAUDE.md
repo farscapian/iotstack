@@ -38,13 +38,13 @@ otbrstack snap
 Env files live in `~/.otbrstack/env/`. Copy an example and fill it in:
 
 ```bash
-cp .env ~/.otbrstack/env/.env   # or tvpc.env — pick the closest example
+cp .env ~/.otbrstack/env/.env   # or tvpc.env -- pick the closest example
 # Edit it: set THREAD_DATASET_TLV, WIFI_SSID, WIFI_PASSWORD, etc.
 # For the default, name it after your hostname or just .env:
 cp .env ~/.otbrstack/env/$(hostname).env
 ```
 
-The env file is sourced automatically — no `export` or `sudo -E` needed.
+The env file is sourced automatically -- no `export` or `sudo -E` needed.
 `otbrstack` looks for `~/.otbrstack/env/$(hostname).env` first, then `~/.otbrstack/env/.env`.
 
 ### Relevant .env variables
@@ -66,11 +66,11 @@ The env file is sourced automatically — no `export` or `sudo -E` needed.
 | `MQTT_PORT` | flash | MQTT broker port (default: `1883`) |
 | `MQTT_USER` | flash | MQTT username (optional) |
 | `MQTT_PASSWORD` | flash | MQTT password (optional) |
-| `OT_REPO_PATH` | — | **Removed.** |
-| `SIM_RCP_BIN` | — | **Removed.** Sim binary is built automatically from `~/.otbrstack/cache/openthread/` by `otbrstack vm`. |
-| `SIM_RCP_URL` | — | **Removed.** |
-| `SIM_CLI_BIN` | — | **Removed.** `ot-cli` is built alongside `ot-rcp` and cached at `~/.otbrstack/cache/ot-rcp-sim/ot-cli`. |
-| `SIM_CLI_URL` | — | **Removed.** |
+| `OT_REPO_PATH` | -- | **Removed.** |
+| `SIM_RCP_BIN` | -- | **Removed.** Sim binary is built automatically from `~/.otbrstack/cache/openthread/` by `otbrstack vm`. |
+| `SIM_RCP_URL` | -- | **Removed.** |
+| `SIM_CLI_BIN` | -- | **Removed.** `ot-cli` is built alongside `ot-rcp` and cached at `~/.otbrstack/cache/ot-rcp-sim/ot-cli`. |
+| `SIM_CLI_URL` | -- | **Removed.** |
 
 ## Architecture
 
@@ -83,13 +83,13 @@ Four deployment paths share the same `.env` file and `THREAD_DATASET_TLV` variab
 | `otbrstack docker` | Ubuntu Server/Desktop (bare metal) | Docker CE + nginx | any USB dongle via udev symlink |
 | `otbrstack vm x64` / `otbrstack vm arm64` | Incus VM or container (test) | snap | simulated or USB passthrough |
 
-- `otbrstack flash` — downloads Ubuntu Server 26.04 arm64+raspi image, verifies SHA-256, flashes to SD, injects cloud-init NoCloud payload into the `system-boot` partition
-- `otbrstack snap` — detects USB RCP, verifies Spinel firmware, installs and configures the OTBR snap; runs as normal user (`sudo` invoked internally)
-- `otbrstack docker` — installs Docker CE, pulls `openthread/otbrstack`, writes udev rule for stable dongle symlink, sets up nginx reverse proxy, joins Thread network; requires root
-- `otbrstack vm x64` / `otbrstack vm arm64` — Incus VM or system container test; native x86_64 or arm64
-- `incus/` — cloud-init template for Incus VM and container
-- `cache/` — all third-party downloaded content (see layout below)
-- `artifacts/` — generated shared artifacts (cloud-init output, pyspinel venv)
+- `otbrstack flash` -- downloads Ubuntu Server 26.04 arm64+raspi image, verifies SHA-256, flashes to SD, injects cloud-init NoCloud payload into the `system-boot` partition
+- `otbrstack snap` -- detects USB RCP, verifies Spinel firmware, installs and configures the OTBR snap; runs as normal user (`sudo` invoked internally)
+- `otbrstack docker` -- installs Docker CE, pulls `openthread/otbrstack`, writes udev rule for stable dongle symlink, sets up nginx reverse proxy, joins Thread network; requires root
+- `otbrstack vm x64` / `otbrstack vm arm64` -- Incus VM or system container test; native x86_64 or arm64
+- `incus/` -- cloud-init template for Incus VM and container
+- `cache/` -- all third-party downloaded content (see layout below)
+- `artifacts/` -- generated shared artifacts (cloud-init output, pyspinel venv)
 
 ### Docker architecture notes
 
@@ -101,32 +101,32 @@ Four deployment paths share the same `.env` file and `THREAD_DATASET_TLV` variab
 
 ### Home directory layout
 
-All runtime data lives in `~/.otbrstack/` — separate from the repo so the repo stays clean and shareable.
+All runtime data lives in `~/.otbrstack/` -- separate from the repo so the repo stays clean and shareable.
 
 ```
 ~/.otbrstack/
   env/
-    .env              ← default env (loaded if no hostname-specific file found)
-    <hostname>.env    ← per-machine env (takes priority over .env)
+    .env              <- default env (loaded if no hostname-specific file found)
+    <hostname>.env    <- per-machine env (takes priority over .env)
   cache/
-    ubuntu/server/    ← Ubuntu Server 26.04 arm64+raspi .img.xz and .img (otbrstack flash)
-    snap/             ← openthread-border-router .snap + .assert (all provisioners)
-    esp32/rcp/        ← ESP32-C6 RCP app binary (built from esp-thread-br source)
-    esp-idf/          ← shallow clone of espressif/esp-idf (auto-cloned if IDF_PATH unset)
-    openthread/       ← shallow clone of openthread/openthread; cmake simulation build produces ot-rcp + ot-cli
-    ot-rcp-sim/       ← ot-rcp and ot-cli sim binaries (built from cache/openthread/ by otbrstack vm)
+    ubuntu/server/    <- Ubuntu Server 26.04 arm64+raspi .img.xz and .img (otbrstack flash)
+    snap/             <- openthread-border-router .snap + .assert (all provisioners)
+    esp32/rcp/        <- ESP32-C6 RCP app binary (built from esp-thread-br source)
+    esp-idf/          <- shallow clone of espressif/esp-idf (auto-cloned if IDF_PATH unset)
+    openthread/       <- shallow clone of openthread/openthread; cmake simulation build produces ot-rcp + ot-cli
+    ot-rcp-sim/       <- ot-rcp and ot-cli sim binaries (built from cache/openthread/ by otbrstack vm)
   logs/
-    <hostname>/       ← per-device log directories (flash sessions, vm runs, etc.)
+    <hostname>/       <- per-device log directories (flash sessions, vm runs, etc.)
   artifacts/
-    rpi/<hostname>/   ← cloud-init payloads from otbrstack flash
-    x64vm/            ← cloud-init payloads from otbrstack vm x64 runs
-    arm64vm/          ← cloud-init payloads from otbrstack vm arm64 runs
-    pyspinel-venv/    ← auto-created Python venv for RCP Spinel probing
+    rpi/<hostname>/   <- cloud-init payloads from otbrstack flash
+    x64vm/            <- cloud-init payloads from otbrstack vm x64 runs
+    arm64vm/          <- cloud-init payloads from otbrstack vm arm64 runs
+    pyspinel-venv/    <- auto-created Python venv for RCP Spinel probing
 ```
 
 ## Testing (Incus)
 
-`otbrstack vm x64` provisions an Incus VM or system container with the same OTBR first-boot sequence, but on native x86_64 — no emulation overhead.
+`otbrstack vm x64` provisions an Incus VM or system container with the same OTBR first-boot sequence, but on native x86_64 -- no emulation overhead.
 
 ```bash
 otbrstack vm x64                          # VM (default), name=otbrstackvm64
@@ -144,32 +144,32 @@ otbrstack vm x64 --reprovision           # delete and reprovision
 
 ## RCP firmware flashing
 
-When an ESP32-C6 is detected, the provisioner always builds from source using the `ot_rcp` example in [esp-thread-br](https://github.com/espressif/esp-thread-br). All three binaries (bootloader + partition table + app) are flashed via `idf.py flash` — no pre-built binaries required.
+When an ESP32-C6 is detected, the provisioner always builds from source using the `ot_rcp` example in [esp-thread-br](https://github.com/espressif/esp-thread-br). All three binaries (bootloader + partition table + app) are flashed via `idf.py flash` -- no pre-built binaries required.
 
 ### How it works
 
 On every run the provisioner:
 
-1. **Updates ESP-IDF** — clones to `cache/esp-idf/` on first run, then `git fetch --depth 1` + `install.sh esp32c6` on subsequent runs. Skipped if `idf.py` is already in PATH or `IDF_PATH` points to an existing install.
-2. **Updates esp-thread-br** — clones `cache/esp-thread-br/` on first run, then pulls latest (`git fetch --depth 1` + `reset --hard origin/HEAD` + submodule update). Tracks the HEAD hash before and after.
+1. **Updates ESP-IDF** -- clones to `cache/esp-idf/` on first run, then `git fetch --depth 1` + `install.sh esp32c6` on subsequent runs. Skipped if `idf.py` is already in PATH or `IDF_PATH` points to an existing install.
+2. **Updates esp-thread-br** -- clones `cache/esp-thread-br/` on first run, then pulls latest (`git fetch --depth 1` + `reset --hard origin/HEAD` + submodule update). Tracks the HEAD hash before and after.
 3. **Rebuilds** only if the esp-thread-br HEAD changed or no prior build artifact exists. Uses `sdkconfig.defaults.otbrstack` with:
-   - `CONFIG_OPENTHREAD_RCP_USB_SERIAL_JTAG=y` — USB JTAG peripheral (`/dev/ttyACM0`)
-   - `CONFIG_OPENTHREAD_RADIO=y` + `CONFIG_OPENTHREAD_RADIO_NATIVE=y` — RCP mode
-   - `CONFIG_ESP_COEX_SW_COEXIST_ENABLE=n` — disable WiFi/BT coexistence
+   - `CONFIG_OPENTHREAD_RCP_USB_SERIAL_JTAG=y` -- USB JTAG peripheral (`/dev/ttyACM0`)
+   - `CONFIG_OPENTHREAD_RADIO=y` + `CONFIG_OPENTHREAD_RADIO_NATIVE=y` -- RCP mode
+   - `CONFIG_ESP_COEX_SW_COEXIST_ENABLE=n` -- disable WiFi/BT coexistence
 4. **Flashes** only if the freshly built binary differs (sha256) from `cache/esp32/rcp/esp_ot_rcp.bin` (the last-flashed copy). If identical, the connected device is already up to date and flash is skipped.
 5. On flash, updates `cache/esp32/rcp/esp_ot_rcp.bin` to reflect what is now on the device.
 
-The baud rate `460800` in the Spinel URL is conventional — USB CDC-ACM doesn't use host-side baud rates internally. The setting is harmless and expected by the OTBR snap.
+The baud rate `460800` in the Spinel URL is conventional -- USB CDC-ACM doesn't use host-side baud rates internally. The setting is harmless and expected by the OTBR snap.
 
 ## Key constraints
 
 - cloud-init on Ubuntu Server uses the **NoCloud** datasource, which reads `user-data` and `meta-data` from the **root** of the `system-boot` FAT32 partition (not a subdirectory).
-- Ubuntu Core 24 intentionally disables cloud-init at first boot — it is not a viable provisioning target for this approach. Use Ubuntu Server instead.
+- Ubuntu Core 24 intentionally disables cloud-init at first boot -- it is not a viable provisioning target for this approach. Use Ubuntu Server instead.
 - Target arch is `arm64` (aarch64). The image is `ubuntu-26.04.4-preinstalled-server-arm64+raspi.img.xz`.
 - RCP is an ESP32-C6 connected via USB, communicating over Spinel/HDLC at 460800 baud.
 
 ## Code style
 
 - Shell scripts: bash, `set -euo pipefail`, functions for repeated logic
-- Avoid hardcoding device paths — always read from env or detect dynamically
+- Avoid hardcoding device paths -- always read from env or detect dynamically
 - Log progress to stderr; only actionable output goes to stdout

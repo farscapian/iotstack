@@ -1,8 +1,8 @@
-# ESP32 ESPHome Device Management — Development Notes
+# ESP32 ESPHome Device Management -- Development Notes
 
 ## Naming Convention
 
-**Always use lowercase "iotstack"** — never "IoT Stack" or "iotStack". Examples:
+**Always use lowercase "iotstack"** -- never "IoT Stack" or "iotStack". Examples:
 - OK: `iotstack update bleproxy`
 - OK: `iotstack devices`
 - BAD: ~~IoT Stack~~, ~~iotStack~~, ~~IOTSTACK~~
@@ -12,18 +12,29 @@ This applies in code comments, documentation, help text, and all user-facing mes
 ## Canonical Development Path
 
 - **Primary repo:** `~/Sync/mini_projects/iotstack` on branch `main`
-- **CLI entrypoint:** `~/.local/bin/iotstack` → symlinks to `iotstack.sh` in that repo
-- **Before testing fixes:** `git pull` on `main` — stale local trees produce confusing output (e.g. `--flash-anyway` appearing to do nothing when the fix is not yet pulled)
+- **CLI entrypoint:** `~/.local/bin/iotstack` -> symlinks to `iotstack.sh` in that repo
+- **Before testing fixes:** `git pull` on `main` -- stale local trees produce confusing output (e.g. `--flash-anyway` appearing to do nothing when the fix is not yet pulled)
 - Grok/Cursor worktrees may mirror the same commit but are not the install target; develop and commit on `main` unless explicitly working in a worktree
+
+## ASCII-Only Text (Repo-Wide)
+
+**All documents, logging output, code comments, and help text must be ASCII-only.**
+
+- No Unicode symbols: checkmarks, arrows, emoji, box-drawing, em dashes, etc.
+- Use `--` instead of em dash, `->` instead of arrow, `[OK]`/`[FAIL]` instead of checkmarks
+- Section dividers in shell comments: `# -- Title --` not box-drawing characters
+- ANSI color escape bytes in `$'\033[...]'` variables are OK for terminal coloring; message text itself stays ASCII
+- Maintenance script: `scripts/ascii-only-sanitize.py` (character substitution only; preserves indentation)
+- Run check: `python3 scripts/ascii-only-sanitize.py .` (exit 0 = all scanned text files ASCII)
 
 ## CLI Output Conventions
 
-Runtime script output uses plain ASCII status tags — no Unicode symbols (checkmarks, arrows, emoji):
+Runtime script output uses plain ASCII status tags:
 
 - `[INFO]`, `[OK]`, `[WARN]`, `[ERR]`, `[FAIL]`
 - Use `matches`, `!=`, `...` instead of decorative characters
-- Compile progress: `info "Compiling firmware..."` — not animated `⚙ Compiling ✓` spinners
-- `iotstack.sh` and `update_devices.sh` both follow this; `iotstack.sh` uses `$'\033[...'` only for tag colors in `echo -e`, never raw symbols in message text
+- Compile progress: `info "Compiling firmware..."` -- no animated compile spinners
+- `iotstack.sh` uses `$'\033[...]'` only for tag colors in `echo -e`, never Unicode in message text
 
 ## Environment Variables
 
@@ -106,7 +117,7 @@ The `iotstack.sh` CLI tool provides a user-friendly wrapper around this script w
 - Uses `avahi-browse -t -r _esphomelib._tcp` to discover devices on the network
 - Devices must advertise `_esphomelib._tcp` service (native ESPHome)
 - Extracts device names, config_hash, and project version from mDNS TXT records
-- No HTTP calls needed — all discovery is via mDNS
+- No HTTP calls needed -- all discovery is via mDNS
 
 ### Build & Flash Strategy
 - Compilation happens once serially (with SHA256 cache to skip unnecessary rebuilds)
@@ -140,7 +151,7 @@ failsafe.yaml,75e67037f9e3fc23...,a183d757ba74cc50...,3ea7c88a
 ```
 
 ### Serial Flash Baud Rate: 9600 (Critical)
-**⚠️ IMPORTANT: All esptool flash operations use 9600 baud, NOT 57600 or 115200**
+**[WARN] IMPORTANT: All esptool flash operations use 9600 baud, NOT 57600 or 115200**
 
 Testing with ESP32-C6 devices revealed that higher baud rates cause data corruption during large firmware transfers:
 - **57600 baud**: Firmware corruption starts ~52KB into 807KB transfers
@@ -156,9 +167,9 @@ If baud rate changes are ever considered, empirically test with actual 789KB fir
 ### YAML Configuration
 - ESPHome devices are configured via YAML files in `yamls/` (one file per role, e.g. `bleproxy.yaml`, `matrixdisplay.yaml`)
 - `esphome.name` is the role name; `name_add_mac_suffix: true` produces hostnames like `bleproxy-8238cc`
-- **Production YAMLs must not include `ota:`** — OTA server lives only on failsafe firmware; production is updated via failsafe-mediated OTA
-- **No `safe_mode:`** — boot-loop recovery is handled by `partition_manager`
-- **No `factory_reset` button** — physical reset is `common/boot_button.yaml`
+- **Production YAMLs must not include `ota:`** -- OTA server lives only on failsafe firmware; production is updated via failsafe-mediated OTA
+- **No `safe_mode:`** -- boot-loop recovery is handled by `partition_manager`
+- **No `factory_reset` button** -- physical reset is `common/boot_button.yaml`
 
 ### Project Version (Build-Time Git Tag)
 
@@ -211,7 +222,7 @@ iotstack update a1a7b0 mmwave --flash-anyway
 ### 2. Delta Updates (Default: On)
 - **Primary comparison:** `config_hash` from device mDNS TXT vs. compiled build
 - Only flashes devices with mismatched hashes (`--upgrade-delta`, default in `update_devices.sh`)
-- **`--flash-anyway`:** force all matched devices onto the flash list (separate `FLASH_ANYWAY` flag — does not disable compile cache)
+- **`--flash-anyway`:** force all matched devices onto the flash list (separate `FLASH_ANYWAY` flag -- does not disable compile cache)
 - Fallback to `project_version` comparison if `config_hash` unavailable in mDNS
 - Note: some help text still says `--force-reflash`; the implemented flag is `--flash-anyway`
 
@@ -237,7 +248,7 @@ scripts/update_devices.sh --reassign 19b164 199ef4 yamls/mmwave.yaml
 - Warns if any requested MACs are offline
 
 ### 4. Verify (`iotstack verify`)
-Compile (or cache-hit) and compare each device's runtime `config_hash` against the build — no flashing:
+Compile (or cache-hit) and compare each device's runtime `config_hash` against the build -- no flashing:
 
 ```bash
 iotstack verify bleproxy
@@ -247,14 +258,14 @@ iotstack verify all
 Uses `update_devices.sh --verify`. Discovery and mismatch reporting must use `info()` / `ok()` / `err()`, not `log()` alone (see gotchas).
 
 ### 5. Home Assistant Integration
-- Uses WebSocket API (NOT REST API — REST endpoints are internal, not public)
+- Uses WebSocket API (NOT REST API -- REST endpoints are internal, not public)
 - Recreates entity IDs after reassignment to reflect new device configuration
 - Filters updates to ESPHome platform only (`platform == 'esphome'`)
 - Verifies entity ID consistency across all discovered devices
 - Commands used:
-  - `config/entity_registry/list` — get all entities
-  - `config/entity_registry/get_automatic_entity_ids` — compute new IDs for given device_name
-  - `config/entity_registry/update` — update entity ID
+  - `config/entity_registry/list` -- get all entities
+  - `config/entity_registry/get_automatic_entity_ids` -- compute new IDs for given device_name
+  - `config/entity_registry/update` -- update entity ID
 - Entity ID security: only updates entities with `platform == 'esphome'`, preventing accidental updates to beacon trackers, iBeacon integrations, etc.
 
 ## iotstack CLI Tool
@@ -277,7 +288,7 @@ matrixdisplay=yamls/matrixdisplay.yaml
 ```
 
 Format: `<role>=<yaml-path>`
-- Network type determined from YAML content: `wifi:` section → WiFi, `openthread:` section → Thread
+- Network type determined from YAML content: `wifi:` section -> WiFi, `openthread:` section -> Thread
 - Each YAML file is introspected at runtime (no need to specify variant in config)
 
 ### Usage Examples
@@ -303,7 +314,7 @@ iotstack update yamls/custom.yaml
 - Internally calls `update_devices.sh` with resolved YAML paths
 - All underlying features (reassign, verify, etc.) work the same way
 
-## Partition Configuration — Dynamically Calculated
+## Partition Configuration -- Dynamically Calculated
 
 **Two-partition scheme:** permanent **failsafe** (`ota_0`) + **production** (`ota_1`). All production OTA runs from failsafe so the failsafe image is never overwritten. Partition sizes are calculated from actual compiled firmware binary sizes.
 
@@ -329,12 +340,12 @@ iotstack update yamls/custom.yaml
 
 ### Why This Approach?
 
-- ✅ **No hardcoded partition sizes** — All calculated from actual firmware
-- ✅ **Zero chance of misalignment** — Partition table always matches firmware reality
-- ✅ **Firmware changes auto-handled** — Larger firmware = larger partition, calculated automatically
-- ✅ **Audit-friendly** — Partition table shows exactly what firmware needs
-- ✅ **Exact fit** — Partitions are only as large as firmware needs (no wasted flash)
-- ✅ **Artifacts in ~/.iotstack** — Generated files stored in user home, not repo
+- [OK] **No hardcoded partition sizes** -- All calculated from actual firmware
+- [OK] **Zero chance of misalignment** -- Partition table always matches firmware reality
+- [OK] **Firmware changes auto-handled** -- Larger firmware = larger partition, calculated automatically
+- [OK] **Audit-friendly** -- Partition table shows exactly what firmware needs
+- [OK] **Exact fit** -- Partitions are only as large as firmware needs (no wasted flash)
+- [OK] **Artifacts in ~/.iotstack** -- Generated files stored in user home, not repo
 
 ### Files Involved
 
@@ -347,7 +358,7 @@ iotstack update yamls/custom.yaml
 ## Important Implementation Details
 
 ### Stdout/Stderr Redirection Issue
-⚠️ **Critical for User Interaction**
+[WARN] **Critical for User Interaction**
 
 The script redirects stdout to a log file:
 ```bash
@@ -422,7 +433,7 @@ Production firmware has **no OTA server** in YAML. Update/reassign/flash paths:
 
 **update_devices.sh** (`--flash-anyway`):
 - Uses a dedicated `FLASH_ANYWAY=true` flag to force devices onto the flash list
-- **Do not** tie `--flash-anyway` to `UPGRADE_DELTA=false` — that skipped compile-cache / `NEW_CONFIG_HASH` resolution and caused `hash: unknown` plus redundant compiles
+- **Do not** tie `--flash-anyway` to `UPGRADE_DELTA=false` -- that skipped compile-cache / `NEW_CONFIG_HASH` resolution and caused `hash: unknown` plus redundant compiles
 - `iotstack flash` passes **both** `--upgrade-delta` and `--flash-anyway` during failsafe OTA; argument order must leave `FLASH_ANYWAY` effective without disabling delta compile logic
 
 ### `iotstack verify` and `set -e`
@@ -433,15 +444,15 @@ Production firmware has **no OTA server** in YAML. Update/reassign/flash paths:
 
 ### Post-OTA hash reporting
 
-During reassign OTA the discovered host is `failsafe-<mac>` — failsafe mDNS typically has **no `config_hash`**. Success line should fall back to build hash from `NEW_CONFIG_HASH`, `build_info.json`, or `compilation-cache.csv` (`_resolve_build_config_hash`).
+During reassign OTA the discovered host is `failsafe-<mac>` -- failsafe mDNS typically has **no `config_hash`**. Success line should fall back to build hash from `NEW_CONFIG_HASH`, `build_info.json`, or `compilation-cache.csv` (`_resolve_build_config_hash`).
 
 ### Matrix display panel layout (NVS, not config_hash)
 
 Panel count and dimensions live in **NVS**, not in firmware `config_hash`. A device can run current firmware but wrong panel layout.
 
-- CLI flags: `--panel-count`, `--panel-width`, `--panel-height` (flags → pass store → role defaults)
+- CLI flags: `--panel-count`, `--panel-width`, `--panel-height` (flags -> pass store -> role defaults)
 - Runtime sensor: `panel_count` (legacy fallback: `matrix_panel_columns`)
-- **Preferred path:** switch to failsafe → `update_nvs_secrets` API with `matrix_cols`, `matrix_panel_w`, `matrix_panel_h`
+- **Preferred path:** switch to failsafe -> `update_nvs_secrets` API with `matrix_cols`, `matrix_panel_w`, `matrix_panel_h`
 - **USB fallback:** `write-nvs-secrets.sh` only when failsafe API unreachable (first provision)
 - Flash with current firmware but wrong layout: assessment reports NVS update action without recompiling
 
@@ -498,7 +509,7 @@ Roles are listed in `scripts/roles.conf`. Examples:
 
 **CRITICAL: Git Operations Only After Human Testing**
 
-Default workflow — **git commits and pushes only after the human has**:
+Default workflow -- **git commits and pushes only after the human has**:
 1. **Tested the changes** against actual devices (not just compilation)
 2. **Verified functionality** works as expected
 3. **Explicitly approved** the changes (or directly requested commit/push)
@@ -508,7 +519,7 @@ Default workflow — **git commits and pushes only after the human has**:
 2. Stage changes (`git add`)
 3. Wait for human approval unless they explicitly ask to commit
 4. Commit with a clear message; push to `origin/main` when approved
-5. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate — firmware picks up the tag on next compile
+5. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate -- firmware picks up the tag on next compile
 
 This keeps commits aligned with validated device behavior. AI-assisted sessions may commit when the human explicitly requests it, but device validation remains the bar for correctness.
 
@@ -517,8 +528,8 @@ This keeps commits aligned with validated device behavior. AI-assisted sessions 
 **When encountering a persistent problem, do targeted internet research BEFORE systematic debugging.**
 
 Example: Baud rate issues with ESP32 flash corruption
-- ❌ Bad: Try 460800 → 115200 → 57600 (3+ hours of testing)
-- ✅ Good: Research "ESP32 firmware corruption baud rate" → find 9600 standard (5 minutes)
+- [FAIL] Bad: Try 460800 -> 115200 -> 57600 (3+ hours of testing)
+- [OK] Good: Research "ESP32 firmware corruption baud rate" -> find 9600 standard (5 minutes)
 
 **When to research:**
 - Problem seems common or straightforward (baud rates, timeouts, memory issues)
@@ -544,16 +555,16 @@ Example: Baud rate issues with ESP32 flash corruption
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| NVS partition write | ✅ Working | Writes proper NVS binary format to the `nvs` partition offset read from the generated partition table |
-| NVS key-value format | ✅ Working | Uses esp_idf_nvs_partition_gen; keys written under the **`iotstack` namespace** (see "NVS Namespace" pitfall below) |
-| OTA password from NVS | ✅ Working | nvs_secrets component loads and applies password |
-| WiFi credentials from NVS | ✅ Working | nvs_secrets reads SSID+password from NVS and applies them at runtime via `wifi::global_wifi_component->save_wifi_sta()` (see "WiFi Credentials From NVS" below) |
-| API encryption key | ✅ Stored | Safely written to NVS, awaiting API component support |
-| Flash encryption | ⏳ TODO | Planned for production hardening with eFuses |
+| NVS partition write | [OK] Working | Writes proper NVS binary format to the `nvs` partition offset read from the generated partition table |
+| NVS key-value format | [OK] Working | Uses esp_idf_nvs_partition_gen; keys written under the **`iotstack` namespace** (see "NVS Namespace" pitfall below) |
+| OTA password from NVS | [OK] Working | nvs_secrets component loads and applies password |
+| WiFi credentials from NVS | [OK] Working | nvs_secrets reads SSID+password from NVS and applies them at runtime via `wifi::global_wifi_component->save_wifi_sta()` (see "WiFi Credentials From NVS" below) |
+| API encryption key | [OK] Stored | Safely written to NVS, awaiting API component support |
+| Flash encryption | [TODO] TODO | Planned for production hardening with eFuses |
 
-### 🚨 CRITICAL PITFALL: NVS keys must be written under a named namespace
+### [CRITICAL] CRITICAL PITFALL: NVS keys must be written under a named namespace
 
-`esp_idf_nvs_partition_gen` accepts a CSV with **no `namespace` row without erroring** (exit 0), but it then writes every key into reserved namespace-index 0 (the internal namespace registry). No named namespace exists on the chip, so at runtime `nvs_open(<any name>, NVS_READONLY, ...)` returns `ESP_ERR_NVS_NOT_FOUND` and the keys are **unreachable** — even though they are physically present in flash.
+`esp_idf_nvs_partition_gen` accepts a CSV with **no `namespace` row without erroring** (exit 0), but it then writes every key into reserved namespace-index 0 (the internal namespace registry). No named namespace exists on the chip, so at runtime `nvs_open(<any name>, NVS_READONLY, ...)` returns `ESP_ERR_NVS_NOT_FOUND` and the keys are **unreachable** -- even though they are physically present in flash.
 
 **The CSV fed to `nvs_partition_gen` MUST start with a namespace row, and that name MUST match the `NAMESPACE` constant the C++ opens.** Both sides currently use `iotstack`:
 
@@ -578,9 +589,9 @@ python3 -m esptool --chip esp32c6 --port /dev/ttyACM0 --baud 921600 \
 # If keys are in ns_index 0 with no namespace-def entry, the namespace row is missing.
 ```
 
-### WiFi Credentials From NVS (✅ Solved)
+### WiFi Credentials From NVS ([OK] Solved)
 
-The earlier limitation — "ESPHome's WiFi component can't take credentials at runtime" — is **solved**. The trick is the public WiFi API plus correct setup ordering:
+The earlier limitation -- "ESPHome's WiFi component can't take credentials at runtime" -- is **solved**. The trick is the public WiFi API plus correct setup ordering:
 
 - `nvs_secrets` runs at `setup_priority::AFTER_WIFI` (200.0f). The WiFi component runs at `setup_priority::WIFI` (250.0f), so WiFi is already initialized when `nvs_secrets::setup()` executes.
 - In `setup()`, after reading the credentials, nvs_secrets calls:
@@ -594,7 +605,7 @@ The earlier limitation — "ESPHome's WiFi component can't take credentials at r
 
 Verified on hardware: boot log shows `[NVS] Applying WiFi credentials from NVS to WiFi component (SSID: ...)` followed by `[wifi] Connecting to '<real-ssid>'` and a DHCP-assigned IP.
 
-### Thread Credentials From NVS (⏳ built, needs hardware validation)
+### Thread Credentials From NVS ([TODO] built, needs hardware validation)
 
 The Thread analog of the WiFi-from-NVS path. ESPHome's `openthread` component bakes the operational dataset in at compile time (`USE_OPENTHREAD_TLVS` / `CONFIG_OPENTHREAD_NETWORK_MASTERKEY`) and exposes no config-time NVS hook, so thread-only yamls carry a **placeholder** `network_key` (just to satisfy `has_exactly_one_key(network_key, tlv)` and compile). The real dataset comes from NVS at runtime:
 
@@ -607,9 +618,9 @@ The Thread analog of the WiFi-from-NVS path. ESPHome's `openthread` component ba
   otThreadSetEnabled(inst, true);
   ```
 - Ordering works like WiFi: the openthread component is `setup_priority::WIFI` (250), `nvs_secrets` is `AFTER_WIFI` (200), so the stack exists when nvs_secrets runs.
-- `CONFLICTS_WITH = ["wifi"]` in the openthread component means a single image cannot do both radios — WiFi and Thread are **separate failsafe/production variants** (one radio per image; the C6 runs whichever image is booted). The dynamic partition table sizes each slot to whatever image lands there.
+- `CONFLICTS_WITH = ["wifi"]` in the openthread component means a single image cannot do both radios -- WiFi and Thread are **separate failsafe/production variants** (one radio per image; the C6 runs whichever image is booted). The dynamic partition table sizes each slot to whatever image lands there.
 
-Status: compiles on threadrouter (Thread stack) and on WiFi-only devices (OT code excluded by the guard). **Not yet validated on a live Thread network** — the runtime `otDatasetSetActiveTlvs` + re-attach sequence (and its timing vs. the OT task spin-up) needs hardware confirmation; the disable→set→enable order may need tuning.
+Status: compiles on threadrouter (Thread stack) and on WiFi-only devices (OT code excluded by the guard). **Not yet validated on a live Thread network** -- the runtime `otDatasetSetActiveTlvs` + re-attach sequence (and its timing vs. the OT task spin-up) needs hardware confirmation; the disable->set->enable order may need tuning.
 
 ### TODO: production self-recovery into failsafe
 
@@ -617,7 +628,7 @@ For a device parked where its production radio is weak, the production image
 can't be rescued remotely (only via the physical boot button). A production
 image *could* self-recover: watch connectivity (e.g. `wifi_signal` below a
 threshold for N minutes, or repeated disconnects) and, on sustained failure,
-call `partition_manager::boot_failsafe()` to drop into the failsafe image —
+call `partition_manager::boot_failsafe()` to drop into the failsafe image --
 which (if Thread) is reachable over the mesh for re-flash. ESPHome has the hooks
 (`wifi` `on_disconnect`, signal sensors, `interval:`). Not implemented; would
 live as an optional shared package so each device opts in.
@@ -628,34 +639,34 @@ The generalization of the above. Three app partitions forming a recovery
 cascade, from most-reliable at the base to production at the top:
 
 ```
-ota_0  failsafe-thread   (base — slowest OTA, presumed most reliable / best range)
+ota_0  failsafe-thread   (base -- slowest OTA, presumed most reliable / best range)
 ota_1  failsafe-wifi     (faster recovery)
 ota_2  production
 ```
 
 Cascade (each tier detects its own failure and steps the boot slot DOWN, never
 up; needs a boot-loop guard via the safe_mode counter):
-- production fails to stay connected → boot `failsafe-wifi`
-- `failsafe-wifi` can't get on WiFi within a timeout → boot `failsafe-thread`
+- production fails to stay connected -> boot `failsafe-wifi`
+- `failsafe-wifi` can't get on WiFi within a timeout -> boot `failsafe-thread`
 - `failsafe-thread` is the floor (retries; never steps down)
 
 **Only deploy all three IF they fit the flash.** Use the dynamic partition
 sizing to sum failsafe-thread + failsafe-wifi + production; if the total fits
-(comfortable on 8MB; tight on 4MB — production drops from ~2.88MB to ~2.2MB,
+(comfortable on 8MB; tight on 4MB -- production drops from ~2.88MB to ~2.2MB,
 still fits bleproxy 1.40MB), build the 3-tier layout. Otherwise fall back to the
 current 2-partition scheme (failsafe-wifi + production). The decision is made at
 provision time from the measured image sizes.
 
-**The hard part — OTA targeting with 3 OTA slots.** `esp_ota_get_next_update_partition()`
-cycles ota_0→ota_1→ota_2→ota_0, so:
-- OTA run from `failsafe-wifi` (ota_1) → lands in `production` (ota_2) ✓ — normal
+**The hard part -- OTA targeting with 3 OTA slots.** `esp_ota_get_next_update_partition()`
+cycles ota_0->ota_1->ota_2->ota_0, so:
+- OTA run from `failsafe-wifi` (ota_1) -> lands in `production` (ota_2) [OK] -- normal
   updates work out of the box.
-- OTA run from `failsafe-thread` (ota_0) → lands in `failsafe-wifi` (ota_1) ✗.
+- OTA run from `failsafe-thread` (ota_0) -> lands in `failsafe-wifi` (ota_1) [FAIL].
   A deep Thread-only recovery OTA (WiFi dead) therefore needs **explicit
   partition selection** in the OTA backend (ESPHome uses get_next and doesn't
   expose a target), which is the one piece beyond a weekend.
 
-**Naming:** with the cascade, rename the current `failsafe` → `failsafe-wifi`
+**Naming:** with the cascade, rename the current `failsafe` -> `failsafe-wifi`
 (touches the mDNS name `failsafe-<mac>`, the `iotstack/roles/failsafe/...` pass
 paths, the flash wait logic, and the `failsafe` partition label) and add
 `failsafe-thread`. Do the rename *with* the cascade, not piecemeal.
@@ -685,29 +696,29 @@ Architecture:
 Workflow:
 ```
 setup.sh (first run)
-  ↓
+  v
   Role secrets generated & stored in pass
-  ↓
+  v
 iotstack flash <device> <role>
-  ↓
-  ↓
+  v
+  v
   Firmware flashed to device via esptool
-  ↓
+  v
   write-nvs-secrets.sh:
     - Retrieves role secret from pass
     - Derives device-specific secret (sha256 | mac)
     - Writes to device NVS partition
-  ↓
+  v
 Device boots
-  ↓
+  v
   nvs_secrets component reads from NVS
-  ↓
+  v
   Device has unique, secure secrets
 ```
 
 Key benefit: **Single firmware binary for all devices, unique secrets per device, no disk exposure of real secrets.**
 
-## 🚨 CRITICAL: Never Print Passwords or Secrets to Console
+## [CRITICAL] CRITICAL: Never Print Passwords or Secrets to Console
 
 **Rule: NEVER echo passwords, API keys, or secrets to stdout/stderr**
 
@@ -721,33 +732,33 @@ Passwords printed to console can be captured in:
 **Correct pattern:** Use environment variables and avoid console output
 
 ```bash
-# ✓ CORRECT - password in env var, not printed
+# [OK] CORRECT - password in env var, not printed
 export OTA_PWD="actual_password"
 iotstack update bleproxy --ota-password "$OTA_PWD"
 unset OTA_PWD
 
-# ✗ WRONG - password printed to console
+# [FAIL] WRONG - password printed to console
 iotstack update bleproxy --ota-password "actual_password"
 
-# ✗ WRONG - password in command line (visible in ps, history)
+# [FAIL] WRONG - password in command line (visible in ps, history)
 iotstack update bleproxy --ota-password "myPassword123"
 ```
 
 **In code:**
-- ✓ Output: `echo "[OK] OTA password updated (provided)"`
-- ✗ Output: `echo "[OK] OTA password: $password"`
-- ✓ Output: `echo "[OK] Generated cryptographically secure password"`
-- ✗ Output: `echo "[OK] Generated password: $new_password"`
+- [OK] Output: `echo "[OK] OTA password updated (provided)"`
+- [FAIL] Output: `echo "[OK] OTA password: $password"`
+- [OK] Output: `echo "[OK] Generated cryptographically secure password"`
+- [FAIL] Output: `echo "[OK] Generated password: $new_password"`
 
-## 🚨 CRITICAL: Pass Password Handling
+## [CRITICAL] CRITICAL: Pass Password Handling
 
 **When using `pass insert` to store secrets, ALWAYS echo the password TWICE** (for confirmation):
 
 ```bash
-# ✓ CORRECT - password echoed twice
+# [OK] CORRECT - password echoed twice
 { echo "$password"; echo "$password"; } | pass insert -f "iotstack/roles/bleproxy/ota_password"
 
-# ✗ WRONG - password only echoed once (WILL FAIL SILENTLY)
+# [FAIL] WRONG - password only echoed once (WILL FAIL SILENTLY)
 echo "$password" | pass insert -f "iotstack/roles/bleproxy/ota_password"
 ```
 
@@ -757,9 +768,9 @@ echo "$password" | pass insert -f "iotstack/roles/bleproxy/ota_password"
 - Results in repeated warnings and failed secret syncing
 
 **This applies to:**
-- `setup.sh` — initial secret seeding
-- `scripts/iotstack-secrets` — manual secret updates
-- `scripts/ha-websocket-query.sh` — syncing secrets from YAML
+- `setup.sh` -- initial secret seeding
+- `scripts/iotstack-secrets` -- manual secret updates
+- `scripts/ha-websocket-query.sh` -- syncing secrets from YAML
 - Any script that uses `pass insert`
 
 **Impact of getting this wrong:**
@@ -789,10 +800,10 @@ NVS IS:
 ### Why We Use NVS Despite Limitations
 
 Our threat model protects against:
-- ✅ **Firmware binary extraction** → Attacker can't derive device passwords (not compiled in)
-- ✅ **Hardcoded secrets in code** → Eliminated, now device-specific in NVS
-- ✅ **Single password for all devices** → Each device has unique derived password
-- ❌ **Physical flash chip extraction** → NVS data is plaintext (not protected)
+- [OK] **Firmware binary extraction** -> Attacker can't derive device passwords (not compiled in)
+- [OK] **Hardcoded secrets in code** -> Eliminated, now device-specific in NVS
+- [OK] **Single password for all devices** -> Each device has unique derived password
+- [FAIL] **Physical flash chip extraction** -> NVS data is plaintext (not protected)
 
 ### Device-Specific Secret Derivation
 
@@ -808,21 +819,21 @@ Stored in NVS only:
   
 Firmware at startup:
   nvs_secrets component reads NVS
-  └─ Sets OTA service password from NVS value
-  └─ Loads WiFi and API credentials
-  └─ Enables device-specific OTA authentication
+  `-- Sets OTA service password from NVS value
+  `-- Loads WiFi and API credentials
+  `-- Enables device-specific OTA authentication
 ```
 
 ### Security Properties
 
 | Threat | Protection | Attack Cost |
 |--------|-----------|------------|
-| Firmware binary extraction | ✅ No compiled passwords | Can't derive from binary |
-| Firmware disassembly | ✅ No hardcoded secrets | Even reverse-engineers see nothing |
-| Device password reuse | ✅ Unique per device (derived) | Each device has different password |
-| Pass store compromise | ✅ Role secret stays encrypted | Still need device MAC to derive |
-| Physical flash read | ❌ NVS plaintext | Moderate (requires soldering programmer) |
-| Flash encryption bypass | ⚠️ Future enhancement (see TODO) | Would require eFuse key extraction |
+| Firmware binary extraction | [OK] No compiled passwords | Can't derive from binary |
+| Firmware disassembly | [OK] No hardcoded secrets | Even reverse-engineers see nothing |
+| Device password reuse | [OK] Unique per device (derived) | Each device has different password |
+| Pass store compromise | [OK] Role secret stays encrypted | Still need device MAC to derive |
+| Physical flash read | [FAIL] NVS plaintext | Moderate (requires soldering programmer) |
+| Flash encryption bypass | [WARN] Future enhancement (see TODO) | Would require eFuse key extraction |
 
 ### Custom NVS Component
 
@@ -834,9 +845,9 @@ One custom ESPHome component reads from NVS at runtime:
 - Dynamically sets OTA authentication password from NVS
 - Logs what was found (for debugging)
 - Applies WiFi SSID/password from NVS to the WiFi component at runtime (see below)
-- Status: ✅ OTA password working, ✅ WiFi credentials read from NVS and applied to the WiFi component
+- Status: [OK] OTA password working, [OK] WiFi credentials read from NVS and applied to the WiFi component
 
-### WiFi Credential Challenge (✅ Solved)
+### WiFi Credential Challenge ([OK] Solved)
 
 **Former problem:** It was believed ESPHome's WiFi component initializes from YAML during setup and cannot be changed at runtime, so the device was stuck on the YAML placeholder (`configured-via-nvs`).
 
@@ -853,7 +864,7 @@ Why it works:
 - Setup ordering is correct by construction: `nvs_secrets` is at `setup_priority::AFTER_WIFI` (200.0f) and the WiFi component is at `setup_priority::WIFI` (250.0f), so `global_wifi_component` is already initialized when `nvs_secrets::setup()` runs.
 - The call is guarded by `#ifdef USE_WIFI` so thread-only configs (no WiFi component) still compile.
 
-**Result:** a single generic firmware binary connects every device to the real network using per-device credentials from NVS — no per-device recompilation, no provisioning portal needed.
+**Result:** a single generic firmware binary connects every device to the real network using per-device credentials from NVS -- no per-device recompilation, no provisioning portal needed.
 
 ## Flash Encryption & eFuses - Production Enhancement (TODO)
 
@@ -862,7 +873,7 @@ Why it works:
 **eFuse = Electronic Fuse (one-time programmable bit in ESP32 silicon)**
 
 - Burned directly into chip during manufacturing or first boot
-- Once written → **permanently locked** (cannot be unwritten or changed)
+- Once written -> **permanently locked** (cannot be unwritten or changed)
 - Hardware-protected by ROM bootloader (before your code runs)
 - Each chip has unique random key (per-device security)
 
@@ -876,7 +887,7 @@ Why it works:
 **Production (Future):**
 ```
 Enable flash encryption:
-  1. Add to menuconfig: Security → Flash Encryption → Development Mode
+  1. Add to menuconfig: Security -> Flash Encryption -> Development Mode
   2. First flash: ROM bootloader generates random key, burns to eFuses
   3. Key is locked (read-protected)
   4. All subsequent flash I/O transparently encrypted/decrypted
@@ -964,34 +975,34 @@ find . -name "*.sh" -type f ! -path "./.git/*" ! -path "./resources/*" -print0 |
 
 ```bash
 # SC2155: Declare and assign separately
-# ✗ WRONG
+# [FAIL] WRONG
 local_var=$(command) && echo "ok"
 
-# ✓ CORRECT
+# [OK] CORRECT
 local_var=$(command)
 echo "ok"
 
 # SC2004: Remove $() from arithmetic
-# ✗ WRONG
+# [FAIL] WRONG
 result=$(($(echo "5") + 3))
 
-# ✓ CORRECT
+# [OK] CORRECT
 result=$((5 + 3))
 
 # SC2059: Use literal format string
-# ✗ WRONG
+# [FAIL] WRONG
 printf "$message_template" "$arg"
 
-# ✓ CORRECT
+# [OK] CORRECT
 printf '%s\n' "$message_template"
 # or with literal format:
 printf 'Value: %s\n' "$arg"
 
 # SC2064: Single quotes in trap
-# ✗ WRONG
+# [FAIL] WRONG
 trap "cleanup $temp_file" EXIT
 
-# ✓ CORRECT
+# [OK] CORRECT
 trap 'cleanup "$temp_file"' EXIT
 # Explanation: Single quotes prevent $temp_file expansion at trap SET time,
 # allowing it to expand at trap TRIGGER time with the actual value

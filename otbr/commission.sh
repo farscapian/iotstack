@@ -7,8 +7,8 @@
 # USAGE
 #   ./commission.sh [--env-file=PATH] [--otbr | --chiptool]
 #
-#   --otbr      Use openthread-border-router snap (ot-ctl)  — Thread only
-#   --chiptool  Use chip-tool snap — Thread or Bluetooth+Thread
+#   --otbr      Use openthread-border-router snap (ot-ctl)  -- Thread only
+#   --chiptool  Use chip-tool snap -- Thread or Bluetooth+Thread
 #
 # ENV (set in .env or exported):
 #   THREAD_DATASET_TLV    Active dataset hex TLV            (required)
@@ -19,7 +19,7 @@
 #   chip-tool only:
 #   MATTER_NODE_ID        Logical node ID to assign         (default: 1)
 #   MATTER_PIN            Device setup PIN code             (required)
-#   MATTER_DISCRIMINATOR  BLE discriminator — if set, uses ble-thread mode;
+#   MATTER_DISCRIMINATOR  BLE discriminator -- if set, uses ble-thread mode;
 #                         omit to use Thread-only (code-thread) mode
 # =============================================================================
 
@@ -97,7 +97,7 @@ RED='\033[0;31m'; GRN='\033[0;32m'; YLW='\033[1;33m'; BLU='\033[0;34m'; NC='\033
 info() { echo -e "${GRN}[INFO ]${NC}  $*"; }
 warn() { echo -e "${YLW}[WARN ]${NC}  $*"; }
 die()  { echo -e "${RED}[FAIL ]${NC}  $*" >&2; exit 1; }
-step() { echo -e "\n${BLU}━━━ $* ${NC}"; }
+step() { echo -e "\n${BLU}=== $* ${NC}"; }
 pass() { echo -e "\n${GRN}[PASS ]${NC}  $*"; }
 
 # ---------------------------------------------------------------------------
@@ -105,12 +105,12 @@ pass() { echo -e "\n${GRN}[PASS ]${NC}  $*"; }
 # ---------------------------------------------------------------------------
 
 THREAD_DATASET_TLV="${THREAD_DATASET_TLV:-}"
-[[ -n "$THREAD_DATASET_TLV" ]] || die "THREAD_DATASET_TLV not set — cannot commission."
+[[ -n "$THREAD_DATASET_TLV" ]] || die "THREAD_DATASET_TLV not set -- cannot commission."
 [[ "$THREAD_DATASET_TLV" =~ ^[0-9a-fA-F]+$ ]] \
     || die "THREAD_DATASET_TLV must be a hex string."
 
 # ---------------------------------------------------------------------------
-# OTBR commissioning — ot-ctl Thread dataset setup
+# OTBR commissioning -- ot-ctl Thread dataset setup
 # ---------------------------------------------------------------------------
 
 commission_otbr() {
@@ -153,7 +153,7 @@ commission_otbr() {
 }
 
 # ---------------------------------------------------------------------------
-# chip-tool commissioning — Thread and Bluetooth+Thread
+# chip-tool commissioning -- Thread and Bluetooth+Thread
 # ---------------------------------------------------------------------------
 
 commission_chiptool() {
@@ -162,7 +162,7 @@ commission_chiptool() {
     local discriminator="${MATTER_DISCRIMINATOR:-}"
     local tlv="$THREAD_DATASET_TLV"
 
-    [[ -n "$pin" ]] || die "MATTER_PIN not set — required for chip-tool commissioning."
+    [[ -n "$pin" ]] || die "MATTER_PIN not set -- required for chip-tool commissioning."
 
     if [[ -n "$discriminator" ]]; then
         step "Commissioning via chip-tool (ble-thread, discriminator=${discriminator})"

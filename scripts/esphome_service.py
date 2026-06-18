@@ -10,7 +10,7 @@ service variable names.  Example:
 
 Exits 0 if the service was sent. The service may reboot the device (e.g.
 switch_to_failsafe), so a missing ack / disconnect afterwards is treated as
-success — the caller verifies the result by watching mDNS.
+success -- the caller verifies the result by watching mDNS.
 """
 import asyncio
 import json

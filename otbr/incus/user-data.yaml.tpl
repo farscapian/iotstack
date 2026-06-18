@@ -6,8 +6,8 @@
 #   - sim-rcp runs INSIDE the instance (native x86_64), no host PTY bridge required
 #   - Snap cache and sim binary injected via `incus file push` after boot;
 #     firstboot reads them from /root/snap-cache/ and /root/ot-rcp-sim/
-#   - No ifwatcher — single NIC, backbone is always the default route interface
-#   - No initramfs lz4 tweak — native x86_64 doesn't need it
+#   - No ifwatcher -- single NIC, backbone is always the default route interface
+#   - No initramfs lz4 tweak -- native x86_64 doesn't need it
 
 packages:
   - socat
@@ -44,7 +44,7 @@ write_files:
       RCP=$(ls /dev/ttyUSB* /dev/ttyACM* 2>/dev/null | head -1 || true)
 
       if [[ -z "${RCP:-}" ]]; then
-        # No real hardware — sim binary injected by provisioner via incus file push
+        # No real hardware -- sim binary injected by provisioner via incus file push
         SIM_BIN=/root/ot-rcp-sim/ot-rcp
         if [[ -x "$SIM_BIN" ]]; then
           echo "Starting simulated ot-rcp from $SIM_BIN ..."
@@ -53,7 +53,7 @@ write_files:
                 EXEC:"$SIM_BIN 1",pty,raw,b460800 &
           for i in $(seq 1 20); do [[ -e /run/ot-sim/tty ]] && break || sleep 0.1; done
           [[ -e /run/ot-sim/tty ]] || { echo "ERROR: sim PTY never appeared"; exit 1; }
-          # Resolve symlink — some snap AppArmor profiles need the real /dev/pts/N path
+          # Resolve symlink -- some snap AppArmor profiles need the real /dev/pts/N path
           RCP=$(readlink -f /run/ot-sim/tty)
           echo "Simulated RCP at $RCP"
         else
@@ -77,7 +77,7 @@ write_files:
         snap ack "$ASSERT_FILE"
         snap install "$SNAP_FILE"
       else
-        echo "Snap cache empty or unavailable — installing from store"
+        echo "Snap cache empty or unavailable -- installing from store"
         snap install "$SNAP" --channel=latest/edge
       fi
 
@@ -95,7 +95,7 @@ write_files:
       INFRA=${INFRA:-eth0}
       echo "Backbone interface: $INFRA"
 
-      # -- Install chip-tool (Matter commissioning — BLE+Thread and Thread-only)
+      # -- Install chip-tool (Matter commissioning -- BLE+Thread and Thread-only)
       snap list chip-tool &>/dev/null || snap install chip-tool
 
       # -- Configure and start snap ------------------------------------------

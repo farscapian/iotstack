@@ -76,7 +76,7 @@ mkdir -p "$(dirname "$LOG")"
 exec > >(tee "$LOG") 2>&1
 
 _git_info=$(git -C "$SCRIPT_DIR" log -1 --oneline 2>/dev/null || echo "no git")
-echo "=== run_rpiotbr_cycle.sh $(date '+%Y-%m-%d %H:%M:%S') — ${_git_info} ==="
+echo "=== run_rpiotbr_cycle.sh $(date '+%Y-%m-%d %H:%M:%S') -- ${_git_info} ==="
 echo "Device: $DEVICE  Hostname: $HOSTNAME_FLAG  Skip-prompt: $YES"
 unset _git_info
 echo ""

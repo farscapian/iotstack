@@ -1,5 +1,5 @@
 #!/bin/bash
-# yaml-info.sh — Introspect ESPHome YAML files (variant, board, network)
+# yaml-info.sh -- Introspect ESPHome YAML files (variant, board, network)
 #
 # Requires config.sh to be sourced first.
 
@@ -91,7 +91,7 @@ yaml_friendly_name_from_file() {
 }
 
 yaml_entity_slug_from_file() {
-  # Slugified friendly_name — ESPHome/HA entity ID prefix (e.g. bluetooth_proxy).
+  # Slugified friendly_name -- ESPHome/HA entity ID prefix (e.g. bluetooth_proxy).
   local yaml_file="$1"
   local friendly
   friendly=$(yaml_friendly_name_from_file "$yaml_file") || return 1

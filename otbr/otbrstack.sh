@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Backward-compatible wrapper — prefer: iotstack otbr ...
+# Backward-compatible wrapper -- prefer: iotstack otbr ...
 
 _IOTSTACK_SCRIPT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)/iotstack.sh"
 

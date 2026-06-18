@@ -1,5 +1,5 @@
 #!/bin/bash
-# create-log.sh — Session logging helpers for iotstack --create-log / --timestamp
+# create-log.sh -- Session logging helpers for iotstack --create-log / --timestamp
 #
 # Requires config.sh (IOTSTACK_HOME) and SCRIPT_DIR to be set.
 

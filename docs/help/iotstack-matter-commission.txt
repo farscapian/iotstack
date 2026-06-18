@@ -1,4 +1,4 @@
-iotstack matter commission — Add Matter devices to your Thread network
+iotstack matter commission -- Add Matter devices to your Thread network
 
 Commissions a Matter device onto your Thread network from a QR image, an MT:
 setup payload string, or a manual pairing code (0000-000-0000), then opens a

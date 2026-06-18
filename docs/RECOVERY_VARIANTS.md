@@ -2,7 +2,7 @@
 
 ## The Three Options
 
-### 1. WiFi Recovery (recovery.yaml) ✅ RECOMMENDED
+### 1. WiFi Recovery (recovery.yaml) [OK] RECOMMENDED
 **Size:** 858KB OTA binary
 - **Pros:** 
   - Works on any network (WiFi available everywhere)
@@ -14,7 +14,7 @@
   - Larger than Thread-only
 - **Best for:** Most deployments, default choice
 
-### 2. Thread-Only Recovery (recovery-thread.yaml) 🧵
+### 2. Thread-Only Recovery (recovery-thread.yaml) 
 **Size:** 782KB OTA binary (76KB smaller, 9% savings)
 - **Pros:**
   - Smallest recovery firmware
@@ -28,7 +28,7 @@
 - **Best for:** Thread-only networks (rare), users with very stable Thread mesh
 
 ### 3. WiFi + Thread Dual-Mode
-**Status:** ❌ NOT POSSIBLE
+**Status:** [FAIL] NOT POSSIBLE
 - **Reason:** ESPHome doesn't support simultaneous WiFi + OpenThread
 - **Why:** Both use 2.4GHz radio, can't operate together
 - **TDM won't work:** ESPHome's architecture requires exclusive radio ownership
@@ -40,13 +40,13 @@
 
 ```
                     WiFi-Only    Thread-Only    Size Delta
-────────────────────────────────────────────────────────
+--------------------------------------------------------
 OTA Binary          858KB        782KB          -76KB (-9%)
 Factory Binary      923KB        847KB          -76KB (-8%)
 Partition Alloc.    1.5MB        1.5MB          same
 Space Used          858KB        782KB          
 Space Free          642KB        718KB          +76KB
-────────────────────────────────────────────────────────
+--------------------------------------------------------
 ```
 
 ---
@@ -73,11 +73,11 @@ You have **both WiFi and Thread networks**, so:
 ### Recommendation: Use WiFi Recovery (recovery.yaml)
 
 **Why:**
-1. **WiFi is faster** → 858KB OTA takes ~2 min over WiFi vs ~10 min over Thread
-2. **WiFi is more available** → both WiFi and Thread devices can reach it
-3. **76KB savings not worth the tradeoff** → 858KB vs 782KB isn't meaningful (both fit)
-4. **Thread mesh can still connect** → Border router bridges Thread to WiFi
-5. **Simplicity** → One recovery image for all devices
+1. **WiFi is faster** -> 858KB OTA takes ~2 min over WiFi vs ~10 min over Thread
+2. **WiFi is more available** -> both WiFi and Thread devices can reach it
+3. **76KB savings not worth the tradeoff** -> 858KB vs 782KB isn't meaningful (both fit)
+4. **Thread mesh can still connect** -> Border router bridges Thread to WiFi
+5. **Simplicity** -> One recovery image for all devices
 
 ### If you ever want Thread-only:
 - Compile `recovery-thread.yaml`
@@ -103,10 +103,10 @@ You have **both WiFi and Thread networks**, so:
 ## Conclusion
 
 **Use WiFi Recovery:**
-- ✅ recovery.yaml (858KB)
-- ✅ Works for all devices
-- ✅ Fastest OTA
-- ✅ Recommended
+- [OK] recovery.yaml (858KB)
+- [OK] Works for all devices
+- [OK] Fastest OTA
+- [OK] Recommended
 
 **Thread Recovery only if:**
 - Thread network is primary

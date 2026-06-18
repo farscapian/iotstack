@@ -1,7 +1,7 @@
-iotstack threadrouter — Thread Router
+iotstack threadrouter -- Thread Router
 
 ESP32-C6 OpenThread border-router companion / Thread mesh router (no WiFi
-station — uses OpenThread RCP).
+station -- uses OpenThread RCP).
 
 Config: yamls/threadrouter.yaml
 Chip: esp32c6

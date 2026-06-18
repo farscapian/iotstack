@@ -1,4 +1,4 @@
-iotstack devices — Show discovered ESPHome devices on network
+iotstack devices -- Show discovered ESPHome devices on network
 
 Lists ESPHome devices visible on the network via mDNS. Optionally filter by
 role or show devices that do not match any configured role.

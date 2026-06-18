@@ -1,4 +1,4 @@
-# LED Light Strip Control ⚠️ — In Development
+# LED Light Strip Control [WARN] -- In Development
 
 **This LED light strip implementation is IN DEVELOPMENT and NOT FULLY TESTED. Please read before using.**
 
@@ -8,7 +8,7 @@ Experimental controller for WS2812B addressable LED light strips (commonly calle
 
 **Current Status**: Basic functionality works, but the implementation is still being tested and refined. Effects may not be stable. Power management is not optimized.
 
-## ⚠️ SAFETY DISCLAIMER
+## [WARN] SAFETY DISCLAIMER
 
 **ELECTRICAL SAFETY CRITICAL**
 
@@ -29,8 +29,8 @@ Experimental controller for WS2812B addressable LED light strips (commonly calle
 - Seeed XIAO ESP32-C6 microcontroller
 - WS2812B LED strip (5V or 12V version)
 - **Proper Power Supply**: A power supply rated for the LED strip's current draw (very important for safety)
-- **Capacitor**: A 470-1000µF capacitor across the power supply (protects against power spikes)
-- **Resistor**: A 470-1000Ω resistor on the data line (protects the GPIO pin)
+- **Capacitor**: A 470-1000uF capacitor across the power supply (protects against power spikes)
+- **Resistor**: A 470-1000Ohm resistor on the data line (protects the GPIO pin)
 
 ## Wiring Safety Notes
 
@@ -44,11 +44,11 @@ Experimental controller for WS2812B addressable LED light strips (commonly calle
 
 ## Features
 
-- ✅ Basic LED color control
-- ✅ Brightness adjustment
-- ⚠️ Effects (experimental)
-- ❌ Power management not optimized
-- ❌ Not tested with high-power strips (>500mA)
+- [OK] Basic LED color control
+- [OK] Brightness adjustment
+- [WARN] Effects (experimental)
+- [FAIL] Power management not optimized
+- [FAIL] Not tested with high-power strips (>500mA)
 
 ## Configuration
 
@@ -56,7 +56,7 @@ See `yamls/esp32s3-wifi-led-strip.yaml` for the configuration.
 
 ## Known Limitations
 
-- Experimental/in-development — API may change
+- Experimental/in-development -- API may change
 - Effects are not stable
 - Power management not optimized
 - Not tested with high-power configurations

@@ -1,4 +1,4 @@
-iotstack matrixdisplay — Matrix Display
+iotstack matrixdisplay -- Matrix Display
 
 ESP32-S3 HUB75 LED matrix with adaptive brightness from Home Assistant room
 illuminance. Panel geometry is stored in NVS at flash time (panels cannot
@@ -26,9 +26,9 @@ or USB when the network path is unavailable):
 Panel layout is stored in NVS, not in firmware config_hash. Diagnostic text
 sensors (Panel Count, Matrix Panel Width/Height) report the active layout via the
 production API. On flash, iotstack compares those runtime values to the target
-(flags → pass → defaults). On mismatch it switches to failsafe, calls the
+(flags -> pass -> defaults). On mismatch it switches to failsafe, calls the
 update_nvs_secrets API on failsafe to write matrix_cols/matrix_panel_w/matrix_panel_h,
-and boots production again — no production firmware reflash required. USB is a
+and boots production again -- no production firmware reflash required. USB is a
 fallback when failsafe is not reachable on the network.
 
 Examples:

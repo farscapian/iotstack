@@ -1,4 +1,4 @@
-iotstack update — Additional Documentation
+iotstack update -- Additional Documentation
 
 Extended reference for iotstack update: OTA password handling, parallel flashing
 behavior, and troubleshooting beyond the built-in help summary.
@@ -7,19 +7,19 @@ SECURITY: OTA Password Best Practices
 ======================================
 
 NEVER pass passwords on the command line:
-  ✗ BAD:   iotstack update bleproxy --ota-password "mySecret123"
-  ✗ WORSE: iotstack update bleproxy --ota-password "$SECRET"
+  [FAIL] BAD:   iotstack update bleproxy --ota-password "mySecret123"
+  [FAIL] WORSE: iotstack update bleproxy --ota-password "$SECRET"
 
 Instead, pass via environment variable:
-  ✓ GOOD:  export OTA_PWD="generated_password"
+  [OK] GOOD:  export OTA_PWD="generated_password"
            iotstack update bleproxy --ota-password "$OTA_PWD"
            unset OTA_PWD
 
 Why this matters:
   - Command line arguments are visible in:
-    • Shell history (~/.bash_history, ~/.zsh_history)
-    • Process listing (ps, top)
-    • Shell jobs
+    - Shell history (~/.bash_history, ~/.zsh_history)
+    - Process listing (ps, top)
+    - Shell jobs
   - Environment variables are slightly better but still not ideal
   - Best: Use --ota-password flag with generated passwords from 'iotstack secret'
 

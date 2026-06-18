@@ -1,4 +1,4 @@
-iotstack mmwave — mmWave Presence Detector
+iotstack mmwave -- mmWave Presence Detector
 
 ESP32-C6 WiFi presence sensor (LD2410 mmWave radar).
 

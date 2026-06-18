@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# setup.sh — one-time OTBR developer environment setup
+# setup.sh -- one-time OTBR developer environment setup
 #
-# • Installs apt packages needed by the provisioning scripts
-# • Installs esptool via pip3 (used when flashing ESP32-C6 RCP firmware)
-# • Creates ~/.otbrstack/env/ for env files (cache/, logs/, artifacts/ created on demand)
+# - Installs apt packages needed by the provisioning scripts
+# - Installs esptool via pip3 (used when flashing ESP32-C6 RCP firmware)
+# - Creates ~/.otbrstack/env/ for env files (cache/, logs/, artifacts/ created on demand)
 #
 # Invoked via: iotstack otbr setup
 # Safe to re-run: all steps are idempotent.
@@ -21,7 +21,7 @@ warn()    { echo -e "\033[1;33m[WARN]\033[0m $*"; }
 # ---------------------------------------------------------------------------
 # Covers every script in the repo:
 #   flash-piotbr.sh      : curl sha256sum xzcat(xz-utils) dd lsblk partprobe(parted) python3
-#   provision_incus.sh   : incus (not in apt — skipped; see note below), curl python3 lsof
+#   provision_incus.sh   : incus (not in apt -- skipped; see note below), curl python3 lsof
 #                          envsubst(gettext-base)
 #   otbr-docker-setup.sh : installs Docker CE itself; needs curl ca-certificates gnupg
 #   otbr-snap-setup.sh   : python3 lsof (ufw optional; checked at runtime)
@@ -101,14 +101,14 @@ install_esptool() {
 }
 
 # ---------------------------------------------------------------------------
-# 3. Incus (VM/container path) — install and initialize if absent
+# 3. Incus (VM/container path) -- install and initialize if absent
 # ---------------------------------------------------------------------------
 
 install_incus() {
     info "3. Checking incus ..."
 
     if ! command -v incus &>/dev/null; then
-        info "incus not found — installing via apt ..."
+        info "incus not found -- installing via apt ..."
         sudo apt-get update -q
         sudo apt-get install -y incus
         success "incus installed: $(incus --version)"

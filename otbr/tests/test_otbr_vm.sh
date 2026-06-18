@@ -10,7 +10,7 @@
 #   T3  All OTBR snap services are active
 #   T4  Thread interface is active (state: leader, router, or child)
 #   T5  Thread dataset TLV is committed
-#   T6  Thread neighbor table has ≥1 entry (another node actively exchanging data)
+#   T6  Thread neighbor table has >=1 entry (another node actively exchanging data)
 #
 # T6 in simulation mode: two ot-cli POSIX simulation nodes (IDs 2, 3) are
 # spawned inside the same instance. They share the VM loopback with ot-rcp
@@ -81,7 +81,7 @@ if [[ -z "$ENV_FILE" ]]; then
     ENV_FILE="${REPO_DIR}/$(hostname).env"
     [[ -f "$ENV_FILE" ]] || ENV_FILE="${REPO_DIR}/.env"
 fi
-[[ -f "$ENV_FILE" ]] || { echo "No env file found — use --env-file=PATH" >&2; exit 1; }
+[[ -f "$ENV_FILE" ]] || { echo "No env file found -- use --env-file=PATH" >&2; exit 1; }
 set -a
 # shellcheck disable=SC1090
 source "$ENV_FILE"
@@ -110,7 +110,7 @@ BOLD='\033[1m'; NC='\033[0m'
 pass_test() { echo -e "  ${GRN}PASS${NC}  $1${2:+  ($2)}"; (( PASS_COUNT++ )) || true; }
 fail_test() { echo -e "  ${RED}FAIL${NC}  $1${2:+  ($2)}"; (( FAIL_COUNT++ )) || true; }
 skip_test() { echo -e "  ${YLW}SKIP${NC}  $1${2:+  ($2)}"; (( SKIP_COUNT++ )) || true; }
-section()   { echo -e "\n${BLU}━━━ $* ${NC}"; }
+section()   { echo -e "\n${BLU}=== $* ${NC}"; }
 
 inst_exec() { incus exec "$INST" -- "$@"; }
 
@@ -136,7 +136,7 @@ if [[ "$SKIP_PROVISION" -eq 0 ]]; then
         "--arch=${INSTANCE_ARCH}" \
         "--name=${INSTANCE_NAME}" \
         "--reprovision" \
-        || { echo -e "\n${RED}Provisioning failed — aborting tests.${NC}" >&2; exit 1; }
+        || { echo -e "\n${RED}Provisioning failed -- aborting tests.${NC}" >&2; exit 1; }
 else
     section "Testing existing instance: $INSTANCE_NAME"
     incus info "$INST" &>/dev/null \
@@ -183,7 +183,7 @@ section "T3: OTBR snap services active"
 
 _svc_output=$(inst_exec snap services openthread-border-router 2>/dev/null || echo "")
 if [[ -z "$_svc_output" ]]; then
-    fail_test "Services" "no output — snap may not be installed"
+    fail_test "Services" "no output -- snap may not be installed"
 else
     while IFS= read -r _line; do
         [[ -z "$_line" || "$_line" == Service* ]] && continue
@@ -192,7 +192,7 @@ else
         if [[ "$_status" == "active" ]]; then
             pass_test "Service active" "$_svc"
         else
-            fail_test "Service active" "$_svc → $_status"
+            fail_test "Service active" "$_svc -> $_status"
         fi
     done <<< "$_svc_output"
 fi
@@ -244,7 +244,7 @@ else
 
     if [[ ! -f "$OT_CLI_BIN" ]]; then
         skip_test "Neighbor exchange" \
-            "ot-cli not found at cache/ot-rcp-sim/ot-cli — run 'otbr vm' first to build it from source"
+            "ot-cli not found at cache/ot-rcp-sim/ot-cli -- run 'otbr vm' first to build it from source"
     else
         incus file push --mode 0755 "$OT_CLI_BIN" "${INST}/root/ot-rcp-sim/ot-cli"
 
@@ -331,9 +331,9 @@ fi
 # Summary
 # ---------------------------------------------------------------------------
 echo ""
-echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}===============================================================${NC}"
 echo -e "${BOLD}Results: $INSTANCE_NAME (${INSTANCE_ARCH} ${INSTANCE_MODE})${NC}"
-echo -e "${BOLD}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}===============================================================${NC}"
 echo -e "  ${GRN}PASS${NC}: ${PASS_COUNT}"
 echo -e "  ${RED}FAIL${NC}: ${FAIL_COUNT}"
 echo -e "  ${YLW}SKIP${NC}: ${SKIP_COUNT}"

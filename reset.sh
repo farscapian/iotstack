@@ -1,5 +1,5 @@
 #!/bin/bash
-# reset.sh — Interactively reset iotstack and optional chip-tool Matter state.
+# reset.sh -- Interactively reset iotstack and optional chip-tool Matter state.
 #
 # Each step is optional; you are prompted before anything is removed.
 # Typical use: full reset of ~/.iotstack, then setup.sh to reinitialize.
@@ -81,9 +81,9 @@ fi
 backup_dir=""
 did_anything=0
 
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 echo "iotstack Reset (interactive)"
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 echo
 echo "Each item below is optional. Nothing is removed unless you answer y."
 echo
@@ -184,13 +184,13 @@ else
 fi
 
 echo
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 if [[ "${did_anything}" -eq 1 ]]; then
     echo "Reset steps completed."
 else
     echo "Nothing was changed."
 fi
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 echo
 if [[ -n "${backup_dir}" ]]; then
     echo "Previous iotstack home preserved at: ${backup_dir}"

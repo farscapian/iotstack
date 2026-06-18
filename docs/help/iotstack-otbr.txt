@@ -1,4 +1,4 @@
-iotstack otbr — OpenThread Border Router provisioning
+iotstack otbr -- OpenThread Border Router provisioning
 
 Provision Raspberry Pi OTBR devices, Incus test VMs, and bare-metal snap/Docker
 installations. Runtime data (cache, logs, artifacts) lives in ~/.otbrstack/.

@@ -16,7 +16,7 @@ substitutions:
   device_role: "failsafe"
   friendly_name: "Failsafe Mode"
   heartbeat_interval: "5s"   # failsafe-only aliveness beacon (see interval: below)
-  # Chip profile — overridden in yamls/.iotstack-failsafe-<variant>.yaml at flash time
+  # Chip profile -- overridden in yamls/.iotstack-failsafe-<variant>.yaml at flash time
   chip_variant: esp32c6
   chip_board: seeed_xiao_esp32c6
   chip_flash_size: 4MB
@@ -31,7 +31,7 @@ external_components:
       path: ./external_components
     components: [nvs_secrets, partition_manager]
 
-# Boot-button / restart / partition-toggle (no switch_to_failsafe — already on failsafe)
+# Boot-button / restart / partition-toggle (no switch_to_failsafe -- already on failsafe)
 packages:
   partition_mgmt: !include common/partition_manager_failsafe.yaml
   boot_button: !include common/boot_button.yaml
@@ -91,7 +91,7 @@ mdns:
       port: 6053
 
 api:
-  # No API encryption key for failsafe — only iotstack tools connect to it.
+  # No API encryption key for failsafe -- only iotstack tools connect to it.
   # Production images use prod_api_key from NVS for HA API authentication.
   services:
     # Write NVS secrets without USB (iotstack preferred path). Pass only the keys

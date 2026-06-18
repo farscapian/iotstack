@@ -1,4 +1,4 @@
-iotstack logs — Stream device logs (serial or over the network)
+iotstack logs -- Stream device logs (serial or over the network)
 
 Streams live logs from a serial port or from ESPHome devices over the network.
 Pass a role to tail one device or all devices in that role, with lines prefixed
@@ -9,8 +9,8 @@ Usage:
   iotstack logs [-f] [<MAC>] <role>
 
 Arguments:
-  <tty-device>  Serial device (e.g., /dev/ttyACM0) — raw stream, no YAML
-  <role>        Device role (e.g., bleproxy) — streams over the network
+  <tty-device>  Serial device (e.g., /dev/ttyACM0) -- raw stream, no YAML
+  <role>        Device role (e.g., bleproxy) -- streams over the network
   [<MAC>]       MAC suffix for one device; omit for ALL devices in the role
   [-f]          Accepted for familiarity; logs always follow (live stream)
 

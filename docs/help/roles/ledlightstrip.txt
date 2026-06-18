@@ -1,4 +1,4 @@
-iotstack ledlightstrip — LED Light Strip
+iotstack ledlightstrip -- LED Light Strip
 
 ESP32-S3 WiFi addressable LED strip (SK6812).
 

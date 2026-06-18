@@ -1,4 +1,4 @@
-iotstack reassign — Additional Documentation
+iotstack reassign -- Additional Documentation
 
 Extended reference for iotstack reassign: OTA password handling, Home Assistant
 entity updates, and redeploying devices to a new role.
@@ -7,11 +7,11 @@ SECURITY: Password Handling Best Practices
 ===========================================
 
 NEVER pass passwords on the command line:
-  ✗ BAD:   iotstack reassign 19b164 mmwave --ota-password "mySecret"
-  ✗ WORSE: iotstack reassign 19b164 mmwave --ota-password "$SECRET"
+  [FAIL] BAD:   iotstack reassign 19b164 mmwave --ota-password "mySecret"
+  [FAIL] WORSE: iotstack reassign 19b164 mmwave --ota-password "$SECRET"
 
 Instead, pass via environment variable:
-  ✓ GOOD:  export OTA_PWD="generated_password"
+  [OK] GOOD:  export OTA_PWD="generated_password"
            iotstack reassign 19b164 mmwave --ota-password "$OTA_PWD"
            unset OTA_PWD
 
@@ -26,7 +26,7 @@ Home Assistant Entity ID Updates
 After reassignment, entity IDs automatically update in Home Assistant:
 
   Before reassignment:  "ble-proxy-19b164" (all buttons, sensors, etc.)
-  Reassign to mmwave →  "mmwave-19b164" (all entities updated)
+  Reassign to mmwave ->  "mmwave-19b164" (all entities updated)
 
 This happens automatically via WebSocket API when:
   - HA_URL and HA_TOKEN are configured in pass:

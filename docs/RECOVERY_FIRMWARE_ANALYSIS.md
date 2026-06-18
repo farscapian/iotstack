@@ -26,9 +26,9 @@
 - Ensures partition table and bootloader are correct
 
 ### Why Both?
-1. **Serial flash (first time)**: Device is blank → need factory image with everything
-2. **OTA updates (all subsequent)**: App partition exists → just send .ota.bin
-3. **Safety**: OTA never touches bootloader/partition table → can't brick device
+1. **Serial flash (first time)**: Device is blank -> need factory image with everything
+2. **OTA updates (all subsequent)**: App partition exists -> just send .ota.bin
+3. **Safety**: OTA never touches bootloader/partition table -> can't brick device
 
 ### Why Not Use OTA for Everything?
 - OTA is designed to preserve critical boot infrastructure
@@ -87,8 +87,8 @@ If you have **Thread-only** (no WiFi fallback):
 ```
 0x0000-0x20000:   Bootloader (128KB)
 0x20000-0x30000:  Partition table + OTA flags (64KB)
-0x30000-0x1b0000: Recovery partition (1.5MB) — 857KB used, 643KB free
-0x1b0000-0x3f0000: Production partition (2.2MB) — varies by firmware
+0x30000-0x1b0000: Recovery partition (1.5MB) -- 857KB used, 643KB free
+0x1b0000-0x3f0000: Production partition (2.2MB) -- varies by firmware
 ```
 
 **Space Available:**
@@ -106,9 +106,9 @@ If you have **Thread-only** (no WiFi fallback):
 ## Action Items
 
 ### Immediate (Ready Now)
-- ✅ Use `recovery.yaml` (WiFi recovery)
-- ✅ Test on bleproxy device
-- ✅ Deploy to all device roles
+- [OK] Use `recovery.yaml` (WiFi recovery)
+- [OK] Test on bleproxy device
+- [OK] Deploy to all device roles
 
 ### Future (When ESPHome Adds Thread)
 - [ ] Create `recovery-thread.yaml` (Thread-only)
@@ -117,9 +117,9 @@ If you have **Thread-only** (no WiFi fallback):
 - [ ] Add to `roles.conf` as alternative
 
 ### No Action Needed
-- ❌ Don't resize partitions (plenty of space)
-- ❌ Don't remove WiFi from recovery (minimal size savings, major convenience loss)
-- ❌ Don't worry about 857KB vs 922KB difference (just OTA vs factory)
+- [FAIL] Don't resize partitions (plenty of space)
+- [FAIL] Don't remove WiFi from recovery (minimal size savings, major convenience loss)
+- [FAIL] Don't worry about 857KB vs 922KB difference (just OTA vs factory)
 
 ---
 

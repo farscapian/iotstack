@@ -1,5 +1,5 @@
 #!/bin/bash
-# TEST_DESC: Compilation cache hit and config_hash backfill (iotstack flash → smart_compile)
+# TEST_DESC: Compilation cache hit and config_hash backfill (iotstack flash -> smart_compile)
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 

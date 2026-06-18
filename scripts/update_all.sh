@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 UPDATE_SCRIPT="${SCRIPT_DIR}/update_devices.sh"
 FILTER_DIR=""  # Optional: "wifi" or "thread"
 
-# ── Colours ─────────────────────────────────────────────────────────────────
+# -- Colours -----------------------------------------------------------------
 RED='\033[0;31m'
 GRN='\033[0;32m'
 YLW='\033[0;33m'
@@ -35,7 +35,7 @@ ok()   { echo -e "${GRN}[OK]${RST}    $*"; }
 warn() { echo -e "${YLW}[WARN]${RST}  $*"; }
 err()  { echo -e "${RED}[ERR]${RST}   $*" >&2; }
 
-# ── Parse update_all.sh-specific options ─────────────────────────────────────
+# -- Parse update_all.sh-specific options -------------------------------------
 FORWARDED_ARGS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,13 +45,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Validate ─────────────────────────────────────────────────────────────────
+# -- Validate -----------------------------------------------------------------
 if [[ ! -x "$UPDATE_SCRIPT" ]]; then
   err "update_devices.sh not found or not executable at: ${UPDATE_SCRIPT}"
   exit 1
 fi
 
-# ── Discover device configs ──────────────────────────────────────────────────
+# -- Discover device configs --------------------------------------------------
 # Any yaml with a top-level 'esphome:' key is a device config.
 # Searches the project root and subdirectories (e.g., wifi/, thread/).
 # If --wifi or --thread is specified, only configs in that directory are found.
@@ -80,15 +80,15 @@ for y in "${YAMLS[@]}"; do
 done
 echo
 
-# ── Run update_devices.sh for each config ────────────────────────────────────
+# -- Run update_devices.sh for each config ------------------------------------
 PASS=()
 FAIL=()
 
 for YAML in "${YAMLS[@]}"; do
   name=$(basename "$YAML")
-  echo -e "${DIM}════════════════════════════════════════════════════════${RST}"
+  echo -e "${DIM}========================================================${RST}"
   log "Starting: ${name}"
-  echo -e "${DIM}════════════════════════════════════════════════════════${RST}"
+  echo -e "${DIM}========================================================${RST}"
   echo
 
   if "$UPDATE_SCRIPT" "${FORWARDED_ARGS[@]}" "$YAML"; then
@@ -99,17 +99,17 @@ for YAML in "${YAMLS[@]}"; do
   echo
 done
 
-# ── Final summary ────────────────────────────────────────────────────────────
-echo "════════════════════════════════════════════════════════"
-echo " UPDATE ALL — COMPLETE"
-echo "────────────────────────────────────────────────────────"
+# -- Final summary ------------------------------------------------------------
+echo "========================================================"
+echo " UPDATE ALL -- COMPLETE"
+echo "--------------------------------------------------------"
 for y in "${PASS[@]}"; do
   ok "$y"
 done
 for y in "${FAIL[@]}"; do
   echo -e "${RED}[FAIL]${RST}  $y" >&2
 done
-echo "════════════════════════════════════════════════════════"
+echo "========================================================"
 
 if [[ ${#FAIL[@]} -gt 0 ]]; then
   exit 1

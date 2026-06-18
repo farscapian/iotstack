@@ -116,7 +116,7 @@ if [[ "$PRINT_API_JSON" != "1" ]]; then
   info "Using NVS partition offset: $NVS_OFFSET, size: $NVS_SIZE from generated partition table"
 fi
 
-# ── Retrieve shared credentials ────────────────────────────────────────────
+# -- Retrieve shared credentials --------------------------------------------
 info "Retrieving WiFi credentials..."
 WIFI_SSID=$(_get_or_prompt_credential "iotstack/common/wifi_ssid" "WiFi network name (SSID)" false)
 WIFI_PASSWORD=$(_get_or_prompt_credential "iotstack/common/wifi_password" "WiFi password" true)
@@ -136,12 +136,12 @@ if [[ -z "$THREAD_TLV" || "$THREAD_TLV" == "CONFIGURE_ME" ]]; then
   fi
 fi
 
-# ── Derive failsafe device-specific OTA password ──────────────────────────
+# -- Derive failsafe device-specific OTA password --------------------------
 info "Computing failsafe secrets for device: $DEVICE_MAC"
 FAILSAFE_OTA_BASE=$(_get_or_generate_role_ota_password "iotstack/roles/failsafe/ota_password" "failsafe")
 FAILSAFE_OTA_PASSWORD=$(echo -n "${FAILSAFE_OTA_BASE}|${DEVICE_MAC}" | sha256sum | cut -c1-32)
 
-# ── Derive production device-specific API key (if production role given) ──
+# -- Derive production device-specific API key (if production role given) --
 PROD_API_KEY=""
 if [[ -n "$PRODUCTION_ROLE" ]]; then
   info "Computing production API key for role: $PRODUCTION_ROLE (device: $DEVICE_MAC)"
@@ -164,7 +164,7 @@ if [[ -n "$PRODUCTION_ROLE" ]]; then
   ok "Production API key: (derived for role: $PRODUCTION_ROLE)"
 fi
 
-# ── Matrix panel layout (matrix_hub75 reads these at boot) ───────────────────
+# -- Matrix panel layout (matrix_hub75 reads these at boot) -------------------
 # Set via flash flags, env override, or pass per role:
 #   iotstack flash matrixdisplay /dev/ttyACM0 --panel-count=2 --matrix-panel-width=64 --matrix-panel-height=32
 #   MATRIX_COLS=2 iotstack flash matrixdisplay /dev/ttyACM0
@@ -212,7 +212,7 @@ PY
   exit 0
 fi
 
-# ── Use Python to generate NVS data ────────────────────────────────────────
+# -- Use Python to generate NVS data ----------------------------------------
 info "Writing NVS partition to device..."
 
 export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
@@ -252,7 +252,7 @@ nvs_size = int(nvs_size_str, 16)
 nvs_csv_path = f"/tmp/nvs_{device_mac}.csv"
 with open(nvs_csv_path, 'w') as f:
     f.write("key,type,encoding,value\n")
-    # Namespace row is REQUIRED — without it nvs_partition_gen writes keys to
+    # Namespace row is REQUIRED -- without it nvs_partition_gen writes keys to
     # ns_index 0 (the reserved registry), making them unreachable via nvs_open().
     # Must match the NAMESPACE constant in external_components/nvs_secrets/nvs_secrets.cpp
     f.write("iotstack,namespace,,\n")

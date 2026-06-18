@@ -64,7 +64,7 @@ bluetooth_proxy:
   active: true
   connection_slots: 4
 
-# OTA is failsafe-only — production images are updated via failsafe partition.
+# OTA is failsafe-only -- production images are updated via failsafe partition.
 # Boot-loop recovery is handled by partition_manager (boot-button hold / switch_to_failsafe).
 
 binary_sensor:

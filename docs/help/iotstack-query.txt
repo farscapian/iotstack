@@ -1,4 +1,4 @@
-iotstack query — Query Home Assistant device and entity registry
+iotstack query -- Query Home Assistant device and entity registry
 
 Lists devices and entities in Home Assistant via the WebSocket API. Optionally
 filter to one device to see its sensors, switches, buttons, and other entities.

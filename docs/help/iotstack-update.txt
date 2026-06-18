@@ -1,4 +1,4 @@
-iotstack update — Compile and flash device(s) over-the-air (OTA)
+iotstack update -- Compile and flash device(s) over-the-air (OTA)
 
 Compiles firmware and flashes it to ESPHome devices over the network. Detects
 which devices need updates by build hash and can update by role, MAC, or all at

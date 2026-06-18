@@ -1,5 +1,5 @@
 #!/bin/bash
-# flash-compare.sh — Compare local build artifacts with firmware on a serial device
+# flash-compare.sh -- Compare local build artifacts with firmware on a serial device
 #
 # Used by iotstack flash to skip erase/reflash when partition table and images
 # already match the current build.
@@ -20,7 +20,7 @@ flash_file_md5() {
 }
 
 flash_partition_table_csv_for_device() {
-  # Prefer the compiled failsafe build table — matches partitions.bin on the device.
+  # Prefer the compiled failsafe build table -- matches partitions.bin on the device.
   # The generated ~/.iotstack artifact can lag (firmware-size estimate vs pass-2 layout).
   local failsafe_csv="${YAMLS_DIR}/.esphome/build/failsafe/partitions.csv"
   if [[ -f "$failsafe_csv" ]] && grep -qE '^production,' "$failsafe_csv" 2>/dev/null; then
@@ -122,7 +122,7 @@ flash_assess_failsafe_device() {
   FLASH_ASSESS_SKIP_SERIAL=0
 
   if [[ "${FLASH_ANYWAY:-0}" == "1" ]]; then
-    debug "FLASH_ANYWAY=1 — forcing full serial flash"
+    debug "FLASH_ANYWAY=1 -- forcing full serial flash"
     return 0
   fi
 

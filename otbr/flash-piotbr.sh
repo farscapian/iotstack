@@ -30,7 +30,7 @@ set -euo pipefail
 # 1. Configuration
 # ---------------------------------------------------------------------------
 
-# 1.1 Image — Ubuntu Server 26.04 LTS, arm64, Raspberry Pi
+# 1.1 Image -- Ubuntu Server 26.04 LTS, arm64, Raspberry Pi
 SERVER_VERSION="26.04"
 IMAGE_FILENAME="ubuntu-${SERVER_VERSION}-preinstalled-server-arm64+raspi.img.xz"
 IMAGE_URL="https://cdimage.ubuntu.com/releases/26.04/release/${IMAGE_FILENAME}"
@@ -68,9 +68,9 @@ FORCE_FLASH=$_FORCE_FLASH;    unset _FORCE_FLASH
 SKIP_CONFIRM=$_SKIP_CONFIRM;  unset _SKIP_CONFIRM
 _HOSTNAME_CLI=$_HOSTNAME_FLAG; unset _HOSTNAME_FLAG
 
-[[ -n "${THREAD_DATASET_TLV:-}" ]] || { echo "[ERROR] THREAD_DATASET_TLV not set — run via 'otbr flash'" >&2; exit 1; }
+[[ -n "${THREAD_DATASET_TLV:-}" ]] || { echo "[ERROR] THREAD_DATASET_TLV not set -- run via 'otbr flash'" >&2; exit 1; }
 
-# 1.3 Credentials — read from env file; THREAD_DATASET_TLV is required
+# 1.3 Credentials -- read from env file; THREAD_DATASET_TLV is required
 WIFI_SSID="${WIFI_SSID:-}"
 WIFI_PASSWORD="${WIFI_PASSWORD:-}"
 SSH_PUBKEY="${SSH_PUBKEY:-}"
@@ -79,7 +79,7 @@ CHIP_TOOL_SNAP_CHANNEL="${CHIP_TOOL_SNAP_CHANNEL:-latest/stable}"
 SSH_MGMT_CIDRS="${SSH_MGMT_CIDRS:-}"
 # Set DEPLOY_MATTER_SERVER=0 in your env file to skip python-matter-server installation.
 DEPLOY_MATTER_SERVER="${DEPLOY_MATTER_SERVER:-1}"
-# Home Assistant MQTT Discovery — leave MQTT_BROKER empty to disable.
+# Home Assistant MQTT Discovery -- leave MQTT_BROKER empty to disable.
 MQTT_BROKER="${MQTT_BROKER:-}"
 MQTT_PORT="${MQTT_PORT:-1883}"
 MQTT_USER="${MQTT_USER:-}"
@@ -126,7 +126,7 @@ _SSH_CONFIG="${_SSH_DIR}/config"
 if [[ -f "$_SSH_CONFIG" ]] && grep -qE "^Host[[:space:]]+${OTBR_HOSTNAME}([[:space:]]|$)" "$_SSH_CONFIG"; then
     info "SSH config entry found for '${OTBR_HOSTNAME}'."
 else
-    info "No SSH config entry for '${OTBR_HOSTNAME}' — creating stub in ${_SSH_CONFIG}."
+    info "No SSH config entry for '${OTBR_HOSTNAME}' -- creating stub in ${_SSH_CONFIG}."
     mkdir -p "$_SSH_DIR" && chmod 700 "$_SSH_DIR" && chown "${_REAL_USER}:" "$_SSH_DIR"
     printf '\nHost %s\n    HostName %s.local\n    User ubuntu\n' \
         "${OTBR_HOSTNAME}" "${OTBR_HOSTNAME}" >> "$_SSH_CONFIG"
@@ -136,7 +136,7 @@ unset _REAL_USER _REAL_HOME _SSH_DIR _SSH_CONFIG
 
 # Refuse to flash a device that has any partition currently mounted
 if lsblk -no MOUNTPOINT "$TARGET_DEV" 2>/dev/null | grep -q .; then
-    die "$TARGET_DEV has mounted partitions — unmount first."
+    die "$TARGET_DEV has mounted partitions -- unmount first."
 fi
 
 info "Target: $TARGET_DEV"
@@ -147,10 +147,10 @@ echo
 if lsblk -no LABEL "$TARGET_DEV" 2>/dev/null | grep -q '^system-boot$'; then
     if [[ "$FORCE_FLASH" -eq 1 ]]; then
         CLOUD_INIT_ONLY=0
-        warn "Ubuntu Server detected on $TARGET_DEV but -f given — full reflash."
+        warn "Ubuntu Server detected on $TARGET_DEV but -f given -- full reflash."
     else
         CLOUD_INIT_ONLY=1
-        info "Ubuntu Server detected on $TARGET_DEV — updating cloud-init only."
+        info "Ubuntu Server detected on $TARGET_DEV -- updating cloud-init only."
         info "(Use -f to force a full reflash and overwrite the OS.)"
     fi
 else
@@ -159,7 +159,7 @@ fi
 
 if [[ "$CLOUD_INIT_ONLY" -eq 0 ]]; then
     command -v qemu-aarch64 &>/dev/null \
-        || die "qemu-aarch64 not found — required for arm64 chroot.\n  Install with: sudo apt-get install qemu-user-binfmt"
+        || die "qemu-aarch64 not found -- required for arm64 chroot.\n  Install with: sudo apt-get install qemu-user-binfmt"
 
     # Size check: fail fast before dd if the device is too small for the image.
     _dev_bytes=$(lsblk -bno SIZE "$TARGET_DEV" | head -1)
@@ -192,7 +192,7 @@ if [[ "$CLOUD_INIT_ONLY" -eq 0 ]]; then
 
     if [[ "${SKIP_IMAGE_VERIFICATION:-0}" -eq 1 ]]; then
         [[ -f "$IMAGE_IMG" ]] || die "SKIP_IMAGE_VERIFICATION=1 but extracted image not found: $IMAGE_IMG"
-        warn "SKIP_IMAGE_VERIFICATION=1 — skipping download, SHA-256, and size check."
+        warn "SKIP_IMAGE_VERIFICATION=1 -- skipping download, SHA-256, and size check."
     else
         # 5.1 Download if absent
         if [[ ! -f "$IMAGE_XZ" ]]; then
@@ -221,8 +221,8 @@ if [[ "$CLOUD_INIT_ONLY" -eq 0 ]]; then
         # timeout guards against stat stalling on sync-watched or slow filesystems
         IMG_BYTES=$(timeout 10 stat -c%s "$IMAGE_IMG" 2>/dev/null || echo 0)
         (( IMG_BYTES > 2*1024*1024*1024 )) \
-            || die "Extracted image is suspiciously small (${IMG_BYTES} bytes) — re-extract."
-        info "Extracted image: $(( IMG_BYTES / 1024 / 1024 )) MiB — OK."
+            || die "Extracted image is suspiciously small (${IMG_BYTES} bytes) -- re-extract."
+        info "Extracted image: $(( IMG_BYTES / 1024 / 1024 )) MiB -- OK."
     fi
 
     # -------------------------------------------------------------------------
@@ -242,7 +242,7 @@ fi  # CLOUD_INIT_ONLY
 # 7. Mount system-boot partition
 # ---------------------------------------------------------------------------
 # Ubuntu Server 26.04 arm64+raspi partition layout:
-#   p1  vfat    system-boot   (~256 MiB) ← cloud-init NoCloud seed goes here
+#   p1  vfat    system-boot   (~256 MiB) <- cloud-init NoCloud seed goes here
 #   p2  ext4    writable      (root filesystem)
 
 get_part1() {
@@ -268,7 +268,7 @@ sudo mount -o "uid=$(id -u),gid=$(id -g)" "$BOOT_PART" "$MOUNT_DIR"
 info "Mounted $BOOT_PART at $MOUNT_DIR"
 
 # ---------------------------------------------------------------------------
-# 7.5 Patch cmdline.txt — inject cfg80211 regulatory domain kernel parameter.
+# 7.5 Patch cmdline.txt -- inject cfg80211 regulatory domain kernel parameter.
 #
 #     modprobe.d/cfg80211.conf and cloud-init write_files run AFTER the kernel
 #     has already loaded cfg80211/brcmfmac (~14 s into first boot).  The only
@@ -297,15 +297,15 @@ if [[ -f "$_CMDLINE_FILE" ]]; then
         printf '%s\n' "$_CMDLINE" > "$_CMDLINE_FILE"
         info "Patched cmdline.txt: cfg80211.ieee80211_regdom=US brcmfmac.feature_disable=0x82000"
     else
-        info "cmdline.txt already patched — skipped"
+        info "cmdline.txt already patched -- skipped"
     fi
     unset _CMDLINE_CHANGED
 else
-    info "cmdline.txt not present in system-boot (expected — Ubuntu 26.04 uses GRUB/UEFI; modprobe.d covers regulatory)"
+    info "cmdline.txt not present in system-boot (expected -- Ubuntu 26.04 uses GRUB/UEFI; modprobe.d covers regulatory)"
 fi
 unset _CMDLINE_FILE _CMDLINE
 
-# Patch config.txt with country=US — Pi firmware reads this before brcmfmac
+# Patch config.txt with country=US -- Pi firmware reads this before brcmfmac
 # loads, making it the most authoritative regulatory source.
 _CONFIG_FILE="${MOUNT_DIR}/config.txt"
 if [[ -f "$_CONFIG_FILE" ]]; then
@@ -317,7 +317,7 @@ if [[ -f "$_CONFIG_FILE" ]]; then
         info "config.txt: added country=US"
     fi
 else
-    warn "config.txt not found in system-boot — Pi firmware regulatory not set"
+    warn "config.txt not found in system-boot -- Pi firmware regulatory not set"
 fi
 unset _CONFIG_FILE
 
@@ -340,9 +340,9 @@ EOF
 # Ubuntu Server supports full cloud-init: write_files, runcmd, users, packages.
 #
 # Approach:
-#   users        — inject SSH public key into the default ubuntu user
-#   write_files  — netplan, crda/regulatory, OTBR interface-watcher service
-#   runcmd       — snap install, snap connect, snap set, ot-ctl dataset commit
+#   users        -- inject SSH public key into the default ubuntu user
+#   write_files  -- netplan, crda/regulatory, OTBR interface-watcher service
+#   runcmd       -- snap install, snap connect, snap set, ot-ctl dataset commit
 
 NETPLAN_WIFIS=""
 if [[ -n "$WIFI_SSID" && -n "$WIFI_PASSWORD" ]]; then
@@ -555,7 +555,7 @@ users:
 USERSECT
 )
 else
-    warn "SSH_PUBKEY not set — ubuntu user will have no injected SSH key."
+    warn "SSH_PUBKEY not set -- ubuntu user will have no injected SSH key."
     warn "Set SSH_PUBKEY in your env file to enable passwordless SSH access."
 fi
 
@@ -605,7 +605,7 @@ write_files:
       SUBSYSTEM=="usb", ATTRS{idVendor}=="303a", ENV{ID_MM_DEVICE_IGNORE}="1"
       SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ENV{ID_MM_DEVICE_IGNORE}="1"
 
-  # 9.1.1 Netplan — eth0 preferred (metric 100), wlan0 fallback (metric 200)
+  # 9.1.1 Netplan -- eth0 preferred (metric 100), wlan0 fallback (metric 200)
   #        Both interfaces are always configured; Linux routing prefers lower
   #        metric, so eth0 wins when the link is present.
   - path: /etc/netplan/00-otbr.yaml
@@ -637,8 +637,8 @@ ${NETPLAN_WIFIS}
     content: |
       options cfg80211 ieee80211_regdom=US
 
-  # roamoff=1   — disables background roaming scans (prevents scan-loop crash)
-  # feature_disable=0x82000 — disables SAE offload (0x80000) + SWSUP (0x2000).
+  # roamoff=1   -- disables background roaming scans (prevents scan-loop crash)
+  # feature_disable=0x82000 -- disables SAE offload (0x80000) + SWSUP (0x2000).
   #   BCM4345/6 (Pi 4B) brcmfmac SAE firmware engine is broken: attempting SAE
   #   auth against WPA2+WPA3 transition-mode APs produces ASSOC-REJECT
   #   status_code=16 with bssid=00:00:00:00:00:00 (locally generated).
@@ -663,7 +663,7 @@ ${NETPLAN_WIFIS}
       ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/usr/sbin/iw dev %k set country US"
       ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/usr/sbin/iw dev %k set power_save off"
 
-  # 9.1.3 OTBR interface-watcher — systemd service that reacts to
+  # 9.1.3 OTBR interface-watcher -- systemd service that reacts to
   #        networkd interface state changes and reconfigures OTBR.
   #
   #        Mechanism: systemd-networkd emits a D-Bus signal on every
@@ -786,7 +786,7 @@ ${NETPLAN_WIFIS}
       [Install]
       WantedBy=multi-user.target
 
-  # 9.1.5 RCP firmware verification script — base64-encoded from scripts/verify_rcp.py.
+  # 9.1.5 RCP firmware verification script -- base64-encoded from scripts/verify_rcp.py.
   #        Uses pyserial when available; falls back to stdlib so no venv is needed.
   - path: /usr/local/sbin/otbr-verify-rcp.py
     owner: root:root
@@ -794,7 +794,7 @@ ${NETPLAN_WIFIS}
     encoding: b64
     content: ${_VERIFY_RCP_B64}
 
-  # 9.1.6 ESP32-C6 RCP flash script — embedded from scripts/flash_rcp.sh.
+  # 9.1.6 ESP32-C6 RCP flash script -- embedded from scripts/flash_rcp.sh.
   #        Clones/updates ESP-IDF, builds ot_rcp, and flashes only when the
   #        firmware changes.  On the Pi, IDF lives at /opt/esp-idf.
   - path: /usr/local/sbin/otbr-flash-rcp.sh
@@ -829,19 +829,19 @@ ${NETPLAN_WIFIS}
       # /run is a tmpfs cleared on every reboot, so the sentinel is auto-reset.
       exec 9>/var/lock/otbr-rcp-update.lock
       if ! flock -n 9; then
-        log "Another instance already running — exiting."
+        log "Another instance already running -- exiting."
         exit 0
       fi
       _DONE_FLAG=/run/otbr-rcp-update.done
       if [[ -f "\$_DONE_FLAG" ]]; then
-        log "Already ran this boot — exiting."
+        log "Already ran this boot -- exiting."
         exit 0
       fi
       touch "\$_DONE_FLAG"
 
       log "=== RCP update \$(date) ==="
 
-      # Proxy for git/curl — baked in at flash time from HTTP_PROXY env var.
+      # Proxy for git/curl -- baked in at flash time from HTTP_PROXY env var.
       # git ignores uppercase HTTP_PROXY, so we export the lowercase variants.
       ${HTTP_PROXY:+export http_proxy="${HTTP_PROXY}" https_proxy="${HTTP_PROXY}"}
       # Skip git network ops on the Pi when baked in at flash time.
@@ -924,7 +924,7 @@ ${NETPLAN_WIFIS}
   # 9.1.8a Persistent early-boot service: confirm any pending RPi tryboot and
   #   remove /boot/firmware/new/ so no stale kernel assets survive a reboot.
   #   Runs on every boot before sysinit.target.  Prevents the unattended-upgrades
-  #   reboot loop: apt-get upgrade → flash-kernel → /new/ → auto-reboot → repeat.
+  #   reboot loop: apt-get upgrade -> flash-kernel -> /new/ -> auto-reboot -> repeat.
   - path: /etc/systemd/system/otbr-boot-cleanup.service
     owner: root:root
     permissions: '0644'
@@ -956,9 +956,9 @@ ${NETPLAN_WIFIS}
       MACHINE="Raspberry Pi 4 Model B"
 
   # 9.1.8c Load kernel modules at boot.
-  #   tun        — /dev/net/tun used by otbr-agent
-  #   ip_set*    — ipset support required by otbr-setup firewall script
-  #   xt_set     — iptables ipset match used by otbr-setup
+  #   tun        -- /dev/net/tun used by otbr-agent
+  #   ip_set*    -- ipset support required by otbr-setup firewall script
+  #   xt_set     -- iptables ipset match used by otbr-setup
   - path: /etc/modules-load.d/otbr.conf
     owner: root:root
     permissions: '0644'
@@ -980,7 +980,7 @@ ${NETPLAN_WIFIS}
       StartLimitIntervalSec=0
       StartLimitAction=none
 
-  # 9.1.10 Weekly reboot timer — triggers RCP firmware check via boot service.
+  # 9.1.10 Weekly reboot timer -- triggers RCP firmware check via boot service.
   - path: /etc/systemd/system/otbr-weekly-reboot.timer
     owner: root:root
     permissions: '0644'
@@ -1023,11 +1023,11 @@ ${NETPLAN_WIFIS}
       # One-shot guard: cloud-init runcmd triggers on every cloud-init run,
       # including the tryboot second boot.  Skip if we already ran successfully.
       if [[ -f /var/lib/otbr/firstboot-done ]]; then
-        echo "=== first-boot already completed — skipping second run ==="
+        echo "=== first-boot already completed -- skipping second run ==="
         exit 0
       fi
 
-      # Patch Pi firmware country code — authoritative for brcmfmac regulatory.
+      # Patch Pi firmware country code -- authoritative for brcmfmac regulatory.
       if grep -q "^country=" /boot/firmware/config.txt 2>/dev/null; then
         sed -i "s/^country=.*/country=US/" /boot/firmware/config.txt
       else
@@ -1087,8 +1087,8 @@ ${NETPLAN_WIFIS}
       apt-get install -y --only-upgrade linux-firmware || true
 
       # Hold kernel packages so no subsequent apt run can upgrade the kernel.
-      # Kernel upgrades trigger flash-kernel → /boot/firmware/new/ → tryboot →
-      # unattended-upgrades auto-reboot → infinite boot loop.
+      # Kernel upgrades trigger flash-kernel -> /boot/firmware/new/ -> tryboot ->
+      # unattended-upgrades auto-reboot -> infinite boot loop.
       apt-mark hold linux-raspi linux-image-raspi linux-headers-raspi 2>/dev/null || true
       # Belt-and-suspenders: even if unattended-upgrades somehow runs, don't reboot.
       printf 'Unattended-Upgrade::Automatic-Reboot "false";\n' \
@@ -1115,7 +1115,7 @@ ${NETPLAN_WIFIS}
         fi
       fi
       if ! snap list "\$SNAP" &>/dev/null; then
-        echo "\$SNAP not yet installed — installing from store ..."
+        echo "\$SNAP not yet installed -- installing from store ..."
         for _i in \$(seq 1 5); do
           snap install "\$SNAP" --channel=${OTBR_SNAP_CHANNEL} --devmode && break
           echo "Snap install attempt \$_i failed; retrying in 15s ..."
@@ -1125,7 +1125,7 @@ ${NETPLAN_WIFIS}
 
       # -- Disable snap before connecting interfaces --------------------------
       # snap disable prevents services from auto-restarting during snap connect
-      # calls.  snap enable is called below — before any snap set — so the
+      # calls.  snap enable is called below -- before any snap set -- so the
       # configure hook can find /snap/<snap>/current.  snap start brings up the
       # agent once all settings are in place.
       snap disable "\${SNAP}" 2>/dev/null || true
@@ -1140,14 +1140,14 @@ ${NETPLAN_WIFIS}
       done < <(snap connections --all "\${SNAP}" 2>/dev/null \
         | awk 'NR>1 && \$3=="-" {split(\$2,a,":"); if (a[2]!="") print a[2]}')
 
-      # -- Install chip-tool (Matter commissioning — BLE+Thread and Thread-only)
+      # -- Install chip-tool (Matter commissioning -- BLE+Thread and Thread-only)
       if ! snap list chip-tool &>/dev/null; then
         _ct_file=\$(ls /opt/chip-tool/*.snap 2>/dev/null | head -1)
         if [[ -n "\$_ct_file" ]]; then
           snap install --dangerous "\$_ct_file" || true
         fi
         if ! snap list chip-tool &>/dev/null; then
-          echo "chip-tool not yet installed — installing from store ..."
+          echo "chip-tool not yet installed -- installing from store ..."
           for _i in \$(seq 1 5); do
             snap install chip-tool --channel=${CHIP_TOOL_SNAP_CHANNEL} && break
             echo "chip-tool install attempt \$_i failed; retrying in 15s ..."
@@ -1171,7 +1171,7 @@ ${NETPLAN_WIFIS}
       # read generates an ALLOWED audit record.  Adding an explicit allow via
       # the local override stops AppArmor from auditing these reads.
       # /etc/apparmor.d/local/ is #include'd by the snap-generated profile and
-      # survives snap refreshes — snapd regenerates the profile but always
+      # survives snap refreshes -- snapd regenerates the profile but always
       # re-includes this directory.
       mkdir -p /etc/apparmor.d/local
       cat > /etc/apparmor.d/local/snap.openthread-border-router.otbr-agent <<'AAEOF'
@@ -1214,7 +1214,7 @@ AAEOF
         # first boot before systemd-modules-load has run those rules.
         modprobe ip_set ip_set_hash_net xt_set 2>/dev/null || true
       else
-        echo "WARNING: \$SNAP not installed — skipping OTBR configuration."
+        echo "WARNING: \$SNAP not installed -- skipping OTBR configuration."
         echo "         Re-run /usr/local/sbin/otbr-firstboot.sh once the snap store is reachable."
       fi
 
@@ -1234,9 +1234,9 @@ AAEOF
       # OTBR REST API and web UI
       ufw allow 8081/tcp comment 'OTBR REST API'
       ufw allow 80/tcp comment 'OTBR web UI'
-      # mDNS — Avahi / Home Assistant discovery
+      # mDNS -- Avahi / Home Assistant discovery
       ufw allow 5353/udp comment 'mDNS'
-      # Thread mesh interface — allow all traffic on wpan0
+      # Thread mesh interface -- allow all traffic on wpan0
       ufw allow in on wpan0 comment 'Thread mesh (wpan0)'
       # Matter Server WebSocket API (Home Assistant or other controller connects here)
       if [[ "${DEPLOY_MATTER_SERVER}" -eq 1 ]]; then
@@ -1245,7 +1245,7 @@ AAEOF
       ufw --force enable
       echo "UFW enabled."
 
-      # -- Start snap service (last step — firewall is up before snap runs) --
+      # -- Start snap service (last step -- firewall is up before snap runs) --
       if [[ "\$_snap_ok" -eq 1 ]]; then
         snap start --enable "\$SNAP"
 
@@ -1285,14 +1285,14 @@ AAEOF
         _readback=\$("\$SNAP".ot-ctl dataset active -x 2>/dev/null | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]' || true)
         _expected=\$(echo "\$TLV" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
         if [[ "\$_readback" != "\$_expected" ]]; then
-          echo "WARNING: dataset readback mismatch — retrying after 5 s ..."
+          echo "WARNING: dataset readback mismatch -- retrying after 5 s ..."
           sleep 5
           "\$SNAP".ot-ctl dataset set active "\$TLV"
           "\$SNAP".ot-ctl ifconfig up
           "\$SNAP".ot-ctl thread start
         fi
 
-        # Dataset is committed and interface is up — now enable autostart so
+        # Dataset is committed and interface is up -- now enable autostart so
         # subsequent boots bring the agent up automatically via snapd.
         snap set "\$SNAP" autostart=true
       fi
@@ -1348,7 +1348,7 @@ AAEOF
       WantedBy=multi-user.target
 
   # 9.1.11 GPIO button handler
-  #         Button wiring: BCM GPIO17 (physical pin 11) → GND (physical pin 14)
+  #         Button wiring: BCM GPIO17 (physical pin 11) -> GND (physical pin 14)
   #         1 click = shutdown, double-click = reboot
   - path: /usr/local/bin/otbr-gpio-button.py
     owner: root:root
@@ -1409,7 +1409,7 @@ AAEOF
 
 ${_MQTT_WRITE_FILES_YAML}
 # --------------------------------------------------------------------------
-# 9.3 runcmd — executes after write_files and snap modules
+# 9.3 runcmd -- executes after write_files and snap modules
 # --------------------------------------------------------------------------
 runcmd:
   # Apply netplan now so networkd has our config before firstboot starts.
@@ -1434,7 +1434,7 @@ ${_MQTT_ENABLE_CMD}
   # write_files) takes effect for devices already enumerated at boot.
   - udevadm control --reload-rules
   - udevadm trigger --subsystem-match=usb
-  # Mask ModemManager permanently — this OTBR device never needs it.
+  # Mask ModemManager permanently -- this OTBR device never needs it.
   # Masking (not just stopping) prevents systemd from restarting it.
   # The actual stop happens inside otbr-rcp-update.sh before each build/flash.
   - systemctl mask ModemManager || true
@@ -1473,7 +1473,7 @@ for _sfx in "2" "p2"; do
 done
 
 if [[ -z "$_ROOT_PART" ]]; then
-    warn "Cannot locate root partition (p2) — brcmfmac config will apply from second boot via cloud-init."
+    warn "Cannot locate root partition (p2) -- brcmfmac config will apply from second boot via cloud-init."
 else
     # Expand the root partition to fill the SD card before mounting/chroot so
     # the chroot has full disk space.  Cloud-init growpart would do this on
@@ -1487,7 +1487,7 @@ else
 
     _ROOT_DIR=$(mktemp -d /tmp/uc-root-XXXXXX)
     if sudo mount "$_ROOT_PART" "$_ROOT_DIR" 2>/dev/null; then
-        info "Mounted root partition $_ROOT_PART — writing kernel config..."
+        info "Mounted root partition $_ROOT_PART -- writing kernel config..."
         sudo mkdir -p \
             "$_ROOT_DIR/etc/modprobe.d" \
             "$_ROOT_DIR/etc/modules-load.d" \
@@ -1514,8 +1514,8 @@ ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/usr/sbin/iw dev %k set 
 ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan*", RUN+="/usr/sbin/iw dev %k set power_save off"
 UDEV
 
-        # flash-kernel machine type — prevents it from guessing Pi 5 DTB when
-        # the file is absent (happens on apt upgrade → dracut → flash-kernel).
+        # flash-kernel machine type -- prevents it from guessing Pi 5 DTB when
+        # the file is absent (happens on apt upgrade -> dracut -> flash-kernel).
         # /etc/flash-kernel.conf is the correct override; /etc/default/flash-kernel
         # only sets env vars and doesn't affect machine detection.
         sudo mkdir -p "$_ROOT_DIR/etc"
@@ -1524,7 +1524,7 @@ UDEV
         info "Written /etc/flash-kernel.conf (MACHINE=Raspberry Pi 4 Model B)"
 
         # Pre-load development assets so the Pi doesn't need to download them
-        # on first boot.  All sections are conditional — skipped if not cached.
+        # on first boot.  All sections are conditional -- skipped if not cached.
         # Only done on a full flash; cloud-init-only updates leave the live Pi
         # filesystem alone.
         if [[ "$CLOUD_INIT_ONLY" -eq 0 ]]; then
@@ -1536,7 +1536,7 @@ UDEV
             # to run.
             # ------------------------------------------------------------------
             sudo mkdir -p "$_ROOT_DIR/var/log"
-            printf '=== otbr-firstboot.log created at flash time: %s ===\n=== insert SD card and power on — first-boot provisioning will begin shortly ===\n' \
+            printf '=== otbr-firstboot.log created at flash time: %s ===\n=== insert SD card and power on -- first-boot provisioning will begin shortly ===\n' \
                 "$(date '+%Y-%m-%dT%H:%M:%S%z')" \
                 | sudo tee "$_ROOT_DIR/var/log/otbr-firstboot.log" > /dev/null
             info "Seeded /var/log/otbr-firstboot.log on root partition."
@@ -1560,7 +1560,7 @@ UDEV
                     _idf_cur=$(git -C "$_IDF_CACHE" describe --tags --exact-match 2>/dev/null \
                         || git -C "$_IDF_CACHE" rev-parse --short HEAD)
                     if [[ "$_idf_cur" != "$_idf_tag" ]]; then
-                        info "Updating ESP-IDF cache: $_idf_cur → $_idf_tag"
+                        info "Updating ESP-IDF cache: $_idf_cur -> $_idf_tag"
                         git -C "$_IDF_CACHE" fetch --depth 1 origin tag "$_idf_tag"
                         git -C "$_IDF_CACHE" checkout "$_idf_tag"
                         git -C "$_IDF_CACHE" submodule update --init --recursive --depth 1
@@ -1579,67 +1579,67 @@ UDEV
                 if [[ -d "$_IDF_CACHE/.git" ]]; then
                     _idf_cur=$(git -C "$_IDF_CACHE" describe --tags --exact-match 2>/dev/null \
                         || git -C "$_IDF_CACHE" rev-parse --short HEAD 2>/dev/null || echo 'unknown')
-                    info "PULL_LATEST_REPOS=0 — skipping ESP-IDF update; cache at: ${_idf_cur}"
+                    info "PULL_LATEST_REPOS=0 -- skipping ESP-IDF update; cache at: ${_idf_cur}"
                 else
-                    warn "PULL_LATEST_REPOS=0 and no ESP-IDF cache found — Pi will clone on first boot."
+                    warn "PULL_LATEST_REPOS=0 and no ESP-IDF cache found -- Pi will clone on first boot."
                 fi
             fi
 
             # ------------------------------------------------------------------
             # Pre-load ESP-IDF source BEFORE the chroot so install.sh is
-            # available inside it.  Build/ dirs are excluded — they hold
+            # available inside it.  Build/ dirs are excluded -- they hold
             # host-arch (x86_64) objects that are useless on the Pi.
             # ------------------------------------------------------------------
             if [[ -d "$_IDF_CACHE" ]]; then
                 _idf_size=$(du -sh "$_IDF_CACHE" | cut -f1)
-                info "Pre-loading ESP-IDF source (${_idf_size}, skipping build/ dirs) → /opt/esp-idf ..."
+                info "Pre-loading ESP-IDF source (${_idf_size}, skipping build/ dirs) -> /opt/esp-idf ..."
                 sudo mkdir -p "$_ROOT_DIR/opt/esp-idf"
                 sudo rsync -a --chown=root:root --exclude='build/' \
                     "${_IDF_CACHE}/" "$_ROOT_DIR/opt/esp-idf"
                 info "ESP-IDF source pre-loaded."
             else
-                info "${OTBR_HOME}/cache/esp-idf not found — Pi will clone ESP-IDF on first boot."
+                info "${OTBR_HOME}/cache/esp-idf not found -- Pi will clone ESP-IDF on first boot."
             fi
 
             # ------------------------------------------------------------------
             # Decide whether to build RCP firmware inside the chroot.
-            # The ESP32-C6 binary is RISC-V — identical bytes whether the
+            # The ESP32-C6 binary is RISC-V -- identical bytes whether the
             # cross-compiler ran on x86_64 or arm64.  Building here populates
             # the host cache and pre-seeds the SD card so the Pi skips the
             # build entirely on first boot.
             # ------------------------------------------------------------------
             if [[ "${SKIP_CHROOT:-0}" -eq 1 ]]; then
-                info "SKIP_CHROOT=1 — skipping arm64 chroot; first-boot will handle apt packages."
+                info "SKIP_CHROOT=1 -- skipping arm64 chroot; first-boot will handle apt packages."
             else
 
             _do_rcp_build=0
             if [[ ! -f "${OTBR_HOME}/cache/esp32/rcp/esp_ot_rcp.bin" ]]; then
                 if [[ -d "$_ROOT_DIR/opt/esp-idf" ]]; then
                     _do_rcp_build=1
-                    info "No cached RCP firmware — will build inside arm64 chroot (~10 min)."
+                    info "No cached RCP firmware -- will build inside arm64 chroot (~10 min)."
                 else
-                    info "No ESP-IDF source and no cached firmware — Pi will build on first boot."
+                    info "No ESP-IDF source and no cached firmware -- Pi will build on first boot."
                 fi
             else
-                info "Cached RCP firmware found — skipping chroot build."
+                info "Cached RCP firmware found -- skipping chroot build."
             fi
 
             # ------------------------------------------------------------------
             # Chroot: apt upgrade + install + ESP-IDF toolchain + optional build.
             # The binfmt_misc entry for qemu-aarch64 uses the F (fix-binary)
-            # flag so the kernel holds the interpreter open — no copy needed.
+            # flag so the kernel holds the interpreter open -- no copy needed.
             #
             # The setup script is written to a temp file (not passed via -c)
             # so the host can expand ${_do_rcp_build} into the script body.
             # Literal backslashes must be doubled (\\) and literal $ escaped (\$).
             # ------------------------------------------------------------------
-            info "Running arm64 chroot — apt upgrade + install + ESP-IDF toolchain ..."
+            info "Running arm64 chroot -- apt upgrade + install + ESP-IDF toolchain ..."
             sudo mkdir -p "$_ROOT_DIR/tmp"
             sudo tee "$_ROOT_DIR/tmp/otbr-chroot-setup.sh" > /dev/null <<CHROOTSCRIPT
 #!/usr/bin/env bash
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-# Suppress needrestart kernel-upgrade check — running kernel is always
+# Suppress needrestart kernel-upgrade check -- running kernel is always
 # the host kernel, never the arm64 raspi kernel we're installing.
 export NEEDRESTART_MODE=l NEEDRESTART_SUSPEND_THREADS=1
 mkdir -p /etc/needrestart/conf.d
@@ -1687,7 +1687,7 @@ apt-get clean
 rm -rf /var/cache/man/* /var/lib/apt/lists/*
 CHROOTSCRIPT
             sudo chmod +x "$_ROOT_DIR/tmp/otbr-chroot-setup.sh"
-            # Temporarily replace resolv.conf — on Ubuntu 26.04 it is a
+            # Temporarily replace resolv.conf -- on Ubuntu 26.04 it is a
             # dangling symlink to /run/systemd/resolve/stub-resolv.conf which
             # doesn't exist in a bare mounted image.
             sudo rm -f "$_ROOT_DIR/etc/resolv.conf"
@@ -1705,7 +1705,7 @@ CHROOTSCRIPT
             sudo mount --bind /dev     "$_ROOT_DIR/dev"
             sudo mount --bind /dev/pts "$_ROOT_DIR/dev/pts"
             sudo chroot "$_ROOT_DIR" /bin/bash /tmp/otbr-chroot-setup.sh \
-                || warn "chroot operation encountered errors — continuing."
+                || warn "chroot operation encountered errors -- continuing."
             sudo umount "$_ROOT_DIR/dev/pts"         2>/dev/null || true
             sudo umount "$_ROOT_DIR/dev"             2>/dev/null || true
             sudo umount "$_ROOT_DIR/sys"             2>/dev/null || true
@@ -1731,7 +1731,7 @@ CHROOTSCRIPT
                     "${OTBR_HOME}/cache/esp32/rcp/esp_ot_rcp.bin"
                 info "RCP firmware cached: ${OTBR_HOME}/cache/esp32/rcp/esp_ot_rcp.bin"
             elif [[ "$_do_rcp_build" -eq 1 ]]; then
-                warn "RCP build was requested but binary not found — Pi will build on first boot."
+                warn "RCP build was requested but binary not found -- Pi will build on first boot."
             fi
             unset _built_bin _do_rcp_build
 
@@ -1757,10 +1757,10 @@ CHROOTSCRIPT
                     unset _nvram_tmp
                     info "brcmfmac NVRAM patched with ccode=US (eliminates reason -52 on 5GHz)"
                 else
-                    warn "zstd not found on host — brcmfmac NVRAM not patched; WiFi 5GHz may fail with reason -52"
+                    warn "zstd not found on host -- brcmfmac NVRAM not patched; WiFi 5GHz may fail with reason -52"
                 fi
             else
-                warn "brcmfmac NVRAM file not found on root partition — skipping WiFi country patch"
+                warn "brcmfmac NVRAM file not found on root partition -- skipping WiFi country patch"
             fi
             unset _nvram_zst
 
@@ -1791,7 +1791,7 @@ CHROOTSCRIPT
                         -H 'Snap-Device-Series: 16' \
                         -H 'Snap-Device-Architecture: arm64' \
                         "https://api.snapcraft.io/v2/snaps/info/${_sname}?fields=channel-map,snap-id,download,revision"); then
-                    warn "Snap Store API unreachable for ${_sname} — Pi will install from store."
+                    warn "Snap Store API unreachable for ${_sname} -- Pi will install from store."
                     return 1
                 fi
                 local _snap_id _dl_url _revision _sha3
@@ -1811,7 +1811,7 @@ for e in d.get('channel-map', []):
 print(snap_id, '', '', '')
 " "$_channel")
                 if [[ -z "$_dl_url" ]]; then
-                    warn "No arm64 ${_sname} on channel ${_channel} — Pi will install from store."
+                    warn "No arm64 ${_sname} on channel ${_channel} -- Pi will install from store."
                     return 1
                 fi
                 local _base="${_sname}_${_revision}"
@@ -1822,7 +1822,7 @@ print(snap_id, '', '', '')
                         "$_dl_url"; then
                     info "${_sname} arm64 snap cached: ${_base}"
                 else
-                    warn "Failed to download ${_sname} arm64 snap — Pi will install from store."
+                    warn "Failed to download ${_sname} arm64 snap -- Pi will install from store."
                     rm -f "${_SNAP_ARM64}/${_base}.snap"
                     return 1
                 fi
@@ -1836,7 +1836,7 @@ print(snap_id, '', '', '')
             # (arm64 snap-revision assertions require snapd's internal batch RPC).
             # The /opt/otbr-snap/ fallback in firstboot.sh covers offline install.
 
-            # Pre-built RCP binary — flash_rcp.sh compares sha256 against this;
+            # Pre-built RCP binary -- flash_rcp.sh compares sha256 against this;
             # identical hash skips the flash step on first boot.
             if [[ -f "${OTBR_HOME}/cache/esp32/rcp/esp_ot_rcp.bin" ]]; then
                 sudo mkdir -p "$_ROOT_DIR/var/lib/otbr"
@@ -1845,7 +1845,7 @@ print(snap_id, '', '', '')
                 info "RCP binary staged: /var/lib/otbr/esp_ot_rcp_staged.bin"
             fi
 
-            # OTBR snap at /opt/otbr-snap/ — firstboot.sh installs with --dangerous.
+            # OTBR snap at /opt/otbr-snap/ -- firstboot.sh installs with --dangerous.
             _snap_src=("${_SNAP_ARM64}"/openthread-border-router_*.snap)
             if [[ -f "${_snap_src[0]}" ]]; then
                 sudo mkdir -p "$_ROOT_DIR/opt/otbr-snap"
@@ -1853,17 +1853,17 @@ print(snap_id, '', '', '')
                     "$_ROOT_DIR/opt/otbr-snap/"
                 info "OTBR snap pre-loaded: $(basename "${_snap_src[0]}")"
             else
-                info "arm64 OTBR snap not cached — Pi will install from snap store."
+                info "arm64 OTBR snap not cached -- Pi will install from snap store."
             fi
 
-            # chip-tool snap at /opt/chip-tool/ — firstboot.sh installs with --dangerous.
+            # chip-tool snap at /opt/chip-tool/ -- firstboot.sh installs with --dangerous.
             _ct_src=$(find "${_SNAP_ARM64}" -maxdepth 1 -name "chip-tool_*.snap" 2>/dev/null | head -1)
             if [[ -n "$_ct_src" ]]; then
                 sudo mkdir -p "$_ROOT_DIR/opt/chip-tool"
                 sudo cp "${_SNAP_ARM64}"/chip-tool_*.snap "$_ROOT_DIR/opt/chip-tool/"
                 info "chip-tool snap pre-loaded: $(basename "$_ct_src")"
             else
-                info "arm64 chip-tool not cached — Pi will install from snap store."
+                info "arm64 chip-tool not cached -- Pi will install from snap store."
             fi
             unset _SNAP_ARM64 _snap_src _ct_src
 
@@ -1871,9 +1871,9 @@ print(snap_id, '', '', '')
 
         sudo umount "$_ROOT_DIR"
         rmdir "$_ROOT_DIR"
-        info "Kernel config written to root filesystem — active from first boot."
+        info "Kernel config written to root filesystem -- active from first boot."
     else
-        warn "Cannot mount root partition $_ROOT_PART — brcmfmac config will apply from second boot via cloud-init."
+        warn "Cannot mount root partition $_ROOT_PART -- brcmfmac config will apply from second boot via cloud-init."
         rmdir "$_ROOT_DIR"
     fi
     unset _ROOT_PART _ROOT_DIR _sfx _c
@@ -1902,7 +1902,7 @@ fi
 
 info "============================================================"
 if [[ "$CLOUD_INIT_ONLY" -eq 1 ]]; then
-    info " Done (cloud-init update only — OS not reflashed)."
+    info " Done (cloud-init update only -- OS not reflashed)."
     info " cloud-init files updated on $TARGET_DEV."
     info " Safely remove the card, reinsert into the Pi, and reboot to apply."
 else

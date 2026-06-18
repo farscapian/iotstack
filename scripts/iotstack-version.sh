@@ -1,5 +1,5 @@
 #!/bin/bash
-# iotstack-version.sh — project_version substitution from git tags at compile time
+# iotstack-version.sh -- project_version substitution from git tags at compile time
 
 [[ -n "${_IOTSTACK_VERSION_LOADED:-}" ]] && return 0
 _IOTSTACK_VERSION_LOADED=1
