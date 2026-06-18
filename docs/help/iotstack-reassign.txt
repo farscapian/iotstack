@@ -13,7 +13,7 @@ Arguments:
 
 Options:
   --ota-password <pwd>
-                  OTA password override (defaults to failsafe-derived per device)
+                  OTA password override (defaults to bootstrap-derived per device)
 
 Per-role help (shared with flash / update / verify):
 

@@ -15,7 +15,7 @@ Instead, pass via environment variable:
            iotstack reassign 19b164 mmwave --ota-password "$OTA_PWD"
            unset OTA_PWD
 
-By default, iotstack derives the OTA password from the failsafe role secret and
+By default, iotstack derives the OTA password from the bootstrap role secret and
 device MAC (the value stored in NVS at provisioning). Use --ota-password only
 when you need to override that.
 

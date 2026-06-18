@@ -26,10 +26,10 @@ or USB when the network path is unavailable):
 Panel layout is stored in NVS, not in firmware config_hash. Diagnostic text
 sensors (Panel Count, Matrix Panel Width/Height) report the active layout via the
 production API. On flash, iotstack compares those runtime values to the target
-(flags -> pass -> defaults). On mismatch it switches to failsafe, calls the
-update_nvs_secrets API on failsafe to write matrix_cols/matrix_panel_w/matrix_panel_h,
+(flags -> pass -> defaults). On mismatch it switches to bootstrap, calls the
+update_nvs_secrets API on bootstrap to write matrix_cols/matrix_panel_w/matrix_panel_h,
 and boots production again -- no production firmware reflash required. USB is a
-fallback when failsafe is not reachable on the network.
+fallback when bootstrap is not reachable on the network.
 
 Examples:
 

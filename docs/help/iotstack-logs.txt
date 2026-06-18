@@ -21,7 +21,7 @@ Examples:
   iotstack logs 1a7cfc bleproxy  # One bleproxy device over the network
 
 Notes:
-  - Serial streaming needs no YAML and works on a bricked/failsafe device.
+  - Serial streaming needs no YAML and works on a bricked/bootstrap device.
   - Network streaming uses 'esphome logs' under the hood (ESPHome API).
   - Multiple devices are prefixed like '[bleproxy-1a7cfc] ...' and interleaved.
   - Press Ctrl-C to stop.

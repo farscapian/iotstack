@@ -7,9 +7,9 @@ Usage:
   iotstack verify-flash <role> <tty>
 
 Arguments:
-  role              Device role (e.g. failsafe, bleproxy)
+  role              Device role (e.g. bootstrap, bleproxy)
   tty               Serial port (e.g. /dev/ttyACM0)
 
 Example:
-  iotstack verify-flash failsafe /dev/ttyACM0
+  iotstack verify-flash bootstrap /dev/ttyACM0
 

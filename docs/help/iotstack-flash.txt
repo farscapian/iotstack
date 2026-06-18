@@ -6,11 +6,11 @@ an OTA-style update over serial.
 
 Usage:
   iotstack flash <device> [tty-device] [options]
-  iotstack flash failsafe [tty-device|role]
+  iotstack flash bootstrap [tty-device|role]
 
 Arguments:
   <device>        Device role (e.g., bleproxy, mmwave, threadrouter)
-  failsafe        Flash failsafe image via serial
+  bootstrap        Flash bootstrap image via serial
   [tty-device]    Serial device (e.g., /dev/ttyACM0). Omitted: auto-pick
                   from NVS device_role on USB ports, or the only port with
                   a matching chip variant (e.g. matrixdisplay = esp32s3).
@@ -18,12 +18,12 @@ Arguments:
   [role]          Production role for dual-flash (e.g., mmwave, bleproxy)
 
 Options:
-  --ota-only      Skip failsafe flash, only OTA production (device already
+  --ota-only      Skip bootstrap flash, only OTA production (device already
                   has recovery)
   --on-flash-verify
                   Compare firmware by reading flash over USB (slower, more
                   thorough). Default uses runtime mDNS config_hash (same as
-                  iotstack devices / iotstack failsafe).
+                  iotstack devices / iotstack bootstrap).
   --erase         Wipe flash partitions then reflash (skip hash comparison)
 
 Role-specific options (e.g. matrixdisplay HUB75 NVS layout):
@@ -32,25 +32,25 @@ Role-specific options (e.g. matrixdisplay HUB75 NVS layout):
   iotstack flash <role> help        same file for flash / update / reassign
 
 NVS secrets (WiFi, OTA password, API key, matrix layout, etc.):
-  iotstack prefers updating NVS over the network -- switch to failsafe, then
-  call the update_nvs_secrets API service on failsafe-<mac>.local. USB
-  (write-nvs-secrets.sh / esptool) is used only when failsafe is not yet on
+  iotstack prefers updating NVS over the network -- switch to bootstrap, then
+  call the update_nvs_secrets API service on bootstrap-<mac>.local. USB
+  (write-nvs-secrets.sh / esptool) is used only when bootstrap is not yet on
   WiFi (typical first serial provision) or the API is unavailable.
 
 Smart flash (default):
   Assessment compares runtime config_hash from mDNS (fast). Production OTA
   is skipped when the running firmware matches the compiled build. Serial
-  erase runs only when the on-device partition table or failsafe image
+  erase runs only when the on-device partition table or bootstrap image
   differs from the current build.
 
   Use --on-flash-verify to compare by reading the full production and
-  failsafe partitions over USB instead (adds ~1-2 minutes but verifies
+  bootstrap partitions over USB instead (adds ~1-2 minutes but verifies
   what is actually written to flash).
 
 Examples:
   iotstack flash bleproxy /dev/ttyUSB0           # Smart setup (recovery + prod)
-  iotstack flash failsafe mmwave                 # Dual-flash: failsafe + mmwave
-  iotstack flash failsafe /dev/ttyUSB0           # Failsafe image only
+  iotstack flash bootstrap mmwave                 # Dual-flash: bootstrap + mmwave
+  iotstack flash bootstrap /dev/ttyUSB0           # Bootstrap image only
   iotstack flash mmwave /dev/ttyACM0 --ota-only  # Skip recovery, OTA prod only
   iotstack flash matrixdisplay help              # Role-specific flash options
   iotstack flash threadrouter                    # Auto-detect all USB devices

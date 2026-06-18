@@ -130,7 +130,7 @@ The `iotstack.sh` CLI tool provides a user-friendly wrapper around this script w
 Cache stored at `~/.iotstack/compilation-cache.csv` (CSV format with headers):
 
 **Columns:**
-- `yaml_name`: YAML filename (e.g., `bleproxy.yaml`, `.iotstack-failsafe-esp32c6.yaml`)
+- `yaml_name`: YAML filename (e.g., `bleproxy.yaml`, `.iotstack-bootstrap-esp32c6.yaml`)
 - `yaml_sha`: SHA256 hash of YAML + `yamls/external_components/` + `yamls/common/` + **current git tag** (cache key)
 - `binary_sha`: SHA256 of compiled `firmware.bin`
 - `config_hash`: 8-char hex ESPHome config hash (primary runtime comparison key)
@@ -139,7 +139,7 @@ Per-device build cache also at `~/.iotstack/logs/<device>.build.cache` (used by 
 
 **Cache invalidation:**
 - Changes to any device YAML, `external_components/`, or `common/` package
-- New git tag (`iotstack_project_version` folded into `yaml_sha` via `scripts/iotstack-version.sh`)
+- New git tag or commit (`iotstack_project_version` folded into `yaml_sha` via `scripts/iotstack-version.sh`)
 - ESPHome version change (`update_devices.sh` per-device cache)
 - Set `DISABLE_COMPILATION_CACHE=1` to force recompilation
 
@@ -147,7 +147,7 @@ Per-device build cache also at `~/.iotstack/logs/<device>.build.cache` (used by 
 ```
 yaml_name,yaml_sha,binary_sha,config_hash
 bleproxy.yaml,8f3e2c9d4a1b5f...,c9d2a8e7f3b1c4...,1a25e0c8
-failsafe.yaml,75e67037f9e3fc23...,a183d757ba74cc50...,3ea7c88a
+bootstrap.yaml,75e67037f9e3fc23...,a183d757ba74cc50...,3ea7c88a
 ```
 
 ### Serial Flash Baud Rate: 9600 (Critical)
@@ -167,11 +167,11 @@ If baud rate changes are ever considered, empirically test with actual 789KB fir
 ### YAML Configuration
 - ESPHome devices are configured via YAML files in `yamls/` (one file per role, e.g. `bleproxy.yaml`, `matrixdisplay.yaml`)
 - `esphome.name` is the role name; `name_add_mac_suffix: true` produces hostnames like `bleproxy-8238cc`
-- **Production YAMLs must not include `ota:`** -- OTA server lives only on failsafe firmware; production is updated via failsafe-mediated OTA
+- **Production YAMLs must not include `ota:`** -- OTA server lives only on bootstrap firmware; production is updated via bootstrap-mediated OTA
 - **No `safe_mode:`** -- boot-loop recovery is handled by `partition_manager`
 - **No `factory_reset` button** -- physical reset is `common/boot_button.yaml`
 
-### Project Version (Build-Time Git Tag)
+### Project Version (Build-Time Git Tag + Commit)
 
 All role YAMLs use a substitution injected before every `esphome compile`:
 
@@ -184,11 +184,13 @@ esphome:
 ```
 
 **Resolution order** (`scripts/iotstack-version.sh`):
-1. `IOTSTACK_PROJECT_VERSION` env var (tests/overrides)
-2. Latest git tag: `git describe --tags --abbrev=0` (e.g. `v0.1.0`)
-3. Fallback `0.0.0-dev` when no tags exist
+1. `IOTSTACK_PROJECT_VERSION` env var (tests/overrides; full string, commit not auto-appended)
+2. `<latest-tag>+<short-commit>` where tag is `git describe --tags --abbrev=0` (e.g. `v0.1.0+f7f2d73`)
+3. Fallback `0.0.0-dev+<short-commit>` when no tags exist
 
-**Injection points:** `iotstack.sh` `_esphome_compile`, `update_devices.sh`, `failsafe-yaml.sh` (variant artifacts). Source YAMLs in git stay at `0.0.0-dev`; only compile-time copies get the real tag.
+The commit suffix (`git rev-parse --short=7 HEAD`) identifies the exact tree flashed to the device. Compilation caches invalidate on every commit even when the semver tag is unchanged.
+
+**Injection points:** `iotstack.sh` `_esphome_compile`, `update_devices.sh`, `bootstrap-yaml.sh` (variant artifacts). Source YAMLs in git stay at `0.0.0-dev`; only compile-time copies get the real tag+commit.
 
 **Gotcha:** compile-time copies must live under `yamls/` (e.g. `yamls/.temp-compile-matrixdisplay.yaml.<pid>`), not `/tmp`, because ESPHome resolves `!include common/...` relative to the YAML file path.
 
@@ -219,7 +221,7 @@ iotstack update a1a7b0 mmwave --erase
 - MAC suffixes are 6-character hex strings (last 6 chars of MAC address)
 - MACs come before the device name in command
 - Only devices matching specified MACs are flashed
-- Production updates run **via failsafe** (`_update_via_failsafe`) so OTA never overwrites the failsafe partition
+- Production updates run **via bootstrap** (`_update_via_bootstrap`) so OTA never overwrites the bootstrap partition
 
 ### 2. Delta Updates (Default: On)
 - **Primary comparison:** `config_hash` from device mDNS TXT vs. compiled build
@@ -229,7 +231,7 @@ iotstack update a1a7b0 mmwave --erase
 
 
 ### 3. Device Reassignment (`iotstack reassign` / `--reassign`)
-Flash a target configuration only to specific devices (always via failsafe OTA):
+Flash a target configuration only to specific devices (always via bootstrap OTA):
 
 ```bash
 # Reassign specific devices to a different role
@@ -318,23 +320,23 @@ iotstack update yamls/custom.yaml
 
 ## Partition Configuration -- Dynamically Calculated
 
-**Two-partition scheme:** permanent **failsafe** (`ota_0`) + **production** (`ota_1`). All production OTA runs from failsafe so the failsafe image is never overwritten. Partition sizes are calculated from actual compiled firmware binary sizes.
+**Two-partition scheme:** permanent **bootstrap** (`ota_0`) + **production** (`ota_1`). All production OTA runs from bootstrap so the bootstrap image is never overwritten. Partition sizes are calculated from actual compiled firmware binary sizes.
 
 ### Calculation Process
 
-1. **Compile failsafe firmware** (`smart_compile`)
-   - Template: `yamls/failsafe.yaml`
-   - Rendered per chip to `yamls/.iotstack-failsafe-<variant>.yaml` (`scripts/failsafe-yaml.sh`)
+1. **Compile bootstrap firmware** (`smart_compile`)
+   - Template: `yamls/bootstrap.yaml`
+   - Rendered per chip to `yamls/.iotstack-bootstrap-<variant>.yaml` (`scripts/bootstrap-yaml.sh`)
    - Output: `firmware.bin` in build directory
 
-2. **Measure failsafe size** and set `IOTSTACK_FAILSAFE_PART_SIZE`
-   - Failsafe partition = firmware size + margin, rounded up to 64 KB
+2. **Measure bootstrap size** and set `IOTSTACK_BOOTSTRAP_PART_SIZE`
+   - Bootstrap partition = firmware size + margin, rounded up to 64 KB
    - Production partition = remaining flash after fixed NVS/OTA/metadata regions
 
 3. **Generate partition table** (`scripts/partition-table.sh`)
    - Creates `~/.iotstack/iotstack_partition_table.csv`
    - Symlink at `yamls/iotstack_partition_table.csv` (ESPHome `!include`)
-   - Failsafe may require a second compile pass after the table is regenerated
+   - Bootstrap may require a second compile pass after the table is regenerated
 
 4. **Use partition table**
    - `write-nvs-secrets.sh` reads NVS offset/size from generated CSV
@@ -417,14 +419,14 @@ r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)'
 
 ## Architecture Decisions & Gotchas
 
-### Failsafe-mediated production OTA
+### Bootstrap-mediated production OTA
 
 Production firmware has **no OTA server** in YAML. Update/reassign/flash paths:
-1. Switch device to failsafe (`switch_to_failsafe` API or serial refresh)
-2. Wait for `failsafe-<mac>.local` on `_iotstack-failsafe._tcp`
-3. OTA production image from failsafe via `update_devices.sh --reassign`
+1. Switch device to bootstrap (`switch_to_bootstrap` API or serial refresh)
+2. Wait for `bootstrap-<mac>.local` on `_iotstack-bootstrap._tcp`
+3. OTA production image from bootstrap via `update_devices.sh --reassign`
 
-`iotstack flash --erase` on an online production device still goes through this failsafe path for the actual OTA step.
+`iotstack flash --erase` on an online production device still goes through this bootstrap path for the actual OTA step.
 
 ### `--erase` assessment and update_devices
 
@@ -436,7 +438,7 @@ Production firmware has **no OTA server** in YAML. Update/reassign/flash paths:
 **update_devices.sh** (`--erase`):
 - Uses a dedicated `FLASH_ERASE=true` flag to force devices onto the flash list
 - **Do not** tie `--erase` to `UPGRADE_DELTA=false` -- that skipped compile-cache / `NEW_CONFIG_HASH` resolution and caused `hash: unknown` plus redundant compiles
-- `iotstack flash` passes **both** `--upgrade-delta` and `--erase` during failsafe OTA; argument order must leave `FLASH_ERASE` effective without disabling delta compile logic
+- `iotstack flash` passes **both** `--upgrade-delta` and `--erase` during bootstrap OTA; argument order must leave `FLASH_ERASE` effective without disabling delta compile logic
 
 ### `iotstack verify` and `set -e`
 
@@ -446,7 +448,7 @@ Production firmware has **no OTA server** in YAML. Update/reassign/flash paths:
 
 ### Post-OTA hash reporting
 
-During reassign OTA the discovered host is `failsafe-<mac>` -- failsafe mDNS typically has **no `config_hash`**. Success line should fall back to build hash from `NEW_CONFIG_HASH`, `build_info.json`, or `compilation-cache.csv` (`_resolve_build_config_hash`).
+During reassign OTA the discovered host is `bootstrap-<mac>` -- bootstrap mDNS typically has **no `config_hash`**. Success line should fall back to build hash from `NEW_CONFIG_HASH`, `build_info.json`, or `compilation-cache.csv` (`_resolve_build_config_hash`).
 
 ### Matrix display panel layout (NVS, not config_hash)
 
@@ -454,15 +456,15 @@ Panel count and dimensions live in **NVS**, not in firmware `config_hash`. A dev
 
 - CLI flags: `--panel-count`, `--panel-width`, `--panel-height` (flags -> pass store -> role defaults)
 - Runtime sensor: `panel_count` (legacy fallback: `matrix_panel_columns`)
-- **Preferred path:** switch to failsafe -> `update_nvs_secrets` API with `matrix_cols`, `matrix_panel_w`, `matrix_panel_h`
-- **USB fallback:** `write-nvs-secrets.sh` only when failsafe API unreachable (first provision)
+- **Preferred path:** switch to bootstrap -> `update_nvs_secrets` API with `matrix_cols`, `matrix_panel_w`, `matrix_panel_h`
+- **USB fallback:** `write-nvs-secrets.sh` only when bootstrap API unreachable (first provision)
 - Flash with current firmware but wrong layout: assessment reports NVS update action without recompiling
 
 ### NVS secrets update policy
 
 Network-first, USB-last:
-1. `update_nvs_secrets` on `failsafe-<mac>.local` (production API for read/compare, failsafe API for write)
-2. `write-nvs-secrets.sh` / esptool only when failsafe is not yet on WiFi or API is down
+1. `update_nvs_secrets` on `bootstrap-<mac>.local` (production API for read/compare, bootstrap API for write)
+2. `write-nvs-secrets.sh` / esptool only when bootstrap is not yet on WiFi or API is down
 
 ### Color variables and `printf`
 
@@ -474,13 +476,13 @@ Network-first, USB-last:
 |-------|-----------|----------|
 | Prompt doesn't appear, script hangs | User input code runs after stdout redirect | Use `>&2` for messages, `</dev/tty` for input |
 | `grep: invalid option -- '$'` | Pattern starts with dash (e.g., `-19b164$`) | Use `grep -- ` to stop option processing |
-| Device discovery finds wrong devices | Filtering by device_name in reassign mode | In reassign mode, discover `_iotstack-failsafe._tcp`, filter by MAC suffix |
+| Device discovery finds wrong devices | Filtering by device_name in reassign mode | In reassign mode, discover `_iotstack-bootstrap._tcp`, filter by MAC suffix |
 | Entity updates affect wrong integrations | Not checking platform field | Always filter: `if platform != 'esphome': continue` |
 | `iotstack verify` prints nothing / exits immediately | `log()` returned 1 under `set -e` when not verbose | `log()` always returns 0; use `info()` for required output |
 | `--erase` says it will reflash but exits early | Assessment ignored `FLASH_ERASE` on mDNS hash match | Honor `FLASH_ERASE` in all match branches; pull latest `main` |
-| OTA success shows `hash: unknown` | Failsafe host has no mDNS config_hash; compile cache skipped hash | Separate `FLASH_ERASE` from `UPGRADE_DELTA`; `_resolve_build_config_hash` fallback |
+| OTA success shows `hash: unknown` | Bootstrap host has no mDNS config_hash; compile cache skipped hash | Separate `FLASH_ERASE` from `UPGRADE_DELTA`; `_resolve_build_config_hash` fallback |
 | Literal `\033[0;32m` in compile spinner | `printf` + single-quoted color vars | Use `$'\033[...]'` or `[INFO]` lines only |
-| `--panel-count=2` ignored when firmware current | Layout is NVS, not config_hash | Failsafe NVS update path even when firmware matches |
+| `--panel-count=2` ignored when firmware current | Layout is NVS, not config_hash | Bootstrap NVS update path even when firmware matches |
 | Stale CLI behavior after fixes | Testing against unpulled `main` | `git pull` on `~/Sync/mini_projects/iotstack` |
 
 ## Device Types
@@ -620,60 +622,60 @@ The Thread analog of the WiFi-from-NVS path. ESPHome's `openthread` component ba
   otThreadSetEnabled(inst, true);
   ```
 - Ordering works like WiFi: the openthread component is `setup_priority::WIFI` (250), `nvs_secrets` is `AFTER_WIFI` (200), so the stack exists when nvs_secrets runs.
-- `CONFLICTS_WITH = ["wifi"]` in the openthread component means a single image cannot do both radios -- WiFi and Thread are **separate failsafe/production variants** (one radio per image; the C6 runs whichever image is booted). The dynamic partition table sizes each slot to whatever image lands there.
+- `CONFLICTS_WITH = ["wifi"]` in the openthread component means a single image cannot do both radios -- WiFi and Thread are **separate bootstrap/production variants** (one radio per image; the C6 runs whichever image is booted). The dynamic partition table sizes each slot to whatever image lands there.
 
 Status: compiles on threadrouter (Thread stack) and on WiFi-only devices (OT code excluded by the guard). **Not yet validated on a live Thread network** -- the runtime `otDatasetSetActiveTlvs` + re-attach sequence (and its timing vs. the OT task spin-up) needs hardware confirmation; the disable->set->enable order may need tuning.
 
-### TODO: production self-recovery into failsafe
+### TODO: production self-recovery into bootstrap
 
 For a device parked where its production radio is weak, the production image
 can't be rescued remotely (only via the physical boot button). A production
 image *could* self-recover: watch connectivity (e.g. `wifi_signal` below a
 threshold for N minutes, or repeated disconnects) and, on sustained failure,
-call `partition_manager::boot_failsafe()` to drop into the failsafe image --
+call `partition_manager::boot_bootstrap()` to drop into the bootstrap image --
 which (if Thread) is reachable over the mesh for re-flash. ESPHome has the hooks
 (`wifi` `on_disconnect`, signal sensors, `interval:`). Not implemented; would
 live as an optional shared package so each device opts in.
 
-### TODO: cascading failsafe (3-tier, future)
+### TODO: cascading bootstrap (3-tier, future)
 
 The generalization of the above. Three app partitions forming a recovery
 cascade, from most-reliable at the base to production at the top:
 
 ```
-ota_0  failsafe-thread   (base -- slowest OTA, presumed most reliable / best range)
-ota_1  failsafe-wifi     (faster recovery)
+ota_0  bootstrap-thread   (base -- slowest OTA, presumed most reliable / best range)
+ota_1  bootstrap-wifi     (faster recovery)
 ota_2  production
 ```
 
 Cascade (each tier detects its own failure and steps the boot slot DOWN, never
 up; needs a boot-loop guard via the safe_mode counter):
-- production fails to stay connected -> boot `failsafe-wifi`
-- `failsafe-wifi` can't get on WiFi within a timeout -> boot `failsafe-thread`
-- `failsafe-thread` is the floor (retries; never steps down)
+- production fails to stay connected -> boot `bootstrap-wifi`
+- `bootstrap-wifi` can't get on WiFi within a timeout -> boot `bootstrap-thread`
+- `bootstrap-thread` is the floor (retries; never steps down)
 
 **Only deploy all three IF they fit the flash.** Use the dynamic partition
-sizing to sum failsafe-thread + failsafe-wifi + production; if the total fits
+sizing to sum bootstrap-thread + bootstrap-wifi + production; if the total fits
 (comfortable on 8MB; tight on 4MB -- production drops from ~2.88MB to ~2.2MB,
 still fits bleproxy 1.40MB), build the 3-tier layout. Otherwise fall back to the
-current 2-partition scheme (failsafe-wifi + production). The decision is made at
+current 2-partition scheme (bootstrap-wifi + production). The decision is made at
 provision time from the measured image sizes.
 
 **The hard part -- OTA targeting with 3 OTA slots.** `esp_ota_get_next_update_partition()`
 cycles ota_0->ota_1->ota_2->ota_0, so:
-- OTA run from `failsafe-wifi` (ota_1) -> lands in `production` (ota_2) [OK] -- normal
+- OTA run from `bootstrap-wifi` (ota_1) -> lands in `production` (ota_2) [OK] -- normal
   updates work out of the box.
-- OTA run from `failsafe-thread` (ota_0) -> lands in `failsafe-wifi` (ota_1) [FAIL].
+- OTA run from `bootstrap-thread` (ota_0) -> lands in `bootstrap-wifi` (ota_1) [FAIL].
   A deep Thread-only recovery OTA (WiFi dead) therefore needs **explicit
   partition selection** in the OTA backend (ESPHome uses get_next and doesn't
   expose a target), which is the one piece beyond a weekend.
 
-**Naming:** with the cascade, rename the current `failsafe` -> `failsafe-wifi`
-(touches the mDNS name `failsafe-<mac>`, the `iotstack/roles/failsafe/...` pass
-paths, the flash wait logic, and the `failsafe` partition label) and add
-`failsafe-thread`. Do the rename *with* the cascade, not piecemeal.
+**Naming:** with the cascade, rename the current `bootstrap` -> `bootstrap-wifi`
+(touches the mDNS name `bootstrap-<mac>`, the `iotstack/roles/bootstrap/...` pass
+paths, the flash wait logic, and the `bootstrap` partition label) and add
+`bootstrap-thread`. Do the rename *with* the cascade, not piecemeal.
 
-**Build order:** (1) matched 2-variant failsafe (wifi/thread) + validated
+**Build order:** (1) matched 2-variant bootstrap (wifi/thread) + validated
 Thread-from-NVS; (2) single-step self-recovery trigger (above); (3) full 3-tier
 cascade + the explicit-OTA-target work. Keep `partition_manager`'s boot logic
 able to target a *specific* slot (not just toggle) so it's cascade-ready.
@@ -811,7 +813,7 @@ Our threat model protects against:
 
 ```
 Role-based secret (in pass store):
-  iotstack/roles/failsafe/ota_password = "base_secret_xyz"
+  iotstack/roles/bootstrap/ota_password = "base_secret_xyz"
   
 Device-specific computation (in-memory during flash):
   device_password = sha256("base_secret_xyz" | "1af95c")[0:32]
@@ -1021,5 +1023,5 @@ trap 'cleanup "$temp_file"' EXIT
 - ESPHome YAML: https://esphome.io (substitutions, name_add_mac_suffix)
 - Home Assistant WebSocket API: `config/entity_registry/*` commands
 - Project version injection: `scripts/iotstack-version.sh`
-- Failsafe YAML artifacts: `scripts/failsafe-yaml.sh`
+- Bootstrap YAML artifacts: `scripts/bootstrap-yaml.sh`
 - Flash assessment: `iotstack.sh` `_flash_assess_device`, `_flash_production_matches_build`

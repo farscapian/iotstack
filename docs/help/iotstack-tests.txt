@@ -24,11 +24,11 @@ Environment (~/.iotstack/.env):
   IOTSTACK_TEST_TTY_S3=/dev/ttyACM1   Optional override for ESP32-S3
 
 Role -> chip mapping (from iotstack roles / YAML variant):
-  esp32c6: bleproxy, mmwave, threadrouter, failsafe
+  esp32c6: bleproxy, mmwave, threadrouter, bootstrap
   esp32s3: ledlightstrip, sendspinspeaker, silentnotify, matrixdisplay
 
 Test suites:
-  00-14  ESP32-C6 (bleproxy / failsafe / mmwave reassign cycle)
+  00-14  ESP32-C6 (bleproxy / bootstrap / mmwave reassign cycle)
   15-16  Compilation cache via iotstack flash (hit/miss, config_hash backfill)
   20-29  ESP32-S3 (ledlightstrip / silentnotify / matrixdisplay)
 
@@ -63,7 +63,7 @@ Ports: ~/.iotstack/artifacts/serial-port-map.env (last scan)
 Overnight (C6 + S3 plugged in):
   iotstack tests run --iterations 5 2>&1 | tee ~/iotstack-overnight.log
 
-Failsafe firmware is compiled per chip variant (yamls/.iotstack-failsafe-esp32c6.yaml,
+Bootstrap firmware is compiled per chip variant (yamls/.iotstack-bootstrap-esp32c6.yaml,
 etc.) with separate compilation-cache entries.
 `iotstack flash` detects the chip on each /dev/ttyACM* port and substitutes the
 matching profile before compile.

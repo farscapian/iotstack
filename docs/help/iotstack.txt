@@ -15,7 +15,7 @@ Commands:
   logs                Stream device logs (serial, or over the network by role)
   query               Query Home Assistant device and entity registry
   devices             Show discovered ESPHome devices on network
-  failsafe            Show devices running failsafe (recovery) firmware
+  bootstrap            Show devices running bootstrap (recovery) firmware
   device              Read per-device NVS secrets from USB-connected hardware
   roles               Show available device roles and their configurations
   secret              Retrieve secrets from encrypted pass store
