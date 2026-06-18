@@ -108,10 +108,11 @@ api:
         matrix_cols: string
         matrix_panel_w: string
         matrix_panel_h: string
+        device_role: string
       then:
         - lambda: |-
             id(nvs).update_secrets(wifi_ssid, wifi_password, ota_password, api_key, thread_tlv,
-              matrix_cols, matrix_panel_w, matrix_panel_h);
+              matrix_cols, matrix_panel_w, matrix_panel_h, device_role);
         - delay: 500ms
         - lambda: |-
             App.safe_reboot();

@@ -144,6 +144,9 @@ FAILSAFE_OTA_PASSWORD=$(echo -n "${FAILSAFE_OTA_BASE}|${DEVICE_MAC}" | sha256sum
 # -- Derive production device-specific API key (if production role given) --
 PROD_API_KEY=""
 if [[ -n "$PRODUCTION_ROLE" ]]; then
+  if ! grep -q "^${PRODUCTION_ROLE}=" "$ROLES_CONF" 2>/dev/null; then
+    err "Unknown production role: $PRODUCTION_ROLE (not in $ROLES_CONF)"
+  fi
   info "Computing production API key for role: $PRODUCTION_ROLE (device: $DEVICE_MAC)"
 
   PROD_API_BASE=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/api_encryption_key" 2>/dev/null || echo "")
@@ -192,7 +195,7 @@ fi
 
 if [[ "$PRINT_API_JSON" == "1" ]]; then
   export WIFI_SSID WIFI_PASSWORD FAILSAFE_OTA_PASSWORD PROD_API_KEY THREAD_TLV \
-         WRITE_MATRIX_LAYOUT MATRIX_COLS MATRIX_PANEL_W MATRIX_PANEL_H
+         WRITE_MATRIX_LAYOUT MATRIX_COLS MATRIX_PANEL_W MATRIX_PANEL_H PRODUCTION_ROLE
   python3 - <<'PY'
 import json, os
 
@@ -207,6 +210,9 @@ if os.environ.get("WRITE_MATRIX_LAYOUT") == "1":
     payload["matrix_cols"] = os.environ.get("MATRIX_COLS", "1")
     payload["matrix_panel_w"] = os.environ.get("MATRIX_PANEL_W", "64")
     payload["matrix_panel_h"] = os.environ.get("MATRIX_PANEL_H", "32")
+prod_role = os.environ.get("PRODUCTION_ROLE", "")
+if prod_role:
+    payload["device_role"] = prod_role
 print(json.dumps(payload))
 PY
   exit 0
@@ -220,7 +226,8 @@ export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
        PROD_API_KEY="$PROD_API_KEY" \
        THREAD_TLV="$THREAD_TLV" DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE" \
        NVS_SIZE="$NVS_SIZE" WRITE_MATRIX_LAYOUT="$WRITE_MATRIX_LAYOUT" \
-       MATRIX_COLS="${MATRIX_COLS:-}" MATRIX_PANEL_W="${MATRIX_PANEL_W:-}" MATRIX_PANEL_H="${MATRIX_PANEL_H:-}"
+       MATRIX_COLS="${MATRIX_COLS:-}" MATRIX_PANEL_W="${MATRIX_PANEL_W:-}" MATRIX_PANEL_H="${MATRIX_PANEL_H:-}" \
+       PRODUCTION_ROLE="${PRODUCTION_ROLE:-}"
 
 # Use ESP-IDF Python environment which has nvs_partition_gen installed
 ESP_IDF_PYTHON="${HOME}/.espressif/python_env/idf6.1_py3.14_env/bin/python3"
@@ -237,6 +244,7 @@ wifi_password = os.environ['WIFI_PASSWORD']
 failsafe_ota_password = os.environ['FAILSAFE_OTA_PASSWORD']
 prod_api_key = os.environ.get('PROD_API_KEY', '')
 thread_tlv = os.environ.get('THREAD_TLV', '')
+production_role = os.environ.get('PRODUCTION_ROLE', '')
 write_matrix_layout = os.environ.get('WRITE_MATRIX_LAYOUT', '0') == '1'
 matrix_cols = os.environ.get('MATRIX_COLS', '1')
 matrix_panel_w = os.environ.get('MATRIX_PANEL_W', '64')
@@ -268,6 +276,8 @@ with open(nvs_csv_path, 'w') as f:
         f.write(f"matrix_cols,data,u8,{matrix_cols}\n")
         f.write(f"matrix_panel_w,data,u16,{matrix_panel_w}\n")
         f.write(f"matrix_panel_h,data,u16,{matrix_panel_h}\n")
+    if production_role:
+        f.write(f"device_role,data,string,{production_role}\n")
 
 print(f"[OK] Created NVS CSV file for nvs_partition_gen")
 

@@ -38,7 +38,8 @@ class NVSSecrets : public Component {
                       const std::string &thread_tlv,
                       const std::string &matrix_cols = "",
                       const std::string &matrix_panel_w = "",
-                      const std::string &matrix_panel_h = "");
+                      const std::string &matrix_panel_h = "",
+                      const std::string &device_role = "");
 
  private:
   std::string ota_nvs_key_{"ota_password"};

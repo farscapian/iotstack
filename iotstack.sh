@@ -1841,6 +1841,66 @@ _ensure_device_on_failsafe() {
   return 0
 }
 
+_failsafe_update_nvs_device_role() {
+  # Partial NVS update: device_role only (roles.conf name for USB auto-identify).
+  local device_mac="$1"
+  local role="$2"
+  local json_vars
+
+  json_vars=$(
+    DEVICE_ROLE="$role" python3 - <<'PY'
+import json, os
+print(json.dumps({
+    "wifi_ssid": "",
+    "wifi_password": "",
+    "ota_password": "",
+    "api_key": "",
+    "thread_tlv": "",
+    "matrix_cols": "",
+    "matrix_panel_w": "",
+    "matrix_panel_h": "",
+    "device_role": os.environ["DEVICE_ROLE"],
+}))
+PY
+  ) || return 1
+  _nvs_update_via_failsafe_api "$device_mac" "$json_vars"
+}
+
+_resolve_flash_tty_for_role() {
+  # Auto-pick USB tty for a roles.conf role (NVS device_role, else lone chip variant).
+  local role="$1"
+  local resolved="" expected_variant variant port
+  local -a variant_ports=()
+
+  # shellcheck source=scripts/esp-serial.sh
+  source "${SCRIPT_DIR}/scripts/esp-serial.sh"
+  # shellcheck source=scripts/yaml-info.sh
+  source "${SCRIPT_DIR}/scripts/yaml-info.sh"
+
+  if resolved=$(esp_tty_for_role "$role" 2>/dev/null); then
+    info "Resolved role '$role' to $resolved (NVS device_role)"
+    printf '%s\n' "$resolved"
+    return 0
+  fi
+
+  expected_variant=$(yaml_variant_for_role "$role" 2>/dev/null) || expected_variant=""
+  if [[ -n "$expected_variant" ]]; then
+    while IFS= read -r port; do
+      [[ -z "$port" ]] && continue
+      variant=$(esp_detect_chip "$port" 2>/dev/null) || continue
+      [[ "$variant" == "$expected_variant" ]] && variant_ports+=("$port")
+    done < <(esp_serial_ports)
+    if [[ ${#variant_ports[@]} -eq 1 ]]; then
+      resolved="${variant_ports[0]}"
+      info "Resolved role '$role' to $resolved (${expected_variant}; NVS device_role not set)"
+      printf '%s\n' "$resolved"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
 _ota_via_failsafe() {
   # OTA into the production slot via failsafe (partition-safe path).
   # Usage: _ota_via_failsafe <mac> <yaml_file> <ota_password> <post_ota_hostname> [tty_device] [update_args...]
@@ -1863,6 +1923,17 @@ _ota_via_failsafe() {
 
   if ! _ensure_device_on_failsafe "$mac" "$is_dry_run" "$tty_device"; then
     return 1
+  fi
+
+  if [[ "$is_dry_run" != true ]]; then
+    local conf_role
+    conf_role=$(basename "$yaml_file" .yaml)
+    if _failsafe_update_nvs_device_role "$mac" "$conf_role"; then
+      debug "[$mac] NVS device_role set to $conf_role"
+      sleep 3
+    else
+      debug "[$mac] NVS device_role not updated via API (may be set on next USB provision)"
+    fi
   fi
 
   info "[$mac] 4/4 OTA into production slot..."
@@ -3297,6 +3368,7 @@ print(json.dumps({
     "matrix_cols": os.environ["MATRIX_COLS"],
     "matrix_panel_w": os.environ["MATRIX_PANEL_W"],
     "matrix_panel_h": os.environ["MATRIX_PANEL_H"],
+    "device_role": "",
 }))
 PY
   ) || return 1
@@ -3538,6 +3610,14 @@ cmd_flash() {
       _flash_recovery "$tty_device_or_role"
     fi
     return
+  fi
+
+  # For production roles: auto-resolve USB tty when omitted (NVS device_role, else chip variant).
+  if [[ -z "$tty_device_or_role" ]]; then
+    local resolved_tty=""
+    if resolved_tty=$(_resolve_flash_tty_for_role "$device" 2>/dev/null); then
+      tty_device_or_role="$resolved_tty"
+    fi
   fi
 
   # For production roles: smart dual-partition setup
@@ -4258,9 +4338,13 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
     return
   fi
 
-  # No TTY specified: flash command requires serial device
+  # No TTY specified and auto-resolve failed
   err "Serial device required for flash command.
 Usage: iotstack flash $device /dev/ttyUSB0
+
+Auto-detect looks for NVS device_role on each USB port (set at first provision).
+With multiple similar boards plugged in, specify the tty explicitly.
+New/unprovisioned devices always need an explicit tty.
 
 Note: Use 'iotstack update $device' for OTA flashing to devices already on network"
 }

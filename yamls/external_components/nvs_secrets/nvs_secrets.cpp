@@ -264,7 +264,8 @@ void NVSSecrets::update_secrets(const std::string &wifi_ssid,
                                 const std::string &thread_tlv,
                                 const std::string &matrix_cols,
                                 const std::string &matrix_panel_w,
-                                const std::string &matrix_panel_h) {
+                                const std::string &matrix_panel_h,
+                                const std::string &device_role) {
   nvs_handle_t handle;
   esp_err_t err = nvs_open(NAMESPACE, NVS_READWRITE, &handle);
   if (err != ESP_OK) {
@@ -280,6 +281,7 @@ void NVSSecrets::update_secrets(const std::string &wifi_ssid,
   write_nvs_u8_if_set(handle, "matrix_cols", matrix_cols);
   write_nvs_u16_if_set(handle, "matrix_panel_w", matrix_panel_w, 256);
   write_nvs_u16_if_set(handle, "matrix_panel_h", matrix_panel_h, 128);
+  write_nvs_string(handle, "device_role", device_role);
   err = nvs_commit(handle);
   if (err != ESP_OK)
     ESP_LOGE(TAG, "[NVS-UPDATE] nvs_commit failed: %s", esp_err_to_name(err));

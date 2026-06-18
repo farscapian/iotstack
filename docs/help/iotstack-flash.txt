@@ -11,8 +11,10 @@ Usage:
 Arguments:
   <device>        Device role (e.g., bleproxy, mmwave, threadrouter)
   failsafe        Flash failsafe image via serial
-  [tty-device]    Serial device (e.g., /dev/ttyACM0). Auto-detected if
-                  omitted.
+  [tty-device]    Serial device (e.g., /dev/ttyACM0). Omitted: auto-pick
+                  from NVS device_role on USB ports, or the only port with
+                  a matching chip variant (e.g. matrixdisplay = esp32s3).
+                  New/unprovisioned devices need an explicit tty.
   [role]          Production role for dual-flash (e.g., mmwave, bleproxy)
 
 Options:

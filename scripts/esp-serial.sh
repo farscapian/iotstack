@@ -186,3 +186,41 @@ esp_tty_for_mac_suffix() {
 
   return 1
 }
+
+esp_nvs_device_role_from_port() {
+  # Read iotstack NVS device_role (roles.conf name) from a USB serial port.
+  local port="$1"
+  local scripts_dir role
+
+  [[ -e "$port" ]] || return 1
+  scripts_dir="${SCRIPTS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+  role=$("${scripts_dir}/read-nvs-secrets.sh" device_role "$port" 2>/dev/null) || return 1
+  role=$(echo "$role" | tr -d '[:space:]')
+  [[ -n "$role" ]] || return 1
+  printf '%s\n' "$role"
+}
+
+esp_tty_for_role() {
+  # Find USB port whose NVS device_role matches (provisioned devices only).
+  local want_role="$1"
+  local port got_role
+  local -a matches=()
+
+  want_role=$(echo "$want_role" | tr '[:upper:]' '[:lower:]')
+  [[ -n "$want_role" ]] || return 1
+
+  while IFS= read -r port; do
+    [[ -z "$port" ]] && continue
+    got_role=$(esp_nvs_device_role_from_port "$port" 2>/dev/null) || continue
+    got_role=$(echo "$got_role" | tr '[:upper:]' '[:lower:]')
+    if [[ "$got_role" == "$want_role" ]]; then
+      matches+=("$port")
+    fi
+  done < <(esp_serial_ports)
+
+  if [[ ${#matches[@]} -eq 1 ]]; then
+    printf '%s\n' "${matches[0]}"
+    return 0
+  fi
+  return 1
+}
