@@ -126,17 +126,6 @@ _compile_log_banner() {
   if [[ "$VERBOSE" == true ]]; then echo "$banner"; fi
 }
 
-# Animate dots while waiting (1 to 5 dots, repeating)
-animate_compile() {
-  local pid=$1
-  local dots=0
-  while kill -0 "$pid" 2>/dev/null; do
-    dots=$(( (dots % 5) + 1 ))
-    printf "\r  ⚙ Compiling%-5s" "$(printf '.%.0s' $(seq 1 $dots))" >&2
-    sleep 0.3
-  done
-}
-
 # ── Ensure websocket-client library is installed ────────────────────────────
 ensure_websocket_client() {
   if python3 -c "import websocket" 2>/dev/null; then
@@ -1235,7 +1224,7 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
   else
     if [[ "$VERBOSE" == true ]]; then
       _compile_log_banner
-      ok "Compiling firmware (ESPHome ${ESPHOME_VERSION})..."
+      info "Compiling firmware (ESPHome ${ESPHOME_VERSION})..."
       if "$ESPHOME_BIN" compile "$YAML_FILE" 2>&1 | tee -a "$COMPILE_LOG_FILE"; then
         NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG_FILE" \
           | tail -1 | sed 's/config_hash=0x//')
@@ -1250,30 +1239,19 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
         exit 1
       fi
     else
-      # Silent mode: compile with output to log file only
       COMPILE_LOG=$(mktemp)
       _compile_log_banner
+      info "Compiling firmware..."
 
-      # Run compilation in background for animation
-      "$ESPHOME_BIN" compile "$YAML_FILE" >> "$COMPILE_LOG" 2>&1 &
-      COMPILE_PID=$!
-
-      # Animate dots while compiling
-      animate_compile $COMPILE_PID
-
-      # Wait for compilation to finish
-      if wait $COMPILE_PID; then
+      if "$ESPHOME_BIN" compile "$YAML_FILE" >> "$COMPILE_LOG" 2>&1; then
         NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG" \
           | tail -1 | sed 's/config_hash=0x//')
         COMPILED=true
-        printf '\r  ⚙ Compiling %s✓%s\n' "$GRN" "$RST" >&2
-        # Persist cache for next run
         printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
           "$YAML_SHA256" "$ESPHOME_VERSION" "$NEW_CONFIG_HASH" > "$CACHE_FILE"
         setup_flash_logs "$NEW_CONFIG_HASH"
         if [[ -n "$NEW_CONFIG_HASH" ]]; then ok "Build config_hash: ${NEW_CONFIG_HASH}"; fi
       else
-        printf '\r  ⚙ Compiling %s✗%s\n' "$RED" "$RST" >&2
         err "Compilation failed:"
         echo
         cat "$COMPILE_LOG"
@@ -1412,7 +1390,7 @@ fi
 if [[ "$COMPILED" == false ]]; then
   if [[ "$VERBOSE" == true ]]; then
     _compile_log_banner
-    ok "Compiling firmware..."
+    info "Compiling firmware..."
     if ! "$ESPHOME_BIN" compile "$YAML_FILE" 2>&1 | tee -a "$COMPILE_LOG_FILE"; then
       err "Compilation failed — aborting."
       exit 1
@@ -1423,18 +1401,16 @@ if [[ "$COMPILED" == false ]]; then
       NEW_CONFIG_HASH=$(_resolve_build_config_hash "$ORIGINAL_YAML_FILE" "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
     [[ -n "$NEW_CONFIG_HASH" ]] && COMPILED=true
   else
-    printf "  ⚙ Compiling firmware..." >&2
     COMPILE_LOG=$(mktemp)
     _compile_log_banner
+    info "Compiling firmware..."
 
     if "$ESPHOME_BIN" compile "$YAML_FILE" >> "$COMPILE_LOG" 2>&1; then
       NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG" \
         | tail -1 | sed 's/config_hash=0x//')
       [[ -z "$NEW_CONFIG_HASH" ]] && \
         NEW_CONFIG_HASH=$(_resolve_build_config_hash "$ORIGINAL_YAML_FILE" "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
-      printf ' %s✓%s\n' "$GRN" "$RST" >&2
     else
-      printf ' %s✗%s\n' "$RED" "$RST" >&2
       err "Compilation failed:"
       echo
       cat "$COMPILE_LOG"
