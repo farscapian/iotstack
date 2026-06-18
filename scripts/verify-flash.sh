@@ -23,6 +23,7 @@ RST='\033[0m'
 
 err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
 ok()   { echo -e "${GRN}[OK]${RST} $*"; }
+warn() { echo -e "${YLW}[WARN]${RST} $*"; }
 info() { echo -e "${YLW}[INFO]${RST} $*"; }
 
 # Arguments
@@ -32,6 +33,16 @@ DEVICE_NAME="${2:-}"
 [[ -z "$TTY_DEVICE" ]] && err "Usage: $0 <tty_device> <device_name>"
 [[ -z "$DEVICE_NAME" ]] && err "Usage: $0 <tty_device> <device_name>"
 [[ ! -e "$TTY_DEVICE" ]] && err "TTY device not found: $TTY_DEVICE"
+
+# Chip: ESP_VERIFY_CHIP env, or auto-detect from serial port
+ESPTOOL_CHIP="${ESP_VERIFY_CHIP:-}"
+if [[ -z "$ESPTOOL_CHIP" ]]; then
+  # shellcheck source=scripts/esp-serial.sh
+  source "${SCRIPT_DIR}/esp-serial.sh"
+  ESPTOOL_CHIP=$(esp_detect_chip "$TTY_DEVICE" 2>/dev/null) || true
+fi
+[[ -z "$ESPTOOL_CHIP" ]] && ESPTOOL_CHIP=esp32c6
+info "Using esptool chip: $ESPTOOL_CHIP (port: $TTY_DEVICE)"
 
 # Build directory
 BUILD_DIR="${PROJECT_DIR}/yamls/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}"
@@ -81,7 +92,9 @@ for i in {0..1}; do
 
   info "Verifying $file at offset $offset (size: $file_size bytes)..."
 
-  if python3 -m esptool --chip esp32c6 --port "$TTY_DEVICE" --baud 9600 \
+  local esptool_baud
+  esptool_baud=$(esp_esptool_baud_for_chip "$ESPTOOL_CHIP")
+  if python3 -m esptool --chip "$ESPTOOL_CHIP" --port "$TTY_DEVICE" --baud "$esptool_baud" --before default-reset \
     read-flash "$offset" "$read_size" "$read_file" >/dev/null 2>&1; then
 
     # Truncate read file to exact original size for comparison

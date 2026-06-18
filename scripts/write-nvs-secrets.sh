@@ -247,10 +247,18 @@ if [[ -z "$NVS_BIN_PATH" ]] || [[ ! -f "$NVS_BIN_PATH" ]]; then
   err "NVS binary generation failed - file not found at: $NVS_BIN_PATH"
 fi
 
+# Chip: auto-detect from serial port
+# shellcheck source=scripts/esp-serial.sh
+source "${SCRIPT_DIR}/esp-serial.sh"
+ESPTOOL_CHIP="${IOTSTACK_ESPTOOL_CHIP:-}"
+if [[ -z "$ESPTOOL_CHIP" ]]; then
+  ESPTOOL_CHIP=$(esp_detect_chip "$TTY_DEVICE" 2>/dev/null) || ESPTOOL_CHIP=esp32c6
+fi
+
 # Write to device using esptool via Python
-# Using 9600 baud for reliable writes (higher speeds cause corruption)
-info "Writing NVS partition to device at $NVS_OFFSET..."
-if python3 -m esptool --chip esp32c6 --port "$TTY_DEVICE" --baud 9600 write-flash "$NVS_OFFSET" "$NVS_BIN_PATH"; then
+ESPTOOL_BAUD=$(esp_esptool_baud_for_chip "$ESPTOOL_CHIP")
+info "Writing NVS partition to device at $NVS_OFFSET (${ESPTOOL_CHIP}, ${ESPTOOL_BAUD} baud)..."
+if python3 -m esptool --chip "$ESPTOOL_CHIP" --port "$TTY_DEVICE" --baud "$ESPTOOL_BAUD" --before default-reset write-flash "$NVS_OFFSET" "$NVS_BIN_PATH"; then
   ok "NVS written to device successfully"
 else
   err "Failed to write NVS partition to device"

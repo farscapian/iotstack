@@ -5,7 +5,7 @@ resources/esp32projects/  # Local clones of reference projects (not part of buil
 **/.temp-api-key-*.yaml
 .esphome/
 yamls/.esphome/
-yamls/iotstack_partition_table.csv  # Symlink to ~/.iotstack/iotstack_partition_table.csv (generated)
+yamls/iotstack_partition_table.csv  # Symlink to ~/.iotstack/artifacts/iotstack_partition_table.csv (generated)
 .iotstack/  # Generated artifacts (partition tables, logs, caches)
 legacy/ # old yamls and other stuff that is useful but no longer considered modern
 
@@ -41,6 +41,8 @@ otbr/*.env
 !yamls/external_components/nvs_ota_password/**
 !yamls/external_components/nvs_writer/
 !yamls/external_components/nvs_writer/**
+!yamls/external_components/matrix_hub75/
+!yamls/external_components/matrix_hub75/**
 !scripts/write-nvs-secrets.sh
 !scripts/iotstack-secrets
 !scripts/rotate-secrets__pycache__/

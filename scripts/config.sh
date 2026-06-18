@@ -24,6 +24,7 @@ export SCRIPT_DIR="${SCRIPT_DIR:-$PROJECT_ROOT}"
 # Base directories — allow user override via environment variable
 export IOTSTACK_HOME="${IOTSTACK_HOME:-${HOME}/.iotstack}"
 export YAMLS_DIR="${YAMLS_DIR:-${PROJECT_ROOT}/yamls}"
+export TESTS_DIR="${TESTS_DIR:-${PROJECT_ROOT}/tests}"
 
 # Environment file for user configuration
 export ENV_FILE="${ENV_FILE:-${IOTSTACK_HOME}/.env}"
@@ -38,8 +39,15 @@ fi
 export ROLES_CONF="${ROLES_CONF:-${SCRIPTS_DIR}/roles.conf}"
 export UPDATE_SCRIPT="${UPDATE_SCRIPT:-${SCRIPTS_DIR}/update_devices.sh}"
 export COMPILATION_CACHE="${COMPILATION_CACHE:-${IOTSTACK_HOME}/compilation-cache.csv}"
+
+# Directories — allow user override (ARTIFACTS_DIR before PARTITION_TABLE)
+export LOGS_DIR="${LOGS_DIR:-${IOTSTACK_HOME}/logs}"
+export ARTIFACTS_DIR="${ARTIFACTS_DIR:-${IOTSTACK_HOME}/artifacts}"
+export PASS_STORE_DIR="${PASS_STORE_DIR:-${IOTSTACK_HOME}/.pass}"
+export GNUPG_HOME="${GNUPG_HOME:-${IOTSTACK_HOME}/.gnupg}"
+
 export PARTITION_TABLE_CSV="${PARTITION_TABLE_CSV:-iotstack_partition_table.csv}"
-export PARTITION_TABLE="${PARTITION_TABLE:-${IOTSTACK_HOME}/${PARTITION_TABLE_CSV}}"
+export PARTITION_TABLE="${PARTITION_TABLE:-${ARTIFACTS_DIR}/${PARTITION_TABLE_CSV}}"
 export PARTITION_TABLE_SYMLINK="${PARTITION_TABLE_SYMLINK:-${YAMLS_DIR}/${PARTITION_TABLE_CSV}}"
 
 # Partition layout (2-partition scheme: permanent failsafe ota_0 + production
@@ -56,17 +64,21 @@ export IOTSTACK_APP_OFFSET="${IOTSTACK_APP_OFFSET:-0x30000}"         # first app
 export IOTSTACK_FAILSAFE_PART_SIZE="${IOTSTACK_FAILSAFE_PART_SIZE:-0x180000}"  # initial/fallback (1.5MB)
 export IOTSTACK_FAILSAFE_MARGIN="${IOTSTACK_FAILSAFE_MARGIN:-0x10000}"         # headroom above firmware (64KB)
 
-# Directories — allow user override
-export LOGS_DIR="${LOGS_DIR:-${IOTSTACK_HOME}/logs}"
-export ARTIFACTS_DIR="${ARTIFACTS_DIR:-${IOTSTACK_HOME}/artifacts}"
-export PASS_STORE_DIR="${PASS_STORE_DIR:-${IOTSTACK_HOME}/.pass}"
-export GNUPG_HOME="${GNUPG_HOME:-${IOTSTACK_HOME}/.gnupg}"
-
 # ESPHome build directories (for verification scripts)
 export ESPHOME_BUILD_DIR="${ESPHOME_BUILD_DIR:-${YAMLS_DIR}/.esphome/build}"
 
 # Build behavior flags — allow user override via environment variable or .env file
 export CLEAN_BUILD_DIRECTORY="${CLEAN_BUILD_DIRECTORY:-0}"
 
+# Auto-register production ESPHome devices in Home Assistant after flash/update.
+# 0 (default): skip HA config-flow registration
+# 1: complete ESPHome discovery via WebSocket + device api_encryption_key from pass
+export PERFORM_HA_DEVICE_REGISTRATION="${PERFORM_HA_DEVICE_REGISTRATION:-0}"
+
 # Ensure directories exist
 mkdir -p "$IOTSTACK_HOME" "$LOGS_DIR" "$ARTIFACTS_DIR" "$PASS_STORE_DIR" 2>/dev/null || true
+
+# Stub partition table artifact + yamls/ symlink (generated tables live in artifacts/)
+# shellcheck source=scripts/partition-table.sh
+source "${SCRIPTS_DIR}/partition-table.sh"
+ensure_partition_table_artifact

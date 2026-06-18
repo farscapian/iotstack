@@ -7,3 +7,5 @@
 # paths; recreated by setup.sh / iotstack.sh — must not be committed)
 /.iotstack
 /iotstack_partition_table.csv
+/.iotstack-failsafe-*.yaml
+/.temp-ota-upload-*.yaml
