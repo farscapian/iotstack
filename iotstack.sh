@@ -91,10 +91,22 @@ _normalize_compilation_cache() {
   (( row_count == unique_count )) && return 0
 
   tmp=$(mktemp)
-  {
-    head -1 "$COMPILATION_CACHE"
-    tail -n +2 "$COMPILATION_CACHE" | awk -F, '{ rows[$1]=$0 } END { for (n in rows) print rows[n] }' | sort -t, -k1,1
-  } > "$tmp"
+  local header
+  header=$(head -1 "$COMPILATION_CACHE")
+  if [[ "$header" != *config_hash* ]]; then
+    {
+      echo "yaml_name,yaml_sha,binary_sha,config_hash"
+      tail -n +2 "$COMPILATION_CACHE" | while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        echo "${line},"
+      done
+    } > "$tmp"
+  else
+    {
+      head -1 "$COMPILATION_CACHE"
+      tail -n +2 "$COMPILATION_CACHE" | awk -F, '{ rows[$1]=$0 } END { for (n in rows) print rows[n] }' | sort -t, -k1,1
+    } > "$tmp"
+  fi
   mv "$tmp" "$COMPILATION_CACHE"
 }
 
@@ -113,13 +125,41 @@ _check_compilation_cache() {
   [[ -n "$cached_sha" && "$cached_sha" == "$yaml_sha" ]]
 }
 
+_build_config_hash_from_build_dir() {
+  # 8-char hex config_hash from ESPHome build_info.json (used when populating compilation-cache.csv).
+  local build_name="$1"
+  local build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
+  [[ -f "$build_info" ]] || return 1
+  python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
+}
+
+_compilation_cache_config_hash() {
+  # config_hash for a yaml row in ~/.iotstack/compilation-cache.csv (mDNS compare key).
+  local yaml_file="$1"
+  local build_name="${2:-$(basename "$yaml_file" .yaml)}"
+  local yaml_name hash
+  yaml_name=$(basename "$yaml_file")
+  [[ -f "$COMPILATION_CACHE" ]] || return 1
+  _normalize_compilation_cache
+  hash=$(awk -F, -v name="$yaml_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
+  if [[ -z "$hash" ]]; then
+    hash=$(_build_config_hash_from_build_dir "$build_name" 2>/dev/null) || true
+    [[ -n "$hash" ]] \
+      && debug "compilation-cache.csv has no config_hash for ${yaml_name}; using build artifact (${hash})"
+  fi
+  [[ -n "$hash" ]] && echo "$hash"
+}
+
 _update_compilation_cache() {
-  # Upsert: exactly one cache row per yaml_name (replaces prior yaml_sha/binary_sha).
+  # Upsert: one row per yaml_name (yaml_sha, binary_sha, config_hash).
   local yaml_file="$1"
   local binary_sha="$2"
-  local yaml_name yaml_sha tmp
+  local build_name="${3:-}"
+  local yaml_name yaml_sha config_hash tmp
   yaml_name=$(basename "$yaml_file")
   yaml_sha=$(_get_yaml_sha "$yaml_file")
+  config_hash=""
+  [[ -n "$build_name" ]] && config_hash=$(_build_config_hash_from_build_dir "$build_name" 2>/dev/null) || true
 
   mkdir -p "$(dirname "$COMPILATION_CACHE")"
   _normalize_compilation_cache
@@ -131,9 +171,9 @@ _update_compilation_cache() {
       awk -F, -v name="$yaml_name" 'NR > 1 && $1 != name { print }' "$COMPILATION_CACHE"
     } > "$tmp"
   else
-    echo "yaml_name,yaml_sha,binary_sha" > "$tmp"
+    echo "yaml_name,yaml_sha,binary_sha,config_hash" > "$tmp"
   fi
-  echo "${yaml_name},${yaml_sha},${binary_sha}" >> "$tmp"
+  echo "${yaml_name},${yaml_sha},${binary_sha},${config_hash}" >> "$tmp"
   mv "$tmp" "$COMPILATION_CACHE"
 }
 
@@ -275,8 +315,7 @@ smart_compile() {
     _esphome_compile "$yaml_file" || return 1
     local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
     if [[ -n "$binary_sha" ]]; then
-      _update_compilation_cache "$yaml_file" "$binary_sha"
-      _sync_yaml_build_config_cache "$yaml_file" "$device_name"
+      _update_compilation_cache "$yaml_file" "$binary_sha" "$device_name"
       ok "Compilation cache updated"
     fi
     return 0
@@ -322,36 +361,10 @@ smart_compile() {
 
   local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
   if [[ -n "$binary_sha" ]]; then
-    _update_compilation_cache "$yaml_file" "$binary_sha"
-    _sync_yaml_build_config_cache "$yaml_file" "$device_name"
+    _update_compilation_cache "$yaml_file" "$binary_sha" "$device_name"
     ok "Compilation cache updated"
   fi
   return 0
-}
-
-_build_config_hash_from_build_dir() {
-  # 8-char hex config_hash from ESPHome build_info.json (authoritative after compile).
-  local build_name="$1"
-  local build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
-  [[ -f "$build_info" ]] || return 1
-  python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
-}
-
-_sync_yaml_build_config_cache() {
-  # Keep ~/.iotstack/logs/<role>/<role>.build.cache aligned with the last compile.
-  local yaml_file="$1"
-  local build_name="$2"
-  local yaml_name yaml_sha config_hash esphome_version cache_file build_info
-  yaml_name=$(basename "$yaml_file" .yaml)
-  build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
-  [[ -f "$build_info" ]] || return 0
-  config_hash=$(_build_config_hash_from_build_dir "$build_name" 2>/dev/null) || return 0
-  esphome_version=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('esphome_version',''))" "$build_info" 2>/dev/null) || true
-  yaml_sha=$(_get_yaml_sha "$yaml_file")
-  cache_file="${HOME}/.iotstack/logs/${yaml_name}/${yaml_name}.build.cache"
-  mkdir -p "$(dirname "$cache_file")"
-  printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
-    "$yaml_sha" "$esphome_version" "$config_hash" > "$cache_file"
 }
 
 # Prompt for multi-device operations
@@ -1354,11 +1367,13 @@ _production_reachable_now() {
 }
 
 _build_config_hash_for_yaml() {
-  # config_hash for comparing against device mDNS (8-char hex).
-  # Prefer live build_info.json (updated by smart_compile); fall back to logs cache.
+  # config_hash for comparing device mDNS against the compiled build (8-char hex).
+  # Primary source: compilation-cache.csv (same cache smart_compile maintains).
   local yaml_path="$1"
-  local yaml_name="${2:-$(basename "$yaml_path" .yaml)}"
-  local cache_file hash latest_log
+  local yaml_name cache_file hash latest_log
+  yaml_name=$(basename "$yaml_path" .yaml)
+  hash=$(_compilation_cache_config_hash "$yaml_path" "$yaml_name" 2>/dev/null) || true
+  [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   hash=$(_build_config_hash_from_build_dir "$yaml_name" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   cache_file="${HOME}/.iotstack/logs/${yaml_name}/${yaml_name}.build.cache"
