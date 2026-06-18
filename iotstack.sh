@@ -1662,12 +1662,20 @@ _flash_assess_device_on_flash_action() {
   fi
 
   build_hash=$(_build_config_hash_for_yaml "$yaml_path" 2>/dev/null) || build_hash=""
-  if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 0 && -n "$mdns_hash" && -n "$build_hash" && "$mdns_hash" == "$build_hash" ]]; then
+  if [[ "${FLASH_ANYWAY:-0}" != "1" \
+     && $FLASH_ASSESS_FLASH_CURRENT -eq 0 \
+     && -n "$mdns_hash" && -n "$build_hash" && "$mdns_hash" == "$build_hash" ]]; then
     FLASH_ASSESS_FLASH_CURRENT=1
     running_hash="$mdns_hash"
   fi
 
-  if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
+  if [[ "${FLASH_ANYWAY:-0}" == "1" ]]; then
+    if [[ -n "$mdns_hash" && -n "$build_hash" && "$mdns_hash" == "$build_hash" ]]; then
+      info "  Production: matches build (config_hash ${mdns_hash}) — --flash-anyway will reflash"
+    else
+      info "  Production: --flash-anyway will reflash"
+    fi
+  elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
     if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" ]]; then
       if [[ -n "$build_hash" ]]; then
         info "  On-flash production: matches build (image ${running_hash}, config_hash ${build_hash})"
@@ -1693,7 +1701,9 @@ _flash_assess_device_on_flash_action() {
     info "  Production: differs from build"
   fi
 
-  if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
+  if [[ "${FLASH_ANYWAY:-0}" == "1" && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
+    info "  Action: force reflash production firmware (--flash-anyway)"
+  elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local assess_role="${prod_hostname%-${device_mac}}"
     local want_cols want_w want_h cur_cols cur_w cur_h
     if _flash_matrix_layout_applicable "$assess_role" ""; then
@@ -3949,7 +3959,7 @@ _flash_production_smart() {
         smart_compile "$yaml_path" "$device" || err "Production compile failed"
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
 
-        if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
+        if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 && "${FLASH_ANYWAY:-0}" != "1" ]]; then
           local img_hash layout_rc=0 want_cols want_w want_h
           set +e
           _flash_matrix_layout_update_via_failsafe_if_needed "$device" "$tty_device" "$device_mac" "$prod_hostname"
@@ -3978,7 +3988,7 @@ _flash_production_smart() {
         fi
 
         if [[ "$try_network_ota" == true ]]; then
-          if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
+          if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && "${FLASH_ANYWAY:-0}" != "1" ]]; then
             local layout_rc=0 want_cols want_w want_h
             set +e
             _flash_matrix_layout_update_via_failsafe_if_needed "$device" "$tty_device" "$device_mac" "$prod_hostname"
