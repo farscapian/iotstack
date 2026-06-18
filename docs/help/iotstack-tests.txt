@@ -29,6 +29,7 @@ Role → chip mapping (from iotstack roles / YAML variant):
 
 Test suites:
   00–14  ESP32-C6 (bleproxy / failsafe / mmwave reassign cycle)
+  15–16  Compilation cache (smart_compile hit/miss, config_hash backfill)
   20–29  ESP32-S3 (ledlightstrip / silentnotify / matrixdisplay)
 
 Examples:
@@ -38,6 +39,8 @@ Examples:
   iotstack tests run 0
   iotstack tests run 20-flash-ledlightstrip
   iotstack tests run 29-flash-matrixdisplay
+  iotstack tests run 15-compile-cache-hit-bleproxy
+  iotstack tests run 16-compile-cache-miss-external-component
   iotstack tests run c6              # all cases (slug match — use 0–14 individually)
   iotstack tests run 0 20            # C6 flash + S3 flash only
 

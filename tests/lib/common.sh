@@ -240,6 +240,84 @@ test_run_step() {
   return 1
 }
 
+test_source_iotstack_functions() {
+  [[ -n "${_IOTSTACK_FUNCTIONS_LOADED:-}" ]] && return 0
+  # shellcheck source=iotstack.sh
+  source "${PROJECT_ROOT}/iotstack.sh"
+  _IOTSTACK_FUNCTIONS_LOADED=1
+}
+
+test_role_yaml_file() {
+  local role="${1:-bleproxy}"
+  printf '%s/%s.yaml' "$YAMLS_DIR" "$role"
+}
+
+test_compilation_cache_row() {
+  local yaml_name="${1:-bleproxy.yaml}"
+  [[ -f "$COMPILATION_CACHE" ]] || return 1
+  awk -F, -v name="$yaml_name" '$1==name { print; exit }' "$COMPILATION_CACHE"
+}
+
+test_compilation_cache_config_hash() {
+  local yaml_name="${1:-bleproxy.yaml}"
+  test_compilation_cache_row "$yaml_name" | awk -F, '{ print $4 }'
+}
+
+test_strip_compilation_cache_config_hash() {
+  # Simulate a legacy row missing config_hash (backfill should repair on cache hit).
+  local yaml_name="${1:-bleproxy.yaml}"
+  local row yaml_sha binary_sha tmp
+  row=$(test_compilation_cache_row "$yaml_name") || return 1
+  IFS=, read -r _ yaml_sha binary_sha _ <<< "$row"
+  [[ -n "$yaml_sha" && -n "$binary_sha" ]] || return 1
+  tmp=$(mktemp)
+  {
+    echo "yaml_name,yaml_sha,binary_sha,config_hash"
+    awk -F, -v name="$yaml_name" 'NR > 1 && $1 != name { print }' "$COMPILATION_CACHE"
+    printf '%s,%s,%s,\n' "$yaml_name" "$yaml_sha" "$binary_sha"
+  } > "$tmp"
+  mv "$tmp" "$COMPILATION_CACHE"
+}
+
+test_run_smart_compile() {
+  local role="${1:-bleproxy}"
+  local yaml
+  yaml=$(test_role_yaml_file "$role")
+  test_source_iotstack_functions
+  export VERBOSE=1 QUIET=0
+  smart_compile "$yaml" "$role"
+}
+
+test_assert_output_contains() {
+  local needle="$1"
+  local haystack="$2"
+  if [[ "$haystack" == *"$needle"* ]]; then
+    test_ok "Output contains: ${needle}"
+    return 0
+  fi
+  test_fail "Expected output to contain: ${needle}"
+  printf '%s\n' "$haystack" >&2
+  return 1
+}
+
+test_compile_cache_bump_file() {
+  printf '%s/external_components/partition_manager/partition_manager.cpp' "$YAMLS_DIR"
+}
+
+test_bump_external_component_for_cache_miss() {
+  local cpp stamp
+  cpp=$(test_compile_cache_bump_file)
+  [[ -f "$cpp" ]] || { test_fail "Missing ${cpp}"; return 1; }
+  stamp=$(date +%s)
+  sed -i '/iotstack-test-cache-bump/d' "$cpp"
+  sed -i "/void PartitionManager::handle_button_press/a\\  // iotstack-test-cache-bump ${stamp}" "$cpp"
+}
+
+test_restore_external_component_cache_bump() {
+  git -C "$PROJECT_ROOT" checkout -- yamls/external_components/partition_manager/partition_manager.cpp 2>/dev/null \
+    || true
+}
+
 test_verify_flash() {
   local role="${1:-failsafe}"
   local tty="${2:-${IOTSTACK_TEST_TTY:-}}"
