@@ -83,17 +83,15 @@ _get_binary_sha() {
 }
 
 _normalize_compilation_cache() {
-  # One row per yaml_name (most recent wins). Repairs legacy append-only caches.
+  # Upgrade legacy 3-column caches; dedupe rows (one row per yaml_name).
   [[ -f "$COMPILATION_CACHE" ]] || return 0
-  local row_count unique_count tmp
+  local row_count unique_count tmp header
+  header=$(head -1 "$COMPILATION_CACHE")
   row_count=$(tail -n +2 "$COMPILATION_CACHE" 2>/dev/null | wc -l)
   unique_count=$(tail -n +2 "$COMPILATION_CACHE" 2>/dev/null | cut -d, -f1 | sort -u | wc -l)
-  (( row_count == unique_count )) && return 0
 
-  tmp=$(mktemp)
-  local header
-  header=$(head -1 "$COMPILATION_CACHE")
   if [[ "$header" != *config_hash* ]]; then
+    tmp=$(mktemp)
     {
       echo "yaml_name,yaml_sha,binary_sha,config_hash"
       tail -n +2 "$COMPILATION_CACHE" | while IFS= read -r line; do
@@ -101,13 +99,48 @@ _normalize_compilation_cache() {
         echo "${line},"
       done
     } > "$tmp"
-  else
-    {
-      head -1 "$COMPILATION_CACHE"
-      tail -n +2 "$COMPILATION_CACHE" | awk -F, '{ rows[$1]=$0 } END { for (n in rows) print rows[n] }' | sort -t, -k1,1
-    } > "$tmp"
+    mv "$tmp" "$COMPILATION_CACHE"
+    header="yaml_name,yaml_sha,binary_sha,config_hash"
   fi
+
+  (( row_count == unique_count )) && return 0
+
+  tmp=$(mktemp)
+  {
+    echo "$header"
+    tail -n +2 "$COMPILATION_CACHE" | awk -F, '{ rows[$1]=$0 } END { for (n in rows) print rows[n] }' | sort -t, -k1,1
+  } > "$tmp"
   mv "$tmp" "$COMPILATION_CACHE"
+}
+
+_compilation_cache_patch_config_hash() {
+  # Set config_hash (column 4) on an existing compilation-cache.csv row.
+  local yaml_name="$1"
+  local config_hash="$2"
+  local tmp
+  [[ -f "$COMPILATION_CACHE" && -n "$yaml_name" && -n "$config_hash" ]] || return 1
+  _normalize_compilation_cache
+  tmp=$(mktemp)
+  awk -F, -v OFS=',' -v name="$yaml_name" -v hash="$config_hash" '
+    NR == 1 { print; next }
+    $1 == name { print $1, $2, $3, hash; next }
+    { print }
+  ' "$COMPILATION_CACHE" > "$tmp"
+  mv "$tmp" "$COMPILATION_CACHE"
+}
+
+_compilation_cache_backfill_config_hash() {
+  # Ensure compilation-cache.csv has config_hash for a cached build (no recompile).
+  local yaml_file="$1"
+  local build_name="$2"
+  local yaml_name hash
+  yaml_name=$(basename "$yaml_file")
+  hash=$(_compilation_cache_config_hash "$yaml_file" "$build_name" 2>/dev/null) || true
+  [[ -n "$hash" ]] || return 1
+  if awk -F, -v name="$yaml_name" '$1==name && $4!="" { found=1 } END { exit !found }' "$COMPILATION_CACHE" 2>/dev/null; then
+    return 0
+  fi
+  _compilation_cache_patch_config_hash "$yaml_name" "$hash"
 }
 
 _check_compilation_cache() {
@@ -144,8 +177,7 @@ _compilation_cache_config_hash() {
   hash=$(awk -F, -v name="$yaml_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
   if [[ -z "$hash" ]]; then
     hash=$(_build_config_hash_from_build_dir "$build_name" 2>/dev/null) || true
-    [[ -n "$hash" ]] \
-      && debug "compilation-cache.csv has no config_hash for ${yaml_name}; using build artifact (${hash})"
+    [[ -n "$hash" ]] && _compilation_cache_patch_config_hash "$yaml_name" "$hash"
   fi
   [[ -n "$hash" ]] && echo "$hash"
 }
@@ -306,6 +338,7 @@ smart_compile() {
   if ! _is_failsafe_yaml "$yaml_file"; then
     if [[ $cached -eq 1 ]]; then
       ensure_partition_table_artifact
+      _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
       _smart_compile_cache_hit_notice "$device_name" "production"
       return 0
     fi
@@ -327,6 +360,7 @@ smart_compile() {
   # partitions.bin (not the position-independent app image), so we compile,
   # measure, regenerate the table, then recompile so partitions.bin matches.
   if [[ $cached -eq 1 && -f "$firmware_bin" ]]; then
+    _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
     _smart_compile_cache_hit_notice "$device_name" "failsafe"
     local build_csv="${YAMLS_DIR}/.esphome/build/failsafe/partitions.csv"
     if [[ -f "$build_csv" ]] && grep -qE '^production,' "$build_csv" 2>/dev/null; then
@@ -1211,7 +1245,6 @@ _flash_production_ota_update() {
     warn "Production API and failsafe OTA are unreachable — network switch may fail"
   fi
 
-  info "Updating production partition — switching to failsafe, then OTA into production slot..."
   declare -a extra_args=(--upgrade-delta)
   [[ "${FLASH_ANYWAY:-0}" == "1" ]] && extra_args+=(--flash-anyway)
   if [[ -n "$tty_device" ]]; then
@@ -1464,7 +1497,6 @@ _flash_assess_device_on_flash_action() {
 
   FLASH_ASSESS_FLASH_CURRENT=0
   mdns_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || true
-  build_hash=$(_build_config_hash_for_yaml "$yaml_path" 2>/dev/null) || build_hash=""
   running_hash="unknown"
   local_image_hash=""
 
@@ -1489,6 +1521,12 @@ _flash_assess_device_on_flash_action() {
   elif _flash_production_matches_build "$prod_hostname" "$yaml_path" "$tty_device"; then
     FLASH_ASSESS_FLASH_CURRENT=1
     running_hash="${mdns_hash:-unknown}"
+  fi
+
+  build_hash=$(_build_config_hash_for_yaml "$yaml_path" 2>/dev/null) || build_hash=""
+  if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 0 && -n "$mdns_hash" && -n "$build_hash" && "$mdns_hash" == "$build_hash" ]]; then
+    FLASH_ASSESS_FLASH_CURRENT=1
+    running_hash="$mdns_hash"
   fi
 
   if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
@@ -1520,7 +1558,7 @@ _flash_assess_device_on_flash_action() {
   if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     info "  Action: none required — device is current"
   elif [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
-    info "  Action: OTA update via failsafe partition"
+    info "  Action: reboot into failsafe to perform update of production partition"
   elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]]; then
     info "  Action: serial failsafe path (mDNS visible, API unreachable), then OTA production image"
   elif [[ $FLASH_ASSESS_FAILSAFE_ONLINE -eq 1 ]]; then
