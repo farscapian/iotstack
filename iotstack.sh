@@ -3806,10 +3806,12 @@ _flash_failsafe_to_tty() {
     device_mac=$(esp_mac_suffix_resolve "$tty_device") || err "Could not read chip MAC from $tty_device"
     ok "Device MAC: $device_mac"
   else
-    if [[ "$FLASH_ASSESS_FAILSAFE_MATCH" -eq 0 ]]; then
-      info "Failsafe image on device differs from build -- serial upload required"
-    elif [[ "$FLASH_ASSESS_PARTITION_MATCH" -eq 0 ]]; then
-      info "On-device partition table differs from build -- serial upload required"
+    if [[ "${FLASH_ERASE:-0}" != "1" ]]; then
+      if [[ "$FLASH_ASSESS_FAILSAFE_MATCH" -eq 0 ]]; then
+        info "Failsafe image on device differs from build -- serial upload required"
+      elif [[ "$FLASH_ASSESS_PARTITION_MATCH" -eq 0 ]]; then
+        info "On-device partition table differs from build -- serial upload required"
+      fi
     fi
     _flash_failsafe_esptool "$tty_device" "$flash_log" "$build_dir" "$failsafe_offset" "$FLASH_ASSESS_NEED_ERASE"
     device_mac=$(esp_mac_suffix_resolve "$tty_device" "$create_log_esptool_output") \
