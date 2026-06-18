@@ -151,6 +151,31 @@ if [[ -n "$PRODUCTION_ROLE" ]]; then
   ok "Production API key: (derived for role: $PRODUCTION_ROLE)"
 fi
 
+# ── Matrix panel layout (matrix_hub75 reads these at boot) ───────────────────
+# Override per flash:
+#   MATRIX_COLS=2 MATRIX_PANEL_W=64 MATRIX_PANEL_H=32 iotstack flash matrixdisplay /dev/ttyACM0
+# Or store per role in pass: iotstack/roles/matrixdisplay/matrix_{cols,panel_w,panel_h}
+WRITE_MATRIX_LAYOUT=0
+MATRIX_COLS="${MATRIX_COLS:-}"
+MATRIX_PANEL_W="${MATRIX_PANEL_W:-}"
+MATRIX_PANEL_H="${MATRIX_PANEL_H:-}"
+if [[ "$PRODUCTION_ROLE" == "matrixdisplay" ]] || \
+   [[ -n "$MATRIX_COLS" || -n "$MATRIX_PANEL_W" || -n "$MATRIX_PANEL_H" ]]; then
+  WRITE_MATRIX_LAYOUT=1
+  if [[ -n "$PRODUCTION_ROLE" ]]; then
+    [[ -z "$MATRIX_COLS" ]] && MATRIX_COLS=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_cols" 2>/dev/null || echo "")
+    [[ -z "$MATRIX_PANEL_W" ]] && MATRIX_PANEL_W=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_panel_w" 2>/dev/null || echo "")
+    [[ -z "$MATRIX_PANEL_H" ]] && MATRIX_PANEL_H=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_panel_h" 2>/dev/null || echo "")
+  fi
+  MATRIX_COLS="${MATRIX_COLS:-1}"
+  MATRIX_PANEL_W="${MATRIX_PANEL_W:-64}"
+  MATRIX_PANEL_H="${MATRIX_PANEL_H:-32}"
+  if [[ "$MATRIX_COLS" != "1" && "$MATRIX_COLS" != "2" ]]; then
+    err "MATRIX_COLS must be 1 or 2 (got: $MATRIX_COLS)"
+  fi
+  info "Matrix layout NVS: ${MATRIX_COLS} panel(s), ${MATRIX_PANEL_W}x${MATRIX_PANEL_H} px each"
+fi
+
 # ── Use Python to generate NVS data ────────────────────────────────────────
 info "Writing NVS partition to device..."
 
@@ -158,7 +183,8 @@ export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
        FAILSAFE_OTA_PASSWORD="$FAILSAFE_OTA_PASSWORD" \
        PROD_API_KEY="$PROD_API_KEY" \
        THREAD_TLV="$THREAD_TLV" DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE" \
-       NVS_SIZE="$NVS_SIZE"
+       NVS_SIZE="$NVS_SIZE" WRITE_MATRIX_LAYOUT="$WRITE_MATRIX_LAYOUT" \
+       MATRIX_COLS="${MATRIX_COLS:-}" MATRIX_PANEL_W="${MATRIX_PANEL_W:-}" MATRIX_PANEL_H="${MATRIX_PANEL_H:-}"
 
 # Use ESP-IDF Python environment which has nvs_partition_gen installed
 ESP_IDF_PYTHON="${HOME}/.espressif/python_env/idf6.1_py3.14_env/bin/python3"
@@ -175,6 +201,10 @@ wifi_password = os.environ['WIFI_PASSWORD']
 failsafe_ota_password = os.environ['FAILSAFE_OTA_PASSWORD']
 prod_api_key = os.environ.get('PROD_API_KEY', '')
 thread_tlv = os.environ.get('THREAD_TLV', '')
+write_matrix_layout = os.environ.get('WRITE_MATRIX_LAYOUT', '0') == '1'
+matrix_cols = os.environ.get('MATRIX_COLS', '1')
+matrix_panel_w = os.environ.get('MATRIX_PANEL_W', '64')
+matrix_panel_h = os.environ.get('MATRIX_PANEL_H', '32')
 device_mac = os.environ['DEVICE_MAC']
 nvs_size_str = os.environ['NVS_SIZE']  # e.g., "0x4000"
 
@@ -198,6 +228,10 @@ with open(nvs_csv_path, 'w') as f:
         f.write(f"prod_api_key,data,string,{prod_api_key}\n")
     if thread_tlv:
         f.write(f"thread_tlv,data,string,{thread_tlv}\n")
+    if write_matrix_layout:
+        f.write(f"matrix_cols,data,u8,{matrix_cols}\n")
+        f.write(f"matrix_panel_w,data,u16,{matrix_panel_w}\n")
+        f.write(f"matrix_panel_h,data,u16,{matrix_panel_h}\n")
 
 print(f"[OK] Created NVS CSV file for nvs_partition_gen")
 
