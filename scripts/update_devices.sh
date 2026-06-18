@@ -51,6 +51,7 @@ trap 'cleanup; exit 130' INT
 
 # ── Defaults ────────────────────────────────────────────────────────────────
 UPGRADE_DELTA=true
+FLASH_ANYWAY=false
 VERIFY=false
 DRY_RUN=false
 VERBOSE=false
@@ -65,12 +66,12 @@ declare -a REASSIGN_MACS=()
 REASSIGN_YAML=""
 
 # ── Colours ─────────────────────────────────────────────────────────────────
-RED='\033[0;31m'
-GRN='\033[0;32m'
-YLW='\033[0;33m'
-BLU='\033[0;34m'
-DIM='\033[2m'
-RST='\033[0m'
+RED=$'\033[0;31m'
+GRN=$'\033[0;32m'
+YLW=$'\033[0;33m'
+BLU=$'\033[0;34m'
+DIM=$'\033[2m'
+RST=$'\033[0m'
 
 info() { echo -e "${BLU}[INFO]${RST}  $*"; }
 log()  { if [[ "$VERBOSE" == true ]]; then info "$@"; fi; return 0; }
@@ -711,7 +712,7 @@ usage() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --upgrade-delta)         UPGRADE_DELTA=true;  shift ;;
-    --flash-anyway)      UPGRADE_DELTA=false; shift ;;
+    --flash-anyway)          FLASH_ANYWAY=true;   shift ;;
     --verify)                VERIFY=true;         shift ;;
     --force-update-entities) FORCE_UPDATE_ENTITIES=true; shift ;;
     --dry-run)               DRY_RUN=true;        shift ;;
@@ -1330,7 +1331,7 @@ while IFS= read -r HOSTNAME; do
     continue
   fi
 
-  if [[ "$UPGRADE_DELTA" == false ]]; then
+  if [[ "$FLASH_ANYWAY" == true ]]; then
     FLASH_LIST+=("$HOSTNAME")
     continue
   fi
@@ -1418,6 +1419,8 @@ if [[ "$COMPILED" == false ]]; then
     fi
     NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG_FILE" \
       | tail -1 | sed 's/config_hash=0x//')
+    [[ -z "$NEW_CONFIG_HASH" ]] && \
+      NEW_CONFIG_HASH=$(_resolve_build_config_hash "$ORIGINAL_YAML_FILE" "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
     [[ -n "$NEW_CONFIG_HASH" ]] && COMPILED=true
   else
     printf "  ⚙ Compiling firmware..." >&2
@@ -1425,6 +1428,10 @@ if [[ "$COMPILED" == false ]]; then
     _compile_log_banner
 
     if "$ESPHOME_BIN" compile "$YAML_FILE" >> "$COMPILE_LOG" 2>&1; then
+      NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG" \
+        | tail -1 | sed 's/config_hash=0x//')
+      [[ -z "$NEW_CONFIG_HASH" ]] && \
+        NEW_CONFIG_HASH=$(_resolve_build_config_hash "$ORIGINAL_YAML_FILE" "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
       printf ' %s✓%s\n' "$GRN" "$RST" >&2
     else
       printf ' %s✗%s\n' "$RED" "$RST" >&2
@@ -1582,6 +1589,9 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
     hash="${DEVICE_HASHES[$HOSTNAME]:-}"
     if [[ -z "$hash" && -n "$NEW_CONFIG_HASH" ]]; then
       hash="$NEW_CONFIG_HASH"
+    fi
+    if [[ -z "$hash" ]]; then
+      hash=$(_resolve_build_config_hash "$ORIGINAL_YAML_FILE" "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
     fi
     [[ -z "$hash" ]] && hash="unknown"
     hash_short="${hash:0:8}"
