@@ -41,13 +41,18 @@ Examples:
   iotstack tests run c6              # all cases (slug match — use 0–14 individually)
   iotstack tests run 0 20            # C6 flash + S3 flash only
 
+Layout:
+  tests/cases/<slug>/run.sh                         test script
+  tests/cases/<slug>/iotstack-<slug>.log            symlink → ~/.iotstack/logs/
+
 Logs:
   ~/.iotstack/logs/tests/run_<timestamp>.log        test runner summary
   ~/.iotstack/logs/iotstack-<case-slug>.log         per test case (--log-id)
   ~/.iotstack/logs/esp32_device.log                 serial during flash
 
 Every test case passes --log-id=<case-slug> to iotstack (implies --create-log
-and -v). Disable with IOTSTACK_TEST_LOG_ID=0. Quiet mode is off while logging.
+and -v). The runner refreshes the per-case log symlink before each run. Disable
+logging with IOTSTACK_TEST_LOG_ID=0. Quiet mode is off while logging.
 
 State: ~/.iotstack/artifacts/test-state.env (per-role MAC cache)
 Ports: ~/.iotstack/artifacts/serial-port-map.env (last scan)

@@ -50,3 +50,6 @@ otbr/*.env
 # Python bytecode caches (ESPHome external_components codegen)
 __pycache__/
 *.pyc
+
+# Per-test session log symlinks (created at runtime → ~/.iotstack/logs/)
+tests/cases/*/iotstack-*.log

@@ -59,9 +59,9 @@ _list_cases() {
   local f base id slug desc
   printf '%-4s  %-28s  %s\n' "ID" "SLUG" "DESCRIPTION"
   printf '%s\n' "────────────────────────────────────────────────────────────────────────"
-  for f in "${CASES_DIR}"/[0-9][0-9]-*.sh; do
+  for f in "${CASES_DIR}"/[0-9][0-9]-*/run.sh; do
     [[ -f "$f" ]] || continue
-    base=$(basename "$f" .sh)
+    base=$(basename "$(dirname "$f")")
     id="${base%%-*}"
     slug="${base#*-}"
     desc=$(grep -m1 '^# TEST_DESC:' "$f" 2>/dev/null | sed 's/^# TEST_DESC:[[:space:]]*//')
@@ -83,9 +83,9 @@ _match_case() {
     q_num=-1
   fi
 
-  for f in "${CASES_DIR}"/[0-9][0-9]-*.sh; do
+  for f in "${CASES_DIR}"/[0-9][0-9]-*/run.sh; do
     [[ -f "$f" ]] || continue
-    base=$(basename "$f" .sh)
+    base=$(basename "$(dirname "$f")")
     id="${base%%-*}"
     slug="${base#*-}"
     if (( q_num >= 0 )); then
@@ -116,7 +116,7 @@ _resolve_suite() {
   local query f
 
   if [[ ${#SELECTED_TESTS[@]} -eq 0 ]]; then
-    for f in "${CASES_DIR}"/[0-9][0-9]-*.sh; do
+    for f in "${CASES_DIR}"/[0-9][0-9]-*/run.sh; do
       [[ -f "$f" ]] || continue
       resolved+=("$f")
     done
@@ -222,7 +222,7 @@ RUN_LOG="${IOTSTACK_TEST_LOG_DIR}/run_$(date +%Y%m%d_%H%M%S).log"
 test_info "Log file: $RUN_LOG"
 test_info "Cases: ${#SUITE[@]} | Iterations: $ITERATIONS"
 test_info "Port map: ${ESP_SERIAL_MAP}"
-test_info "iotstack logs: ~/.iotstack/logs/iotstack-<case-slug>.log (--log-id per test case)"
+test_info "iotstack logs: tests/cases/<slug>/iotstack-<slug>.log → ~/.iotstack/logs/ (--log-id)"
 {
   echo "iotstack test run started: $(date -Is)"
   echo "ROLE=${IOTSTACK_TEST_ROLE} ITERATIONS=${ITERATIONS}"
@@ -243,10 +243,12 @@ for (( iter=1; iter<=ITERATIONS; iter++ )); do
   fi
 
   for case_script in "${SUITE[@]}"; do
-    case_name=$(basename "$case_script")
-    export IOTSTACK_TEST_LOG_ID="${case_name%.sh}"
-    test_info "▶ $case_name (log-id=${IOTSTACK_TEST_LOG_ID})"
-    echo "▶ $case_name (log-id=${IOTSTACK_TEST_LOG_ID})" >> "$RUN_LOG"
+    case_slug=$(basename "$(dirname "$case_script")")
+    export IOTSTACK_TEST_LOG_ID="$case_slug"
+    export IOTSTACK_TEST_CASE_DIR="$(cd "$(dirname "$case_script")" && pwd)"
+    test_link_session_log
+    test_info "▶ ${case_slug}/run.sh (log-id=${IOTSTACK_TEST_LOG_ID})"
+    echo "▶ ${case_slug}/run.sh (log-id=${IOTSTACK_TEST_LOG_ID})" >> "$RUN_LOG"
 
     set +e
     bash "$case_script" 2>&1 | tee -a "$RUN_LOG"
@@ -255,11 +257,11 @@ for (( iter=1; iter<=ITERATIONS; iter++ )); do
 
     if [[ $case_status -eq 0 ]]; then
       total_pass=$((total_pass + 1))
-      test_ok "Completed: $case_name"
+      test_ok "Completed: ${case_slug}/run.sh"
     else
       total_fail=$((total_fail + 1))
       run_failed=1
-      test_fail "Failed: $case_name (exit $case_status)"
+      test_fail "Failed: ${case_slug}/run.sh (exit $case_status)"
       if [[ "$STOP_ON_FAILURE" -eq 1 ]]; then
         break 2
       fi

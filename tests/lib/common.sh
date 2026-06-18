@@ -1,7 +1,7 @@
 #!/bin/bash
 # common.sh — Shared helpers for iotstack overnight test cases
 #
-# Sourced by tests/cases/*.sh and tests/run_test_cases.sh (do not execute directly).
+# Sourced by tests/cases/<slug>/run.sh and tests/run_test_cases.sh (do not execute directly).
 
 if [[ -n "${_IOTSTACK_TEST_COMMON_LOADED:-}" ]]; then
   return 0
@@ -30,16 +30,41 @@ export IOTSTACK_TEST_STATE="${IOTSTACK_TEST_STATE:-${ARTIFACTS_DIR}/test-state.e
 export IOTSTACK_TEST_LOG_DIR="${IOTSTACK_TEST_LOG_DIR:-${LOGS_DIR}/tests}"
 
 # Per-case session log (~/.iotstack/logs/iotstack-<case-slug>.log). Set by the runner
-# or auto-detected when a tests/cases/*.sh script sources this file.
-if [[ -z "${IOTSTACK_TEST_LOG_ID:-}" && -n "${BASH_SOURCE[1]:-}" ]]; then
+# or auto-detected when a tests/cases/<slug>/run.sh script sources this file.
+if [[ -n "${BASH_SOURCE[1]:-}" ]]; then
   case "${BASH_SOURCE[1]}" in
-    */tests/cases/[0-9][0-9]-*)
-      export IOTSTACK_TEST_LOG_ID="$(basename "${BASH_SOURCE[1]}" .sh)"
+    */tests/cases/[0-9][0-9]-*/run.sh)
+      export IOTSTACK_TEST_CASE_DIR="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
+      if [[ -z "${IOTSTACK_TEST_LOG_ID:-}" ]]; then
+        export IOTSTACK_TEST_LOG_ID="$(basename "$IOTSTACK_TEST_CASE_DIR")"
+      fi
       ;;
   esac
 fi
 
-mkdir -p "$ARTIFACTS_DIR" "$IOTSTACK_TEST_LOG_DIR" 2>/dev/null || true
+mkdir -p "$ARTIFACTS_DIR" "$IOTSTACK_TEST_LOG_DIR" "$LOGS_DIR" 2>/dev/null || true
+
+test_session_log_file() {
+  local log_id="${1:-${IOTSTACK_TEST_LOG_ID:-}}"
+  [[ -n "$log_id" && "$log_id" != "0" ]] || return 1
+  printf '%s/iotstack-%s.log' "$LOGS_DIR" "$log_id"
+}
+
+test_link_session_log() {
+  # Symlink tests/cases/<slug>/iotstack-<slug>.log → ~/.iotstack/logs/iotstack-<slug>.log
+  local log_id="${1:-${IOTSTACK_TEST_LOG_ID:-}}"
+  local case_dir="${2:-${IOTSTACK_TEST_CASE_DIR:-}}"
+  local log_file link
+  log_file=$(test_session_log_file "$log_id") || return 0
+  [[ -n "$case_dir" && -d "$case_dir" ]] || return 0
+  link="${case_dir}/iotstack-${log_id}.log"
+  mkdir -p "$(dirname "$log_file")"
+  ln -sfn "$log_file" "$link"
+}
+
+if [[ -n "${IOTSTACK_TEST_CASE_DIR:-}" && -n "${IOTSTACK_TEST_LOG_ID:-}" ]]; then
+  test_link_session_log
+fi
 
 _TEST_RED=$'\033[0;31m'
 _TEST_GRN=$'\033[0;32m'
