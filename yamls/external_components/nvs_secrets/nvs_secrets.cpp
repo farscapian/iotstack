@@ -1,7 +1,13 @@
 #include "nvs_secrets.h"
 #include "nvs_flash.h"
+#include <cstdlib>
+#include "esphome/core/component.h"
 #include "esphome/core/defines.h"
 #include "esphome/core/log.h"
+
+#ifdef USE_API
+#include "esphome/components/api/api_server.h"
+#endif
 
 #ifdef USE_WIFI
 #include "esphome/components/wifi/wifi_component.h"
@@ -115,10 +121,47 @@ void NVSSecrets::setup() {
 
   // Apply the Thread operational dataset from NVS (thread-only devices). The
   // OpenThread component runs at setup_priority::WIFI (250) and has already
-  // initialized the stack by the time this AFTER_WIFI (200) setup runs.
+  // initialized the stack by the time this setup runs.
   apply_thread_dataset_();
+  apply_api_encryption_key_();
 
   ESP_LOGI(TAG, "[NVS] Setup complete");
+}
+
+void NVSSecrets::apply_api_encryption_key_() {
+#ifdef USE_API_NOISE
+  if (api_encryption_key_.empty()) {
+    ESP_LOGD(TAG, "[NVS] No API encryption key in NVS");
+    return;
+  }
+  if (api_encryption_key_.size() != 64) {
+    ESP_LOGW(TAG, "[NVS] API encryption key has invalid length (%u); expected 64 hex chars",
+             (unsigned) api_encryption_key_.size());
+    return;
+  }
+  if (global_api_server == nullptr) {
+    ESP_LOGW(TAG, "[NVS] API server unavailable; cannot apply encryption key from NVS");
+    return;
+  }
+
+  esphome::api::psk_t psk{};
+  for (size_t i = 0; i < psk.size(); i++) {
+    char byte_hex[3] = {api_encryption_key_[i * 2], api_encryption_key_[i * 2 + 1], '\0'};
+    char *end = nullptr;
+    unsigned long byte = strtoul(byte_hex, &end, 16);
+    if (end == byte_hex || byte > 0xFF) {
+      ESP_LOGW(TAG, "[NVS] API encryption key is not valid hex");
+      return;
+    }
+    psk[i] = static_cast<uint8_t>(byte);
+  }
+
+  if (global_api_server->save_noise_psk(psk, true)) {
+    ESP_LOGI(TAG, "[NVS] API encryption enabled (key loaded from '%s')", api_nvs_key_.c_str());
+  } else {
+    ESP_LOGW(TAG, "[NVS] Failed to apply API encryption key from NVS");
+  }
+#endif
 }
 
 void NVSSecrets::apply_thread_dataset_() {
@@ -192,11 +235,12 @@ void NVSSecrets::update_secrets(const std::string &wifi_ssid,
     ESP_LOGE(TAG, "[NVS-UPDATE] Failed to open NVS for writing: %s", esp_err_to_name(err));
     return;
   }
-  write_nvs_string(handle, "wifi_ssid",    wifi_ssid);
+  write_nvs_string(handle, "wifi_ssid",     wifi_ssid);
   write_nvs_string(handle, "wifi_password", wifi_password);
-  write_nvs_string(handle, "ota_password", ota_password);
-  write_nvs_string(handle, "api_key",      api_key);
-  write_nvs_string(handle, "thread_tlv",   thread_tlv);
+  write_nvs_string(handle, "ota_password",  ota_password);
+  if (!api_nvs_key_.empty())
+    write_nvs_string(handle, api_nvs_key_.c_str(), api_key);
+  write_nvs_string(handle, "thread_tlv",    thread_tlv);
   err = nvs_commit(handle);
   if (err != ESP_OK)
     ESP_LOGE(TAG, "[NVS-UPDATE] nvs_commit failed: %s", esp_err_to_name(err));

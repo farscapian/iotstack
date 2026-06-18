@@ -10,7 +10,9 @@ namespace nvs_secrets {
 
 class NVSSecrets : public Component {
  public:
-  float get_setup_priority() const override { return 200.0f; }  // Hardware initialization priority
+  float get_setup_priority() const override {
+    return setup_priority::BEFORE_CONNECTION;  // After WiFi (250), before API (200)
+  }
   void setup() override;
   void dump_config() override;
   void loop() override;
@@ -50,6 +52,7 @@ class NVSSecrets : public Component {
   // Apply the Thread operational dataset (hex TLVs) from NVS to the OpenThread
   // stack at runtime. No-op build unless USE_OPENTHREAD is defined.
   void apply_thread_dataset_();
+  void apply_api_encryption_key_();
 };
 
 }  // namespace nvs_secrets

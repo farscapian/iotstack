@@ -51,6 +51,11 @@ iotstack_parse_global_argv() {
   fi
 
   export VERBOSE QUIET
+  if [[ $VERBOSE -eq 1 ]]; then
+    export IOTSTACK_VERBOSE=1
+  else
+    unset IOTSTACK_VERBOSE 2>/dev/null || true
+  fi
 }
 
 create_log_enabled() {

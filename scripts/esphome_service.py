@@ -49,9 +49,9 @@ async def call_service(
         cli = APIClient(host, 6053, password or "", noise_psk=psk)
         try:
             await asyncio.wait_for(cli.connect(login=True), timeout=15.0)
-            if attempt > 0:
+            if attempt > 0 and os.environ.get("IOTSTACK_VERBOSE"):
                 print(
-                    f"[INFO] {host}: connected via plaintext API (device has no encryption)",
+                    f"[DEBUG] {host}: connected via plaintext API (device firmware predates NVS encryption)",
                     file=sys.stderr,
                 )
             break
@@ -61,10 +61,11 @@ async def call_service(
                 and attempt + 1 < len(psk_attempts)
                 and _plaintext_protocol_mismatch(exc)
             ):
-                print(
-                    f"[INFO] {host}: device uses plaintext API; retrying without encryption",
-                    file=sys.stderr,
-                )
+                if os.environ.get("IOTSTACK_VERBOSE"):
+                    print(
+                        f"[DEBUG] {host}: plaintext API fallback (re-flash/OTA production firmware to enable encryption)",
+                        file=sys.stderr,
+                    )
                 continue
             print(f"[ERROR] could not connect to {host}:6053: {exc}", file=sys.stderr)
             return 1
