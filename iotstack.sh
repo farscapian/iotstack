@@ -4078,6 +4078,7 @@ cmd_clean() {
     "${YAMLS_DIR}/.esphome/build"
     "${HOME}/.platformio/.cache"
     "${COMPILATION_CACHE}"
+    "${LOGS_DIR}"
   )
 
   local cleaned_count=0
@@ -4096,12 +4097,6 @@ cmd_clean() {
       ((cleaned_count++))
     fi
   done
-
-  # Clean old logs (keep last 7 days)
-  if [[ -d "${HOME}/.iotstack/logs" ]]; then
-    info "Cleaning old logs (keeping last 7 days)..."
-    find "${HOME}/.iotstack/logs" -type f -mtime +7 -delete
-  fi
 
   # Clean temp files
   if [[ -d "${HOME}/.iotstack/artifacts" ]]; then
