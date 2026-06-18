@@ -14,7 +14,7 @@
 #   ./update_all.sh                    # update all device types
 #   ./update_all.sh --wifi             # update only WiFi devices
 #   ./update_all.sh --thread --dry-run # preview Thread flashes
-#   ./update_all.sh --flash-anyway # force-flash everything
+#   ./update_all.sh --erase        # erase and reflash everything
 
 set -euo pipefail
 

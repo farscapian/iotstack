@@ -22,7 +22,7 @@ Options:
                   Compare firmware by reading flash over USB (slower, more
                   thorough). Default uses runtime mDNS config_hash (same as
                   iotstack devices / iotstack failsafe).
-  --flash-anyway  Always erase and reflash (skip hash comparison)
+  --erase         Wipe flash partitions then reflash (skip hash comparison)
   --panel-count=N
                   HUB75 panel count for matrixdisplay (1 or 2); written to NVS
   --matrix-panel-width=N

@@ -13,7 +13,7 @@ This applies in code comments, documentation, help text, and all user-facing mes
 
 - **Primary repo:** `~/Sync/mini_projects/iotstack` on branch `main`
 - **CLI entrypoint:** `~/.local/bin/iotstack` -> symlinks to `iotstack.sh` in that repo
-- **Before testing fixes:** `git pull` on `main` -- stale local trees produce confusing output (e.g. `--flash-anyway` appearing to do nothing when the fix is not yet pulled)
+- **Before testing fixes:** `git pull` on `main` -- stale local trees produce confusing output (e.g. `--erase` appearing to do nothing when the fix is not yet pulled)
 - Grok/Cursor worktrees may mirror the same commit but are not the install target; develop and commit on `main` unless explicitly working in a worktree
 
 ## ASCII-Only Text (Repo-Wide)
@@ -212,7 +212,7 @@ iotstack update 135b60 1a7b00 1af95c threadrouter
 
 # Works with all options
 iotstack update a1a7b0 8e1aa8 bleproxy --dry-run
-iotstack update a1a7b0 mmwave --flash-anyway
+iotstack update a1a7b0 mmwave --erase
 ```
 
 **How it works:**
@@ -224,9 +224,9 @@ iotstack update a1a7b0 mmwave --flash-anyway
 ### 2. Delta Updates (Default: On)
 - **Primary comparison:** `config_hash` from device mDNS TXT vs. compiled build
 - Only flashes devices with mismatched hashes (`--upgrade-delta`, default in `update_devices.sh`)
-- **`--flash-anyway`:** force all matched devices onto the flash list (separate `FLASH_ANYWAY` flag -- does not disable compile cache)
+- **`--erase`:** force all matched devices onto the flash list (separate `FLASH_ERASE` flag -- does not disable compile cache)
 - Fallback to `project_version` comparison if `config_hash` unavailable in mDNS
-- Note: some help text still says `--force-reflash`; the implemented flag is `--flash-anyway`
+
 
 ### 3. Device Reassignment (`iotstack reassign` / `--reassign`)
 Flash a target configuration only to specific devices (always via failsafe OTA):
@@ -424,19 +424,19 @@ Production firmware has **no OTA server** in YAML. Update/reassign/flash paths:
 2. Wait for `failsafe-<mac>.local` on `_iotstack-failsafe._tcp`
 3. OTA production image from failsafe via `update_devices.sh --reassign`
 
-`iotstack flash --flash-anyway` on an online production device still goes through this failsafe path for the actual OTA step.
+`iotstack flash --erase` on an online production device still goes through this failsafe path for the actual OTA step.
 
-### `--flash-anyway` assessment and update_devices
+### `--erase` assessment and update_devices
 
-**iotstack.sh flash assessment** (`FLASH_ANYWAY=1`):
+**iotstack.sh flash assessment** (`FLASH_ERASE=1`):
 - Must skip early exit in `_flash_production_matches_build` when hashes match
 - Must skip the **second** mDNS `config_hash` match check in `_flash_assess_device` (there were two independent "current" checks)
-- Export `FLASH_ANYWAY=1` explicitly before assessment helpers run
+- Export `FLASH_ERASE=1` explicitly before assessment helpers run
 
-**update_devices.sh** (`--flash-anyway`):
-- Uses a dedicated `FLASH_ANYWAY=true` flag to force devices onto the flash list
-- **Do not** tie `--flash-anyway` to `UPGRADE_DELTA=false` -- that skipped compile-cache / `NEW_CONFIG_HASH` resolution and caused `hash: unknown` plus redundant compiles
-- `iotstack flash` passes **both** `--upgrade-delta` and `--flash-anyway` during failsafe OTA; argument order must leave `FLASH_ANYWAY` effective without disabling delta compile logic
+**update_devices.sh** (`--erase`):
+- Uses a dedicated `FLASH_ERASE=true` flag to force devices onto the flash list
+- **Do not** tie `--erase` to `UPGRADE_DELTA=false` -- that skipped compile-cache / `NEW_CONFIG_HASH` resolution and caused `hash: unknown` plus redundant compiles
+- `iotstack flash` passes **both** `--upgrade-delta` and `--erase` during failsafe OTA; argument order must leave `FLASH_ERASE` effective without disabling delta compile logic
 
 ### `iotstack verify` and `set -e`
 
@@ -477,8 +477,8 @@ Network-first, USB-last:
 | Device discovery finds wrong devices | Filtering by device_name in reassign mode | In reassign mode, discover `_iotstack-failsafe._tcp`, filter by MAC suffix |
 | Entity updates affect wrong integrations | Not checking platform field | Always filter: `if platform != 'esphome': continue` |
 | `iotstack verify` prints nothing / exits immediately | `log()` returned 1 under `set -e` when not verbose | `log()` always returns 0; use `info()` for required output |
-| `--flash-anyway` says it will reflash but exits early | Assessment ignored `FLASH_ANYWAY` on mDNS hash match | Honor `FLASH_ANYWAY` in all match branches; pull latest `main` |
-| OTA success shows `hash: unknown` | Failsafe host has no mDNS config_hash; compile cache skipped hash | Separate `FLASH_ANYWAY` from `UPGRADE_DELTA`; `_resolve_build_config_hash` fallback |
+| `--erase` says it will reflash but exits early | Assessment ignored `FLASH_ERASE` on mDNS hash match | Honor `FLASH_ERASE` in all match branches; pull latest `main` |
+| OTA success shows `hash: unknown` | Failsafe host has no mDNS config_hash; compile cache skipped hash | Separate `FLASH_ERASE` from `UPGRADE_DELTA`; `_resolve_build_config_hash` fallback |
 | Literal `\033[0;32m` in compile spinner | `printf` + single-quoted color vars | Use `$'\033[...]'` or `[INFO]` lines only |
 | `--panel-count=2` ignored when firmware current | Layout is NVS, not config_hash | Failsafe NVS update path even when firmware matches |
 | Stale CLI behavior after fixes | Testing against unpulled `main` | `git pull` on `~/Sync/mini_projects/iotstack` |

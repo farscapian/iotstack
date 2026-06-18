@@ -121,8 +121,8 @@ flash_assess_failsafe_device() {
   FLASH_ASSESS_NEED_ERASE=1
   FLASH_ASSESS_SKIP_SERIAL=0
 
-  if [[ "${FLASH_ANYWAY:-0}" == "1" ]]; then
-    debug "FLASH_ANYWAY=1 -- forcing full serial flash"
+  if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
+    debug "FLASH_ERASE=1 -- forcing full serial flash"
     return 0
   fi
 
@@ -153,7 +153,7 @@ flash_production_matches_device() {
   local build_dir="$3"
   local production_offset="${4:-}"
 
-  [[ "${FLASH_ANYWAY:-0}" == "1" ]] && return 1
+  [[ "${FLASH_ERASE:-0}" == "1" ]] && return 1
 
   if [[ -z "$production_offset" ]]; then
     production_offset=$(flash_partition_offset production) || return 1

@@ -41,7 +41,7 @@ have the correct firmware. This comparison works by checking config_hash:
 This saves time and reduces network load when devices are already up-to-date.
 
 To force flashing all devices regardless of hash:
-  iotstack update bleproxy --force-reflash
+  iotstack update bleproxy --erase
 
 
 Parallel Flashing

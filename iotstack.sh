@@ -1390,7 +1390,7 @@ _flash_production_ota_update() {
   fi
 
   declare -a extra_args=(--upgrade-delta)
-  [[ "${FLASH_ANYWAY:-0}" == "1" ]] && extra_args+=(--flash-anyway)
+  [[ "${FLASH_ERASE:-0}" == "1" ]] && extra_args+=(--erase)
   if [[ -n "$tty_device" ]]; then
     _ota_via_failsafe "$device_mac" "$yaml_path" "$dev_pwd" "$prod_hostname" "$tty_device" "${extra_args[@]}"
   else
@@ -1448,7 +1448,7 @@ _flash_production_matches_build() {
   local yaml_path="$2"
   local tty_device="${3:-}"
 
-  [[ "${FLASH_ANYWAY:-0}" == "1" ]] && return 1
+  [[ "${FLASH_ERASE:-0}" == "1" ]] && return 1
 
   if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" ]]; then
     [[ -n "$tty_device" ]] && _flash_production_firmware_current "$tty_device" "$yaml_path"
@@ -1657,30 +1657,30 @@ _flash_assess_device_on_flash_action() {
       device_md5=$(_flash_read_production_partition_md5 "$tty_device" "$yaml_path" 2>/dev/null) || device_md5=""
       if [[ -n "$device_md5" ]]; then
         running_hash="${device_md5:0:8}"
-        if [[ "${FLASH_ANYWAY:-0}" != "1" && -n "$local_md5" && "$local_md5" == "$device_md5" ]]; then
+        if [[ "${FLASH_ERASE:-0}" != "1" && -n "$local_md5" && "$local_md5" == "$device_md5" ]]; then
           FLASH_ASSESS_FLASH_CURRENT=1
         fi
       fi
     fi
-  elif [[ "${FLASH_ANYWAY:-0}" != "1" ]] \
+  elif [[ "${FLASH_ERASE:-0}" != "1" ]] \
      && _flash_production_matches_build "$prod_hostname" "$yaml_path" "$tty_device"; then
     FLASH_ASSESS_FLASH_CURRENT=1
     running_hash="${mdns_hash:-unknown}"
   fi
 
   build_hash=$(_build_config_hash_for_yaml "$yaml_path" 2>/dev/null) || build_hash=""
-  if [[ "${FLASH_ANYWAY:-0}" != "1" \
+  if [[ "${FLASH_ERASE:-0}" != "1" \
      && $FLASH_ASSESS_FLASH_CURRENT -eq 0 \
      && -n "$mdns_hash" && -n "$build_hash" && "$mdns_hash" == "$build_hash" ]]; then
     FLASH_ASSESS_FLASH_CURRENT=1
     running_hash="$mdns_hash"
   fi
 
-  if [[ "${FLASH_ANYWAY:-0}" == "1" ]]; then
+  if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
     if [[ -n "$mdns_hash" && -n "$build_hash" && "$mdns_hash" == "$build_hash" ]]; then
-      info "  Production: matches build (config_hash ${mdns_hash}) -- --flash-anyway will reflash"
+      info "  Production: matches build (config_hash ${mdns_hash}) -- --erase will wipe and reflash"
     else
-      info "  Production: --flash-anyway will reflash"
+      info "  Production: --erase will wipe and reflash"
     fi
   elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
     if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" ]]; then
@@ -1708,8 +1708,8 @@ _flash_assess_device_on_flash_action() {
     info "  Production: differs from build"
   fi
 
-  if [[ "${FLASH_ANYWAY:-0}" == "1" && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
-    info "  Action: force reflash production firmware (--flash-anyway)"
+  if [[ "${FLASH_ERASE:-0}" == "1" && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
+    info "  Action: erase partitions and reflash production firmware (--erase)"
   elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local assess_role="${prod_hostname%-${device_mac}}"
     local want_cols want_w want_h cur_cols cur_w cur_h
@@ -2099,7 +2099,7 @@ cmd_update() {
         ota_password="$2"
         shift 2
         ;;
-      --dry-run|--flash-anyway|--jobs)
+      --dry-run|--erase|--jobs)
         update_args+=("$1")
         if [[ "$1" == "--jobs" ]]; then
           shift
@@ -3515,7 +3515,7 @@ cmd_flash() {
   _iotstack_command_help_if_requested flash "$@" && return 0
 
   local device="" tty_device_or_role="" skip_recovery=""
-  export FLASH_ANYWAY=0
+  export FLASH_ERASE=0
   export FLASH_ON_FLASH_VERIFY=0
   export MATRIX_COLS=""
   export MATRIX_PANEL_W=""
@@ -3534,8 +3534,8 @@ cmd_flash() {
         FLASH_ON_FLASH_VERIFY=1
         shift
         ;;
-      --flash-anyway)
-        export FLASH_ANYWAY=1
+      --erase)
+        export FLASH_ERASE=1
         shift
         ;;
       --panel-count=*)
@@ -4052,7 +4052,7 @@ _flash_production_smart() {
         smart_compile "$yaml_path" "$device" || err "Production compile failed"
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
 
-        if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 && "${FLASH_ANYWAY:-0}" != "1" ]]; then
+        if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 && "${FLASH_ERASE:-0}" != "1" ]]; then
           local img_hash layout_rc=0 want_cols want_w want_h
           set +e
           _flash_matrix_layout_update_via_failsafe_if_needed "$device" "$tty_device" "$device_mac" "$prod_hostname"
@@ -4081,7 +4081,7 @@ _flash_production_smart() {
         fi
 
         if [[ "$try_network_ota" == true ]]; then
-          if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && "${FLASH_ANYWAY:-0}" != "1" ]]; then
+          if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && "${FLASH_ERASE:-0}" != "1" ]]; then
             local layout_rc=0 want_cols want_w want_h
             set +e
             _flash_matrix_layout_update_via_failsafe_if_needed "$device" "$tty_device" "$device_mac" "$prod_hostname"

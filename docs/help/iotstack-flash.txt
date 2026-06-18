@@ -24,7 +24,7 @@ Options:
                   Compare firmware by reading flash over USB (slower, more
                   thorough). Default uses runtime mDNS config_hash (same as
                   iotstack devices / iotstack failsafe).
-  --flash-anyway  Always erase and reflash (skip hash comparison)
+  --erase         Wipe flash partitions then reflash (skip hash comparison)
 
 Role-specific options (e.g. matrixdisplay HUB75 NVS layout):
 

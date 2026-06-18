@@ -17,7 +17,7 @@ Arguments:
 Options:
   --ota-password <pwd>  OTA password for device authentication
   --dry-run             Compile and show what would be flashed (no flash)
-  --force-reflash       Flash all devices regardless of version
+  --erase               Wipe and reflash all matched devices (ignore version/hash)
   --jobs N              Max concurrent OTA jobs (default: 4)
 
   -v, --verbose is a global flag (anywhere on the command line); shows full
@@ -32,7 +32,7 @@ Examples:
   iotstack update bleproxy                           # All bleproxy devices
   iotstack update all                                # All devices
   iotstack update --dry-run mmwave                   # Preview, no flash
-  iotstack update --force-reflash bleproxy           # Flash, ignore version
+  iotstack update --erase bleproxy                   # Wipe and reflash, ignore version
   iotstack update --jobs 8 bleproxy                  # 8 parallel OTA jobs
   iotstack update a1a7b0 8e1aa8 bleproxy             # Specific devices by MAC
   iotstack update 135b60 1a7b00 1af95c threadrouter  # 3 specific Thread devices
