@@ -7,6 +7,7 @@ disk space.
 Removes:
   - ESPHome build directory (.esphome/build/)
   - ESPHome storage (~/.esphome/storage/)
+  - ESPHome IDE data (~/.esphome/idedata/)
   - PlatformIO cache
   - Compilation cache file
   - Logs directory (~/.iotstack/logs/)

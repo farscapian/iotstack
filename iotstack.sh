@@ -4077,6 +4077,7 @@ cmd_clean() {
   local items_to_clean=(
     "${YAMLS_DIR}/.esphome/build"
     "${HOME}/.esphome/storage"
+    "${HOME}/.esphome/idedata"
     "${HOME}/.platformio/.cache"
     "${COMPILATION_CACHE}"
     "${LOGS_DIR}"
