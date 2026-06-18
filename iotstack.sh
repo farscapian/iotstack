@@ -2620,9 +2620,21 @@ _boot_partition_single() {
   _boot_partition_network "$1" "$2"
 }
 
+_flash_matrix_layout_applicable() {
+  # Matrix NVS layout options apply to matrixdisplay production flashes only.
+  local device="$1"
+  local second="${2:-}"
+  [[ "$device" == "matrixdisplay" ]] && return 0
+  [[ "$device" == "failsafe" && "$second" == "matrixdisplay" ]] && return 0
+  return 1
+}
+
 cmd_flash() {
   local device="" tty_device_or_role="" skip_recovery=""
   export FLASH_ANYWAY=0
+  export MATRIX_COLS=""
+  export MATRIX_PANEL_W=""
+  export MATRIX_PANEL_H=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -2637,6 +2649,33 @@ cmd_flash() {
       --flash-anyway)
         FLASH_ANYWAY=1
         shift
+        ;;
+      --matrix-columns=*)
+        MATRIX_COLS="${1#*=}"
+        shift
+        ;;
+      --matrix-columns)
+        [[ $# -lt 2 ]] && err "Missing value for --matrix-columns"
+        MATRIX_COLS="$2"
+        shift 2
+        ;;
+      --matrix-panel-width=*)
+        MATRIX_PANEL_W="${1#*=}"
+        shift
+        ;;
+      --matrix-panel-width)
+        [[ $# -lt 2 ]] && err "Missing value for --matrix-panel-width"
+        MATRIX_PANEL_W="$2"
+        shift 2
+        ;;
+      --matrix-panel-height=*)
+        MATRIX_PANEL_H="${1#*=}"
+        shift
+        ;;
+      --matrix-panel-height)
+        [[ $# -lt 2 ]] && err "Missing value for --matrix-panel-height"
+        MATRIX_PANEL_H="$2"
+        shift 2
         ;;
       *)
         if [[ -z "$device" ]]; then
@@ -2654,6 +2693,15 @@ cmd_flash() {
   if [[ -z "$device" ]]; then
     help_flash
     exit 1
+  fi
+
+  if [[ -n "$MATRIX_COLS$MATRIX_PANEL_W$MATRIX_PANEL_H" ]]; then
+    if ! _flash_matrix_layout_applicable "$device" "$tty_device_or_role"; then
+      warn "Matrix layout options (--matrix-columns, --matrix-panel-width, --matrix-panel-height) apply only to matrixdisplay; ignoring"
+      MATRIX_COLS=""
+      MATRIX_PANEL_W=""
+      MATRIX_PANEL_H=""
+    fi
   fi
 
   # Special handling for "failsafe" role

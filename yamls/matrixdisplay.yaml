@@ -84,7 +84,7 @@ font:
 # ESP32-S3-DevKitC-1 wiring diagram.)
 display:
   # matrix_hub75 reads panel count + dimensions from NVS at boot (see write-nvs-secrets.sh).
-  # HUB75 panels cannot self-report; set matrix_cols / matrix_panel_w / matrix_panel_h per device.
+  # HUB75 panels cannot self-report; set via: iotstack flash ... --matrix-columns=2 etc.
   - platform: matrix_hub75
     id: matrix_display
     panel_width: 64
