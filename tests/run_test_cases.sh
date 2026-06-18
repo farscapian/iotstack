@@ -222,7 +222,7 @@ RUN_LOG="${IOTSTACK_TEST_LOG_DIR}/run_$(date +%Y%m%d_%H%M%S).log"
 test_info "Log file: $RUN_LOG"
 test_info "Cases: ${#SUITE[@]} | Iterations: $ITERATIONS"
 test_info "Port map: ${ESP_SERIAL_MAP}"
-test_info "iotstack logs: ~/.iotstack/logs/iotstack-{flash,update,reassign,verify}.log (--log-for-claude)"
+test_info "iotstack logs: ~/.iotstack/logs/iotstack-<case-slug>.log (--log-id per test case)"
 {
   echo "iotstack test run started: $(date -Is)"
   echo "ROLE=${IOTSTACK_TEST_ROLE} ITERATIONS=${ITERATIONS}"
@@ -244,8 +244,9 @@ for (( iter=1; iter<=ITERATIONS; iter++ )); do
 
   for case_script in "${SUITE[@]}"; do
     case_name=$(basename "$case_script")
-    test_info "▶ $case_name"
-    echo "▶ $case_name" >> "$RUN_LOG"
+    export IOTSTACK_TEST_LOG_ID="${case_name%.sh}"
+    test_info "▶ $case_name (log-id=${IOTSTACK_TEST_LOG_ID})"
+    echo "▶ $case_name (log-id=${IOTSTACK_TEST_LOG_ID})" >> "$RUN_LOG"
 
     set +e
     bash "$case_script" 2>&1 | tee -a "$RUN_LOG"

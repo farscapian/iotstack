@@ -29,6 +29,16 @@ export IOTSTACK_TEST_ROLE="${IOTSTACK_TEST_ROLE:-bleproxy}"
 export IOTSTACK_TEST_STATE="${IOTSTACK_TEST_STATE:-${ARTIFACTS_DIR}/test-state.env}"
 export IOTSTACK_TEST_LOG_DIR="${IOTSTACK_TEST_LOG_DIR:-${LOGS_DIR}/tests}"
 
+# Per-case session log (~/.iotstack/logs/iotstack-<case-slug>.log). Set by the runner
+# or auto-detected when a tests/cases/*.sh script sources this file.
+if [[ -z "${IOTSTACK_TEST_LOG_ID:-}" && -n "${BASH_SOURCE[1]:-}" ]]; then
+  case "${BASH_SOURCE[1]}" in
+    */tests/cases/[0-9][0-9]-*)
+      export IOTSTACK_TEST_LOG_ID="$(basename "${BASH_SOURCE[1]}" .sh)"
+      ;;
+  esac
+fi
+
 mkdir -p "$ARTIFACTS_DIR" "$IOTSTACK_TEST_LOG_DIR" 2>/dev/null || true
 
 _TEST_RED=$'\033[0;31m'
@@ -110,13 +120,14 @@ test_require_tty_failsafe() {
 
 test_iotstack() {
   local -a cmd=("$IOTSTACK_BIN")
-  # Full logs for post-run review (~/.iotstack/logs/iotstack-<command>.log)
-  if [[ "${IOTSTACK_TEST_LOG_FOR_CLAUDE:-1}" -eq 1 ]]; then
-    cmd+=(--log-for-claude)
+  local log_id="${IOTSTACK_TEST_LOG_ID:-}"
+  # Session log per test case (--log-id implies --create-log and -v).
+  if [[ -n "$log_id" && "$log_id" != "0" ]]; then
+    cmd+=(--log-id="$log_id")
   fi
   [[ "${IOTSTACK_TEST_VERBOSE:-0}" -eq 1 ]] && cmd+=(-v)
-  # -q suppresses info lines; skip it when capturing Claude logs
-  if [[ "${IOTSTACK_TEST_QUIET:-1}" -eq 1 && "${IOTSTACK_TEST_LOG_FOR_CLAUDE:-1}" -ne 1 ]]; then
+  # -q is incompatible with --log-id (implies -v); skip quiet when logging.
+  if [[ "${IOTSTACK_TEST_QUIET:-1}" -eq 1 && ( -z "$log_id" || "$log_id" == "0" ) ]]; then
     cmd+=(-q)
   fi
   "${cmd[@]}" "$@"
