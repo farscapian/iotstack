@@ -1694,7 +1694,13 @@ _flash_assess_device_on_flash_action() {
   fi
 
   if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
-    info "  Action: none required — device is current"
+    local assess_role="${prod_hostname%-${device_mac}}"
+    if [[ -n "${MATRIX_COLS}${MATRIX_PANEL_W}${MATRIX_PANEL_H}" ]] \
+       && _flash_matrix_layout_applicable "$assess_role" ""; then
+      info "  Action: check matrix panel layout in NVS (firmware is current)"
+    else
+      info "  Action: none required — device is current"
+    fi
   elif [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     info "  Action: reboot into failsafe to perform update of production partition"
   elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]]; then
@@ -3089,6 +3095,138 @@ _flash_matrix_layout_applicable() {
   return 1
 }
 
+_flash_matrix_layout_flags_set() {
+  [[ -n "${MATRIX_COLS}${MATRIX_PANEL_W}${MATRIX_PANEL_H}" ]]
+}
+
+_flash_resolve_matrix_layout() {
+  # Resolve target panel layout (flags → pass → defaults). Sets named refs.
+  local role="$1"
+  local -n _cols_ref="$2"
+  local -n _w_ref="$3"
+  local -n _h_ref="$4"
+
+  _cols_ref="${MATRIX_COLS:-}"
+  _w_ref="${MATRIX_PANEL_W:-}"
+  _h_ref="${MATRIX_PANEL_H:-}"
+  if [[ -n "$role" ]]; then
+    [[ -z "$_cols_ref" ]] && _cols_ref=$(pass show "iotstack/roles/${role}/matrix_cols" 2>/dev/null || echo "")
+    [[ -z "$_w_ref" ]] && _w_ref=$(pass show "iotstack/roles/${role}/matrix_panel_w" 2>/dev/null || echo "")
+    [[ -z "$_h_ref" ]] && _h_ref=$(pass show "iotstack/roles/${role}/matrix_panel_h" 2>/dev/null || echo "")
+  fi
+  _cols_ref="${_cols_ref:-1}"
+  _w_ref="${_w_ref:-64}"
+  _h_ref="${_h_ref:-32}"
+  if [[ "$_cols_ref" != "1" && "$_cols_ref" != "2" ]]; then
+    err "Panel count must be 1 or 2 (got: $_cols_ref)"
+  fi
+}
+
+_flash_read_matrix_layout_from_device() {
+  # Read active matrix layout from production text_sensors. Sets named refs; returns 0 on success.
+  local prod_hostname="$1"
+  local mac="$2"
+  local role="$3"
+  local -n _cols_ref="$4"
+  local -n _w_ref="$5"
+  local -n _h_ref="$6"
+  local api_host="${prod_hostname}.local"
+  local noise_psk output line key val
+
+  _cols_ref="" _w_ref="" _h_ref=""
+  noise_psk=$(_device_api_noise_psk_b64 "$role" "$mac" 2>/dev/null) || true
+  if [[ -n "$noise_psk" ]]; then
+    output=$(IOTSTACK_API_NOISE_PSK="$noise_psk" \
+      "$SCRIPT_DIR/scripts/esphome_text_sensors.py" "$api_host" \
+      matrix_panel_columns matrix_panel_width matrix_panel_height 2>/dev/null) || return 1
+  else
+    output=$("$SCRIPT_DIR/scripts/esphome_text_sensors.py" "$api_host" \
+      matrix_panel_columns matrix_panel_width matrix_panel_height 2>/dev/null) || return 1
+  fi
+
+  while IFS= read -r line; do
+    [[ "$line" != *"="* ]] && continue
+    key="${line%%=*}"
+    val="${line#*=}"
+    case "$key" in
+      matrix_panel_columns) _cols_ref="$val" ;;
+      matrix_panel_width) _w_ref="$val" ;;
+      matrix_panel_height) _h_ref="$val" ;;
+    esac
+  done <<< "$output"
+
+  [[ -n "$_cols_ref" && -n "$_w_ref" && -n "$_h_ref" ]]
+}
+
+_flash_write_nvs_secrets() {
+  local tty_device="$1"
+  local device_mac="$2"
+  local production_role="${3:-}"
+
+  info "Writing device-specific secrets to NVS..."
+  if create_log_child_output_piped; then
+    create_log_run "write-nvs-secrets" "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" \
+      "$tty_device" "$device_mac" "$production_role" \
+      || err "Failed to write NVS secrets to device"
+  else
+    "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "$production_role" \
+      || err "Failed to write NVS secrets to device"
+  fi
+  ok "NVS secrets written successfully"
+}
+
+_flash_store_matrix_layout_pass() {
+  local role="$1"
+  local cols="$2"
+  local w="$3"
+  local h="$4"
+
+  [[ "${MATRIX_COLS_EXPLICIT:-0}" == "1" ]] && \
+    printf '%s' "$cols" | pass insert -f "iotstack/roles/${role}/matrix_cols" 2>/dev/null || true
+  [[ "${MATRIX_PANEL_W_EXPLICIT:-0}" == "1" ]] && \
+    printf '%s' "$w" | pass insert -f "iotstack/roles/${role}/matrix_panel_w" 2>/dev/null || true
+  [[ "${MATRIX_PANEL_H_EXPLICIT:-0}" == "1" ]] && \
+    printf '%s' "$h" | pass insert -f "iotstack/roles/${role}/matrix_panel_h" 2>/dev/null || true
+}
+
+_flash_matrix_layout_update_if_needed() {
+  # When matrix layout flash flags are set and firmware is already current, update NVS.
+  # Returns 0 if unchanged, 2 if NVS was updated, 1 on failure.
+  local device="$1"
+  local tty_device="$2"
+  local device_mac="$3"
+  local prod_hostname="$4"
+  local want_cols want_w want_h cur_cols cur_w cur_h
+
+  _flash_matrix_layout_flags_set || return 0
+  _flash_matrix_layout_applicable "$device" "" || return 0
+
+  _flash_resolve_matrix_layout "$device" want_cols want_w want_h
+
+  if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
+      cur_cols cur_w cur_h; then
+    if [[ "$cur_cols" == "$want_cols" && "$cur_w" == "$want_w" && "$cur_h" == "$want_h" ]]; then
+      info "  Matrix layout: already ${want_cols} panel(s), ${want_w}x${want_h} px"
+      return 0
+    fi
+    info "  Matrix layout: ${cur_cols} panel(s) ${cur_w}x${cur_h} px → ${want_cols} panel(s) ${want_w}x${want_h} px"
+  else
+    info "  Matrix layout: updating NVS to ${want_cols} panel(s), ${want_w}x${want_h} px"
+  fi
+
+  _flash_write_nvs_secrets "$tty_device" "$device_mac" "$device"
+  _flash_store_matrix_layout_pass "$device" "$want_cols" "$want_w" "$want_h"
+
+  info "Waiting for device to reboot and reconnect..."
+  sleep 3
+  if _wait_for_production_online "$prod_hostname" 90; then
+    ok "Device reconnected after matrix layout update"
+  else
+    warn "Device did not reappear within 90s — layout was written; check serial/WiFi"
+  fi
+  return 2
+}
+
 cmd_flash() {
   _iotstack_command_help_if_requested flash "$@" && return 0
 
@@ -3098,6 +3236,9 @@ cmd_flash() {
   export MATRIX_COLS=""
   export MATRIX_PANEL_W=""
   export MATRIX_PANEL_H=""
+  export MATRIX_COLS_EXPLICIT=0
+  export MATRIX_PANEL_W_EXPLICIT=0
+  export MATRIX_PANEL_H_EXPLICIT=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -3115,29 +3256,35 @@ cmd_flash() {
         ;;
       --panel-count=*)
         MATRIX_COLS="${1#*=}"
+        MATRIX_COLS_EXPLICIT=1
         shift
         ;;
       --panel-count)
         [[ $# -lt 2 ]] && err "Missing value for --panel-count"
         MATRIX_COLS="$2"
+        MATRIX_COLS_EXPLICIT=1
         shift 2
         ;;
       --matrix-panel-width=*)
         MATRIX_PANEL_W="${1#*=}"
+        MATRIX_PANEL_W_EXPLICIT=1
         shift
         ;;
       --matrix-panel-width)
         [[ $# -lt 2 ]] && err "Missing value for --matrix-panel-width"
         MATRIX_PANEL_W="$2"
+        MATRIX_PANEL_W_EXPLICIT=1
         shift 2
         ;;
       --matrix-panel-height=*)
         MATRIX_PANEL_H="${1#*=}"
+        MATRIX_PANEL_H_EXPLICIT=1
         shift
         ;;
       --matrix-panel-height)
         [[ $# -lt 2 ]] && err "Missing value for --matrix-panel-height"
         MATRIX_PANEL_H="$2"
+        MATRIX_PANEL_H_EXPLICIT=1
         shift 2
         ;;
       *)
@@ -3346,16 +3493,7 @@ _flash_failsafe_to_tty() {
     info "Waiting for device to boot..."
     sleep 5
 
-    info "Writing device-specific secrets to NVS..."
-    if create_log_child_output_piped; then
-      if ! create_log_run "write-nvs-secrets" "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" \
-          "$tty_device" "$device_mac" "$production_role"; then
-        err "Failed to write NVS secrets to device"
-      fi
-    elif ! "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "$production_role"; then
-      err "Failed to write NVS secrets to device"
-    fi
-    ok "NVS secrets written successfully"
+    _flash_write_nvs_secrets "$tty_device" "$device_mac" "$production_role"
     sleep 2
 
     info "Waiting for device to connect to WiFi..."
@@ -3622,9 +3760,21 @@ _flash_production_smart() {
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
 
         if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
-          local img_hash
+          local img_hash layout_rc=0 want_cols want_w want_h
+          set +e
+          _flash_matrix_layout_update_if_needed "$device" "$tty_device" "$device_mac" "$prod_hostname"
+          layout_rc=$?
+          set -e
+          if [[ $layout_rc -eq 1 ]]; then
+            err "Matrix layout NVS update failed"
+          fi
+          _flash_resolve_matrix_layout "$device" want_cols want_w want_h
           img_hash=$(_production_running_image_hash "$prod_hostname" "$tty_device" "$yaml_path")
-          ok "Device ${prod_hostname} already running current ${device} firmware (config_hash ${img_hash})"
+          if [[ $layout_rc -eq 2 ]]; then
+            ok "Matrix layout updated on ${prod_hostname}: ${want_cols} panel(s), ${want_w}x${want_h} px (config_hash ${img_hash})"
+          else
+            ok "Device ${prod_hostname} already running current ${device} firmware (config_hash ${img_hash})"
+          fi
           _ha_after_production_online "$yaml_path" "$prod_hostname"
           ok "Production firmware setup complete!"
           return

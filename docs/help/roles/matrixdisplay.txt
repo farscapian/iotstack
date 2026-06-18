@@ -22,6 +22,11 @@ Flash options (matrixdisplay only; written to NVS via write-nvs-secrets.sh):
   --matrix-panel-width=N   Panel width in pixels (default 64)
   --matrix-panel-height=N  Panel height in pixels (default 32)
 
+Panel layout is stored in NVS, not in firmware config_hash. If production
+firmware is already current but you change panel wiring, pass these flags on
+flash — iotstack compares runtime layout to the requested values and rewrites
+NVS (then reboots) without reflashing production.
+
 Examples:
 
   iotstack flash matrixdisplay /dev/ttyACM0
