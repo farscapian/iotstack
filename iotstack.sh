@@ -1695,9 +1695,24 @@ _flash_assess_device_on_flash_action() {
 
   if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local assess_role="${prod_hostname%-${device_mac}}"
-    if [[ -n "${MATRIX_COLS}${MATRIX_PANEL_W}${MATRIX_PANEL_H}" ]] \
-       && _flash_matrix_layout_applicable "$assess_role" ""; then
-      info "  Action: check matrix panel layout in NVS (firmware is current)"
+    local want_cols want_w want_h cur_cols cur_w cur_h
+    if _flash_matrix_layout_applicable "$assess_role" ""; then
+      _flash_resolve_matrix_layout "$assess_role" want_cols want_w want_h
+      if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$assess_role" \
+          cur_cols cur_w cur_h; then
+        info "  Matrix layout (runtime): ${cur_cols} panel(s), ${cur_w}x${cur_h} px"
+        if [[ "$cur_cols" != "$want_cols" || "$cur_w" != "$want_w" || "$cur_h" != "$want_h" ]]; then
+          info "  Matrix layout (target) : ${want_cols} panel(s), ${want_w}x${want_h} px"
+          info "  Action: switch to failsafe and update matrix layout NVS (firmware is current)"
+        else
+          info "  Action: none required — device is current"
+        fi
+      elif _flash_matrix_layout_flags_set; then
+        info "  Matrix layout (target) : ${want_cols} panel(s), ${want_w}x${want_h} px"
+        info "  Action: switch to failsafe and update matrix layout NVS (firmware is current)"
+      else
+        info "  Action: none required — device is current"
+      fi
     else
       info "  Action: none required — device is current"
     fi
@@ -3189,40 +3204,83 @@ _flash_store_matrix_layout_pass() {
     printf '%s' "$h" | pass insert -f "iotstack/roles/${role}/matrix_panel_h" 2>/dev/null || true
 }
 
-_flash_matrix_layout_update_if_needed() {
-  # When matrix layout flash flags are set and firmware is already current, update NVS.
+_flash_matrix_layout_mismatch() {
+  # Compare target layout (flags → pass → defaults) to production API text_sensors.
+  # Returns 0 when layouts match or check not applicable; 1 when NVS update is needed.
+  local device="$1"
+  local device_mac="$2"
+  local prod_hostname="$3"
+  local want_cols want_w want_h cur_cols cur_w cur_h
+
+  _flash_matrix_layout_applicable "$device" "" || return 0
+  _flash_resolve_matrix_layout "$device" want_cols want_w want_h
+
+  if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
+      cur_cols cur_w cur_h; then
+    [[ "$cur_cols" == "$want_cols" && "$cur_w" == "$want_w" && "$cur_h" == "$want_h" ]] && return 0
+    return 1
+  fi
+
+  # Runtime sensors unavailable — only update when layout flags were passed explicitly.
+  _flash_matrix_layout_flags_set
+}
+
+_flash_matrix_layout_update_via_failsafe_if_needed() {
+  # Query production API sensors; on mismatch, switch to failsafe and rewrite NVS over USB.
   # Returns 0 if unchanged, 2 if NVS was updated, 1 on failure.
   local device="$1"
   local tty_device="$2"
   local device_mac="$3"
   local prod_hostname="$4"
-  local want_cols want_w want_h cur_cols cur_w cur_h
+  local want_cols want_w want_h cur_cols cur_w cur_h verify_cols verify_w verify_h
 
-  _flash_matrix_layout_flags_set || return 0
-  _flash_matrix_layout_applicable "$device" "" || return 0
-
+  _flash_matrix_layout_mismatch "$device" "$device_mac" "$prod_hostname" || return 0
   _flash_resolve_matrix_layout "$device" want_cols want_w want_h
 
   if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
       cur_cols cur_w cur_h; then
-    if [[ "$cur_cols" == "$want_cols" && "$cur_w" == "$want_w" && "$cur_h" == "$want_h" ]]; then
-      info "  Matrix layout: already ${want_cols} panel(s), ${want_w}x${want_h} px"
-      return 0
-    fi
-    info "  Matrix layout: ${cur_cols} panel(s) ${cur_w}x${cur_h} px → ${want_cols} panel(s) ${want_w}x${want_h} px"
+    info "Matrix layout mismatch: runtime ${cur_cols} panel(s) ${cur_w}x${cur_h} px → target ${want_cols} panel(s) ${want_w}x${want_h} px"
   else
-    info "  Matrix layout: updating NVS to ${want_cols} panel(s), ${want_w}x${want_h} px"
+    info "Matrix layout: writing target ${want_cols} panel(s), ${want_w}x${want_h} px to NVS"
   fi
 
+  info "Step 1: Switching ${prod_hostname} to failsafe for NVS update..."
+  if ! _ensure_device_on_failsafe "$device_mac" false "$tty_device"; then
+    if [[ -n "$tty_device" ]]; then
+      warn "Network switch to failsafe failed — refreshing failsafe firmware on ${tty_device}..."
+      local _mac_file
+      _mac_file=$(mktemp)
+      _flash_failsafe_to_tty "$tty_device" "$_mac_file" "$device" \
+        || { rm -f "$_mac_file"; return 1; }
+      rm -f "$_mac_file"
+      if ! _wait_for_device "failsafe-${device_mac}" 90; then
+        warn "failsafe-${device_mac} did not appear after serial refresh"
+        return 1
+      fi
+    else
+      return 1
+    fi
+  fi
+
+  info "Step 2: Writing matrix layout to NVS via ${tty_device}..."
   _flash_write_nvs_secrets "$tty_device" "$device_mac" "$device"
   _flash_store_matrix_layout_pass "$device" "$want_cols" "$want_w" "$want_h"
 
-  info "Waiting for device to reboot and reconnect..."
-  sleep 3
+  info "Step 3: Booting production firmware with updated NVS..."
+  if ! _boot_partition_network production "$device_mac"; then
+    warn "Could not toggle boot partition via network — try: iotstack set-boot ${device_mac} production"
+  fi
+
   if _wait_for_production_online "$prod_hostname" 90; then
-    ok "Device reconnected after matrix layout update"
+    if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
+        verify_cols verify_w verify_h \
+        && [[ "$verify_cols" == "$want_cols" && "$verify_w" == "$want_w" && "$verify_h" == "$want_h" ]]; then
+      ok "Matrix layout verified via API: ${verify_cols} panel(s), ${verify_w}x${verify_h} px"
+    else
+      ok "Production firmware online — matrix layout NVS written (re-query sensors if needed)"
+    fi
   else
-    warn "Device did not reappear within 90s — layout was written; check serial/WiFi"
+    warn "Production ${prod_hostname} did not reappear within 90s — NVS was written on failsafe"
   fi
   return 2
 }
@@ -3762,7 +3820,7 @@ _flash_production_smart() {
         if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
           local img_hash layout_rc=0 want_cols want_w want_h
           set +e
-          _flash_matrix_layout_update_if_needed "$device" "$tty_device" "$device_mac" "$prod_hostname"
+          _flash_matrix_layout_update_via_failsafe_if_needed "$device" "$tty_device" "$device_mac" "$prod_hostname"
           layout_rc=$?
           set -e
           if [[ $layout_rc -eq 1 ]]; then
@@ -3789,7 +3847,20 @@ _flash_production_smart() {
 
         if [[ "$try_network_ota" == true ]]; then
           if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
-            ok "Production firmware on flash matches build — nothing to do"
+            local layout_rc=0 want_cols want_w want_h
+            set +e
+            _flash_matrix_layout_update_via_failsafe_if_needed "$device" "$tty_device" "$device_mac" "$prod_hostname"
+            layout_rc=$?
+            set -e
+            if [[ $layout_rc -eq 1 ]]; then
+              err "Matrix layout NVS update failed"
+            fi
+            if [[ $layout_rc -eq 2 ]]; then
+              _flash_resolve_matrix_layout "$device" want_cols want_w want_h
+              ok "Matrix layout updated on ${prod_hostname}: ${want_cols} panel(s), ${want_w}x${want_h} px"
+            else
+              ok "Production firmware on flash matches build — nothing to do"
+            fi
             _ha_after_production_online "$yaml_path" "$prod_hostname"
             ok "Production firmware setup complete!"
             return
