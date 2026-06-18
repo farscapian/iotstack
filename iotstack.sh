@@ -1273,6 +1273,7 @@ _flash_assess_device_runtime() {
   done
 
   info "Assessment result:"
+  info "  MAC suffix: ${device_mac}"
   if [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local running_hash
     running_hash=$(_production_running_image_hash "$prod_hostname" "" "")
@@ -3139,7 +3140,7 @@ _flash_production_smart() {
       device_mac=$(esp_mac_suffix_from_port "$tty_device" 2>/dev/null) || device_mac=""
       if [[ -n "$device_mac" ]]; then
         prod_hostname="${device}-${device_mac}"
-        info "Assessing device ${device_mac} on ${tty_device}..."
+        info "Assessing connected device on ${tty_device}..."
         _flash_assess_device_runtime "$device_mac" "$prod_hostname"
         smart_compile "$yaml_path" "$device" || err "Production compile failed"
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
