@@ -3,6 +3,7 @@ substitutions:
   development_status: "prod"
   device_role: "threadrouter"
   friendly_name: "Thread Router"
+  project_version: "0.0.0-dev"  # overridden at compile time from git tag
 
 esphome:
   name: ${device_role}
@@ -10,7 +11,7 @@ esphome:
   name_add_mac_suffix: true
   project:
     name: "iotstack.${device_role}-${development_status}"
-    version: "1.5.0"
+    version: "${project_version}"
 
 esp32:
   board: seeed_xiao_esp32c6

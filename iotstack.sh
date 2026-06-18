@@ -72,6 +72,8 @@ _get_yaml_sha() {
     combined_hash=$(echo -n "${combined_hash}${dir_hash}" | sha256sum | awk '{print $1}')
   done
 
+  combined_hash=$(echo -n "${combined_hash}$(iotstack_project_version)" | sha256sum | awk '{print $1}')
+
   echo "$combined_hash"
 }
 
@@ -317,15 +319,19 @@ _failsafe_part_size() {
 _esphome_compile() {
   # Run esphome compile, honoring VERBOSE
   local yaml_file="$1"
+  local compile_yaml rc=0
+  compile_yaml=$(iotstack_prepare_compile_yaml "$yaml_file") || return 1
   if [[ $VERBOSE -eq 1 ]]; then
     if create_log_child_output_piped; then
-      create_log_run "esphome:compile" esphome compile "$yaml_file" || return 1
+      create_log_run "esphome:compile" esphome compile "$compile_yaml" || rc=1
     else
-      esphome compile "$yaml_file" || return 1
+      esphome compile "$compile_yaml" || rc=1
     fi
   else
-    esphome compile "$yaml_file" >/dev/null 2>&1 || return 1
+    esphome compile "$compile_yaml" >/dev/null 2>&1 || rc=1
   fi
+  iotstack_cleanup_compile_yaml "$compile_yaml" "$yaml_file"
+  return $rc
 }
 
 _smart_compile_cache_hit_notice() {

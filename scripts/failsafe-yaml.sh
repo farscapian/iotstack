@@ -188,6 +188,7 @@ failsafe_render_yaml() {
     /^  boot_button_pin:/ { print "  boot_button_pin: " boot_pin; next }
     { print }
   ' "$FAILSAFE_TEMPLATE" > "$dst"
+  _iotstack_set_project_version_in_yaml "$dst" "$(iotstack_project_version)"
 
   # Do not register EXIT trap here — callers often capture this path via $(...)
   # which runs in a subshell; the trap would delete the artifact when that

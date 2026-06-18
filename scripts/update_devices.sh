@@ -33,6 +33,7 @@ source "${_UPDATE_DEVICES_SCRIPT_DIR}/failsafe-yaml.sh"
 
 # ── Cleanup on exit ──────────────────────────────────────────────────────────
 WORK_DIR=""
+COMPILE_YAML=""
 COMPILE_LOG=""
 
 cleanup() {
@@ -44,6 +45,9 @@ cleanup() {
   fi
   if [[ -n "${COMPILE_LOG}" && -f "${COMPILE_LOG}" ]]; then
     rm -f "${COMPILE_LOG}"
+  fi
+  if [[ -n "${ORIGINAL_YAML_FILE:-}" ]]; then
+    iotstack_cleanup_compile_yaml "${COMPILE_YAML:-}" "$ORIGINAL_YAML_FILE"
   fi
 }
 trap cleanup EXIT
@@ -761,6 +765,8 @@ fi
 # The OTA password is used to authenticate the OTA upload from the current device
 # IMPORTANT: Save original YAML name for caching (before temp file creation)
 ORIGINAL_YAML_FILE="$YAML_FILE"
+COMPILE_YAML=$(iotstack_prepare_compile_yaml "$ORIGINAL_YAML_FILE")
+YAML_FILE="$COMPILE_YAML"
 
 # All secrets must come from NVS at runtime — !secret references in YAML are
 # forbidden. Catch them early so the build never silently embeds credentials.
@@ -1156,7 +1162,7 @@ fi
 # Uses ORIGINAL_YAML_FILE to ignore temp file changes (OTA password embedding)
 CACHE_FILE="${BASE_LOG_DIR}/${YAML_NAME}.build.cache"
 
-YAML_SHA256=$(sha256sum "$ORIGINAL_YAML_FILE" | awk '{print $1}')
+YAML_SHA256=$(iotstack_yaml_cache_sha "$ORIGINAL_YAML_FILE")
 ESPHOME_VERSION=$("$ESPHOME_BIN" version 2>/dev/null | grep -o '[0-9][0-9]*\.[0-9.]*' | head -1)
 
 CACHED_YAML_SHA256=$(grep '^yaml_sha256='     "$CACHE_FILE" 2>/dev/null | cut -d= -f2 || true)

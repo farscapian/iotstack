@@ -3,6 +3,7 @@ substitutions:
   device_role: "ledstrip"
   friendly_name: "LED Light Strip"
   boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
+  project_version: "0.0.0-dev"  # overridden at compile time from git tag
 
 
 # External components (replaces deprecated custom_components folder)
@@ -22,7 +23,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "iotstack.${device_role}-${development_status}"
-    version: 1.0.0
+    version: "${project_version}"
   name_add_mac_suffix: true
 
 esp32:

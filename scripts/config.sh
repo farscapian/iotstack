@@ -79,6 +79,9 @@ export PERFORM_HA_DEVICE_REGISTRATION="${PERFORM_HA_DEVICE_REGISTRATION:-0}"
 # Ensure directories exist
 mkdir -p "$IOTSTACK_HOME" "$LOGS_DIR" "$ARTIFACTS_DIR" "$PASS_STORE_DIR" 2>/dev/null || true
 
+# shellcheck source=scripts/iotstack-version.sh
+source "${SCRIPTS_DIR}/iotstack-version.sh"
+
 # Stub partition table artifact + yamls/ symlink (generated tables live in artifacts/)
 # shellcheck source=scripts/partition-table.sh
 source "${SCRIPTS_DIR}/partition-table.sh"

@@ -10,6 +10,7 @@ substitutions:
   matrix_illuminance_min_lx: "1"     # Below this → floor brightness
   matrix_illuminance_max_lx: "30"    # At/above this → cap brightness
   matrix_illuminance_default_lx: "14.8"  # HA default input → matrix_brightness_default
+  project_version: "0.0.0-dev"  # overridden at compile time from git tag
 
 # External components (replaces deprecated custom_components folder)
 external_components:
@@ -28,7 +29,7 @@ esphome:
   friendly_name: ${friendly_name}
   project:
     name: "iotstack.${device_role}-${development_status}"
-    version: 1.0.0
+    version: "${project_version}"
   name_add_mac_suffix: true
   on_boot:
     - priority: 600
