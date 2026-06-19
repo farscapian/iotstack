@@ -48,6 +48,13 @@ _print_table_rule() {
 
 # -- Compilation Cache --------------------------------------------------------
 
+_compilation_cache_short_sha() {
+  # Last 10 hex chars stored in compilation-cache.csv (full SHA256 computed first).
+  local sha="$1"
+  [[ -n "$sha" ]] || return 0
+  ((${#sha} > 10)) && echo "${sha: -10}" || echo "$sha"
+}
+
 _get_yaml_sha() {
   # SHA256 of the YAML plus the shared external_components and common/ package
   # includes, so a change to any of them invalidates the compile cache -- the
@@ -85,12 +92,10 @@ _get_binary_sha() {
 }
 
 _normalize_compilation_cache() {
-  # Upgrade legacy 3-column caches; dedupe rows (one row per yaml_name).
+  # Upgrade legacy caches; shorten SHAs; dedupe rows (one row per yaml_name).
   [[ -f "$COMPILATION_CACHE" ]] || return 0
-  local row_count unique_count tmp header
+  local tmp header
   header=$(head -1 "$COMPILATION_CACHE")
-  row_count=$(tail -n +2 "$COMPILATION_CACHE" 2>/dev/null | wc -l)
-  unique_count=$(tail -n +2 "$COMPILATION_CACHE" 2>/dev/null | cut -d, -f1 | sort -u | wc -l)
 
   if [[ "$header" == *config_hash* ]]; then
     tmp=$(mktemp)
@@ -108,15 +113,21 @@ _normalize_compilation_cache() {
       done
     } > "$tmp"
     mv "$tmp" "$COMPILATION_CACHE"
-    header="yaml_name,yaml_sha,binary_sha,image_hash"
   fi
-
-  (( row_count == unique_count )) && return 0
 
   tmp=$(mktemp)
   {
-    echo "$header"
-    tail -n +2 "$COMPILATION_CACHE" | awk -F, '{ rows[$1]=$0 } END { for (n in rows) print rows[n] }' | sort -t, -k1,1
+    echo "yaml_name,yaml_sha,binary_sha,image_hash"
+    tail -n +2 "$COMPILATION_CACHE" | awk -F, '
+      NF < 1 || $1 == "" { next }
+      {
+        y = $2; b = $3; h = $4
+        if (length(y) > 10) y = substr(y, length(y) - 9)
+        if (length(b) > 10) b = substr(b, length(b) - 9)
+        rows[$1] = $1 "," y "," b "," h
+      }
+      END { for (n in rows) print rows[n] }
+    ' | sort -t, -k1,1
   } > "$tmp"
   mv "$tmp" "$COMPILATION_CACHE"
 }
@@ -157,7 +168,7 @@ _check_compilation_cache() {
   local yaml_file="$1"
   local yaml_name yaml_sha cached_sha
   yaml_name=$(basename "$yaml_file")
-  yaml_sha=$(_get_yaml_sha "$yaml_file")
+  yaml_sha=$(_compilation_cache_short_sha "$(_get_yaml_sha "$yaml_file")")
 
   [[ ! -f "$COMPILATION_CACHE" ]] && return 1
   _normalize_compilation_cache
@@ -197,7 +208,8 @@ _update_compilation_cache() {
   local build_name="${3:-}"
   local yaml_name yaml_sha image_hash tmp
   yaml_name=$(basename "$yaml_file")
-  yaml_sha=$(_get_yaml_sha "$yaml_file")
+  yaml_sha=$(_compilation_cache_short_sha "$(_get_yaml_sha "$yaml_file")")
+  binary_sha=$(_compilation_cache_short_sha "$binary_sha")
   image_hash=""
   [[ -n "$build_name" ]] && image_hash=$(_build_image_hash_from_build_dir "$build_name" 2>/dev/null) || true
 
@@ -4861,7 +4873,8 @@ _cmd_clean_remove_path() {
 }
 
 cmd_clean() {
-  # Clean build artifacts, compilation caches, session logs, and ~/.iotstack/artifacts
+  # Clean build artifacts, compilation caches, session logs, and ~/.iotstack/artifacts.
+  # Session log lines are buffered (IOTSTACK_LOG_BUFFER_FILE) and flushed on EXIT.
   info "Cleaning build artifacts, logs, and artifacts..."
 
   local cleaned_count=0 item

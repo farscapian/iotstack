@@ -11,7 +11,8 @@ Removes:
   - ESPHome IDE data (~/.esphome/idedata/)
   - PlatformIO cache
   - Compilation cache file
-  - Logs directory (~/.iotstack/logs/)
+  - Logs directory (~/.iotstack/logs/); with --create-log / --log-id the session
+    log is written after cleanup finishes
   - Artifacts directory (~/.iotstack/artifacts/), including partition table CSV
 
 Usage:

@@ -102,6 +102,54 @@ create_log_enabled() {
   [[ "${IOTSTACK_CREATE_LOG:-0}" -eq 1 ]]
 }
 
+create_log_defer_enabled() {
+  [[ "${IOTSTACK_LOG_DEFER:-0}" -eq 1 ]]
+}
+
+create_log_defer_start() {
+  # Buffer iotstack stamp lines in IOTSTACK_LOG_BUFFER_FILE; flush on EXIT.
+  # Used by iotstack clean so the logs directory can be removed mid-command.
+  create_log_enabled || return 0
+  [[ -n "${IOTSTACK_LOG_BUFFER_FILE:-}" ]] && return 0
+
+  export IOTSTACK_LOG_DEFER=1
+  export IOTSTACK_LOG_BUFFER_FILE
+  IOTSTACK_LOG_BUFFER_FILE=$(mktemp)
+
+  local prior_cmd=""
+  if trap -p EXIT 2>/dev/null | grep -q .; then
+    prior_cmd=$(trap -p EXIT | sed -E "s/^trap -- '(.*)' EXIT$/\1/")
+  fi
+
+  if [[ -n "$prior_cmd" ]]; then
+    # shellcheck disable=SC2064
+    trap 'create_log_flush; eval "$_CREATE_LOG_PRIOR_EXIT_CMD"' EXIT
+    export _CREATE_LOG_PRIOR_EXIT_CMD="$prior_cmd"
+  else
+    trap 'create_log_flush' EXIT
+  fi
+}
+
+create_log_flush() {
+  create_log_enabled || return 0
+  [[ "${IOTSTACK_LOG_FLUSHED:-0}" -eq 1 ]] && return 0
+  [[ -n "${IOTSTACK_LOG_FILE:-}" ]] || return 0
+  [[ -n "${IOTSTACK_LOG_BUFFER_FILE:-}" && -f "$IOTSTACK_LOG_BUFFER_FILE" ]] || return 0
+
+  export IOTSTACK_LOG_FLUSHED=1
+  mkdir -p "$(dirname "$IOTSTACK_LOG_FILE")"
+  if [[ -n "${IOTSTACK_LOG_ID:-}" && -f "$IOTSTACK_LOG_FILE" ]]; then
+    {
+      echo ""
+      cat "$IOTSTACK_LOG_BUFFER_FILE"
+    } >> "$IOTSTACK_LOG_FILE"
+  else
+    cat "$IOTSTACK_LOG_BUFFER_FILE" > "$IOTSTACK_LOG_FILE"
+  fi
+  rm -f "$IOTSTACK_LOG_BUFFER_FILE"
+  unset IOTSTACK_LOG_BUFFER_FILE IOTSTACK_LOG_DEFER 2>/dev/null || true
+}
+
 iotstack_timestamp_enabled() {
   [[ "${IOTSTACK_TIMESTAMP:-0}" -eq 1 ]]
 }
@@ -124,6 +172,11 @@ create_log_stamp_line() {
   [[ -n "${IOTSTACK_LOG_FILE:-}" ]] || return 0
   local ts
   ts=$(date -Iseconds)
+  if create_log_defer_enabled && [[ -n "${IOTSTACK_LOG_BUFFER_FILE:-}" ]]; then
+    printf '%s [%s] %s\n' "$ts" "$source" "$line" >> "$IOTSTACK_LOG_BUFFER_FILE"
+    return 0
+  fi
+  mkdir -p "$(dirname "$IOTSTACK_LOG_FILE")"
   printf '%s [%s] %s\n' "$ts" "$source" "$line" >> "$IOTSTACK_LOG_FILE"
 }
 
@@ -201,12 +254,19 @@ create_log_setup() {
     log_name="iotstack-${command}"
   fi
   export IOTSTACK_LOG_FILE="${IOTSTACK_HOME}/logs/${log_name}.log"
-  mkdir -p "$(dirname "$IOTSTACK_LOG_FILE")"
 
   session_cmd="iotstack"
   if [[ ${#IOTSTACK_ARGV[@]} -gt 0 ]]; then
     session_cmd+=" ${IOTSTACK_ARGV[*]}"
   fi
+
+  if [[ "$command" == "clean" ]]; then
+    create_log_defer_start
+    printf '%s === %s ===\n' "$(date -Iseconds)" "$session_cmd" >> "$IOTSTACK_LOG_BUFFER_FILE"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$IOTSTACK_LOG_FILE")"
 
   if [[ -n "${IOTSTACK_LOG_ID:-}" && -f "$IOTSTACK_LOG_FILE" ]]; then
     {
