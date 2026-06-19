@@ -344,20 +344,35 @@ _bootstrap_part_size() {
   printf '0x%x' "$total"
 }
 
-_esphome_compile() {
-  # Run esphome compile, honoring VERBOSE
-  local yaml_file="$1"
-  local compile_yaml rc=0
-  compile_yaml=$(iotstack_prepare_compile_yaml "$yaml_file") || return 1
-  if [[ $VERBOSE -eq 1 ]]; then
-    if create_log_child_output_piped; then
-      create_log_run "esphome:compile" esphome compile "$compile_yaml" || rc=1
-    else
-      esphome compile "$compile_yaml" || rc=1
-    fi
-  else
-    esphome compile "$compile_yaml" >/dev/null 2>&1 || rc=1
+_esphome_compile_show_failure() {
+  local compile_yaml="$1"
+  local compile_log="$2"
+  local line
+
+  [[ -f "$compile_log" && -s "$compile_log" ]] || return 0
+  warn "Compile failed for $(basename "$compile_yaml") (last lines):"
+  if declare -F create_log_stamp_line &>/dev/null && create_log_enabled; then
+    create_log_stamp_line "esphome:compile" "--- compile failed: $(basename "$compile_yaml") ---"
+    while IFS= read -r line; do
+      create_log_stamp_line "esphome:compile" "$line"
+    done <"$compile_log"
   fi
+  tail -40 "$compile_log" >&2
+}
+
+_esphome_compile() {
+  # Run esphome compile quietly; one INFO line names the compile YAML. Full compiler
+  # output is captured and shown only on failure (-v/--log-id do not stream PlatformIO).
+  local yaml_file="$1"
+  local compile_yaml compile_log rc=0
+  compile_yaml=$(iotstack_prepare_compile_yaml "$yaml_file") || return 1
+  compile_log=$(mktemp)
+  info "Compiling $(basename "$compile_yaml")..."
+  if ! esphome compile "$compile_yaml" >"$compile_log" 2>&1; then
+    rc=1
+    _esphome_compile_show_failure "$compile_yaml" "$compile_log"
+  fi
+  rm -f "$compile_log"
   iotstack_cleanup_compile_yaml "$compile_yaml" "$yaml_file"
   return $rc
 }
@@ -452,7 +467,6 @@ smart_compile() {
     fi
     _update_partition_table_file
     _smart_compile_cache_miss_notice "$device_name" "production"
-    info "Compiling production firmware (${device_name})..."
     _esphome_compile "$yaml_file" || return 1
     local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
     if [[ -n "$binary_sha" ]]; then
@@ -487,9 +501,9 @@ smart_compile() {
   export IOTSTACK_BOOTSTRAP_PART_SIZE="$pass1_size"
   _update_partition_table_file
   if _hex_sizes_equal "$pass1_size" "$generous_size"; then
-    info "Compiling bootstrap-wifi firmware (pass 1/2: measuring size)..."
+    debug "Bootstrap compile pass 1/2: measuring firmware size (partition ${pass1_size})"
   else
-    info "Compiling bootstrap-wifi firmware (pass 1: partition table ${pass1_size})..."
+    debug "Bootstrap compile pass 1: partition table ${pass1_size}"
   fi
   if ! _esphome_compile "$yaml_file"; then
     if _hex_sizes_equal "$pass1_size" "$generous_size"; then
@@ -498,7 +512,7 @@ smart_compile() {
     warn "Bootstrap compile failed with partition ${pass1_size} -- retrying with generous ${generous_size}"
     export IOTSTACK_BOOTSTRAP_PART_SIZE="$generous_size"
     _update_partition_table_file
-    info "Compiling bootstrap-wifi firmware (pass 1/2: measuring size)..."
+    debug "Bootstrap compile pass 1/2: measuring firmware size (partition ${generous_size})"
     _esphome_compile "$yaml_file" || return 1
   fi
 
@@ -513,7 +527,7 @@ smart_compile() {
   else
     export IOTSTACK_BOOTSTRAP_PART_SIZE="$fs_size"
     _update_partition_table_file
-    info "Compiling bootstrap-wifi firmware (pass 2/2: applying exact partition table)..."
+    debug "Bootstrap compile pass 2/2: applying exact partition table (${fs_size})"
     _esphome_compile "$yaml_file" || return 1
     _sync_bootstrap_partition_table_from_build
   fi
