@@ -1141,6 +1141,8 @@ _list_devices_collect_mdns_parallel() {
   fi
 }
 
+_LIST_DEVICES_LIVE_TIMEOUT_SEC=2
+
 _list_devices_host_live() {
   # Return 0 when hostname.local accepts the firmware's service port right now.
   # Filters stale avahi-daemon cache entries (offline devices can linger in mDNS).
@@ -1148,15 +1150,15 @@ _list_devices_host_live() {
   local bootstrap_prefix
   bootstrap_prefix="$(iotstack_bootstrap_role)-"
   if [[ "$hostname" == "${bootstrap_prefix}"* ]]; then
-    _iotstack_ota_tcp_open "$hostname" 3232 \
-      || _iotstack_ota_tcp_open "$hostname" 6053
+    _iotstack_ota_tcp_open "$hostname" 3232 "$_LIST_DEVICES_LIVE_TIMEOUT_SEC" \
+      || _iotstack_ota_tcp_open "$hostname" 6053 "$_LIST_DEVICES_LIVE_TIMEOUT_SEC"
     return $?
   fi
-  _production_api_reachable "$hostname"
+  _production_api_reachable "$hostname" "$_LIST_DEVICES_LIVE_TIMEOUT_SEC"
 }
 
 _list_devices_filter_live_hosts() {
-  # Keep only mDNS rows whose host accepts a TCP probe (parallel, ~3s per host).
+  # Keep only mDNS rows whose host accepts a TCP probe (parallel, 2s per host).
   local input="$1"
   local output="$2"
   local -a rows=() probe_pids=()
@@ -1586,7 +1588,8 @@ _iotstack_ota_tcp_open() {
   # Return 0 when hostname.local accepts a TCP connection on port.
   local hostname="$1"
   local port="$2"
-  timeout 3 bash -c "echo > /dev/tcp/${hostname}.local/${port}" 2>/dev/null
+  local timeout_sec="${3:-3}"
+  timeout "$timeout_sec" bash -c "echo > /dev/tcp/${hostname}.local/${port}" 2>/dev/null
 }
 
 _bootstrap_ota_reachable() {
@@ -1766,7 +1769,8 @@ _production_running_image_hash() {
 _production_api_reachable() {
   # Production native API accepts TCP on 6053.
   local hostname="$1"
-  timeout 3 bash -c "echo > /dev/tcp/${hostname}.local/6053" 2>/dev/null
+  local timeout_sec="${2:-3}"
+  timeout "$timeout_sec" bash -c "echo > /dev/tcp/${hostname}.local/6053" 2>/dev/null
 }
 
 _production_mdns_advertised() {
