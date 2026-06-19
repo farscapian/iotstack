@@ -4976,18 +4976,16 @@ _cmd_clean_remove_path() {
 }
 
 cmd_clean() {
-  # Clean build artifacts, compilation caches, session logs, and ~/.iotstack/artifacts.
+  # Clean compilation caches, session logs, and ~/.iotstack/artifacts.
+  # Does not remove ESPHome build output (yamls/.esphome/ or ~/.esphome/).
   # Session log lines are buffered (IOTSTACK_LOG_BUFFER_FILE) and flushed on EXIT.
-  info "Cleaning build artifacts, logs, and artifacts..."
+  info "Cleaning compilation caches, logs, and artifacts..."
 
   local cleaned_count=0 item
   local logs_dir="${IOTSTACK_HOME}/logs"
   local artifacts_dir="${IOTSTACK_HOME}/artifacts"
 
   local -a items_to_clean=(
-    "${YAMLS_DIR}/.esphome/build"
-    "${HOME}/.esphome/storage"
-    "${HOME}/.esphome/idedata"
     "${HOME}/.platformio/.cache"
     "${COMPILATION_CACHE}"
     "${logs_dir}"
