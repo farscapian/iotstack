@@ -194,6 +194,11 @@ create_log_stamp_pipe() {
   fi
 }
 
+create_log_subprocess_indent_env() {
+  # Indent for piped child output (step indent + 2 spaces under the parent [INFO] line).
+  export IOTSTACK_LOG_SUB_INDENT="  "
+}
+
 create_log_console_stamp_pipe() {
   # Prefix each stdin line with a timestamp on stdout.
   local source="${1:-}"
@@ -202,7 +207,11 @@ create_log_console_stamp_pipe() {
     if create_log_enabled && [[ -n "${IOTSTACK_LOG_FILE:-}" ]]; then
       stamp_args=(--console --source "$source" --log-file "$IOTSTACK_LOG_FILE")
     fi
-    stdbuf -oL -eL python3 -u "$IOTSTACK_LOG_STAMP" "${stamp_args[@]}"
+    create_log_subprocess_indent_env
+    stdbuf -oL -eL env \
+      IOTSTACK_LOG_INDENT="${IOTSTACK_LOG_INDENT:-}" \
+      IOTSTACK_LOG_SUB_INDENT="${IOTSTACK_LOG_SUB_INDENT:-}" \
+      python3 -u "$IOTSTACK_LOG_STAMP" "${stamp_args[@]}"
   else
     cat
   fi
@@ -230,8 +239,8 @@ create_log_run() {
   local source="$1"
   shift
   if create_log_child_output_piped; then
-    IOTSTACK_LOG_SUB_INDENT="  " env PYTHONUNBUFFERED=1 stdbuf -oL -eL "$@" 2>&1 \
-      | create_log_tee_console "$source"
+    create_log_subprocess_indent_env
+    env PYTHONUNBUFFERED=1 stdbuf -oL -eL "$@" 2>&1 | create_log_tee_console "$source"
     return "${PIPESTATUS[0]}"
   fi
   "$@"
@@ -308,16 +317,16 @@ create_log_run_esptool() {
     tmp=$(mktemp)
     if [[ $VERBOSE -eq 1 ]]; then
       if create_log_enabled && ! iotstack_timestamp_enabled; then
-        IOTSTACK_LOG_SUB_INDENT="  " python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
+        python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
           | stdbuf -oL -eL tee "$tmp" /dev/tty \
           | create_log_stamp_pipe "$source"
       else
-        IOTSTACK_LOG_SUB_INDENT="  " python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
+        python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
           | stdbuf -oL -eL tee "$tmp" \
           | create_log_tee_console "$source"
       fi
     else
-      IOTSTACK_LOG_SUB_INDENT="  " python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
+      python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
         | tee "$tmp" \
         | create_log_tee_console "$source" >/dev/null
     fi
