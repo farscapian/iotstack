@@ -3843,7 +3843,6 @@ _flash_write_nvs_secrets_usb() {
       || err "Failed to write NVS secrets to device"
   fi
   ok "NVS secrets written successfully via USB"
-  _flash_esptool_hard_reset "$tty_device" "${IOTSTACK_LOG_FILE:-}"
 }
 
 # Back-compat alias
@@ -4119,25 +4118,10 @@ _flash_msg_waiting_for_upload() {
   info "Waiting for bootstrap-${1} OTA service (port 3232)..."
 }
 
-_flash_esptool_hard_reset() {
-  # Reset device after NVS is written (bootstrap must not boot until secrets are on flash).
-  # default-reset enters the ROM bootloader from any state; hard-reset reboots into firmware.
-  local tty_device="$1"
-  local flash_log="${2:-}"
-  local esptool_chip="${IOTSTACK_ESPTOOL_CHIP:-esp32c6}"
-  local esptool_baud esptool_src="esptool:${esptool_chip}"
-  esptool_baud=$(esp_esptool_baud_for_chip "$esptool_chip")
-  sleep 1
-  create_log_run_esptool "$esptool_src" "$flash_log" \
-    --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud" \
-    --before default-reset --after hard-reset chip-id \
-    || warn "Post-NVS hard reset failed (device may need manual reset)"
-}
-
 _flash_bootstrap_esptool() {
   # Serial flash only: bootloader, partition table, boot_app0, bootstrap app.
   # Production partition is never written over USB (OTA after bootstrap boots).
-  # Does not reset the chip -- caller writes NVS, then _flash_esptool_hard_reset().
+  # Does not reset the chip -- write-nvs-secrets.sh hard-resets after NVS is written.
   # Sets esptool_output. Usage: _flash_bootstrap_esptool <tty> <flash_log> <build_dir>
   #   <bootstrap_offset> [erase:0|1]
   local tty_device="$1"

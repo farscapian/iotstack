@@ -32,6 +32,24 @@ esp_esptool_baud_for_chip() {
   esac
 }
 
+esp_esptool_hard_reset() {
+  # Reboot into firmware after a no-reset flash (NVS write leaves chip in bootloader stub).
+  # default-reset enters ROM download mode from any state; hard-reset boots firmware.
+  local port="$1"
+  local chip="${2:-esp32c6}"
+  local baud attempt
+  baud=$(esp_esptool_baud_for_chip "$chip")
+  [[ -e "$port" ]] || return 1
+  for attempt in 1 2 3; do
+    if python3 -m esptool --chip "$chip" --port "$port" --baud "$baud" \
+        --before default-reset --after hard-reset chip-id >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
 esp_boot_app0_bin_for_build() {
   # boot_app0.bin at 0xd000 is required for OTA partition boot selection (Arduino layout).
   local build_dir="$1"

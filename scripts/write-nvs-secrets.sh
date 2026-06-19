@@ -347,6 +347,12 @@ else
   err "Failed to write NVS partition to device"
 fi
 
+info "Rebooting device into firmware..."
+if ! esp_esptool_hard_reset "$TTY_DEVICE" "$ESPTOOL_CHIP"; then
+  err "Failed to reset device after NVS write (press the device RESET button and retry)"
+fi
+ok "Device reset into firmware"
+
 # Cleanup temp files
 rm -f "$NVS_CSV_PATH" "$NVS_BIN_PATH"
 
