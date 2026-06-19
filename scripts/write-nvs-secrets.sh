@@ -138,7 +138,8 @@ fi
 
 # -- Derive bootstrap device-specific OTA password --------------------------
 info "Computing bootstrap secrets for device: $DEVICE_MAC"
-BOOTSTRAP_OTA_BASE=$(_get_or_generate_role_ota_password "$(iotstack_bootstrap_pass_ota_path)" "bootstrap")
+BOOTSTRAP_OTA_BASE=$(iotstack_bootstrap_pass_ota_read 2>/dev/null) \
+  || BOOTSTRAP_OTA_BASE=$(_get_or_generate_role_ota_password "$(iotstack_bootstrap_pass_ota_path)" "$(iotstack_bootstrap_role)")
 BOOTSTRAP_OTA_PASSWORD=$(echo -n "${BOOTSTRAP_OTA_BASE}|${DEVICE_MAC}" | sha256sum | cut -c1-32)
 
 # -- Derive production device-specific API key (if production role given) --

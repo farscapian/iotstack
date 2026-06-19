@@ -1325,8 +1325,7 @@ _bootstrap_device_ota_password() {
   # NVS stores sha256(bootstrap_role_secret | mac) -- used for OTA from bootstrap.
   local mac="$1"
   local fs_secret
-  fs_secret=$(pass show "$(iotstack_bootstrap_pass_ota_path)" 2>/dev/null)
-  [[ -z "$fs_secret" ]] && return 1
+  fs_secret=$(iotstack_bootstrap_pass_ota_read) || return 1
   echo -n "${fs_secret}|${mac}" | sha256sum | cut -c1-32
 }
 
@@ -1384,7 +1383,7 @@ _flash_production_ota_update() {
   [[ -z "$device_role" ]] && device_role=$(_yaml_device_role "$yaml_path")
   prod_hostname="${device_role}-${device_mac}"
   dev_pwd=$(_bootstrap_device_ota_password "$device_mac") \
-    || err "Could not derive bootstrap OTA password for ${device_mac} (provision bootstrap first?)"
+    || err "Could not derive bootstrap OTA password for ${device_mac} (missing $(iotstack_bootstrap_pass_ota_path) in pass — flash via USB or run: pass mv $(iotstack_bootstrap_pass_ota_legacy_path) $(iotstack_bootstrap_pass_ota_path))"
 
   if ! _production_api_reachable "$prod_hostname" && ! _bootstrap_ota_reachable "$device_mac"; then
     warn "Production API and bootstrap OTA are unreachable -- network switch may fail"
@@ -1994,7 +1993,7 @@ _reassign_devices_via_bootstrap() {
   fi
 
   if [[ -z "$ota_password" ]]; then
-    if ! pass show "$(iotstack_bootstrap_pass_ota_path)" &>/dev/null; then
+    if ! iotstack_bootstrap_pass_ota_read &>/dev/null; then
       err "Bootstrap role OTA password not found in pass (provision a device first)."
     fi
   fi
@@ -2065,8 +2064,8 @@ _update_via_bootstrap() {
   fi
 
   local fs_secret
-  fs_secret=$(pass show "$(iotstack_bootstrap_pass_ota_path)" 2>/dev/null)
-  [[ -z "$fs_secret" ]] && err "Bootstrap role OTA password not found in pass (provision a device first)."
+  fs_secret=$(iotstack_bootstrap_pass_ota_read) \
+    || err "Bootstrap role OTA password not found in pass (provision a device first)."
 
   info "Updating ${#macs[@]} '$role' device(s) via bootstrap..."
   local failed=0 mac dev_pwd
@@ -4370,7 +4369,7 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
       # device authenticates OTA with its device-specific password derived from
       # this role secret + MAC (the same value written to its NVS at flash time).
       local bootstrap_role_password
-      bootstrap_role_password=$(pass show "$(iotstack_bootstrap_pass_ota_path)" 2>/dev/null)
+      bootstrap_role_password=$(iotstack_bootstrap_pass_ota_read 2>/dev/null) || true
       if [[ -z "$bootstrap_role_password" ]]; then
         info "Bootstrap role OTA password not found, generating..."
         bootstrap_role_password=$(openssl rand -hex 16)

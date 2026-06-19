@@ -36,6 +36,29 @@ iotstack_bootstrap_pass_ota_path() {
   printf 'iotstack/roles/%s/ota_password\n' "$role"
 }
 
+iotstack_bootstrap_pass_ota_legacy_path() {
+  printf '%s\n' "iotstack/roles/failsafe/ota_password"
+}
+
+iotstack_bootstrap_pass_ota_read() {
+  # Read bootstrap role OTA base secret from pass. Auto-migrates legacy failsafe path.
+  local path secret legacy
+  path=$(iotstack_bootstrap_pass_ota_path)
+  secret=$(pass show "$path" 2>/dev/null) || true
+  [[ -n "$secret" ]] && { printf '%s' "$secret"; return 0; }
+
+  legacy=$(iotstack_bootstrap_pass_ota_legacy_path)
+  secret=$(pass show "$legacy" 2>/dev/null) || true
+  [[ -z "$secret" ]] && return 1
+
+  { echo "$secret"; echo "$secret"; } | pass insert -f "$path" >/dev/null 2>&1 \
+    || return 1
+  pass rm "$legacy" >/dev/null 2>&1 || true
+  echo "[INFO] Migrated bootstrap OTA password: $legacy -> $path" >&2
+  printf '%s' "$secret"
+  return 0
+}
+
 iotstack_bootstrap_friendly_name() {
   local role first
   role=$(iotstack_bootstrap_role)
