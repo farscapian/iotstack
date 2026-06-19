@@ -2214,6 +2214,7 @@ _ensure_device_on_bootstrap() {
   if ! _wait_for_device "$(iotstack_bootstrap_hostname "$mac")" "$wait_timeout"; then
     if [[ -n "$tty_device" ]]; then
       warn "[$mac] bootstrap-$mac did not appear -- use USB serial fallback"
+      _flash_warn_start_serial_logs "$tty_device"
     else
       warn "[$mac] bootstrap-$mac did not appear"
     fi
@@ -2223,6 +2224,7 @@ _ensure_device_on_bootstrap() {
   info "[$mac] 3/4 waiting for bootstrap OTA service..."
   if ! _wait_for_ota_service "$(iotstack_bootstrap_hostname "$mac")" 90; then
     warn "[$mac] bootstrap-$mac OTA service not reachable"
+    _flash_warn_start_serial_logs "$tty_device"
     return 1
   fi
   sleep 2
@@ -3937,6 +3939,7 @@ _flash_matrix_layout_update_via_bootstrap_if_needed() {
       rm -f "$_mac_file"
       if ! _wait_for_device "$(iotstack_bootstrap_hostname "$device_mac")" 90; then
         warn "$(iotstack_bootstrap_hostname "$device_mac") did not appear after serial refresh"
+        _flash_warn_start_serial_logs "$tty_device"
         return 1
       fi
     else
@@ -4091,19 +4094,31 @@ cmd_flash() {
   _flash_production_smart "$device" "$tty_device_or_role" "$skip_recovery"
 }
 
+_flash_warn_start_serial_logs() {
+  # Bootstrap did not reach WiFi/OTA -- serial output shows boot, NVS, and WiFi errors.
+  local tty_device="$1"
+  [[ -n "$tty_device" ]] || return 0
+  [[ $QUIET -eq 0 ]] || return 0
+  local msg="WARNING: START 'iotstack logs ${tty_device}' IN ANOTHER TERMINAL NOW TO DIAGNOSE BOOT / WIFI / NVS"
+  _iotstack_log_plain "WARN" "$msg"
+  _iotstack_echo stderr "${YLW}[WARN]${RST} ${RED}${msg}${RST}"
+}
+
 _wait_for_bootstrap_wifi_ready() {
   # Wait until bootstrap-<mac> accepts OTA (port 3232). Same probe iotstack
   # flash uses before production upload -- avoids a fixed serial-timeout when
   # the device is already on WiFi but does not emit a known console line.
-  # Usage: _wait_for_bootstrap_wifi_ready <mac_suffix> [timeout_seconds]
+  # Usage: _wait_for_bootstrap_wifi_ready <mac_suffix> [timeout_seconds] [tty_device]
   local device_mac="$1"
   local timeout_s="${2:-90}"
+  local tty_device="${3:-}"
   local hostname
   hostname=$(iotstack_bootstrap_hostname "$device_mac")
   info "Waiting for ${hostname} on WiFi (OTA port 3232)..."
   if _wait_for_ota_service "$hostname" "$timeout_s"; then
     return 0
   fi
+  _flash_warn_start_serial_logs "$tty_device"
   return 1
 }
 
@@ -4325,7 +4340,7 @@ _flash_bootstrap_to_tty() {
     sleep 3
 
     if [[ -n "$device_mac" ]]; then
-      if _wait_for_bootstrap_wifi_ready "$device_mac" 90; then
+      if _wait_for_bootstrap_wifi_ready "$device_mac" 90 "$tty_device"; then
         ok "Bootstrap OTA service reachable on WiFi"
       else
         warn "Bootstrap WiFi wait timed out (90s); proceeding"
@@ -4351,7 +4366,7 @@ _flash_bootstrap_to_tty() {
     sleep 3
 
     if [[ -n "$device_mac" ]]; then
-      if _wait_for_bootstrap_wifi_ready "$device_mac" 90; then
+      if _wait_for_bootstrap_wifi_ready "$device_mac" 90 "$tty_device"; then
         ok "Bootstrap OTA service reachable on WiFi"
       else
         warn "Bootstrap WiFi wait timed out (90s); proceeding"
