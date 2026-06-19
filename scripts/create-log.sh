@@ -230,7 +230,8 @@ create_log_run() {
   local source="$1"
   shift
   if create_log_child_output_piped; then
-    env PYTHONUNBUFFERED=1 stdbuf -oL -eL "$@" 2>&1 | create_log_tee_console "$source"
+    IOTSTACK_LOG_SUB_INDENT="  " env PYTHONUNBUFFERED=1 stdbuf -oL -eL "$@" 2>&1 \
+      | create_log_tee_console "$source"
     return "${PIPESTATUS[0]}"
   fi
   "$@"
@@ -307,16 +308,16 @@ create_log_run_esptool() {
     tmp=$(mktemp)
     if [[ $VERBOSE -eq 1 ]]; then
       if create_log_enabled && ! iotstack_timestamp_enabled; then
-        python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
+        IOTSTACK_LOG_SUB_INDENT="  " python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
           | stdbuf -oL -eL tee "$tmp" /dev/tty \
           | create_log_stamp_pipe "$source"
       else
-        python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
+        IOTSTACK_LOG_SUB_INDENT="  " python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
           | stdbuf -oL -eL tee "$tmp" \
           | create_log_tee_console "$source"
       fi
     else
-      python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
+      IOTSTACK_LOG_SUB_INDENT="  " python3 -u -m esptool "${esptool_args[@]}" 2>&1 \
         | tee "$tmp" \
         | create_log_tee_console "$source" >/dev/null
     fi

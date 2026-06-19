@@ -10,6 +10,7 @@ stdout (no source tag). Combined with --log-file, the log keeps [source] tags.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import datetime
 
@@ -22,7 +23,16 @@ def _stamp_log_line(source: str, line: str) -> str:
     return f"{_timestamp()} [{source}] {line}"
 
 
+def _console_indent() -> str:
+    return os.environ.get("IOTSTACK_LOG_INDENT", "") + os.environ.get(
+        "IOTSTACK_LOG_SUB_INDENT", ""
+    )
+
+
 def _stamp_console_line(line: str) -> str:
+    indent = _console_indent()
+    if indent:
+        return f"{_timestamp()} {indent}{line}"
     return f"{_timestamp()} {line}"
 
 
