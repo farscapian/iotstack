@@ -53,6 +53,15 @@ if [[ ! -x "$IOTSTACK_SCRIPT" ]]; then
   err "iotstack.sh is not executable. Run: chmod +x $IOTSTACK_SCRIPT"
 fi
 
+# Git pre-commit hook: shellcheck on staged .sh files
+if git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  chmod +x "${SCRIPT_DIR}/.githooks/pre-commit" "${SCRIPT_DIR}/scripts/shellcheck-staged.sh"
+  git -C "$SCRIPT_DIR" config core.hooksPath .githooks
+  ok "Git hooks installed (pre-commit: shellcheck staged .sh files)"
+else
+  dim "Not a git repository -- skipping git hooks"
+fi
+
 # Create default environment file if it doesn't exist
 # (IOTSTACK_HOME and ENV_FILE come from config.sh, which also created the dir)
 ENV_TEMPLATE="${SCRIPT_DIR}/docs/.env.example"
