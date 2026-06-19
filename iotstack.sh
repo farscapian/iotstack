@@ -4730,35 +4730,46 @@ help_otbr() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-otbr.txt"
 }
 
-cmd_clean() {
-  # Clean build artifacts and compilation caches
-  info "Cleaning build artifacts..."
+_cmd_clean_remove_path() {
+  # Remove a file or directory; bump cleaned_count. Safe under set -e.
+  local path="$1"
+  local -n _count_ref="$2"
+  local size
 
-  # List of directories/files to clean
-  local items_to_clean=(
+  [[ -e "$path" ]] || return 0
+  if [[ -d "$path" ]]; then
+    size=$(du -sh "$path" 2>/dev/null | awk '{print $1}' || echo "unknown")
+    info "Removing directory: $path ($size)"
+    rm -rf "$path"
+  else
+    info "Removing file: $path"
+    rm -f "$path"
+  fi
+  _count_ref=$((_count_ref + 1))
+}
+
+cmd_clean() {
+  # Clean build artifacts, compilation caches, and session logs
+  info "Cleaning build artifacts and logs..."
+
+  local cleaned_count=0 artifact name size logs_dir="${IOTSTACK_HOME}/logs"
+
+  local -a items_to_clean=(
     "${YAMLS_DIR}/.esphome/build"
     "${HOME}/.esphome/storage"
     "${HOME}/.esphome/idedata"
     "${HOME}/.platformio/.cache"
     "${COMPILATION_CACHE}"
-    "${LOGS_DIR}"
+    "${logs_dir}"
   )
+  # Honor LOGS_DIR when it differs from the default under IOTSTACK_HOME
+  if [[ "${LOGS_DIR}" != "${logs_dir}" ]]; then
+    items_to_clean+=("${LOGS_DIR}")
+  fi
 
-  local cleaned_count=0 artifact name size
-
+  local item
   for item in "${items_to_clean[@]}"; do
-    if [[ -e "$item" ]]; then
-      if [[ -d "$item" ]]; then
-        local size
-        size=$(du -sh "$item" 2>/dev/null | awk '{print $1}' || echo "unknown")
-        info "Removing directory: $item ($size)"
-        rm -rf "$item"
-      else
-        info "Removing file: $item"
-        rm -f "$item"
-      fi
-      ((cleaned_count++))
-    fi
+    _cmd_clean_remove_path "$item" cleaned_count
   done
 
   # Clean temp artifact files (keep partition table so bootstrap pass 2 can be skipped)
@@ -4768,15 +4779,7 @@ cmd_clean() {
       [[ -e "$artifact" ]] || continue
       name=$(basename "$artifact")
       [[ "$name" == "$(basename "$PARTITION_TABLE")" ]] && continue
-      if [[ -d "$artifact" ]]; then
-        size=$(du -sh "$artifact" 2>/dev/null | awk '{print $1}' || echo "unknown")
-        info "Removing directory: $artifact ($size)"
-        rm -rf "$artifact"
-      else
-        info "Removing file: $artifact"
-        rm -f "$artifact"
-      fi
-      ((cleaned_count++))
+      _cmd_clean_remove_path "$artifact" cleaned_count
     done
   fi
 
