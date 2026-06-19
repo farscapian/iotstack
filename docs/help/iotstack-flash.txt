@@ -23,7 +23,7 @@ Options:
   --on-flash-verify
                   Compare firmware by reading flash over USB (slower, more
                   thorough). Default uses runtime mDNS config_hash (same as
-                  iotstack devices / iotstack bootstrap).
+                  iotstack devices --production).
   --erase         Wipe flash partitions then reflash (skip hash comparison)
 
 Role-specific options (e.g. matrixdisplay HUB75 NVS layout):

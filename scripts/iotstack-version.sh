@@ -3,7 +3,7 @@
 #
 # Firmware project.version is "<latest-tag>+<short-commit>" (e.g. v0.1.0+f7f2d73).
 # When no git tags exist, the base is 0.0.0-dev. The commit suffix always reflects
-# the tree being compiled so iotstack devices / mDNS show exactly what was flashed.
+# the tree being compiled so iotstack devices --production / mDNS show exactly what was flashed.
 
 [[ -n "${_IOTSTACK_VERSION_LOADED:-}" ]] && return 0
 _IOTSTACK_VERSION_LOADED=1

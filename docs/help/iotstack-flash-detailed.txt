@@ -34,7 +34,7 @@ Firmware Assessment
 
 By default, iotstack flash compares the device's runtime config_hash from
 mDNS against the compiled build cache -- the same hash shown by
-`iotstack devices` and `iotstack bootstrap`. This is fast (seconds) and
+`iotstack devices --production` (or `iotstack devices --bootstrap`). This is fast (seconds) and
 skips OTA when the running firmware already matches.
 
 Pass `--on-flash-verify` to read the production and bootstrap partitions

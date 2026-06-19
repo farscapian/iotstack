@@ -1,21 +1,39 @@
 iotstack devices -- Show discovered ESPHome devices on network
 
-Lists ESPHome devices visible on the network via mDNS. Optionally filter by
-role or show devices that do not match any configured role.
+Lists ESPHome devices visible on the network via mDNS. By default shows both
+production and bootstrap (recovery) devices. Optionally filter by role or
+partition.
 
 Usage:
-  iotstack devices [role|other] [--json] [--id] [--csv]
+  iotstack devices [role|other] [--production|--bootstrap] [--json] [--id] [--csv]
 
 Arguments:
-  [role]        Show only devices matching this role (e.g., bleproxy, mmwave)
-  [other]       Show only devices that don't match any defined role
+  [role]        Show only production devices matching this role (e.g., bleproxy)
+  [other]       Show only production devices that don't match any defined role
   [--id]        Output only device IDs (space-separated, useful for scripts)
 
-Examples:
-  iotstack devices                # Show all discovered devices
-  iotstack devices bleproxy       # Show only bleproxy devices
-  iotstack devices other          # Devices not matching any role
-  iotstack devices --id           # Output all device IDs
-  iotstack devices bleproxy --id  # Output bleproxy device IDs
-  iotstack devices other --id     # Output IDs of unmatched devices
+Options:
+  --production  Show only production devices (_esphomelib._tcp)
+  --bootstrap   Show only bootstrap/recovery devices (_iotstack-bootstrap._tcp)
 
+  With no partition flag, both production and bootstrap are listed. Bootstrap
+  rows are omitted when the same MAC already appears on production (stale mDNS
+  cache). Role filters apply to production devices only; bootstrap hosts are
+  always included when listing both partitions.
+
+  Image hashes: devices advertise bootstrap_image_hash and production_image_hash
+  in mDNS TXT (_iotstack-bootstrap._tcp, _iotstack-meta._tcp, and config_hash on
+  _esphomelib._tcp). iotstack devices shows both columns per device.
+
+Examples:
+  iotstack devices                      # Production + bootstrap (default)
+  iotstack devices --production         # Production devices only
+  iotstack devices --bootstrap          # Bootstrap devices only
+  iotstack devices bleproxy             # bleproxy production + any bootstrap
+  iotstack devices bleproxy --production
+  iotstack devices other                # Non-role production + any bootstrap
+  iotstack devices --id                 # Unique MAC suffixes (prod + bootstrap)
+  iotstack devices --production --id    # Production device IDs only
+
+Backward compatibility:
+  iotstack bootstrap                    # Same as: iotstack devices --bootstrap

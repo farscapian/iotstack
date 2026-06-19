@@ -10,7 +10,7 @@ Usage:
 
 Arguments:
   <device>        Device role (e.g., bleproxy, mmwave, threadrouter)
-  bootstrap        Flash bootstrap image via serial
+  bootstrap       Flash bootstrap image via serial
   [tty-device]    Serial device (e.g., /dev/ttyACM0). Auto-detected if
                   omitted.
   [role]          Production role for dual-flash (e.g., mmwave, bleproxy)
@@ -21,7 +21,7 @@ Options:
   --on-flash-verify
                   Compare firmware by reading flash over USB (slower, more
                   thorough). Default uses runtime mDNS config_hash (same as
-                  iotstack devices / iotstack bootstrap).
+                  iotstack devices --production).
   --erase         Wipe flash partitions then reflash (skip hash comparison)
   --panel-count=N
                   HUB75 panel count for matrixdisplay (1 or 2); written to NVS

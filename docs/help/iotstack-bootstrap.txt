@@ -1,10 +1,16 @@
 iotstack bootstrap -- Show devices running bootstrap (recovery) firmware
 
+Alias for:
+  iotstack devices --bootstrap
+
 Lists devices advertising the bootstrap mDNS service (_iotstack-bootstrap._tcp).
 These are devices currently booted into the bootstrap/recovery partition, not
 production firmware.
 
 Production devices (e.g. matrixdisplay-8238cc) are listed by:
+  iotstack devices --production
+
+All devices (production and bootstrap together):
   iotstack devices
 
 Usage:
@@ -17,6 +23,6 @@ Options:
 
 Examples:
   iotstack bootstrap              # Table of bootstrap devices on the network
-  iotstack bootstrap --id         # MAC suffixes only (for scripts)
+  iotstack devices --bootstrap --id # MAC suffixes only (for scripts)
+  iotstack devices --bootstrap    # Preferred form (same output)
   iotstack flash bootstrap /dev/ttyACM0   # Flash bootstrap image via serial
-

@@ -30,6 +30,10 @@ iotstack_bootstrap_mdns_service_base() {
   printf '_iotstack-%s\n' "$role"
 }
 
+iotstack_meta_mdns_service() {
+  printf '_iotstack-meta._tcp\n'
+}
+
 iotstack_bootstrap_pass_ota_path() {
   local role
   role=$(iotstack_bootstrap_role)

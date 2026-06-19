@@ -10,7 +10,7 @@ test_run_step "iotstack flash bootstrap ${IOTSTACK_TEST_TTY}" \
 
 # Discover bootstrap MAC (hostname bootstrap-<mac>)
 mac=""
-mac=$(test_iotstack bootstrap --id 2>/dev/null | tr '\n' ' ')
+mac=$(test_iotstack devices --bootstrap --id 2>/dev/null | tr '\n' ' ')
 read -r mac _ <<< "$mac"
 mac=$(echo "$mac" | tr '[:upper:]' '[:lower:]')
 [[ "$mac" =~ ^[0-9a-f]{6}$ ]] || { test_fail "No bootstrap device on network after flash"; exit 1; }

@@ -71,5 +71,5 @@ This is useful when:
   - You want to stagger updates across devices
 
 Format: 6 hex digits (last 6 chars of MAC address)
-Find MACs: iotstack devices --id
+Find MACs: iotstack devices --production --id
 

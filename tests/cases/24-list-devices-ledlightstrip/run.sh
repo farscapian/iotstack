@@ -6,8 +6,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 mac=$(test_ensure_mac ledlightstrip) || { test_fail "No ledlightstrip device on network"; exit 1; }
 
 mdns_name=$(yaml_mdns_name_for_role ledlightstrip)
-output=$(test_iotstack devices "$mdns_name" --id 2>/dev/null)
-test_info "devices ${mdns_name} --id: $output"
+output=$(test_iotstack devices "$mdns_name" --production --id 2>/dev/null)
+test_info "devices ${mdns_name} --production --id: $output"
 
 if echo "$output" | grep -qi "$mac"; then
   test_ok "Production device includes TEST_MAC_ledlightstrip=$mac"

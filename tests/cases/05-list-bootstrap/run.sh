@@ -5,8 +5,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 mac=$(test_ensure_mac bleproxy) || true
 
-output=$(test_iotstack bootstrap --id 2>/dev/null || true)
-test_info "bootstrap --id: ${output:-<none>}"
+output=$(test_iotstack devices --bootstrap --id 2>/dev/null || true)
+test_info "devices --bootstrap --id: ${output:-<none>}"
 
 if [[ -n "$mac" ]] && echo "$output" | grep -qi "$mac"; then
   test_ok "Bootstrap device includes TEST_MAC=$mac"

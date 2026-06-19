@@ -901,51 +901,221 @@ _iotstack_json_slurp() {
   jq -s '.'
 }
 
-list_devices() {
-  local output_format="${1:-text}"
-  local filter_role="${2:-}"
-  local suffix_only="${3:-false}"
-  local mdns_service="${4:-_esphomelib._tcp}"
+_list_devices_flush_parsed_mdns_row() {
+  local device_data="$1"
+  local hostname="$2"
+  local friendly="$3"
+  local project="$4"
+  local version="$5"
+  local bootstrap_hash="$6"
+  local production_hash="$7"
+
+  [[ -z "$hostname" ]] && return 0
+
+  local bootstrap_prefix
+  bootstrap_prefix="$(iotstack_bootstrap_role)-"
+  if [[ "$hostname" == "${bootstrap_prefix}"* ]]; then
+    [[ -z "$friendly" ]] && friendly="$(iotstack_bootstrap_friendly_name)"
+    [[ -z "$project" ]] && project="iotstack.$(iotstack_bootstrap_role)-prod"
+  fi
+
+  echo "$hostname|$friendly|$project|$version|$bootstrap_hash|$production_hash" >> "$device_data"
+}
+
+_list_devices_append_parsed_mdns() {
+  # Append hostname|friendly|project|version|bootstrap_hash|production_hash rows.
+  local device_data="$1"
   local current_hostname=""
   local current_friendly=""
   local current_project=""
   local current_version=""
-  local current_hash=""
+  local current_bootstrap_hash=""
+  local current_production_hash=""
+  local current_config_hash=""
+
+  while IFS= read -r line; do
+    if [[ $line =~ hostname\ =\ \[([^\]]+)\] ]]; then
+      if [[ -n "$current_hostname" ]]; then
+        _list_devices_flush_parsed_mdns_row "$device_data" "$current_hostname" "$current_friendly" \
+          "$current_project" "$current_version" "$current_bootstrap_hash" "$current_production_hash"
+      fi
+      current_hostname="${BASH_REMATCH[1]%.local}"
+      current_friendly=""
+      current_project=""
+      current_version=""
+      current_bootstrap_hash=""
+      current_production_hash=""
+      current_config_hash=""
+    fi
+    if [[ $line =~ txt\ = ]]; then
+      if [[ $line =~ friendly_name=([^\"]*) ]]; then
+        current_friendly="${BASH_REMATCH[1]}"
+        current_friendly="${current_friendly% [0-9a-f][0-9a-f]*}"
+      fi
+      [[ $line =~ project_name=([^\"]*) ]] && current_project="${BASH_REMATCH[1]}"
+      [[ $line =~ project_version=([^\"]*) ]] && current_version="${BASH_REMATCH[1]}"
+      [[ $line =~ bootstrap_image_hash=([^\"]*) ]] && current_bootstrap_hash="${BASH_REMATCH[1]}"
+      [[ $line =~ production_image_hash=([^\"]*) ]] && current_production_hash="${BASH_REMATCH[1]}"
+      [[ $line =~ config_hash=([^\"]*) ]] && current_config_hash="${BASH_REMATCH[1]}"
+      if [[ -n "$current_hostname" && -n "$current_config_hash" ]]; then
+        if [[ "$current_hostname" == "$(iotstack_bootstrap_role)-"* ]]; then
+          [[ -z "$current_bootstrap_hash" ]] && current_bootstrap_hash="$current_config_hash"
+        else
+          [[ -z "$current_production_hash" ]] && current_production_hash="$current_config_hash"
+        fi
+      fi
+    fi
+  done
+  _list_devices_flush_parsed_mdns_row "$device_data" "$current_hostname" "$current_friendly" \
+    "$current_project" "$current_version" "$current_bootstrap_hash" "$current_production_hash"
+}
+
+_list_devices_merge_by_mac() {
+  # Collapse rows that share a MAC suffix; prefer production hostnames for identity fields.
+  local input="$1"
+  local output="$2"
+  declare -A merged_bs merged_prod merged_friendly merged_project merged_version
+  declare -A merged_host_prod merged_host_bs
+  local -a macs=()
+
+  while IFS='|' read -r hostname friendly project version bootstrap_hash production_hash; do
+    local mac="${hostname##*-}"
+    macs+=("$mac")
+    [[ -n "$bootstrap_hash" ]] && merged_bs["$mac"]="$bootstrap_hash"
+    [[ -n "$production_hash" ]] && merged_prod["$mac"]="$production_hash"
+    if [[ "$hostname" == "$(iotstack_bootstrap_role)-"* ]]; then
+      merged_host_bs["$mac"]="$hostname"
+      [[ -n "$friendly" ]] && merged_friendly["$mac"]="$friendly"
+      [[ -n "$project" ]] && merged_project["$mac"]="$project"
+      [[ -n "$version" ]] && merged_version["$mac"]="$version"
+    else
+      merged_host_prod["$mac"]="$hostname"
+      [[ -n "$friendly" ]] && merged_friendly["$mac"]="$friendly"
+      [[ -n "$project" ]] && merged_project["$mac"]="$project"
+      [[ -n "$version" ]] && merged_version["$mac"]="$version"
+    fi
+  done < "$input"
+
+  mapfile -t macs < <(printf '%s\n' "${macs[@]}" | sort -u)
+  : >"$output"
+  local mac hostname
+  for mac in "${macs[@]}"; do
+    hostname="${merged_host_prod[$mac]:-${merged_host_bs[$mac]:-}}"
+    [[ -z "$hostname" ]] && continue
+    echo "$hostname|${merged_friendly[$mac]:-}|${merged_project[$mac]:-}|${merged_version[$mac]:-}|${merged_bs[$mac]:-}|${merged_prod[$mac]:-}" >>"$output"
+  done
+}
+
+_list_devices_collect_mdns_parallel() {
+  # Run production/bootstrap/meta avahi-browse in parallel, then parse into device_data.
+  local device_data="$1"
+  local device_mode="$2"
+  local prod_raw="" boot_raw="" meta_raw=""
+  local -a browse_pids=()
+  local pid
+
+  if [[ "$device_mode" != "bootstrap" ]]; then
+    prod_raw=$(mktemp)
+    avahi-browse -t -r "_esphomelib._tcp" 2>/dev/null >"$prod_raw" &
+    browse_pids+=("$!")
+    meta_raw=$(mktemp)
+    avahi-browse -t -r "$(iotstack_meta_mdns_service)" 2>/dev/null >"$meta_raw" &
+    browse_pids+=("$!")
+  fi
+  if [[ "$device_mode" != "production" ]]; then
+    boot_raw=$(mktemp)
+    avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null >"$boot_raw" &
+    browse_pids+=("$!")
+  fi
+
+  for pid in "${browse_pids[@]}"; do
+    wait "$pid" || true
+  done
+
+  if [[ -n "$prod_raw" ]]; then
+    _list_devices_append_parsed_mdns "$device_data" <"$prod_raw"
+    rm -f "$prod_raw"
+  fi
+  if [[ -n "$meta_raw" ]]; then
+    _list_devices_append_parsed_mdns "$device_data" <"$meta_raw"
+    rm -f "$meta_raw"
+  fi
+  if [[ -n "$boot_raw" ]]; then
+    _list_devices_append_parsed_mdns "$device_data" <"$boot_raw"
+    rm -f "$boot_raw"
+  fi
+}
+
+_list_devices_row_matches_filter() {
+  # Return 0 when a discovered row should be listed.
+  # device_mode: all | production | bootstrap
+  # In all mode, bootstrap-<mac> hosts are included unless the same MAC suffix
+  # is already on production (suppresses stale bootstrap mDNS cache entries).
+  local hostname="$1"
+  local project="$2"
+  local filter_role="$3"
+  local device_mode="$4"
+  local -n production_macs_ref="$5"
+  local bootstrap_prefix role matches_role mac
+
+  bootstrap_prefix="$(iotstack_bootstrap_role)-"
+  if [[ "$hostname" == "${bootstrap_prefix}"* ]]; then
+    case "$device_mode" in
+      production) return 1 ;;
+      bootstrap) return 0 ;;
+      all)
+        mac="${hostname##*-}"
+        [[ -n "${production_macs_ref[$mac]:-}" ]] && return 1
+        return 0
+        ;;
+    esac
+  elif [[ "$device_mode" == "bootstrap" ]]; then
+    return 1
+  fi
+  [[ -z "$filter_role" ]] && return 0
+
+  if [[ "$filter_role" == "other" ]]; then
+    matches_role=false
+    for role in $(list_device_names); do
+      if [[ "$project" == *"$role"* ]]; then
+        matches_role=true
+        break
+      fi
+    done
+    [[ "$matches_role" == true ]] && return 1
+    return 0
+  fi
+
+  [[ "$project" == *"$filter_role"* ]]
+}
+
+list_devices() {
+  local output_format="${1:-text}"
+  local filter_role="${2:-}"
+  local suffix_only="${3:-false}"
+  local device_mode="${4:-all}"  # all | production | bootstrap
 
   # Gather device data into temp buffer
   local device_data
   device_data=$(mktemp)
   # shellcheck disable=SC2064
-  trap "rm -f '$device_data'" RETURN
+  trap "rm -f '$device_data' '${device_data}.merged' '${device_data}.sorted'" RETURN
 
-  # Query mDNS and extract device data
-  while IFS= read -r line; do
-    if [[ $line =~ hostname\ =\ \[([^\]]+)\] ]]; then
-      current_hostname="${BASH_REMATCH[1]%.local}"
-    fi
-    if [[ $line =~ txt\ = ]]; then
-      if [[ $line =~ friendly_name=([^\"]*) ]]; then
-        current_friendly="${BASH_REMATCH[1]}"
-        # Remove trailing MAC suffix (last 6 hex chars)
-        current_friendly="${current_friendly% [0-9a-f][0-9a-f]*}"
-      fi
-      [[ $line =~ project_name=([^\"]*) ]] && current_project="${BASH_REMATCH[1]}"
-      [[ $line =~ project_version=([^\"]*) ]] && current_version="${BASH_REMATCH[1]}"
-      [[ $line =~ config_hash=([^\"]*) ]] && current_hash="${BASH_REMATCH[1]}"
+  _list_devices_collect_mdns_parallel "$device_data" "$device_mode"
 
-      if [[ -n "$current_hostname" ]]; then
-        echo "$current_hostname|$current_friendly|$current_project|$current_version|$current_hash" >> "$device_data"
-        current_hostname=""
-        current_friendly=""
-        current_project=""
-        current_version=""
-        current_hash=""
-      fi
-    fi
-  done < <(avahi-browse -t -r "$mdns_service" 2>/dev/null)
+  # Merge supplemental _iotstack-meta rows and duplicate service records by MAC.
+  _list_devices_merge_by_mac "$device_data" "${device_data}.merged"
+  sort -u "${device_data}.merged" > "${device_data}.sorted"
 
-  # Sort and deduplicate
-  sort -u "$device_data" > "${device_data}.sorted"
+  # MAC suffixes with a live production host (used to drop stale bootstrap mDNS).
+  declare -A production_macs=()
+  if [[ "$device_mode" == "all" ]]; then
+    local prod_hostname
+    while IFS='|' read -r prod_hostname _ _ _ _ _; do
+      [[ "$prod_hostname" == "$(iotstack_bootstrap_role)-"* ]] && continue
+      production_macs["${prod_hostname##*-}"]=1
+    done < "${device_data}.sorted"
+  fi
 
   # Try to get Home Assistant area info (only for production devices).
   # Normalize to a single JSON object: get_ha_device_areas can emit more than
@@ -953,7 +1123,7 @@ list_devices() {
   # input makes the per-row `jq -r` lookups emit one line per document -- which
   # would put an embedded newline into the area value and break table rows.
   local ha_areas="{}"
-  if [[ "$mdns_service" == "_esphomelib._tcp" ]]; then
+  if [[ "$device_mode" != "bootstrap" ]]; then
     if get_ha_device_areas > /tmp/ha_areas.json 2>/dev/null; then
       ha_areas=$(jq -cs 'reduce .[] as $o ({}; . * $o)' /tmp/ha_areas.json 2>/dev/null || echo '{}')
       [[ -z "$ha_areas" ]] && ha_areas="{}"
@@ -964,75 +1134,34 @@ list_devices() {
   if [[ "$suffix_only" == "true" ]]; then
     if [[ "$output_format" == "csv" ]]; then
       echo "ID"
-      while IFS='|' read -r hostname friendly project version hash; do
-        if [[ -n "$filter_role" ]]; then
-          if [[ "$filter_role" == "other" ]]; then
-            local matches_role=false
-            for role in $(list_device_names); do
-              if [[ "$project" == *"$role"* ]]; then
-                matches_role=true
-                break
-              fi
-            done
-            [[ "$matches_role" == true ]] && continue
-          else
-            if [[ "$project" != *"$filter_role"* ]]; then
-              continue
-            fi
-          fi
-        fi
+      while IFS='|' read -r hostname friendly project version _bs_hash _prod_hash; do
+        _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
         suffix="${hostname##*-}"
         echo "$suffix"
-      done < "${device_data}.sorted"
+      done < "${device_data}.sorted" | sort -u
     elif [[ "$output_format" == "json" ]]; then
+      local -a id_suffixes=()
+      while IFS='|' read -r hostname friendly project version _bs_hash _prod_hash; do
+        _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
+        id_suffixes+=("${hostname##*-}")
+      done < "${device_data}.sorted"
+      mapfile -t id_suffixes < <(printf '%s\n' "${id_suffixes[@]}" | sort -u)
       (
         echo "["
         first=true
-        while IFS='|' read -r hostname friendly project version hash; do
-          if [[ -n "$filter_role" ]]; then
-            if [[ "$filter_role" == "other" ]]; then
-              local matches_role=false
-              for role in $(list_device_names); do
-                if [[ "$project" == *"$role"* ]]; then
-                  matches_role=true
-                  break
-                fi
-              done
-              [[ "$matches_role" == true ]] && continue
-            else
-              if [[ "$project" != *"$filter_role"* ]]; then
-                continue
-              fi
-            fi
-          fi
-          suffix="${hostname##*-}"
+        for suffix in "${id_suffixes[@]}"; do
           [[ "$first" != true ]] && echo ","
           printf '  "%s"' "$suffix"
           first=false
-        done < "${device_data}.sorted"
+        done
         echo
         echo "]"
       ) | _iotstack_format_json
     else
       # Text format: space-separated IDs
       local suffixes=()
-      while IFS='|' read -r hostname friendly project version hash; do
-        if [[ -n "$filter_role" ]]; then
-          if [[ "$filter_role" == "other" ]]; then
-            local matches_role=false
-            for role in $(list_device_names); do
-              if [[ "$project" == *"$role"* ]]; then
-                matches_role=true
-                break
-              fi
-            done
-            [[ "$matches_role" == true ]] && continue
-          else
-            if [[ "$project" != *"$filter_role"* ]]; then
-              continue
-            fi
-          fi
-        fi
+      while IFS='|' read -r hostname friendly project version _bs_hash _prod_hash; do
+        _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
         suffix="${hostname##*-}"
         suffixes+=("$suffix")
       done < "${device_data}.sorted"
@@ -1040,65 +1169,36 @@ list_devices() {
       if [[ ${#suffixes[@]} -eq 0 ]]; then
         if [[ -n "$filter_role" ]]; then
           warn "No devices found for role: $filter_role"
-        elif [[ $mdns_service == "$(iotstack_bootstrap_mdns_service)" ]]; then
+        elif [[ "$device_mode" == "all" ]]; then
+          warn "No production or bootstrap devices found on network"
+        elif [[ "$device_mode" == "bootstrap" ]]; then
           warn "No bootstrap devices found on network"
         else
           warn "No ESPHome devices found on network"
         fi
       else
-        echo "${suffixes[@]}"
+        printf '%s\n' "${suffixes[@]}" | sort -u | tr '\n' ' '
+        echo
       fi
     fi
     return
   fi
 
   if [[ "$output_format" == "csv" ]]; then
-    echo "ID,Device,Friendly Name,Area,Project,Version,Hash"
-    while IFS='|' read -r hostname friendly project version hash; do
-      # Filter by role if specified
-      if [[ -n "$filter_role" ]]; then
-        if [[ "$filter_role" == "other" ]]; then
-          # Match devices that don't match any defined role
-          local matches_role=false
-          for role in $(list_device_names); do
-            if [[ "$project" == *"$role"* ]]; then
-              matches_role=true
-              break
-            fi
-          done
-          [[ "$matches_role" == true ]] && continue
-        else
-          # Match role name in project field
-          if [[ "$project" != *"$filter_role"* ]]; then
-            continue
-          fi
-        fi
-      fi
+    echo "ID,Device,Friendly Name,Project,Version,Bootstrap Image Hash,Production Image Hash,HA area"
+    while IFS='|' read -r hostname friendly project version bootstrap_hash production_hash; do
+      _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
       id="${hostname##*-}"
       # Try to get area from HA (match by full hostname or base name)
       area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
       [[ -z "$area" ]] && area="-"
-      echo "$id,$hostname,$friendly,$area,$project,$version,$hash"
+      [[ -z "$bootstrap_hash" ]] && bootstrap_hash="-"
+      [[ -z "$production_hash" ]] && production_hash="-"
+      echo "$id,$hostname,$friendly,$project,$version,$bootstrap_hash,$production_hash,$area"
     done < "${device_data}.sorted"
   elif [[ "$output_format" == "json" ]]; then
-    while IFS='|' read -r hostname friendly project version hash; do
-      # Filter by role if specified
-      if [[ -n "$filter_role" ]]; then
-        if [[ "$filter_role" == "other" ]]; then
-          local matches_role=false
-          for role in $(list_device_names); do
-            if [[ "$project" == *"$role"* ]]; then
-              matches_role=true
-              break
-            fi
-          done
-          [[ "$matches_role" == true ]] && continue
-        else
-          if [[ "$project" != *"$filter_role"* ]]; then
-            continue
-          fi
-        fi
-      fi
+    while IFS='|' read -r hostname friendly project version bootstrap_hash production_hash; do
+      _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
       id="${hostname##*-}"
       area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // empty" 2>/dev/null)
       jq -nc \
@@ -1108,15 +1208,17 @@ list_devices() {
         --arg area "$area" \
         --arg project "$project" \
         --arg version "$version" \
-        --arg hash "$hash" \
+        --arg bootstrap_image_hash "$bootstrap_hash" \
+        --arg production_image_hash "$production_hash" \
         '{
           id: $id,
           device: $device,
           friendly_name: $friendly_name,
-          area: (if $area == "" then null else $area end),
           project: $project,
           version: $version,
-          hash: $hash
+          bootstrap_image_hash: (if $bootstrap_image_hash == "" then null else $bootstrap_image_hash end),
+          production_image_hash: (if $production_image_hash == "" then null else $production_image_hash end),
+          ha_area: (if $area == "" then null else $area end)
         }'
     done < "${device_data}.sorted" | _iotstack_json_slurp
   else
@@ -1125,10 +1227,11 @@ list_devices() {
     local header_id="ID"
     local header_device="Device"
     local header_friendly="Friendly Name"
-    local header_area="Area"
+    local header_area="HA area"
     local header_project="Project"
     local header_version="Version"
-    local header_hash="Hash"
+    local header_bootstrap_hash="Bootstrap Image Hash"
+    local header_production_hash="Production Image Hash"
 
     local w_id=$(( ${#header_id} + margin ))
     local w_device=$(( ${#header_device} + margin ))
@@ -1136,23 +1239,30 @@ list_devices() {
     local w_area=$(( ${#header_area} + margin ))
     local w_project=$(( ${#header_project} + margin ))
     local w_version=$(( ${#header_version} + margin ))
-    local w_hash=$(( ${#header_hash} + margin ))
+    local w_bootstrap_hash=$(( ${#header_bootstrap_hash} + margin ))
+    local w_production_hash=$(( ${#header_production_hash} + margin ))
 
-    # Scan data to find max widths
-    while IFS='|' read -r hostname friendly project version hash; do
+    # Scan data to find max widths (filtered rows only)
+    while IFS='|' read -r hostname friendly project version bootstrap_hash production_hash; do
+      _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
       id="${hostname##*-}"
       area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
       [[ -z "$area" ]] && area="-"
+      [[ -z "$bootstrap_hash" ]] && bootstrap_hash="-"
+      [[ -z "$production_hash" ]] && production_hash="-"
       (( ${#id} + margin > w_id )) && w_id=$(( ${#id} + margin ))
       (( ${#hostname} + margin > w_device )) && w_device=$(( ${#hostname} + margin ))
       (( ${#friendly} + margin > w_friendly )) && w_friendly=$(( ${#friendly} + margin ))
       (( ${#area} + margin > w_area )) && w_area=$(( ${#area} + margin ))
       (( ${#project} + margin > w_project )) && w_project=$(( ${#project} + margin ))
       (( ${#version} + margin > w_version )) && w_version=$(( ${#version} + margin ))
-      (( ${#hash} + margin > w_hash )) && w_hash=$(( ${#hash} + margin ))
+      (( ${#bootstrap_hash} + margin > w_bootstrap_hash )) && w_bootstrap_hash=$(( ${#bootstrap_hash} + margin ))
+      (( ${#production_hash} + margin > w_production_hash )) && w_production_hash=$(( ${#production_hash} + margin ))
     done < "${device_data}.sorted"
 
-    if [[ "$mdns_service" == "_esphomelib._tcp" ]]; then
+    if [[ "$device_mode" == "all" ]]; then
+      info "Discovered ESPHome devices on network (production and bootstrap):"
+    elif [[ "$device_mode" == "production" ]]; then
       info "Discovered ESPHome devices on network:"
     else
       info "Discovered bootstrap devices on network:"
@@ -1160,40 +1270,25 @@ list_devices() {
     echo
 
     # Print headers with calculated widths (all left-aligned with %)
-    printf "  ${GRN}%-${w_id}s %-${w_device}s %-${w_friendly}s %-${w_area}s %-${w_project}s %-${w_version}s %-${w_hash}s${RST}\n" \
-      "ID" "Device" "Friendly Name" "Area" "Project" "Version" "Hash"
+    printf "  ${GRN}%-${w_id}s %-${w_device}s %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_bootstrap_hash}s %-${w_production_hash}s %-${w_area}s${RST}\n" \
+      "$header_id" "$header_device" "$header_friendly" "$header_project" "$header_version" \
+      "$header_bootstrap_hash" "$header_production_hash" "$header_area"
 
     # Print separator
-    _print_table_rule "$w_id" "$w_device" "$w_friendly" "$w_area" "$w_project" "$w_version" "$w_hash"
+    _print_table_rule "$w_id" "$w_device" "$w_friendly" "$w_project" "$w_version" "$w_bootstrap_hash" "$w_production_hash" "$w_area"
 
     # Print data rows with calculated widths
     local found=0
-    while IFS='|' read -r hostname friendly project version hash; do
-      # Filter by role if specified
-      if [[ -n "$filter_role" ]]; then
-        if [[ "$filter_role" == "other" ]]; then
-          # Match devices that don't match any defined role
-          local matches_role=false
-          for role in $(list_device_names); do
-            if [[ "$project" == *"$role"* ]]; then
-              matches_role=true
-              break
-            fi
-          done
-          [[ "$matches_role" == true ]] && continue
-        else
-          # Match role name in project field
-          if [[ "$project" != *"$filter_role"* ]]; then
-            continue
-          fi
-        fi
-      fi
+    while IFS='|' read -r hostname friendly project version bootstrap_hash production_hash; do
+      _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
       id="${hostname##*-}"
       # Try to get area from HA (match by full hostname or base name)
       area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
       [[ -z "$area" ]] && area="-"
-      printf "  ${GRN}%-${w_id}s${RST} %-${w_device}s %-${w_friendly}s %-${w_area}s %-${w_project}s %-${w_version}s %-${w_hash}s\n" \
-        "$id" "$hostname" "$friendly" "$area" "$project" "$version" "$hash"
+      [[ -z "$bootstrap_hash" ]] && bootstrap_hash="-"
+      [[ -z "$production_hash" ]] && production_hash="-"
+      printf "  ${GRN}%-${w_id}s${RST} %-${w_device}s %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_bootstrap_hash}s %-${w_production_hash}s %-${w_area}s\n" \
+        "$id" "$hostname" "$friendly" "$project" "$version" "$bootstrap_hash" "$production_hash" "$area"
       found=$((found + 1))
     done < "${device_data}.sorted"
 
@@ -1201,8 +1296,10 @@ list_devices() {
     if [[ $found -eq 0 ]]; then
       if [[ -n "$filter_role" ]]; then
         warn "No devices found for role: $filter_role"
-      elif [[ $mdns_service == "$(iotstack_bootstrap_mdns_service)" ]]; then
-        warn "No bootstrap devices found on network (devices booted to production are listed by: iotstack devices)"
+      elif [[ "$device_mode" == "all" ]]; then
+        warn "No production or bootstrap devices found on network"
+      elif [[ "$device_mode" == "bootstrap" ]]; then
+        warn "No bootstrap devices found on network (devices booted to production are listed by: iotstack devices --production)"
       else
         warn "No ESPHome devices found on network"
       fi
@@ -1420,7 +1517,7 @@ _wait_for_production_online() {
 }
 
 _mdns_config_hash_for_hostname() {
-  # ESPHome config_hash from mDNS TXT (same value shown in iotstack devices / bootstrap).
+  # ESPHome config_hash from mDNS TXT (same value shown in iotstack devices --production / --bootstrap).
   # Production: _esphomelib._tcp; bootstrap recovery: _iotstack-bootstrap._tcp.
   local hostname="$1"
   local mdns_service="${2:-_esphomelib._tcp}"
@@ -1442,7 +1539,7 @@ _mdns_config_hash_for_hostname() {
 
 _flash_production_matches_build() {
   # Return 0 when on-device production firmware matches the local build.
-  # Default: mDNS config_hash (fast, same as iotstack devices).
+  # Default: mDNS config_hash (fast, same as iotstack devices --production).
   # --on-flash-verify: full USB read-flash MD5 of the production partition.
   local prod_hostname="$1"
   local yaml_path="$2"
@@ -2462,10 +2559,21 @@ cmd_list() {
   local subcommand=""
   local filter_role=""
   local suffix_only=false
+  local device_mode="all"  # all | production | bootstrap
 
   # Parse flags
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --bootstrap)
+        [[ "$device_mode" == "production" ]] && err "--production and --bootstrap are mutually exclusive"
+        device_mode="bootstrap"
+        shift
+        ;;
+      --production)
+        [[ "$device_mode" == "bootstrap" ]] && err "--production and --bootstrap are mutually exclusive"
+        device_mode="production"
+        shift
+        ;;
       --csv)
         if [[ "$output_format" != "text" ]]; then
           err "Only one output format allowed (--csv or --json)"
@@ -2487,13 +2595,19 @@ cmd_list() {
       help)
         # Support `iotstack devices help` / `iotstack bootstrap help` / `iotstack roles help`
         case "$subcommand" in
-          roles)    help_roles ;;
-          bootstrap) help_bootstrap ;;
-          *)        help_devices ;;
+          roles) help_roles ;;
+          devices)
+            if [[ "$device_mode" == "bootstrap" ]]; then
+              help_bootstrap
+            else
+              help_devices
+            fi
+            ;;
+          *) help_devices ;;
         esac
         return 0
         ;;
-      devices|roles|bootstrap)
+      devices|roles)
         subcommand="$1"
         shift
         # For devices subcommand, next argument might be a role filter
@@ -2508,18 +2622,19 @@ cmd_list() {
     esac
   done
 
+  if [[ "$device_mode" != "all" && "$subcommand" != "devices" ]]; then
+    err "--production and --bootstrap are only valid with: iotstack devices"
+  fi
+
   case "$subcommand" in
     devices)
-      list_devices "$output_format" "$filter_role" "$suffix_only"
-      ;;
-    bootstrap)
-      list_devices "$output_format" "" "$suffix_only" "$(iotstack_bootstrap_mdns_service)"
+      list_devices "$output_format" "$filter_role" "$suffix_only" "$device_mode"
       ;;
     roles)
       list_roles "$output_format" "$suffix_only"
       ;;
     *)
-      err "Unknown subcommand: $subcommand. Try 'iotstack devices', 'iotstack bootstrap', or 'iotstack roles'"
+      err "Unknown subcommand: $subcommand. Try 'iotstack devices' or 'iotstack roles'"
       ;;
   esac
 }
@@ -2708,7 +2823,7 @@ cmd_rotate_secrets() {
   local mac_line
 
   # Discover all MACs for this role (--id outputs space-separated on one line)
-  mac_line=$(iotstack devices "$role" --id 2>/dev/null)
+  mac_line=$(iotstack devices "$role" --production --id 2>/dev/null)
   read -ra mac_suffixes <<< "$mac_line"
 
   if [[ ${#mac_suffixes[@]} -eq 0 ]]; then
@@ -3663,30 +3778,20 @@ cmd_flash() {
   _flash_production_smart "$device" "$tty_device_or_role" "$skip_recovery"
 }
 
-_wait_for_serial_signal() {
-  # Stream serial output until "wifi cleared Warning flag" is seen or timeout.
-  # The device is live on the console the whole time; OTA can start the moment
-  # WiFi clears rather than waiting a fixed sleep.
-  # Usage: _wait_for_serial_signal <tty> [timeout_seconds]
-  # Returns 0 when signal found, non-0 on timeout.
-  local tty="$1"
+_wait_for_bootstrap_wifi_ready() {
+  # Wait until bootstrap-<mac> accepts OTA (port 3232). Same probe iotstack
+  # flash uses before production upload -- avoids a fixed serial-timeout when
+  # the device is already on WiFi but does not emit a known console line.
+  # Usage: _wait_for_bootstrap_wifi_ready <mac_suffix> [timeout_seconds]
+  local device_mac="$1"
   local timeout_s="${2:-90}"
-  local py
-  py=$(head -1 "$(command -v esphome)" 2>/dev/null | sed 's/^#!//')
-  [[ -x "$py" ]] || py="python3"
-
-  local serial_source
-  serial_source=$(create_log_serial_source "$tty")
-
-  if create_log_child_output_piped; then
-    timeout "$timeout_s" "$py" -u "${SCRIPT_DIR}/scripts/serial-logs.py" \
-      --reconnect --stop-on "wifi cleared Warning flag" "$tty" \
-      | create_log_tee_console "$serial_source"
-    return "${PIPESTATUS[0]}"
+  local hostname
+  hostname=$(iotstack_bootstrap_hostname "$device_mac")
+  info "Waiting for ${hostname} on WiFi (OTA port 3232)..."
+  if _wait_for_ota_service "$hostname" "$timeout_s"; then
+    return 0
   fi
-
-  timeout "$timeout_s" "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" \
-    --reconnect --stop-on "wifi cleared Warning flag" "$tty"
+  return 1
 }
 
 # User-facing flash progress (dual-partition details stay in debug/logs).
@@ -3827,11 +3932,17 @@ _flash_bootstrap_to_tty() {
   [[ -z "$bootstrap_offset" ]] && err "Could not resolve bootstrap partition offset (build bootstrap/partitions.csv or ${PARTITION_TABLE})"
 
   local esptool_chip="${IOTSTACK_ESPTOOL_CHIP:-$variant}"
-  flash_assess_bootstrap_device "$tty_device" "$esptool_chip" "$build_dir" "$bootstrap_offset"
+  local device_mac=""
+  device_mac=$(esp_mac_suffix_from_port "$tty_device" 2>/dev/null) || device_mac=""
+  flash_assess_bootstrap_device "$tty_device" "$esptool_chip" "$build_dir" "$bootstrap_offset" "$device_mac"
 
-  local device_mac skip_serial="$FLASH_ASSESS_SKIP_SERIAL"
+  local skip_serial="$FLASH_ASSESS_SKIP_SERIAL"
   if [[ "$skip_serial" -eq 1 ]]; then
-    info "Bootstrap image on device matches build -- serial upload not required"
+    if [[ "${FLASH_ASSESS_VIA_MDNS:-0}" -eq 1 ]]; then
+      info "Bootstrap image on device matches build (mDNS config_hash) -- serial upload not required"
+    else
+      info "Bootstrap image on device matches build -- serial upload not required"
+    fi
     debug "On-device partition table also matches compiled build"
     device_mac=$(esp_mac_suffix_resolve "$tty_device") || err "Could not read chip MAC from $tty_device"
     ok "Device MAC: $device_mac"
@@ -3855,12 +3966,14 @@ _flash_bootstrap_to_tty() {
       err "Failed to provision device NVS"
     sleep 2
 
-    info "Waiting for device to connect to WiFi..."
-    if _wait_for_serial_signal "$tty_device" 90; then
-      ok "Device connected to WiFi"
-      create_log_enabled && ok "Serial output recorded in session log"
+    if [[ -n "$device_mac" ]]; then
+      if _wait_for_bootstrap_wifi_ready "$device_mac" 90; then
+        ok "Bootstrap OTA service reachable on WiFi"
+      else
+        warn "Bootstrap WiFi wait timed out (90s); proceeding"
+      fi
     else
-      warn "WiFi wait timed out (90s); proceeding"
+      warn "MAC unknown -- skipping bootstrap WiFi wait"
     fi
   fi
 
@@ -3964,15 +4077,7 @@ _flash_recovery() {
   fi
 
   ok "Bootstrap firmware flashed to ${#targets[@]} device(s)"
-  if [[ ${#successful_ttys[@]} -eq 1 ]]; then
-    echo ""
-    info "Waiting for device to connect to WiFi..."
-    if _wait_for_serial_signal "${successful_ttys[0]}" 60; then
-      ok "Device connected to WiFi"
-    else
-      warn "WiFi wait timed out (60s); proceeding"
-    fi
-  elif [[ ${#successful_ttys[@]} -gt 1 ]]; then
+  if [[ ${#successful_ttys[@]} -gt 1 ]]; then
     echo ""
     info "Waiting 15s for ${#successful_ttys[@]} devices to connect..."
     sleep 15
@@ -4389,6 +4494,7 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
       mapfile -t _flash_inherited < <(_update_devices_inherited_flags)
       [[ ${#_flash_inherited[@]} -gt 0 ]] && _flash_ota_args+=("${_flash_inherited[@]}")
       _flash_ota_args+=(--upgrade-delta --reassign "$device_mac" "$yaml_path" --ota-password "$device_ota_password" --jobs 1)
+      [[ "${FLASH_ERASE:-0}" == "1" ]] && _flash_ota_args+=(--erase)
       if ! _run_update_devices "${_flash_ota_args[@]}"; then
         err "OTA update failed. Device may still be booting. Try again in a moment:
   iotstack update $device"
@@ -4400,7 +4506,7 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
 
       if [[ "$network_type" == "thread" ]]; then
         # Thread production firmware joins the Thread mesh (not WiFi).
-        # It won't appear in 'iotstack devices' (avahi/WiFi mDNS only).
+        # It won't appear in 'iotstack devices --production' (avahi/WiFi mDNS only).
         info "OTA update complete! Thread device rebooting into $device firmware..."
         info "(Thread devices communicate over the Thread mesh, not WiFi)"
         info "Verify with: iotstack logs /dev/ttyACM0  or check your Thread Border Router"
@@ -4411,7 +4517,7 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
           _ha_after_production_online "$yaml_path" "$prod_hostname"
         else
           warn "Device did not come online after 90s."
-          warn "It may still be booting. Check with: iotstack devices"
+          warn "It may still be booting. Check with: iotstack devices --production"
         fi
       fi
     fi
@@ -4892,7 +4998,11 @@ main() {
       ;;
     bootstrap)
       shift
-      cmd_list bootstrap "$@"
+      if [[ "${1:-}" == "help" ]]; then
+        help_bootstrap
+      else
+        cmd_list devices --bootstrap "$@"
+      fi
       ;;
     roles)
       shift

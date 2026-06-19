@@ -188,9 +188,9 @@ test_discover_mac() {
   local role="${1:-$IOTSTACK_TEST_ROLE}"
   local mdns_name mac_line mac key
   mdns_name=$(yaml_mdns_name_for_role "$role" 2>/dev/null) || mdns_name="$role"
-  mac_line=$(test_iotstack devices "$mdns_name" --id 2>/dev/null | tr '\n' ' ')
+  mac_line=$(test_iotstack devices "$mdns_name" --production --id 2>/dev/null | tr '\n' ' ')
   if [[ -z "$(echo "$mac_line" | tr -d '[:space:]')" ]]; then
-    mac_line=$(test_iotstack devices "$role" --id 2>/dev/null | tr '\n' ' ')
+    mac_line=$(test_iotstack devices "$role" --production --id 2>/dev/null | tr '\n' ' ')
   fi
   read -r mac _ <<< "$mac_line"
   mac=$(echo "$mac" | tr '[:upper:]' '[:lower:]')
