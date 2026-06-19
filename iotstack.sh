@@ -4749,10 +4749,12 @@ _cmd_clean_remove_path() {
 }
 
 cmd_clean() {
-  # Clean build artifacts, compilation caches, and session logs
-  info "Cleaning build artifacts and logs..."
+  # Clean build artifacts, compilation caches, session logs, and ~/.iotstack/artifacts
+  info "Cleaning build artifacts, logs, and artifacts..."
 
-  local cleaned_count=0 artifact name size logs_dir="${IOTSTACK_HOME}/logs"
+  local cleaned_count=0 item
+  local logs_dir="${IOTSTACK_HOME}/logs"
+  local artifacts_dir="${IOTSTACK_HOME}/artifacts"
 
   local -a items_to_clean=(
     "${YAMLS_DIR}/.esphome/build"
@@ -4761,27 +4763,19 @@ cmd_clean() {
     "${HOME}/.platformio/.cache"
     "${COMPILATION_CACHE}"
     "${logs_dir}"
+    "${artifacts_dir}"
   )
-  # Honor LOGS_DIR when it differs from the default under IOTSTACK_HOME
+  # Honor overrides from ~/.iotstack/.env when paths differ from defaults
   if [[ "${LOGS_DIR}" != "${logs_dir}" ]]; then
     items_to_clean+=("${LOGS_DIR}")
   fi
+  if [[ "${ARTIFACTS_DIR}" != "${artifacts_dir}" ]]; then
+    items_to_clean+=("${ARTIFACTS_DIR}")
+  fi
 
-  local item
   for item in "${items_to_clean[@]}"; do
     _cmd_clean_remove_path "$item" cleaned_count
   done
-
-  # Clean temp artifact files (keep partition table so bootstrap pass 2 can be skipped)
-  if [[ -d "${ARTIFACTS_DIR}" ]]; then
-    info "Removing temporary artifact files (keeping $(basename "$PARTITION_TABLE"))..."
-    for artifact in "${ARTIFACTS_DIR}"/*; do
-      [[ -e "$artifact" ]] || continue
-      name=$(basename "$artifact")
-      [[ "$name" == "$(basename "$PARTITION_TABLE")" ]] && continue
-      _cmd_clean_remove_path "$artifact" cleaned_count
-    done
-  fi
 
   ok "Clean complete. Removed $cleaned_count item(s)"
   ok "Ready for next compilation"

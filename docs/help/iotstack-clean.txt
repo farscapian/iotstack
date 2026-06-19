@@ -1,8 +1,9 @@
 iotstack clean -- Clean build artifacts and compilation caches
 
-Removes generated build output, compiler caches, and session logs. Safe to rerun;
-it never deletes source files. Use when you need a full rebuild or to reclaim
-disk space.
+Removes generated build output, compiler caches, session logs, and runtime
+artifacts. Safe to rerun; it never deletes source files. Use when you need a
+full rebuild or to reclaim disk space. The partition table CSV is regenerated on
+the next compile.
 
 Removes:
   - ESPHome build directory (.esphome/build/)
@@ -11,7 +12,7 @@ Removes:
   - PlatformIO cache
   - Compilation cache file
   - Logs directory (~/.iotstack/logs/)
-  - Temporary artifact files (partition table CSV is kept)
+  - Artifacts directory (~/.iotstack/artifacts/), including partition table CSV
 
 Usage:
   iotstack clean
