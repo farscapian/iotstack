@@ -691,10 +691,10 @@ _flash_serial_step_begin() {
 }
 
 _flash_ota_step_begin() {
-  # Production firmware is never written over USB; always OTA from bootstrap.
+  # Production partition updates use the same path as: iotstack update <role> <mac>
   [[ "${_IOTSTACK_FLASH_OTA_STEP:-0}" == "1" ]] && return 0
   _IOTSTACK_FLASH_OTA_STEP=1
-  _flash_step_begin "OTA production firmware"
+  _flash_step_begin "iotstack update (production OTA)"
 }
 
 err()  { _iotstack_log_plain "ERROR" "$@"; _iotstack_echo stderr "${RED}[ERROR]${RST} $*"; exit 1; }
@@ -1753,30 +1753,20 @@ _flash_production_firmware_current() {
   flash_production_matches_device "$tty_device" "$chip" "$build_dir" "$production_offset"
 }
 
-_flash_production_ota_update() {
-  # OTA into the production partition via bootstrap (production images have no OTA server).
-  # Usage: _flash_production_ota_update <mac_suffix> <yaml_path> [device_role] [tty_device]
+_flash_invoke_update() {
+  # Production partition update: delegate to iotstack update flow (_update_via_bootstrap).
+  # Usage: _flash_invoke_update <mac_suffix> <yaml_path> <device_role> [tty_device]
   local device_mac="$1"
   local yaml_path="$2"
-  local device_role="${3:-}"
+  local device_role="$3"
   local tty_device="${4:-}"
-  local dev_pwd prod_hostname
-  [[ -z "$device_role" ]] && device_role=$(_yaml_device_role "$yaml_path")
-  prod_hostname="${device_role}-${device_mac}"
-  dev_pwd=$(_bootstrap_device_ota_password "$device_mac") \
-    || err "Could not derive bootstrap OTA password for ${device_mac} (missing $(iotstack_bootstrap_pass_ota_path) in pass — flash via USB or run: pass mv $(iotstack_bootstrap_pass_ota_legacy_path) $(iotstack_bootstrap_pass_ota_path))"
+  declare -a update_args=(--upgrade-delta)
 
-  if ! _production_api_reachable "$prod_hostname" && ! _bootstrap_ota_reachable "$device_mac"; then
-    warn "Production API and bootstrap OTA are unreachable -- network switch may fail"
-  fi
+  [[ "${FLASH_ERASE:-0}" == "1" ]] && update_args+=(--erase)
+  [[ -n "$tty_device" ]] && update_args+=("$tty_device")
 
-  declare -a extra_args=(--upgrade-delta)
-  [[ "${FLASH_ERASE:-0}" == "1" ]] && extra_args+=(--erase)
-  if [[ -n "$tty_device" ]]; then
-    _ota_via_bootstrap "$device_mac" "$yaml_path" "$dev_pwd" "$prod_hostname" "$tty_device" "${extra_args[@]}"
-  else
-    _ota_via_bootstrap "$device_mac" "$yaml_path" "$dev_pwd" "$prod_hostname" "${extra_args[@]}"
-  fi
+  _flash_msg_ota_production "$device_mac" "$device_role"
+  _update_via_bootstrap "$device_role" "$yaml_path" "$device_mac" -- "${update_args[@]}"
 }
 
 _wait_for_production_online() {
@@ -2404,54 +2394,78 @@ _reassign_devices_via_bootstrap() {
 }
 
 _update_via_bootstrap() {
-  # Update production devices the safe way: switch each into bootstrap, then OTA
-  # the new image into the production slot. OTA never writes the running
-  # partition, so updating from bootstrap always targets production (ota_1) and
-  # the bootstrap image (ota_0) is never overwritten. ESPHome's OTA auto-reboots
-  # the device back into production when done.
+  # iotstack update core path: switch to bootstrap if needed, OTA into production slot.
+  # OTA never overwrites the bootstrap partition. Used by cmd_update and iotstack flash.
   #
-  # Usage: _update_via_bootstrap <role> <yaml_file> [mac ...]
+  # Usage: _update_via_bootstrap <role> <yaml_file> [mac ...] [-- <update_args...>]
+  #   update_args may include --upgrade-delta, --erase, --jobs N, and /dev/tty* (USB fallback).
+  #   Explicit MACs are used directly (device may be bootstrap-only during first flash).
   local role="$1"
   local yaml_file="$2"
   shift 2
-  local -a want_macs=("$@")
+  local -a want_macs=()
+  local -a ota_update_args=()
+  local tty_device=""
+  local seen_sep=false
+  local arg
 
-  # Discover role-<mac> devices currently on the network
-  local -a macs=()
-  local line
-  while IFS= read -r line; do
-    if [[ "$line" =~ ${role}-([0-9a-f]{6}) ]]; then
-      macs+=("${BASH_REMATCH[1]}")
+  while [[ $# -gt 0 ]]; do
+    arg="$1"
+    if [[ "$arg" == "--" ]]; then
+      seen_sep=true
+      shift
+      continue
     fi
-  done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
-  [[ ${#macs[@]} -gt 0 ]] && mapfile -t macs < <(printf '%s\n' "${macs[@]}" | sort -u)
+    if [[ "$seen_sep" == true ]]; then
+      if [[ "$arg" == /dev/* ]]; then
+        tty_device="$arg"
+        shift
+        continue
+      fi
+      ota_update_args+=("$arg")
+      if [[ "$arg" == "--jobs" ]]; then
+        shift
+        [[ $# -gt 0 ]] && ota_update_args+=("$1")
+      fi
+      shift
+      continue
+    fi
+    if [[ "$arg" =~ ^[0-9a-fA-F]{6}$ ]]; then
+      want_macs+=("${arg,,}")
+    fi
+    shift
+  done
 
-  # Filter to requested MAC suffixes if any were given
+  local -a macs=()
   if [[ ${#want_macs[@]} -gt 0 ]]; then
-    local -a filtered=()
-    local m w
-    for m in "${macs[@]}"; do
-      for w in "${want_macs[@]}"; do
-        [[ "$m" == "$w" ]] && filtered+=("$m")
-      done
-    done
-    macs=("${filtered[@]}")
+    macs=("${want_macs[@]}")
+  else
+    local line
+    while IFS= read -r line; do
+      if [[ "$line" =~ ${role}-([0-9a-f]{6}) ]]; then
+        macs+=("${BASH_REMATCH[1]}")
+      fi
+    done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+    [[ ${#macs[@]} -gt 0 ]] && mapfile -t macs < <(printf '%s\n' "${macs[@]}" | sort -u)
   fi
 
   if [[ ${#macs[@]} -eq 0 ]]; then
-    err "No '$role' device(s) found on the network."
+    err "No '$role' device(s) to update."
   fi
 
   local fs_secret
   fs_secret=$(iotstack_bootstrap_pass_ota_read) \
     || err "Bootstrap role OTA password not found in pass (provision a device first)."
 
-  info "Updating ${#macs[@]} '$role' device(s) via bootstrap..."
+  info "iotstack update: ${#macs[@]} '$role' device(s) via bootstrap..."
   local failed=0 mac dev_pwd
   for mac in "${macs[@]}"; do
     echo ""
     dev_pwd=$(echo -n "${fs_secret}|${mac}" | sha256sum | cut -c1-32)
-    if ! _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "${role}-${mac}"; then
+    if [[ -n "$tty_device" ]]; then
+      _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "${role}-${mac}" "$tty_device" "${ota_update_args[@]}" \
+        || failed=$((failed + 1))
+    elif ! _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "${role}-${mac}" "${ota_update_args[@]}"; then
       failed=$((failed + 1))
     fi
   done
@@ -2589,7 +2603,11 @@ cmd_update() {
       [[ "$_arg" == "--dry-run" ]] && _dry_run=1
     done
     if [[ $_dry_run -eq 0 && "$device_or_yaml" != "bootstrap" ]] && is_valid_role "$device_or_yaml"; then
-      _update_via_bootstrap "$device_or_yaml" "$yaml_file" ${mac_suffixes[@]+"${mac_suffixes[@]}"}
+      if [[ ${#mac_suffixes[@]} -gt 0 ]]; then
+        _update_via_bootstrap "$device_or_yaml" "$yaml_file" "${mac_suffixes[@]}" -- "${update_args[@]}"
+      else
+        _update_via_bootstrap "$device_or_yaml" "$yaml_file" -- "${update_args[@]}"
+      fi
       return $?
     fi
 
@@ -4093,7 +4111,7 @@ _flash_msg_wait_online() {
 }
 
 _flash_msg_ota_production() {
-  info "OTA upload: ${2} production firmware to bootstrap-${1}..."
+  info "iotstack update ${2} ${1} (production partition via bootstrap OTA)..."
 }
 
 _flash_msg_waiting_for_upload() {
@@ -4468,8 +4486,7 @@ _flash_recovery_dual() {
   # Brief pause so mDNS advertisement propagates after WiFi connects.
   sleep 2
 
-  _flash_step_begin "OTA production firmware"
-  info "Reassigning devices to ${production_role} firmware..."
+  _flash_ota_step_begin
 
   # Discover recovery devices (bootstrap advertises _iotstack-bootstrap._tcp)
   local recovery_macs=()
@@ -4483,19 +4500,11 @@ _flash_recovery_dual() {
     err "No recovery devices found on network. Check WiFi connection."
   fi
 
-  # Resolve role to YAML
   local yaml_file
   yaml_file=$(resolve_device "$production_role" false) || err "Unknown role: $production_role"
 
-  # Use well-known recovery password for reassign
-  local ota_password="IotstackRecovery2024"
-
-  info "Flashing ${#recovery_macs[@]} device(s) to $production_role..."
-  declare -a _recovery_ota_args=()
-  mapfile -t _recovery_inherited < <(_update_devices_inherited_flags)
-  [[ ${#_recovery_inherited[@]} -gt 0 ]] && _recovery_ota_args+=("${_recovery_inherited[@]}")
-  _recovery_ota_args+=(--upgrade-delta --reassign "${recovery_macs[@]}" "$yaml_file" --ota-password "$ota_password" --jobs 1)
-  _run_update_devices "${_recovery_ota_args[@]}" || err "OTA update failed"
+  _update_via_bootstrap "$production_role" "$yaml_file" "${recovery_macs[@]}" -- --upgrade-delta \
+    || err "iotstack update failed"
 
   _flash_step_begin "Set boot partition to production"
   info "Toggling boot partition on flashed devices..."
@@ -4663,7 +4672,7 @@ _flash_production_smart() {
             return
           fi
           _flash_ota_step_begin
-          if _flash_production_ota_update "$device_mac" "$yaml_path" "$device" "$tty_device"; then
+          if _flash_invoke_update "$device_mac" "$yaml_path" "$device" "$tty_device"; then
             ok "Production firmware setup complete!"
             return
           fi
@@ -4747,79 +4756,13 @@ _flash_production_smart() {
           ok "Production firmware setup complete!"
           return
         fi
-        _flash_production_ota_update "$device_mac" "$yaml_path" "$device" "$tty_device" \
-          || err "Production OTA update failed"
+        _flash_invoke_update "$device_mac" "$yaml_path" "$device" "$tty_device" \
+          || err "iotstack update failed"
         ok "Production firmware setup complete!"
         return
       fi
 
-      if _bootstrap_ota_reachable "$device_mac"; then
-        ok "Bootstrap-${device_mac} ready for production OTA"
-      elif [[ -n "$tty_device" ]]; then
-        if _ensure_device_on_bootstrap "$device_mac" false "$tty_device" "$device"; then
-          ok "Bootstrap-${device_mac} ready for production OTA"
-        else
-          err "Device ${device_mac} did not come online for firmware upload.
-The device is likely unable to connect to WiFi or could not switch to bootstrap.
-Once it connects, run:
-  iotstack update $device
-Or monitor it now: iotstack logs $tty_device"
-        fi
-      else
-        _flash_msg_waiting_for_upload "$device_mac"
-        # The device is ready once its OTA service (port 3232) accepts a
-        # connection. Probe the mDNS name directly: this confirms exactly what the
-        # OTA needs and is far more reliable than polling 'avahi-browse -t' in a
-        # tight loop (a fresh browse can terminate before the device replies, so
-        # the device can be online yet never matched). Allow a generous window --
-        # a fresh bootstrap must flash, boot, apply WiFi creds from NVS, reconnect,
-        # and announce over mDNS before this succeeds.
-        local max_wait=180
-        local waited=0
-        local found=false
-
-        while (( waited < max_wait )); do
-          if timeout 3 bash -c "echo > /dev/tcp/$(iotstack_bootstrap_hostname "$device_mac").local/3232" 2>/dev/null; then
-            found=true
-            break
-          fi
-          sleep 3
-          waited=$((waited + 3))
-          if (( waited % 15 == 0 )); then
-            info "Still waiting for device ${device_mac} ($waited/${max_wait}s)..."
-          fi
-        done
-
-        if [[ "$found" != "true" ]]; then
-          err "Device ${device_mac} did not come online for firmware upload after ${max_wait}s.
-The device is likely unable to connect to WiFi.
-It will auto-reboot in ~3 minutes to retry WiFi. Once it connects, run:
-  iotstack update $device
-Or monitor it now: iotstack logs /dev/ttyACM0"
-        fi
-
-        ok "Bootstrap-${device_mac} ready for production OTA"
-      fi
-
-      # Resolve the bootstrap device's IP now, before OTA changes the hostname.
-      # After reboot the device gets the same DHCP lease, so we can probe the
-      # OTA port on this IP directly -- no avahi cache invalidation needed.
-      local device_ip=""
-      device_ip=$(getent hosts "$(iotstack_bootstrap_hostname "$device_mac").local" 2>/dev/null | awk '{print $1}' | head -1)
-      if [[ -z "$device_ip" ]]; then
-        device_ip=$(avahi-resolve -n "$(iotstack_bootstrap_hostname "$device_mac").local" 2>/dev/null | awk '{print $2}' | head -1)
-      fi
-      [[ -n "$device_ip" ]] && debug "Resolved bootstrap-$device_mac -> $device_ip (will probe after reboot)"
-
-      # Wait for the OTA service to be fully ready. The /dev/tcp check above
-      # confirmed the port is listening, but ESPHome needs a moment after the
-      # socket opens to finish setup() before it can accept a connection.
-      if [[ -n "$device_ip" ]] && command -v wait-for-it &>/dev/null; then
-        wait-for-it "$device_ip:3232" -t 15 -q || true
-        sleep 2
-      fi
-
-      local production_build_name production_build_dir production_offset skip_production_ota=0
+      local production_build_name production_build_dir production_offset skip_update=0
       production_build_name=$(basename "$yaml_path" .yaml)
       debug "Using pre-built production firmware (${production_build_name})"
       production_build_dir="${YAMLS_DIR}/.esphome/build/${production_build_name}/.pioenvs/${production_build_name}"
@@ -4828,19 +4771,19 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
       if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" && -n "$production_offset" && -d "$production_build_dir" ]]; then
         local prod_chip="${IOTSTACK_ESPTOOL_CHIP:-}"
         [[ -z "$prod_chip" ]] && prod_chip=$(esp_detect_chip "$tty_device" 2>/dev/null) || true
-        info "Reading on-flash production partition via USB..."
+        info "Reading on-flash production partition via USB (assessment only)..."
         if [[ -n "$prod_chip" ]] && flash_production_matches_device \
             "$tty_device" "$prod_chip" "$production_build_dir" "$production_offset"; then
-          ok "Production partition matches build -- skipping OTA"
-          skip_production_ota=1
+          ok "Production partition matches build -- iotstack update skipped"
+          skip_update=1
         fi
       elif [[ "${FLASH_ERASE:-0}" != "1" ]] \
           && _flash_production_matches_build "$prod_hostname" "$yaml_path" "$tty_device"; then
-        ok "Production firmware matches build (runtime config_hash) -- skipping OTA"
-        skip_production_ota=1
+        ok "Production firmware already current -- iotstack update skipped"
+        skip_update=1
       fi
 
-      if [[ "$skip_production_ota" -eq 1 ]]; then
+      if [[ "$skip_update" -eq 1 ]]; then
         local network_type
         network_type=$(get_yaml_device_info "$yaml_path" | cut -d'|' -f3)
         if [[ "$network_type" == "thread" ]]; then
@@ -4855,58 +4798,8 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
         return
       fi
 
-      _flash_msg_ota_production "$device_mac" "$device"
-
-      # Retrieve bootstrap role-based OTA password from pass store. The bootstrap
-      # device authenticates OTA with its device-specific password derived from
-      # this role secret + MAC (the same value written to its NVS at flash time).
-      local bootstrap_role_password
-      bootstrap_role_password=$(iotstack_bootstrap_pass_ota_read 2>/dev/null) || true
-      if [[ -z "$bootstrap_role_password" ]]; then
-        info "Bootstrap role OTA password not found, generating..."
-        bootstrap_role_password=$(openssl rand -hex 16)
-        # Store it in pass
-        { echo "$bootstrap_role_password"; echo "$bootstrap_role_password"; } | \
-          pass insert -f "$(iotstack_bootstrap_pass_ota_path)" 2>/dev/null || \
-          err "Failed to store bootstrap OTA password in pass"
-        ok "Bootstrap OTA password generated and stored"
-      fi
-
-      # Compute device-specific OTA password from role secret + MAC
-      # sha256(role_secret | device_mac) - computed in-memory only
-      local device_ota_password
-      device_ota_password=$(echo -n "${bootstrap_role_password}|${device_mac}" | sha256sum | cut -c1-32)
-
-      declare -a _flash_ota_args=()
-      mapfile -t _flash_inherited < <(_update_devices_inherited_flags)
-      [[ ${#_flash_inherited[@]} -gt 0 ]] && _flash_ota_args+=("${_flash_inherited[@]}")
-      _flash_ota_args+=(--upgrade-delta --reassign "$device_mac" "$yaml_path" --ota-password "$device_ota_password" --jobs 1)
-      [[ "${FLASH_ERASE:-0}" == "1" ]] && _flash_ota_args+=(--erase)
-      if ! _run_update_devices "${_flash_ota_args[@]}"; then
-        err "OTA update failed. Device may still be booting. Try again in a moment:
-  iotstack update $device"
-      fi
-
-      # Detect the production firmware's network type so we know how to wait.
-      local network_type
-      network_type=$(get_yaml_device_info "$yaml_path" | cut -d'|' -f3)
-
-      if [[ "$network_type" == "thread" ]]; then
-        # Thread production firmware joins the Thread mesh (not WiFi).
-        # It won't appear in 'iotstack devices --production' (avahi/WiFi mDNS only).
-        info "OTA update complete! Thread device rebooting into $device firmware..."
-        info "(Thread devices communicate over the Thread mesh, not WiFi)"
-        info "Verify with: iotstack logs /dev/ttyACM0  or check your Thread Border Router"
-      else
-        info "OTA update complete! Waiting for device to reboot..."
-        if _wait_for_production_online "$prod_hostname" 90; then
-          ok "Device online as $prod_hostname"
-          _ha_after_production_online "$yaml_path" "$prod_hostname"
-        else
-          warn "Device did not come online after 90s."
-          warn "It may still be booting. Check with: iotstack devices --production"
-        fi
-      fi
+      _flash_invoke_update "$device_mac" "$yaml_path" "$device" "$tty_device" \
+        || err "iotstack update failed (device may still be booting; retry: iotstack update ${device} ${device_mac})"
     fi
 
     ok "Production firmware setup complete!"

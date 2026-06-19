@@ -40,7 +40,8 @@ Smart flash (default):
   1. Build bootstrap + production images (production is for OTA only).
   2. Assess device (mDNS / optional USB read-flash verify).
   3. Serial: partition table + bootstrap if needed (never production).
-  4. OTA production into the production partition from bootstrap.
+  4. iotstack update -- same flow as `iotstack update <role> <mac>` (OTA into
+     the production partition from bootstrap; never serial).
 
   Production OTA is skipped when runtime config_hash already matches the
   build. Serial erase/reflash runs only when the on-device partition table
