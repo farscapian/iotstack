@@ -116,23 +116,83 @@ flash_region_matches_device() {
   [[ "$local_md5" == "$device_md5" ]]
 }
 
+flash_mdns_config_hash_for_hostname() {
+  # ESPHome config_hash from mDNS TXT (8-char hex). Same parser as iotstack.sh.
+  local hostname="$1"
+  local mdns_service="${2:-_esphomelib._tcp}"
+  local line current_hostname="" hash=""
+  while IFS= read -r line; do
+    if [[ $line =~ hostname\ =\ \[([^\]]+)\] ]]; then
+      current_hostname="${BASH_REMATCH[1]%.local}"
+    fi
+    if [[ $line =~ txt\ = ]] && [[ "$current_hostname" == "$hostname" ]]; then
+      [[ $line =~ config_hash=([^\"]*) ]] && hash="${BASH_REMATCH[1]}"
+      if [[ -n "$hash" ]]; then
+        echo "$hash"
+        return 0
+      fi
+    fi
+  done < <(avahi-browse -t -r "$mdns_service" 2>/dev/null)
+  return 1
+}
+
+flash_build_config_hash_from_build_dir() {
+  # 8-char hex config_hash from ESPHome build_info.json in a build tree.
+  local build_dir="$1"
+  local build_info="${build_dir}/build_info.json"
+  [[ -f "$build_info" ]] || return 1
+  python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
+}
+
+flash_bootstrap_matches_build_via_mdns() {
+  # Return 0 when bootstrap-<mac> advertises the same config_hash as the local build.
+  local device_mac="$1"
+  local build_dir="$2"
+  local bootstrap_hostname build_hash runtime_hash attempt
+
+  [[ -n "$device_mac" ]] || return 1
+  bootstrap_hostname="$(iotstack_bootstrap_hostname "$device_mac")"
+  build_hash=$(flash_build_config_hash_from_build_dir "$build_dir" 2>/dev/null) || return 1
+  [[ -n "$build_hash" ]] || return 1
+
+  for attempt in 1 2 3; do
+    runtime_hash=$(flash_mdns_config_hash_for_hostname "$bootstrap_hostname" "$(iotstack_bootstrap_mdns_service)" 2>/dev/null) \
+      || runtime_hash=""
+    if [[ -n "$runtime_hash" && "$runtime_hash" == "$build_hash" ]]; then
+      return 0
+    fi
+    (( attempt < 3 )) && sleep 1
+  done
+  return 1
+}
+
 flash_assess_bootstrap_device() {
   # Compare local bootstrap build with device flash. Sets assessment globals.
-  # Usage: flash_assess_bootstrap_device <tty> <chip> <build_dir> <bootstrap_offset>
+  # Usage: flash_assess_bootstrap_device <tty> <chip> <build_dir> <bootstrap_offset> [device_mac]
   # Sets: FLASH_ASSESS_PARTITION_MATCH, FLASH_ASSESS_BOOTSTRAP_MATCH,
   #       FLASH_ASSESS_NEED_ERASE, FLASH_ASSESS_SKIP_SERIAL
   local tty_device="$1"
   local esptool_chip="$2"
   local build_dir="$3"
   local bootstrap_offset="$4"
+  local device_mac="${5:-}"
 
   FLASH_ASSESS_PARTITION_MATCH=0
   FLASH_ASSESS_BOOTSTRAP_MATCH=0
   FLASH_ASSESS_NEED_ERASE=1
   FLASH_ASSESS_SKIP_SERIAL=0
+  FLASH_ASSESS_VIA_MDNS=0
 
   if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
-    debug "FLASH_ERASE=1 -- forcing full serial flash"
+    return 0
+  fi
+
+  if [[ -n "$device_mac" ]] && flash_bootstrap_matches_build_via_mdns "$device_mac" "$build_dir"; then
+    FLASH_ASSESS_PARTITION_MATCH=1
+    FLASH_ASSESS_BOOTSTRAP_MATCH=1
+    FLASH_ASSESS_NEED_ERASE=0
+    FLASH_ASSESS_SKIP_SERIAL=1
+    FLASH_ASSESS_VIA_MDNS=1
     return 0
   fi
 

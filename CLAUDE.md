@@ -446,9 +446,20 @@ Production firmware has **no OTA server** in YAML. Update/reassign/flash paths:
 
 **Fix:** `log()` always `return 0`; use `info()` for messages that must print in non-verbose verify/discovery paths.
 
+### Bootstrap mDNS TXT records
+
+Bootstrap firmware advertises `_iotstack-bootstrap._tcp` (not `_esphomelib._tcp`, which is removed on WiFi connect to keep Home Assistant from auto-discovering bootstrap devices). The custom service includes explicit TXT records in `yamls/bootstrap.yaml`:
+
+- `config_hash` -- 8-char hex from `App.get_config_hash()` (primary runtime comparison key)
+- `project_version` -- compile-time git tag+commit (fallback when hash unavailable)
+
+`flash_assess_bootstrap_device()` (`scripts/flash-compare.sh`) prefers mDNS `config_hash` comparison when `bootstrap-<mac>` is online, avoiding slow USB `read-flash` at 9600 baud. Falls back to on-flash MD5 compare when the device is not on WiFi or TXT is empty (pre-OTA bootstrap builds).
+
 ### Post-OTA hash reporting
 
-During reassign OTA the discovered host is `bootstrap-<mac>` -- bootstrap mDNS typically has **no `config_hash`**. Success line should fall back to build hash from `NEW_CONFIG_HASH`, `build_info.json`, or `compilation-cache.csv` (`_resolve_build_config_hash`).
+During reassign OTA the discovered host is `bootstrap-<mac>`. Do **not** compare that host's mDNS `config_hash` to the production build hash -- bootstrap TXT carries the bootstrap image hash, not production. `update_devices.sh` always queues a production OTA in `--reassign` mode (no misleading `hash X -> Y` warn). Post-OTA success reporting falls back to build hash from `NEW_CONFIG_HASH`, `build_info.json`, or `compilation-cache.csv` (`_resolve_build_config_hash`) when the bootstrap host has no production hash.
+
+After USB bootstrap flash, WiFi readiness is detected by probing `bootstrap-<mac>.local:3232` (`_wait_for_bootstrap_wifi_ready`), not by a serial log line.
 
 ### Matrix display panel layout (NVS, not config_hash)
 
@@ -480,7 +491,8 @@ Network-first, USB-last:
 | Entity updates affect wrong integrations | Not checking platform field | Always filter: `if platform != 'esphome': continue` |
 | `iotstack verify` prints nothing / exits immediately | `log()` returned 1 under `set -e` when not verbose | `log()` always returns 0; use `info()` for required output |
 | `--erase` says it will reflash but exits early | Assessment ignored `FLASH_ERASE` on mDNS hash match | Honor `FLASH_ERASE` in all match branches; pull latest `main` |
-| OTA success shows `hash: unknown` | Bootstrap host has no mDNS config_hash; compile cache skipped hash | Separate `FLASH_ERASE` from `UPGRADE_DELTA`; `_resolve_build_config_hash` fallback |
+| OTA success shows `hash: unknown` | Bootstrap host missing TXT (old firmware) or avahi browse miss | Reflash bootstrap so `_iotstack-bootstrap._tcp` carries `config_hash`; `_resolve_build_config_hash` fallback |
+| Slow bootstrap USB assess (~60s) | mDNS fast path skipped (device offline or old bootstrap without TXT) | Ensure bootstrap on WiFi; reflash bootstrap once to pick up mDNS TXT records |
 | Literal `\033[0;32m` in compile spinner | `printf` + single-quoted color vars | Use `$'\033[...]'` or `[INFO]` lines only |
 | `--panel-count=2` ignored when firmware current | Layout is NVS, not config_hash | Bootstrap NVS update path even when firmware matches |
 | Stale CLI behavior after fixes | Testing against unpulled `main` | `git pull` on `~/Sync/mini_projects/iotstack` |

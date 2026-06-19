@@ -915,9 +915,16 @@ if [[ "$REASSIGN_MODE" == true ]]; then
   # Dry-run may run before the device has been switched to bootstrap, so also scan
   # production mDNS to allow compile/plan when the device is still on production.
   if [[ "$DRY_RUN" == true ]]; then
-    RAW=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null || true)
-    RAW_BOOTSTRAP=$(avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null || true)
-    RAW="${RAW}"$'\n'"${RAW_BOOTSTRAP}"
+    _mdns_prod_raw=$(mktemp)
+    _mdns_boot_raw=$(mktemp)
+    avahi-browse -t -r _esphomelib._tcp 2>/dev/null >"$_mdns_prod_raw" &
+    _mdns_prod_pid=$!
+    avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null >"$_mdns_boot_raw" &
+    _mdns_boot_pid=$!
+    wait "$_mdns_prod_pid" || true
+    wait "$_mdns_boot_pid" || true
+    RAW=$(cat "$_mdns_prod_raw" "$_mdns_boot_raw")
+    rm -f "$_mdns_prod_raw" "$_mdns_boot_raw"
   else
     RAW=$(avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null || true)
   fi
@@ -1320,7 +1327,19 @@ while IFS= read -r HOSTNAME; do
     continue
   fi
 
-  # Primary: config_hash comparison
+  # Reassign discovers bootstrap-<mac>; its mDNS config_hash is the bootstrap
+  # build, not the production image being OTA'd into the production partition.
+  if [[ "$REASSIGN_MODE" == true ]]; then
+    if [[ -n "$NEW_CONFIG_HASH" ]]; then
+      log "${HOSTNAME}: uploading production image via bootstrap OTA (hash ${NEW_CONFIG_HASH})"
+    else
+      log "${HOSTNAME}: uploading production image via bootstrap OTA"
+    fi
+    FLASH_LIST+=("$HOSTNAME")
+    continue
+  fi
+
+  # Primary: config_hash comparison (production hosts on _esphomelib._tcp)
   if [[ -n "$NEW_CONFIG_HASH" && -n "$DEVICE_HASH" ]]; then
     if [[ "$DEVICE_HASH" == "$NEW_CONFIG_HASH" ]]; then
       ok "${HOSTNAME}: hash ${DEVICE_HASH} matches -- skipping."
@@ -1338,9 +1357,6 @@ while IFS= read -r HOSTNAME; do
       warn "${HOSTNAME}: version ${RUNNING_VERSION} -> ${EXPECTED_VERSION} -- will flash."
       FLASH_LIST+=("$HOSTNAME")
     fi
-  elif [[ "$REASSIGN_MODE" == true ]]; then
-    log "${HOSTNAME}: uploading production image via bootstrap OTA"
-    FLASH_LIST+=("$HOSTNAME")
   else
     warn "${HOSTNAME}: no hash or version info -- will flash."
     FLASH_LIST+=("$HOSTNAME")
