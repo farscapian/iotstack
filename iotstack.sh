@@ -653,7 +653,7 @@ _flash_step_reset() {
   _IOTSTACK_FLASH_STEP_NUM=0
   _IOTSTACK_FLASH_SERIAL_STEP=0
   _IOTSTACK_FLASH_OTA_STEP=0
-  IOTSTACK_LOG_INDENT=""
+  export IOTSTACK_LOG_INDENT=""
 }
 
 _flash_step_begin_at() {
@@ -661,10 +661,10 @@ _flash_step_begin_at() {
   local title="$2"
   [[ "${IOTSTACK_FLASH_SUPPRESS_STEPS:-0}" == "1" ]] && return 0
   _IOTSTACK_FLASH_STEP_NUM=$num
-  IOTSTACK_LOG_INDENT=""
+  export IOTSTACK_LOG_INDENT=""
   echo ""
   _iotstack_echo stdout "${BLU}[INFO]${RST} Step ${num}: ${title}"
-  IOTSTACK_LOG_INDENT="  "
+  export IOTSTACK_LOG_INDENT="  "
 }
 
 _flash_preflight_step_begin() {
@@ -677,7 +677,7 @@ _flash_step_begin() {
 }
 
 _flash_step_end() {
-  IOTSTACK_LOG_INDENT=""
+  export IOTSTACK_LOG_INDENT=""
 }
 
 declare -g _IOTSTACK_FLASH_SERIAL_STEP=0
@@ -4121,14 +4121,16 @@ _flash_msg_waiting_for_upload() {
 
 _flash_esptool_hard_reset() {
   # Reset device after NVS is written (bootstrap must not boot until secrets are on flash).
+  # default-reset enters the ROM bootloader from any state; hard-reset reboots into firmware.
   local tty_device="$1"
   local flash_log="${2:-}"
   local esptool_chip="${IOTSTACK_ESPTOOL_CHIP:-esp32c6}"
   local esptool_baud esptool_src="esptool:${esptool_chip}"
   esptool_baud=$(esp_esptool_baud_for_chip "$esptool_chip")
+  sleep 1
   create_log_run_esptool "$esptool_src" "$flash_log" \
     --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud" \
-    --before no-reset --after hard-reset chip-id \
+    --before default-reset --after hard-reset chip-id \
     || warn "Post-NVS hard reset failed (device may need manual reset)"
 }
 
