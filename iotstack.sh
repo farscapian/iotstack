@@ -1584,12 +1584,23 @@ _wait_for_ota_service() {
   return 1
 }
 
-_iotstack_ota_tcp_open() {
-  # Return 0 when hostname.local accepts a TCP connection on port.
+_iotstack_tcp_open() {
+  # Return 0 when hostname.local accepts TCP on port within timeout_sec.
+  # Prefer wait-for-it (quiet, reliable connect probe); fall back to bash /dev/tcp.
   local hostname="$1"
   local port="$2"
   local timeout_sec="${3:-3}"
+  local hostport="${hostname}.local:${port}"
+
+  if command -v wait-for-it &>/dev/null; then
+    wait-for-it "$hostport" -t "$timeout_sec" -q
+    return $?
+  fi
   timeout "$timeout_sec" bash -c "echo > /dev/tcp/${hostname}.local/${port}" 2>/dev/null
+}
+
+_iotstack_ota_tcp_open() {
+  _iotstack_tcp_open "$1" "$2" "${3:-3}"
 }
 
 _bootstrap_ota_reachable() {
@@ -1768,9 +1779,7 @@ _production_running_image_hash() {
 
 _production_api_reachable() {
   # Production native API accepts TCP on 6053.
-  local hostname="$1"
-  local timeout_sec="${2:-3}"
-  timeout "$timeout_sec" bash -c "echo > /dev/tcp/${hostname}.local/6053" 2>/dev/null
+  _iotstack_tcp_open "$1" 6053 "${2:-3}"
 }
 
 _production_mdns_advertised() {
