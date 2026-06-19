@@ -655,14 +655,24 @@ _flash_step_reset() {
   IOTSTACK_LOG_INDENT=""
 }
 
-_flash_step_begin() {
-  local title="$1"
+_flash_step_begin_at() {
+  local num="$1"
+  local title="$2"
   [[ "${IOTSTACK_FLASH_SUPPRESS_STEPS:-0}" == "1" ]] && return 0
-  _IOTSTACK_FLASH_STEP_NUM=$((_IOTSTACK_FLASH_STEP_NUM + 1))
+  _IOTSTACK_FLASH_STEP_NUM=$num
   IOTSTACK_LOG_INDENT=""
   echo ""
-  _iotstack_echo stdout "${BLU}[INFO]${RST} Step ${_IOTSTACK_FLASH_STEP_NUM}: ${title}"
+  _iotstack_echo stdout "${BLU}[INFO]${RST} Step ${num}: ${title}"
   IOTSTACK_LOG_INDENT="  "
+}
+
+_flash_preflight_step_begin() {
+  _flash_step_begin_at 0 "Preflight checks"
+}
+
+_flash_step_begin() {
+  local title="$1"
+  _flash_step_begin_at $((_IOTSTACK_FLASH_STEP_NUM + 1)) "$title"
 }
 
 _flash_step_end() {
@@ -5302,6 +5312,11 @@ main() {
 
   local command="${1:-help}"
   create_log_setup "$command"
+
+  if [[ "$command" == "flash" && "${2:-}" != "help" ]]; then
+    _flash_preflight_step_begin
+  fi
+
   if create_log_enabled; then
     info "Session log: ${IOTSTACK_LOG_FILE}"
   fi
