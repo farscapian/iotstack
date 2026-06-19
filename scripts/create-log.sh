@@ -35,7 +35,7 @@ iotstack_validate_log_id() {
 iotstack_parse_global_argv() {
   # Global flags valid anywhere on the command line (before or after subcommand):
   #   -v, --verbose (alias), -q, --quiet (alias), --create-log, --timestamp,
-  #   --log-id=<id>, -env=<file>
+  #   --log-id=<id>, --compilation-output, -env=<file>
   # --log-id implies --create-log, --timestamp, and -v/--verbose.
   # Sets VERBOSE/QUIET/IOTSTACK_CREATE_LOG/IOTSTACK_TIMESTAMP/IOTSTACK_LOG_ID and
   # fills IOTSTACK_ARGV with the rest.
@@ -43,6 +43,7 @@ iotstack_parse_global_argv() {
   VERBOSE=0
   QUIET=0
   unset IOTSTACK_LOG_ID 2>/dev/null || true
+  unset IOTSTACK_COMPILATION_OUTPUT 2>/dev/null || true
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -58,6 +59,9 @@ iotstack_parse_global_argv() {
         ;;
       --timestamp)
         export IOTSTACK_TIMESTAMP=1
+        ;;
+      --compilation-output)
+        export IOTSTACK_COMPILATION_OUTPUT=1
         ;;
       --log-id=*)
         IOTSTACK_LOG_ID=$(iotstack_validate_log_id "${1#--log-id=}")
@@ -96,10 +100,19 @@ iotstack_parse_global_argv() {
   else
     unset IOTSTACK_VERBOSE 2>/dev/null || true
   fi
+  if [[ "${IOTSTACK_COMPILATION_OUTPUT:-0}" -eq 1 ]]; then
+    export IOTSTACK_COMPILATION_OUTPUT=1
+  else
+    unset IOTSTACK_COMPILATION_OUTPUT 2>/dev/null || true
+  fi
 }
 
 create_log_enabled() {
   [[ "${IOTSTACK_CREATE_LOG:-0}" -eq 1 ]]
+}
+
+iotstack_compilation_output_enabled() {
+  [[ "${IOTSTACK_COMPILATION_OUTPUT:-0}" -eq 1 ]]
 }
 
 create_log_defer_enabled() {

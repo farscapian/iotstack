@@ -24,9 +24,10 @@ warn() { [[ $QUIET -eq 0 ]] && echo -e "${YLW}[WARN]${RST} $*"; return 0; }
 info() { [[ $QUIET -eq 0 ]] && echo -e "${BLU}[INFO]${RST} $*"; return 0; }
 debug() { [[ $VERBOSE -eq 1 ]] && [[ $QUIET -eq 0 ]] && echo -e "${DIM}[DEBUG]${RST} $*"; return 0; }
 
-# Forward iotstack -v to update_devices.sh (--verbose).
+# Forward iotstack global flags to update_devices.sh.
 _update_devices_inherited_flags() {
   [[ $VERBOSE -eq 1 ]] && printf '%s\n' --verbose
+  iotstack_compilation_output_enabled && printf '%s\n' --compilation-output
 }
 
 # Print a table separator rule aligned to the header columns. Each argument is
@@ -430,14 +431,23 @@ _esphome_compile_show_failure() {
 }
 
 _esphome_compile() {
-  # Run esphome compile quietly; one INFO line names the compile YAML. Full compiler
-  # output is captured and shown only on failure (-v/--log-id do not stream PlatformIO).
+  # Run esphome compile; one INFO line names the compile YAML. By default compiler
+  # output is captured and shown only on failure. --compilation-output streams it live.
   local yaml_file="$1"
   local compile_yaml compile_log rc=0
   compile_yaml=$(iotstack_prepare_compile_yaml "$yaml_file") || return 1
   compile_log=$(mktemp)
   info "Compiling $(basename "$compile_yaml")..."
-  if ! esphome compile "$compile_yaml" >"$compile_log" 2>&1; then
+  if iotstack_compilation_output_enabled; then
+    if create_log_child_output_piped; then
+      if ! esphome compile "$compile_yaml" 2>&1 | tee "$compile_log" | create_log_tee_console "esphome:compile"; then
+        rc=1
+      fi
+    elif ! esphome compile "$compile_yaml" 2>&1 | tee "$compile_log"; then
+      rc=1
+    fi
+    [[ $rc -eq 1 ]] && _esphome_compile_show_failure "$compile_yaml" "$compile_log"
+  elif ! esphome compile "$compile_yaml" >"$compile_log" 2>&1; then
     rc=1
     _esphome_compile_show_failure "$compile_yaml" "$compile_log"
   fi

@@ -33,6 +33,9 @@ help (docs/help/roles/<role>.txt).
 Global Options (valid anywhere on the command line, before or after the subcommand):
   -v, --verbose       Show iotstack diagnostics (not ESPHome compiler output); --verbose
                       is a full alias for -v (incompatible with -q/--quiet)
+  --compilation-output
+                      Stream ESPHome/PlatformIO compile output to the console
+                      (default: hidden unless compile fails)
   -q, --quiet         Suppress status messages (errors still shown; incompatible
                       with -v/--verbose)
   --create-log        Copy console output to ~/.iotstack/logs/iotstack-<cmd>.log

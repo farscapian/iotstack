@@ -59,6 +59,7 @@ FLASH_ERASE=false
 VERIFY=false
 DRY_RUN=false
 VERBOSE=false
+COMPILATION_OUTPUT=false
 FORCE_UPDATE_ENTITIES=false
 MAX_JOBS=4
 JOBS_EXPLICIT=false
@@ -732,6 +733,7 @@ while [[ $# -gt 0 ]]; do
       done
       ;;
     -v|--verbose)            VERBOSE=true;        shift ;;
+    --compilation-output)    COMPILATION_OUTPUT=true; shift ;;
     --help|-h)               usage ;;
     -*)                      err "Unknown option: $1"; exit 1 ;;
     *)                       YAML_FILE="$1";      shift ;;
@@ -1239,7 +1241,7 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
     COMPILED=true
     setup_flash_logs "$NEW_CONFIG_HASH"
   else
-    if [[ "$VERBOSE" == true ]]; then
+    if [[ "$VERBOSE" == true || "$COMPILATION_OUTPUT" == true ]]; then
       _compile_log_banner
       info "Compiling firmware (ESPHome ${ESPHOME_VERSION})..."
       if "$ESPHOME_BIN" compile "$YAML_FILE" 2>&1 | tee -a "$COMPILE_LOG_FILE"; then
@@ -1414,7 +1416,7 @@ fi
 
 # -- Compile (only if not already done above) ---------------------------------
 if [[ "$COMPILED" == false ]]; then
-  if [[ "$VERBOSE" == true ]]; then
+  if [[ "$VERBOSE" == true || "$COMPILATION_OUTPUT" == true ]]; then
     _compile_log_banner
     info "Compiling firmware..."
     if ! "$ESPHOME_BIN" compile "$YAML_FILE" 2>&1 | tee -a "$COMPILE_LOG_FILE"; then
