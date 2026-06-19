@@ -1008,18 +1008,34 @@ _list_devices_append_parsed_mdns() {
   local current_config_hash=""
 
   while IFS= read -r line; do
-    if [[ $line =~ hostname\ =\ \[([^\]]+)\] ]]; then
-      if [[ -n "$current_hostname" ]]; then
+    # avahi-browse -r emits "= interface IPv4 <hostname> ..." (resolved) and
+    # "+ ..." (announced). When resolution is slow, only "+" lines may appear.
+    if [[ $line =~ ^[=+][[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+([^[:space:]]+) ]]; then
+      local parsed_host="${BASH_REMATCH[1]%.local}"
+      if [[ -n "$current_hostname" && "$current_hostname" != "$parsed_host" ]]; then
         _list_devices_flush_parsed_mdns_row "$device_data" "$current_hostname" "$current_friendly" \
           "$current_project" "$current_version" "$current_bootstrap_hash" "$current_production_hash"
+        current_friendly=""
+        current_project=""
+        current_version=""
+        current_bootstrap_hash=""
+        current_production_hash=""
+        current_config_hash=""
       fi
-      current_hostname="${BASH_REMATCH[1]%.local}"
-      current_friendly=""
-      current_project=""
-      current_version=""
-      current_bootstrap_hash=""
-      current_production_hash=""
-      current_config_hash=""
+      current_hostname="$parsed_host"
+    elif [[ $line =~ hostname\ =\ \[([^\]]+)\] ]]; then
+      local resolved_host="${BASH_REMATCH[1]%.local}"
+      if [[ -n "$current_hostname" && "$current_hostname" != "$resolved_host" ]]; then
+        _list_devices_flush_parsed_mdns_row "$device_data" "$current_hostname" "$current_friendly" \
+          "$current_project" "$current_version" "$current_bootstrap_hash" "$current_production_hash"
+        current_friendly=""
+        current_project=""
+        current_version=""
+        current_bootstrap_hash=""
+        current_production_hash=""
+        current_config_hash=""
+      fi
+      current_hostname="$resolved_host"
     fi
     if [[ $line =~ txt\ = ]]; then
       if [[ $line =~ friendly_name=([^\"]*) ]]; then
@@ -1053,7 +1069,9 @@ _list_devices_merge_by_mac() {
   local -a macs=()
 
   while IFS='|' read -r hostname friendly project version bootstrap_hash production_hash; do
+    [[ -z "$hostname" ]] && continue
     local mac="${hostname##*-}"
+    [[ -z "$mac" ]] && continue
     macs+=("$mac")
     [[ -n "$bootstrap_hash" ]] && merged_bs["$mac"]="$bootstrap_hash"
     [[ -n "$production_hash" ]] && merged_prod["$mac"]="$production_hash"
@@ -1070,10 +1088,13 @@ _list_devices_merge_by_mac() {
     fi
   done < "$input"
 
-  mapfile -t macs < <(printf '%s\n' "${macs[@]}" | sort -u)
+  if ((${#macs[@]} > 0)); then
+    mapfile -t macs < <(printf '%s\n' "${macs[@]}" | sort -u)
+  fi
   : >"$output"
   local mac hostname
   for mac in "${macs[@]}"; do
+    [[ -z "$mac" ]] && continue
     hostname="${merged_host_prod[$mac]:-${merged_host_bs[$mac]:-}}"
     [[ -z "$hostname" ]] && continue
     echo "$hostname|${merged_friendly[$mac]:-}|${merged_project[$mac]:-}|${merged_version[$mac]:-}|${merged_bs[$mac]:-}|${merged_prod[$mac]:-}" >>"$output"
@@ -1090,15 +1111,15 @@ _list_devices_collect_mdns_parallel() {
 
   if [[ "$device_mode" != "bootstrap" ]]; then
     prod_raw=$(mktemp)
-    avahi-browse -t -r "_esphomelib._tcp" 2>/dev/null >"$prod_raw" &
+    timeout 8 avahi-browse -r "_esphomelib._tcp" 2>/dev/null >"$prod_raw" &
     browse_pids+=("$!")
     meta_raw=$(mktemp)
-    avahi-browse -t -r "$(iotstack_meta_mdns_service)" 2>/dev/null >"$meta_raw" &
+    timeout 8 avahi-browse -r "$(iotstack_meta_mdns_service)" 2>/dev/null >"$meta_raw" &
     browse_pids+=("$!")
   fi
   if [[ "$device_mode" != "production" ]]; then
     boot_raw=$(mktemp)
-    avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null >"$boot_raw" &
+    timeout 8 avahi-browse -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null >"$boot_raw" &
     browse_pids+=("$!")
   fi
 
@@ -1219,7 +1240,9 @@ list_devices() {
         _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
         id_suffixes+=("${hostname##*-}")
       done < "${device_data}.sorted"
-      mapfile -t id_suffixes < <(printf '%s\n' "${id_suffixes[@]}" | sort -u)
+      if ((${#id_suffixes[@]} > 0)); then
+        mapfile -t id_suffixes < <(printf '%s\n' "${id_suffixes[@]}" | sort -u)
+      fi
       (
         echo "["
         first=true
