@@ -32,4 +32,5 @@ if [[ ${#existing[@]} -eq 0 ]]; then
 fi
 
 echo "shellcheck (pre-commit): ${#existing[@]} staged script(s)..."
-shellcheck -x "${existing[@]}"
+# -S error: gate commits on hard failures; run full shellcheck -x manually for warnings.
+shellcheck -x -S error "${existing[@]}"

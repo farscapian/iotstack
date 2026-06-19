@@ -341,6 +341,74 @@ create_log_run_esptool() {
     return "${PIPESTATUS[0]}"
   fi
 
-  create_log_esptool_output=$(python3 -m esptool "${esptool_args[@]}" 2>&1 | tee -a "$flash_log" >/dev/null)
-  return "${PIPESTATUS[0]}"
+  tmp=$(mktemp)
+  python3 -m esptool "${esptool_args[@]}" 2>&1 | tee -a "$flash_log" >"$tmp"
+  rc=${PIPESTATUS[0]}
+  create_log_esptool_output=$(cat "$tmp")
+  rm -f "$tmp"
+  return "$rc"
+}
+
+create_log_serial_capture_enabled() {
+  [[ -n "${IOTSTACK_LOG_ID:-}" ]]
+}
+
+create_log_serial_capture_stop() {
+  if [[ -n "${IOTSTACK_SERIAL_LOG_PID:-}" ]]; then
+    kill "$IOTSTACK_SERIAL_LOG_PID" 2>/dev/null || true
+    wait "$IOTSTACK_SERIAL_LOG_PID" 2>/dev/null || true
+    unset IOTSTACK_SERIAL_LOG_PID
+  fi
+}
+
+create_log_serial_capture_pause() {
+  create_log_serial_capture_stop
+}
+
+create_log_serial_capture_start() {
+  # Background serial monitor -> iotstack-<log-id>-serial.log (file only; --reconnect).
+  # Usage: create_log_serial_capture_start <tty> [variant]
+  local tty="$1"
+  local variant="${2:-unknown}"
+  local log_file source py baud stamp_py
+
+  create_log_serial_capture_enabled || return 0
+  [[ -n "$tty" ]] || return 0
+
+  create_log_serial_capture_stop
+
+  log_file="${IOTSTACK_HOME}/logs/iotstack-${IOTSTACK_LOG_ID}-serial.log"
+  export IOTSTACK_SERIAL_LOG_FILE="$log_file"
+  export IOTSTACK_FLASH_SERIAL_TTY="$tty"
+
+  mkdir -p "$(dirname "$log_file")"
+  if [[ -f "$log_file" ]]; then
+    printf '\n%s === serial capture resumed (%s) ===\n' "$(date -Iseconds)" "$tty" >>"$log_file"
+  else
+    printf '%s === serial capture started (%s) ===\n' "$(date -Iseconds)" "$tty" >"$log_file"
+  fi
+
+  if [[ "$variant" == "unknown" ]] && declare -F esp_detect_chip &>/dev/null; then
+    variant=$(esp_detect_chip "$tty" 2>/dev/null) || variant="unknown"
+  fi
+  source=$(create_log_serial_source "$tty" "$variant")
+
+  py=$(head -1 "$(command -v esphome)" 2>/dev/null | sed 's/^#!//')
+  [[ -x "$py" ]] || py="python3"
+
+  stamp_py="$IOTSTACK_LOG_STAMP"
+  baud="${IOTSTACK_SERIAL_MONITOR_BAUD:-115200}"
+
+  (
+    "$py" -u "${SCRIPT_DIR}/scripts/serial-logs.py" --reconnect "$tty" "$baud" 2>&1 \
+      | stdbuf -oL -eL python3 -u "$stamp_py" \
+          --source "$source" --log-file "$log_file" --log-only
+  ) &
+  IOTSTACK_SERIAL_LOG_PID=$!
+  export IOTSTACK_SERIAL_LOG_PID
+}
+
+create_log_serial_capture_resume() {
+  [[ -n "${IOTSTACK_FLASH_SERIAL_TTY:-}" ]] || return 0
+  create_log_serial_capture_start "${IOTSTACK_FLASH_SERIAL_TTY}" "${IOTSTACK_FLASH_SERIAL_VARIANT:-unknown}"
 }

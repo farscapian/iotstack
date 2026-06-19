@@ -326,6 +326,12 @@ _check_serial_port_in_use() {
       local full_cmdline
       full_cmdline=$(ps -p "$pid" -o args= 2>/dev/null || true)
       if [[ "$full_cmdline" == *"serial-logs.py"* ]]; then
+        if [[ -n "${IOTSTACK_FLASH_SERIAL_TTY:-}" && "$IOTSTACK_FLASH_SERIAL_TTY" == "$tty_device" ]]; then
+          debug "Pausing device serial log capture for esptool on $tty_device..."
+          create_log_serial_capture_pause
+          sleep 1
+          return 0
+        fi
         info "Killing iotstack logs on $tty_device (pid $pid) to free port for flash..."
         kill "$pid" 2>/dev/null || true
         sleep 1
@@ -3851,6 +3857,7 @@ _flash_write_nvs_secrets_usb() {
   local production_role="${3:-}"
 
   info "Writing device-specific secrets to NVS via USB..."
+  create_log_serial_capture_pause
   if create_log_child_output_piped; then
     create_log_run "write-nvs-secrets" "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" \
       "$tty_device" "$device_mac" "$production_role" \
@@ -3860,6 +3867,7 @@ _flash_write_nvs_secrets_usb() {
       || err "Failed to write NVS secrets to device"
   fi
   ok "NVS secrets written successfully via USB"
+  create_log_serial_capture_resume
 }
 
 # Back-compat alias
@@ -4094,11 +4102,50 @@ cmd_flash() {
   _flash_production_smart "$device" "$tty_device_or_role" "$skip_recovery"
 }
 
+_flash_serial_log_teardown() {
+  create_log_serial_capture_stop
+}
+
+_flash_serial_log_setup() {
+  # With --log-id, capture firmware serial output to iotstack-<id>-serial.log.
+  local tty="$1"
+  local variant="${2:-}"
+  create_log_serial_capture_enabled || return 0
+  [[ -n "$tty" && -e "$tty" ]] || return 0
+
+  export IOTSTACK_FLASH_SERIAL_VARIANT="${variant:-${IOTSTACK_ESPTOOL_CHIP:-unknown}}"
+
+  if [[ -z "${_FLASH_SERIAL_LOG_TRAP_REGISTERED:-}" ]]; then
+    local prior_cmd=""
+    if trap -p EXIT 2>/dev/null | grep -q .; then
+      prior_cmd=$(trap -p EXIT | sed -E "s/^trap -- '(.*)' EXIT$/\1/")
+    fi
+    if [[ -n "$prior_cmd" ]]; then
+      # shellcheck disable=SC2064
+      trap '_flash_serial_log_teardown; eval "$_FLASH_SERIAL_LOG_PRIOR_EXIT"' EXIT
+      export _FLASH_SERIAL_LOG_PRIOR_EXIT="$prior_cmd"
+    else
+      trap '_flash_serial_log_teardown' EXIT
+    fi
+    export _FLASH_SERIAL_LOG_TRAP_REGISTERED=1
+  fi
+
+  create_log_serial_capture_start "$tty" "$IOTSTACK_FLASH_SERIAL_VARIANT"
+  if [[ -z "${_FLASH_SERIAL_LOG_ANNOUNCED:-}" && -n "${IOTSTACK_SERIAL_LOG_FILE:-}" ]]; then
+    info "Device serial log: ${IOTSTACK_SERIAL_LOG_FILE}"
+    export _FLASH_SERIAL_LOG_ANNOUNCED=1
+  fi
+}
+
 _flash_warn_start_serial_logs() {
   # Bootstrap did not reach WiFi/OTA -- serial output shows boot, NVS, and WiFi errors.
   local tty_device="$1"
   [[ -n "$tty_device" ]] || return 0
   [[ $QUIET -eq 0 ]] || return 0
+  if [[ -n "${IOTSTACK_SERIAL_LOG_FILE:-}" && -f "${IOTSTACK_SERIAL_LOG_FILE}" ]]; then
+    warn "Review captured device serial log: ${IOTSTACK_SERIAL_LOG_FILE}"
+    return 0
+  fi
   local msg="WARNING: START 'iotstack logs ${tty_device}' IN ANOTHER TERMINAL NOW TO DIAGNOSE BOOT / WIFI / NVS"
   _iotstack_log_plain "WARN" "$msg"
   _iotstack_echo stderr "${YLW}[WARN]${RST} ${RED}${msg}${RST}"
@@ -4166,6 +4213,8 @@ _flash_bootstrap_esptool() {
 
   local esptool_src="esptool:${esptool_chip}"
 
+  create_log_serial_capture_pause
+
   if [[ "$erase_flash" == "1" ]]; then
     info "Erasing flash memory (${esptool_chip}, ${flash_label}, ${esptool_baud} baud)..."
     create_log_run_esptool "$esptool_src" "$flash_log" \
@@ -4201,6 +4250,7 @@ _flash_bootstrap_esptool() {
   create_log_run_esptool "$esptool_src" "$flash_log" "${write_flash_args[@]}" \
     || err "Flash failed"
   esptool_output="$create_log_esptool_output"
+  create_log_serial_capture_resume
 }
 
 _flash_prepare_builds() {
@@ -4290,6 +4340,7 @@ _flash_bootstrap_to_tty() {
   iotstack_register_yaml_cleanup_trap
   build_name="bootstrap"
 
+  _flash_serial_log_setup "$tty_device" "$variant"
   _check_serial_port_in_use "$tty_device"
 
   local build_dir_early="${YAMLS_DIR}/.esphome/build/${build_name}/.pioenvs/${build_name}"
@@ -4621,6 +4672,8 @@ _flash_production_smart() {
     _flash_step_reset
     info "Flash target: ${device} on ${tty_device} (serial: bootstrap; production: OTA)"
     echo ""
+
+    _flash_serial_log_setup "$tty_device"
 
     _flash_step_begin "Build firmware"
     if [[ "$skip_recovery" == "--ota-only" ]]; then
