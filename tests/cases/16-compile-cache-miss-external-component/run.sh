@@ -50,10 +50,10 @@ else
   exit 1
 fi
 
-hash=$(test_compilation_cache_config_hash "$yaml_name")
+hash=$(test_compilation_cache_image_hash "$yaml_name")
 if [[ "$hash" =~ ^[0-9a-f]{8}$ ]]; then
-  test_ok "config_hash recorded after recompile: ${hash}"
+  test_ok "image_hash recorded after recompile: ${hash}"
 else
-  test_fail "config_hash missing after recompile (got: ${hash:-empty})"
+  test_fail "image_hash missing after recompile (got: ${hash:-empty})"
   exit 1
 fi

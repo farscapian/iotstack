@@ -133,7 +133,7 @@ Cache stored at `~/.iotstack/compilation-cache.csv` (CSV format with headers):
 - `yaml_name`: YAML filename (e.g., `bleproxy.yaml`, `.iotstack-bootstrap-esp32c6.yaml`)
 - `yaml_sha`: SHA256 hash of YAML + `yamls/external_components/` + `yamls/common/` + **current git tag** (cache key)
 - `binary_sha`: SHA256 of compiled `firmware.bin`
-- `config_hash`: 8-char hex ESPHome config hash (primary runtime comparison key)
+- `image_hash`: 8-char hex ESPHome image hash (ESPHome `config_hash`; primary runtime comparison key)
 
 Per-device build cache also at `~/.iotstack/logs/<device>.build.cache` (used by `update_devices.sh`).
 
@@ -145,7 +145,7 @@ Per-device build cache also at `~/.iotstack/logs/<device>.build.cache` (used by 
 
 **Example cache contents:**
 ```
-yaml_name,yaml_sha,binary_sha,config_hash
+yaml_name,yaml_sha,binary_sha,image_hash
 bleproxy.yaml,8f3e2c9d4a1b5f...,c9d2a8e7f3b1c4...,1a25e0c8
 bootstrap.yaml,75e67037f9e3fc23...,a183d757ba74cc50...,3ea7c88a
 ```
@@ -414,7 +414,7 @@ r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)'
 - Compilation output goes to: `~/.iotstack/logs/<device>/<timestamp>.compile.log`
 - Flash logs per device: `~/.iotstack/logs/<device>/<timestamp>-<hash>/`
 - Per-device build cache: `~/.iotstack/logs/<device>.build.cache` (YAML SHA + ESPHome version + config_hash)
-- Global compilation cache: `~/.iotstack/compilation-cache.csv` (used by `smart_compile` / flash assessment)
+- Global compilation cache: `~/.iotstack/compilation-cache.csv` (`image_hash` column; used by `smart_compile` / flash assessment)
 - Cache invalidated on YAML/common/external_components changes, new git tag, or ESPHome upgrade
 
 ## Architecture Decisions & Gotchas
@@ -457,7 +457,7 @@ Bootstrap firmware advertises `_iotstack-bootstrap._tcp` (not `_esphomelib._tcp`
 
 ### Post-OTA hash reporting
 
-During reassign OTA the discovered host is `bootstrap-<mac>`. Do **not** compare that host's mDNS `config_hash` to the production build hash -- bootstrap TXT carries the bootstrap image hash, not production. `update_devices.sh` always queues a production OTA in `--reassign` mode (no misleading `hash X -> Y` warn). Post-OTA success reporting falls back to build hash from `NEW_CONFIG_HASH`, `build_info.json`, or `compilation-cache.csv` (`_resolve_build_config_hash`) when the bootstrap host has no production hash.
+During reassign OTA the discovered host is `bootstrap-<mac>`. Do **not** compare that host's mDNS `config_hash` to the production build hash -- bootstrap TXT carries the bootstrap image hash, not production. `update_devices.sh` always queues a production OTA in `--reassign` mode (no misleading `hash X -> Y` warn). Post-OTA success reporting falls back to build hash from `NEW_CONFIG_HASH`, `build_info.json`, or `compilation-cache.csv` (`image_hash` column via `_resolve_build_config_hash`) when the bootstrap host has no production hash.
 
 After USB bootstrap flash, WiFi readiness is detected by probing `bootstrap-<mac>.local:3232` (`_wait_for_bootstrap_wifi_ready`), not by a serial log line.
 

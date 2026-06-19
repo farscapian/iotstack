@@ -92,17 +92,23 @@ _normalize_compilation_cache() {
   row_count=$(tail -n +2 "$COMPILATION_CACHE" 2>/dev/null | wc -l)
   unique_count=$(tail -n +2 "$COMPILATION_CACHE" 2>/dev/null | cut -d, -f1 | sort -u | wc -l)
 
-  if [[ "$header" != *config_hash* ]]; then
+  if [[ "$header" == *config_hash* ]]; then
+    tmp=$(mktemp)
+    sed '1s/config_hash/image_hash/' "$COMPILATION_CACHE" >"$tmp"
+    mv "$tmp" "$COMPILATION_CACHE"
+    header=$(head -1 "$COMPILATION_CACHE")
+  fi
+  if [[ "$header" != *image_hash* ]]; then
     tmp=$(mktemp)
     {
-      echo "yaml_name,yaml_sha,binary_sha,config_hash"
+      echo "yaml_name,yaml_sha,binary_sha,image_hash"
       tail -n +2 "$COMPILATION_CACHE" | while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         echo "${line},"
       done
     } > "$tmp"
     mv "$tmp" "$COMPILATION_CACHE"
-    header="yaml_name,yaml_sha,binary_sha,config_hash"
+    header="yaml_name,yaml_sha,binary_sha,image_hash"
   fi
 
   (( row_count == unique_count )) && return 0
@@ -115,15 +121,15 @@ _normalize_compilation_cache() {
   mv "$tmp" "$COMPILATION_CACHE"
 }
 
-_compilation_cache_patch_config_hash() {
-  # Set config_hash (column 4) on an existing compilation-cache.csv row.
+_compilation_cache_patch_image_hash() {
+  # Set image_hash (column 4) on an existing compilation-cache.csv row.
   local yaml_name="$1"
-  local config_hash="$2"
+  local image_hash="$2"
   local tmp
-  [[ -f "$COMPILATION_CACHE" && -n "$yaml_name" && -n "$config_hash" ]] || return 1
+  [[ -f "$COMPILATION_CACHE" && -n "$yaml_name" && -n "$image_hash" ]] || return 1
   _normalize_compilation_cache
   tmp=$(mktemp)
-  awk -F, -v OFS=',' -v name="$yaml_name" -v hash="$config_hash" '
+  awk -F, -v OFS=',' -v name="$yaml_name" -v hash="$image_hash" '
     NR == 1 { print; next }
     $1 == name { print $1, $2, $3, hash; next }
     { print }
@@ -131,18 +137,18 @@ _compilation_cache_patch_config_hash() {
   mv "$tmp" "$COMPILATION_CACHE"
 }
 
-_compilation_cache_backfill_config_hash() {
-  # Ensure compilation-cache.csv has config_hash for a cached build (no recompile).
+_compilation_cache_backfill_image_hash() {
+  # Ensure compilation-cache.csv has image_hash for a cached build (no recompile).
   local yaml_file="$1"
   local build_name="$2"
   local yaml_name hash
   yaml_name=$(basename "$yaml_file")
-  hash=$(_compilation_cache_config_hash "$yaml_file" "$build_name" 2>/dev/null) || true
+  hash=$(_compilation_cache_image_hash "$yaml_file" "$build_name" 2>/dev/null) || true
   [[ -n "$hash" ]] || return 1
   if awk -F, -v name="$yaml_name" '$1==name && $4!="" { found=1 } END { exit !found }' "$COMPILATION_CACHE" 2>/dev/null; then
     return 0
   fi
-  _compilation_cache_patch_config_hash "$yaml_name" "$hash"
+  _compilation_cache_patch_image_hash "$yaml_name" "$hash"
 }
 
 _check_compilation_cache() {
@@ -160,16 +166,16 @@ _check_compilation_cache() {
   [[ -n "$cached_sha" && "$cached_sha" == "$yaml_sha" ]]
 }
 
-_build_config_hash_from_build_dir() {
-  # 8-char hex config_hash from ESPHome build_info.json (used when populating compilation-cache.csv).
+_build_image_hash_from_build_dir() {
+  # 8-char hex image hash from ESPHome build_info.json (ESPHome field: config_hash).
   local build_name="$1"
   local build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
   [[ -f "$build_info" ]] || return 1
   python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
 }
 
-_compilation_cache_config_hash() {
-  # config_hash for a yaml row in ~/.iotstack/compilation-cache.csv (mDNS compare key).
+_compilation_cache_image_hash() {
+  # image_hash for a yaml row in ~/.iotstack/compilation-cache.csv (mDNS compare key).
   local yaml_file="$1"
   local build_name="${2:-$(basename "$yaml_file" .yaml)}"
   local yaml_name hash
@@ -178,22 +184,22 @@ _compilation_cache_config_hash() {
   _normalize_compilation_cache
   hash=$(awk -F, -v name="$yaml_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
   if [[ -z "$hash" ]]; then
-    hash=$(_build_config_hash_from_build_dir "$build_name" 2>/dev/null) || true
-    [[ -n "$hash" ]] && _compilation_cache_patch_config_hash "$yaml_name" "$hash"
+    hash=$(_build_image_hash_from_build_dir "$build_name" 2>/dev/null) || true
+    [[ -n "$hash" ]] && _compilation_cache_patch_image_hash "$yaml_name" "$hash"
   fi
   [[ -n "$hash" ]] && echo "$hash"
 }
 
 _update_compilation_cache() {
-  # Upsert: one row per yaml_name (yaml_sha, binary_sha, config_hash).
+  # Upsert: one row per yaml_name (yaml_sha, binary_sha, image_hash).
   local yaml_file="$1"
   local binary_sha="$2"
   local build_name="${3:-}"
-  local yaml_name yaml_sha config_hash tmp
+  local yaml_name yaml_sha image_hash tmp
   yaml_name=$(basename "$yaml_file")
   yaml_sha=$(_get_yaml_sha "$yaml_file")
-  config_hash=""
-  [[ -n "$build_name" ]] && config_hash=$(_build_config_hash_from_build_dir "$build_name" 2>/dev/null) || true
+  image_hash=""
+  [[ -n "$build_name" ]] && image_hash=$(_build_image_hash_from_build_dir "$build_name" 2>/dev/null) || true
 
   mkdir -p "$(dirname "$COMPILATION_CACHE")"
   _normalize_compilation_cache
@@ -205,9 +211,9 @@ _update_compilation_cache() {
       awk -F, -v name="$yaml_name" 'NR > 1 && $1 != name { print }' "$COMPILATION_CACHE"
     } > "$tmp"
   else
-    echo "yaml_name,yaml_sha,binary_sha,config_hash" > "$tmp"
+    echo "yaml_name,yaml_sha,binary_sha,image_hash" > "$tmp"
   fi
-  echo "${yaml_name},${yaml_sha},${binary_sha},${config_hash}" >> "$tmp"
+  echo "${yaml_name},${yaml_sha},${binary_sha},${image_hash}" >> "$tmp"
   mv "$tmp" "$COMPILATION_CACHE"
 }
 
@@ -375,7 +381,7 @@ smart_compile() {
   if ! _is_bootstrap_yaml "$yaml_file"; then
     if [[ $cached -eq 1 ]]; then
       ensure_partition_table_artifact
-      _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
+      _compilation_cache_backfill_image_hash "$yaml_file" "$device_name" || true
       _smart_compile_cache_hit_notice "$device_name" "production"
       return 0
     fi
@@ -397,7 +403,7 @@ smart_compile() {
   # partitions.bin (not the position-independent app image), so we compile,
   # measure, regenerate the table, then recompile so partitions.bin matches.
   if [[ $cached -eq 1 && -f "$firmware_bin" ]]; then
-    _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
+    _compilation_cache_backfill_image_hash "$yaml_file" "$device_name" || true
     _smart_compile_cache_hit_notice "$device_name" "bootstrap"
     _sync_bootstrap_partition_table_from_build \
       || { local fs_size; fs_size=$(_bootstrap_part_size "$firmware_bin")
@@ -1554,7 +1560,7 @@ _flash_production_matches_build() {
 
   local mdns_hash build_hash
   mdns_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || return 1
-  build_hash=$(_build_config_hash_for_yaml "$yaml_path" 2>/dev/null) || return 1
+  build_hash=$(_build_image_hash_for_yaml "$yaml_path" 2>/dev/null) || return 1
   [[ -n "$mdns_hash" && -n "$build_hash" && "$mdns_hash" == "$build_hash" ]]
 }
 
@@ -1640,15 +1646,15 @@ _production_reachable_now() {
   _production_api_reachable "$hostname" || _production_mdns_advertised "$hostname"
 }
 
-_build_config_hash_for_yaml() {
-  # config_hash for comparing device mDNS against the compiled build (8-char hex).
+_build_image_hash_for_yaml() {
+  # image_hash for comparing device mDNS against the compiled build (8-char hex).
   # Primary source: compilation-cache.csv (same cache smart_compile maintains).
   local yaml_path="$1"
   local yaml_name cache_file hash latest_log
   yaml_name=$(basename "$yaml_path" .yaml)
-  hash=$(_compilation_cache_config_hash "$yaml_path" "$yaml_name" 2>/dev/null) || true
+  hash=$(_compilation_cache_image_hash "$yaml_path" "$yaml_name" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }
-  hash=$(_build_config_hash_from_build_dir "$yaml_name" 2>/dev/null) || true
+  hash=$(_build_image_hash_from_build_dir "$yaml_name" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   cache_file="${HOME}/.iotstack/logs/${yaml_name}/${yaml_name}.build.cache"
   if [[ -f "$cache_file" ]]; then
@@ -1766,7 +1772,7 @@ _flash_assess_device_on_flash_action() {
     running_hash="${mdns_hash:-unknown}"
   fi
 
-  build_hash=$(_build_config_hash_for_yaml "$yaml_path" 2>/dev/null) || build_hash=""
+  build_hash=$(_build_image_hash_for_yaml "$yaml_path" 2>/dev/null) || build_hash=""
   if [[ "${FLASH_ERASE:-0}" != "1" \
      && $FLASH_ASSESS_FLASH_CURRENT -eq 0 \
      && -n "$mdns_hash" && -n "$build_hash" && "$mdns_hash" == "$build_hash" ]]; then

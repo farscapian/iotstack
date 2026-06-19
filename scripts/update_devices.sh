@@ -91,7 +91,7 @@ _config_hash_from_build_info() {
   python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
 }
 
-_config_hash_from_compilation_cache() {
+_image_hash_from_compilation_cache() {
   # Prefer compilation-cache.csv (same source as iotstack flash assessment).
   local yaml_file="$1"
   local yaml_name hash
@@ -108,7 +108,7 @@ _resolve_build_config_hash() {
   local cached_hash="${3:-}"
   local hash
 
-  hash=$(_config_hash_from_compilation_cache "$yaml_file" 2>/dev/null) || true
+  hash=$(_image_hash_from_compilation_cache "$yaml_file" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   hash=$(_config_hash_from_build_info "$build_name" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }

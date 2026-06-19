@@ -136,8 +136,8 @@ flash_mdns_config_hash_for_hostname() {
   return 1
 }
 
-flash_build_config_hash_from_build_dir() {
-  # 8-char hex config_hash from ESPHome build_info.json in a build tree.
+flash_build_image_hash_from_build_dir() {
+  # 8-char hex image hash from ESPHome build_info.json (ESPHome field: config_hash).
   local build_dir="$1"
   local build_info="${build_dir}/build_info.json"
   [[ -f "$build_info" ]] || return 1
@@ -152,7 +152,7 @@ flash_bootstrap_matches_build_via_mdns() {
 
   [[ -n "$device_mac" ]] || return 1
   bootstrap_hostname="$(iotstack_bootstrap_hostname "$device_mac")"
-  build_hash=$(flash_build_config_hash_from_build_dir "$build_dir" 2>/dev/null) || return 1
+  build_hash=$(flash_build_image_hash_from_build_dir "$build_dir" 2>/dev/null) || return 1
   [[ -n "$build_hash" ]] || return 1
 
   for attempt in 1 2 3; do
