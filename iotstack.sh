@@ -238,6 +238,54 @@ _update_compilation_cache() {
   mv "$tmp" "$COMPILATION_CACHE"
 }
 
+_compilation_cache_miss_reason() {
+  local yaml_file="$1"
+  local yaml_name yaml_sha cached_sha firmware_bin device_name
+
+  [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]] && { echo "cache disabled"; return 0; }
+  [[ ! -f "$COMPILATION_CACHE" ]] && { echo "no cache file at ${COMPILATION_CACHE}"; return 0; }
+
+  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
+  yaml_sha=$(_compilation_cache_short_sha "$(_get_yaml_sha "$yaml_file")")
+  _normalize_compilation_cache
+  cached_sha=$(awk -F, -v name="$yaml_name" '$1==name { sha=$2 } END { print sha }' "$COMPILATION_CACHE")
+
+  if [[ -z "$cached_sha" ]]; then
+    echo "no row for ${yaml_name}"
+    return 0
+  fi
+  if [[ "$cached_sha" != "$yaml_sha" ]]; then
+    echo "${yaml_name} yaml_sha mismatch (cached ${cached_sha}, current ${yaml_sha})"
+    return 0
+  fi
+
+  if _is_bootstrap_yaml "$yaml_file"; then
+    device_name="$(iotstack_bootstrap_role)"
+  else
+    device_name=$(basename "$yaml_file" .yaml)
+    [[ "$device_name" =~ ^\.temp-compile- ]] && device_name="${device_name#.temp-compile-}"
+  fi
+  firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
+  if [[ ! -f "$firmware_bin" ]]; then
+    echo "${yaml_name} key matched but firmware.bin missing"
+    return 0
+  fi
+  echo "${yaml_name} cache check failed"
+}
+
+_compilation_cache_update_notice() {
+  local yaml_file="$1"
+  local binary_sha="$2"
+  local build_name="${3:-}"
+  local yaml_name yaml_sha short_binary image_hash
+  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
+  yaml_sha=$(_compilation_cache_short_sha "$(_get_yaml_sha "$yaml_file")")
+  short_binary=$(_compilation_cache_short_sha "$binary_sha")
+  image_hash=$(_build_image_hash_from_build_dir "$build_name" 2>/dev/null) || image_hash=""
+  [[ -n "$image_hash" ]] || image_hash="unknown"
+  ok "Compilation cache updated: ${yaml_name} yaml_sha=${yaml_sha} binary_sha=${short_binary} image_hash=${image_hash}"
+}
+
 _check_serial_port_in_use() {
   # Check if serial port is already open by screen, minicom, picocom, or other tools
   local tty_device="$1"
@@ -423,13 +471,12 @@ _smart_compile_cache_hit_notice() {
 
 _smart_compile_cache_miss_notice() {
   # Log why smart_compile cannot reuse a cached build (called before esphome compile).
-  local device_name="$1"
-  local firmware_kind="$2"  # e.g. production, bootstrap
-  if [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]]; then
-    info "Compilation cache disabled -- ${firmware_kind} firmware (${device_name}) must be compiled"
-  else
-    info "Compilation cache miss -- ${firmware_kind} firmware (${device_name}) must be compiled"
-  fi
+  local yaml_file="$1"
+  local device_name="$2"
+  local firmware_kind="$3"  # e.g. production, bootstrap
+  local reason
+  reason=$(_compilation_cache_miss_reason "$yaml_file")
+  info "Compilation cache miss -- ${firmware_kind} firmware (${device_name}): ${reason}"
 }
 
 smart_compile() {
@@ -466,12 +513,12 @@ smart_compile() {
       return 0
     fi
     _update_partition_table_file
-    _smart_compile_cache_miss_notice "$device_name" "production"
+    _smart_compile_cache_miss_notice "$yaml_file" "$device_name" "production"
     _esphome_compile "$yaml_file" || return 1
     local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
     if [[ -n "$binary_sha" ]]; then
       _update_compilation_cache "$yaml_file" "$binary_sha" "$device_name"
-      ok "Compilation cache updated"
+      _compilation_cache_update_notice "$yaml_file" "$binary_sha" "$device_name"
     fi
     _smart_compile_mark_done "$yaml_file"
     return 0
@@ -494,7 +541,7 @@ smart_compile() {
 
   # Pass 1: compile (prefer persisted partition size; fall back to generous default).
   local pass1_size fs_size fw_bytes partitions_bin
-  _smart_compile_cache_miss_notice "$device_name" "bootstrap"
+  _smart_compile_cache_miss_notice "$yaml_file" "$device_name" "bootstrap"
   local generous_size="${IOTSTACK_BOOTSTRAP_PART_SIZE_GENEROUS:-0x180000}"
   pass1_size=$(_partition_table_bootstrap_size 2>/dev/null) \
     || pass1_size="${IOTSTACK_BOOTSTRAP_PART_SIZE:-0xe0000}"
@@ -535,7 +582,7 @@ smart_compile() {
   local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
   if [[ -n "$binary_sha" ]]; then
     _update_compilation_cache "$yaml_file" "$binary_sha" "$device_name"
-    ok "Compilation cache updated"
+    _compilation_cache_update_notice "$yaml_file" "$binary_sha" "$device_name"
   fi
   _smart_compile_mark_done "$yaml_file"
   return 0
@@ -4024,7 +4071,7 @@ _flash_bootstrap_esptool() {
   local esptool_src="esptool:${esptool_chip}"
 
   if [[ "$erase_flash" == "1" ]]; then
-    info "Erasing flash memory (${esptool_chip}, ${flash_label})..."
+    info "Erasing flash memory (${esptool_chip}, ${flash_label}, ${esptool_baud} baud)..."
     create_log_run_esptool "$esptool_src" "$flash_log" \
       --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud" --before default-reset erase-flash \
       || err "Erase failed"
@@ -4033,17 +4080,28 @@ _flash_bootstrap_esptool() {
     warn "Skipping flash erase (not required for this update)"
   fi
 
-  info "Writing recovery image (${esptool_chip})..."
+  local boot_app0=""
+  boot_app0=$(esp_boot_app0_bin_for_build "$build_dir" 2>/dev/null) || true
+  [[ -z "$boot_app0" ]] && warn "boot_app0.bin not found -- device may not boot into bootstrap OTA slot"
+
+  info "Writing recovery image (${esptool_chip}, ${esptool_baud} baud)..."
   if [[ $VERBOSE -eq 1 ]] && ! create_log_enabled; then
     info "Detailed output: tail -f $flash_log"
   fi
 
-  create_log_run_esptool "$esptool_src" "$flash_log" \
-    --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud" --before default-reset \
-    write-flash --flash-mode dio --flash-size "$flash_label" --flash-freq 40m \
-    0x0 "$build_dir/bootloader.bin" \
-    0x8000 "$build_dir/partitions.bin" \
-    "$bootstrap_offset" "$build_dir/firmware.bin" \
+  local -a write_flash_args=(
+    --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud"
+    --before default-reset --after hard_reset
+    write-flash --flash-mode dio --flash-size "$flash_label" --flash-freq 40m
+    0x0 "$build_dir/bootloader.bin"
+    0x8000 "$build_dir/partitions.bin"
+  )
+  if [[ -n "$boot_app0" ]]; then
+    write_flash_args+=(0xd000 "$boot_app0")
+  fi
+  write_flash_args+=("$bootstrap_offset" "$build_dir/firmware.bin")
+
+  create_log_run_esptool "$esptool_src" "$flash_log" "${write_flash_args[@]}" \
     || err "Flash failed"
   esptool_output="$create_log_esptool_output"
 }

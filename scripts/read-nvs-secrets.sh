@@ -87,7 +87,9 @@ Compile firmware first (generates the partition table), or flash a device once."
  fi
 
  info "Reading NVS partition from $tty_device (offset $nvs_offset, size $nvs_size, chip $esptool_chip)..."
- if ! python3 -m esptool --chip "$esptool_chip" --port "$tty_device" --baud 9600 \
+ local esptool_baud
+ esptool_baud=$(esp_esptool_baud_for_chip "$esptool_chip")
+ if ! python3 -m esptool --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud" \
  read-flash "$nvs_offset" "$nvs_size" "$nvs_bin" >/dev/null 2>&1; then
  err "Failed to read NVS partition from $tty_device (is the device connected and idle?)"
  fi

@@ -18,13 +18,32 @@ esp_serial_ports() {
 
 esp_esptool_baud_for_chip() {
   # Flash/probe baud rate per chip family.
-  # ESP32-S3 DevKitC-1 UART bridges often fail at 9600 (no serial data); C6 XIAO
-  # needs 9600 for reliable large transfers. Pick per variant.
+  # ESP32-C6 (XIAO): 9600 only -- higher rates corrupt large firmware transfers.
+  # ESP32-S3/S2 (USB CDC / DevKit): 460800 for speed; 9600 often yields no serial data.
+  # Override for experiments: IOTSTACK_ESPTOOL_BAUD=<rate>
   local chip="${1:-}"
+  if [[ -n "${IOTSTACK_ESPTOOL_BAUD:-}" ]]; then
+    printf '%s\n' "$IOTSTACK_ESPTOOL_BAUD"
+    return 0
+  fi
   case "$chip" in
-    esp32s3|esp32s2) printf '%s\n' 115200 ;;
+    esp32s3|esp32s2) printf '%s\n' 460800 ;;
     *) printf '%s\n' 9600 ;;
   esac
+}
+
+esp_boot_app0_bin_for_build() {
+  # boot_app0.bin at 0xd000 is required for OTA partition boot selection (Arduino layout).
+  local build_dir="$1"
+  local candidate
+
+  [[ -n "$build_dir" ]] || return 1
+  for candidate in \
+    "${build_dir}/boot_app0.bin" \
+    "${HOME}/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin"; do
+    [[ -f "$candidate" ]] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  return 1
 }
 
 esp_mac_from_esptool_output() {

@@ -150,19 +150,17 @@ bleproxy.yaml,a1b5f8e3e2c9,c4f3b1c7e2a8,1a25e0c8
 bootstrap.yaml,f9e3fc2375e6,cc50a183d757,3ea7c88a
 ```
 
-### Serial Flash Baud Rate: 9600 (Critical)
-**[WARN] IMPORTANT: All esptool flash operations use 9600 baud, NOT 57600 or 115200**
+### Serial Flash Baud Rate (per chip)
+`esp_esptool_baud_for_chip()` in `scripts/esp-serial.sh` selects the rate:
 
-Testing with ESP32-C6 devices revealed that higher baud rates cause data corruption during large firmware transfers:
-- **57600 baud**: Firmware corruption starts ~52KB into 807KB transfers
-- **115200 baud**: Worse corruption, more frequent failures
-- **9600 baud**: 100% reliable, full file integrity verified
+| Chip | Baud | Rationale |
+|------|------|-----------|
+| **ESP32-C6** (XIAO) | **9600** | Higher rates corrupt large firmware transfers (~52KB+ into 807KB) |
+| **ESP32-S3 / S2** | **460800** | USB CDC / DevKit bridges; 9600 often yields no serial data |
 
-**Why?** Higher baud rates accumulate bit errors over long transfers. A single bit flip during 789KB transfer is catastrophic. Conservative 9600 baud prevents this.
+Override with `IOTSTACK_ESPTOOL_BAUD` for experiments. Flash logs include the baud in use.
 
-**Performance tradeoff**: 57600 (~2.5 sec) vs 9600 (~10-15 sec). Reliability >> Speed.
-
-If baud rate changes are ever considered, empirically test with actual 789KB firmware transfers and verify full SHA256 checksums.
+Bootstrap serial flash writes `bootloader.bin`, `partitions.bin`, **`boot_app0.bin` at 0xd000**, and bootstrap `firmware.bin` -- `boot_app0` is required for OTA slot selection after erase.
 
 ### YAML Configuration
 - ESPHome devices are configured via YAML files in `yamls/` (one file per role, e.g. `bleproxy.yaml`, `matrixdisplay.yaml`)
