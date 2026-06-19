@@ -26,8 +26,8 @@ YLW='\033[0;33m'
 RST='\033[0m'
 
 err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
-ok()   { echo -e "${GRN}[OK]${RST} $*" >&2; }
-info() { echo -e "${YLW}[INFO]${RST} $*" >&2; }
+ok()   { [[ "${PRINT_API_JSON:-0}" == "1" ]] && return 0; echo -e "${GRN}[OK]${RST} $*" >&2; }
+info() { [[ "${PRINT_API_JSON:-0}" == "1" ]] && return 0; echo -e "${YLW}[INFO]${RST} $*" >&2; }
 
 # Get or prompt for credential (lazy-loading on demand)
 _get_or_prompt_credential() {
@@ -339,7 +339,9 @@ fi
 # Write to device using esptool via Python
 ESPTOOL_BAUD=$(esp_esptool_baud_for_chip "$ESPTOOL_CHIP")
 info "Writing NVS partition to device at $NVS_OFFSET (${ESPTOOL_CHIP}, ${ESPTOOL_BAUD} baud)..."
-if python3 -m esptool --chip "$ESPTOOL_CHIP" --port "$TTY_DEVICE" --baud "$ESPTOOL_BAUD" --before default-reset write-flash "$NVS_OFFSET" "$NVS_BIN_PATH"; then
+if python3 -m esptool --chip "$ESPTOOL_CHIP" --port "$TTY_DEVICE" --baud "$ESPTOOL_BAUD" \
+    --before default-reset --after no-reset \
+    write-flash "$NVS_OFFSET" "$NVS_BIN_PATH"; then
   ok "NVS written to device successfully"
 else
   err "Failed to write NVS partition to device"
