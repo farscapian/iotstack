@@ -1,4 +1,7 @@
 # Shared partition_manager component and HA buttons (included by production and bootstrap).
+packages:
+  iotstack_mdns_meta: !include iotstack_mdns_meta.yaml
+
 partition_manager:
   id: partition_mgr
 

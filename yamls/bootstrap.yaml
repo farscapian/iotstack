@@ -91,6 +91,13 @@ mdns:
     - service: "${bootstrap_mdns_service_base}"
       protocol: "_tcp"
       port: 6053
+      txt:
+        friendly_name: !lambda 'return App.get_friendly_name();'
+        project_name: !lambda 'return ESPHOME_PROJECT_NAME;'
+        config_hash: !lambda 'return str_sprintf("%08x", App.get_config_hash());'
+        bootstrap_image_hash: !lambda 'return id(partition_mgr).get_bootstrap_image_hash();'
+        production_image_hash: !lambda 'return id(partition_mgr).get_production_image_hash();'
+        project_version: "${project_version}"
 
 api:
   # No API encryption key for bootstrap -- only iotstack tools connect to it.

@@ -1,0 +1,10 @@
+# Supplemental mDNS TXT with bootstrap + production image hashes (both partitions).
+# iotstack devices merges this with _esphomelib._tcp / _iotstack-bootstrap._tcp rows.
+mdns:
+  services:
+    - service: "_iotstack-meta"
+      protocol: "_tcp"
+      port: 6053
+      txt:
+        bootstrap_image_hash: !lambda 'return id(partition_mgr).get_bootstrap_image_hash();'
+        production_image_hash: !lambda 'return id(partition_mgr).get_production_image_hash();'

@@ -2,6 +2,7 @@
 
 #include "esphome/core/component.h"
 #include <cstdint>
+#include <string>
 
 namespace esphome {
 namespace partition_manager {
@@ -13,6 +14,7 @@ namespace partition_manager {
 //                                        callable from a template button / HA)
 class PartitionManager : public Component {
  public:
+  void setup() override;
   void handle_button_press();
   void handle_button_release();
   void loop() override;
@@ -24,10 +26,18 @@ class PartitionManager : public Component {
   // partition, so updating from bootstrap always targets production).
   void boot_bootstrap();
 
+  // 8-char lowercase hex ESPHome config_hash values for mDNS TXT records.
+  std::string get_bootstrap_image_hash() const { return bootstrap_image_hash_; }
+  std::string get_production_image_hash() const { return production_image_hash_; }
+
  protected:
   uint32_t press_time_{0};
   bool button_held_{false};
   bool long_press_triggered_{false};
+  std::string bootstrap_image_hash_;
+  std::string production_image_hash_;
+
+  void refresh_image_hashes_();
 };
 
 }  // namespace partition_manager
