@@ -96,6 +96,10 @@ iotstack_compilation_cache_yaml_name() {
   [[ -n "$yaml_file" ]] || return 1
   base=$(basename "$yaml_file")
 
+  if [[ "$base" =~ ^\.temp-compile-(\.iotstack-.+\.yaml)(\.[0-9]+)?$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
   if [[ "$base" =~ ^(\.temp-compile-.+\.yaml)\.[0-9]+$ ]]; then
     echo "${BASH_REMATCH[1]}"
     return 0
@@ -109,17 +113,12 @@ iotstack_compilation_cache_yaml_name() {
 
 iotstack_prepare_compile_yaml() {
   # Inject the current git tag+commit into project_version. Prints YAML path to compile.
+  # Always use a temp copy so rendered .iotstack-* artifacts are not mutated (stable yaml_sha).
   local src_yaml="$1"
   local base compile_yaml
 
   [[ -f "$src_yaml" ]] || return 1
   base=$(basename "$src_yaml")
-
-  if [[ "$base" =~ ^\.iotstack-[^/]+- ]]; then
-    _iotstack_set_project_version_in_yaml "$src_yaml" "$(iotstack_project_version)"
-    printf '%s\n' "$src_yaml"
-    return 0
-  fi
 
   # Must live under yamls/ (same dir as source) so !include common/... resolves.
   compile_yaml="$(cd "$(dirname "$src_yaml")" && pwd)/.temp-compile-${base}.$$"
@@ -139,7 +138,16 @@ iotstack_yaml_cache_sha() {
   local yaml_file="$1"
   local file_sha version
   [[ -f "$yaml_file" ]] || return 1
-  file_sha=$(sha256sum "$yaml_file" | awk '{print $1}')
+  file_sha=$(
+    python3 - "$yaml_file" <<'PY'
+import hashlib, re, sys
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    content = f.read()
+content = re.sub(r"^\s*project_version:.*\n", "", content, flags=re.MULTILINE, count=1)
+print(hashlib.sha256(content.encode()).hexdigest())
+PY
+  )
   version=$(iotstack_project_version)
   echo -n "${file_sha}${version}" | sha256sum | awk '{print $1}'
 }

@@ -68,7 +68,17 @@ _get_yaml_sha() {
   fi
 
   local combined_hash
-  combined_hash=$(sha256sum "$yaml_file" | awk '{print $1}')
+  # project_version is injected at compile time; git tag+commit is folded below.
+  combined_hash=$(
+    python3 - "$yaml_file" <<'PY'
+import hashlib, re, sys
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    content = f.read()
+content = re.sub(r"^\s*project_version:.*\n", "", content, flags=re.MULTILINE, count=1)
+print(hashlib.sha256(content.encode()).hexdigest())
+PY
+  )
 
   # Fold in every file under external_components/ and common/ (sorted for a
   # stable order; __pycache__ excluded so regenerated .pyc don't churn the key).
@@ -120,6 +130,11 @@ _normalize_compilation_cache() {
     echo "yaml_name,yaml_sha,binary_sha,image_hash"
     tail -n +2 "$COMPILATION_CACHE" | awk -F, '
       function cache_name(name) {
+        if (name ~ /^\.temp-compile-\.iotstack-.+\.yaml/) {
+          sub(/^\.temp-compile-/, "", name)
+          sub(/\.[0-9]+$/, "", name)
+          return name
+        }
         if (name ~ /^\.temp-compile-.+\.yaml\.[0-9]+$/) {
           sub(/\.[0-9]+$/, "", name)
           return name
