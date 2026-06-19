@@ -628,20 +628,53 @@ _iotstack_log_plain() {
   local tag="$1"
   shift
   if create_log_enabled; then
-    create_log_stamp_line "iotstack.sh" "[$tag] $*"
+    create_log_stamp_line "iotstack.sh" "[$tag] ${IOTSTACK_LOG_INDENT:-}$*"
   fi
 }
 
 _iotstack_echo() {
   local stream="$1"
   shift
-  local ts
+  local ts indent="${IOTSTACK_LOG_INDENT:-}"
   ts=$(iotstack_timestamp_prefix)
   if [[ "$stream" == "stderr" ]]; then
-    echo -e "${ts}$*" >&2
+    echo -e "${ts}${indent}$*" >&2
   else
-    echo -e "${ts}$*"
+    echo -e "${ts}${indent}$*"
   fi
+}
+
+# Flash workflow step banners; nested log lines use IOTSTACK_LOG_INDENT (2 spaces).
+declare -g IOTSTACK_LOG_INDENT=""
+declare -g _IOTSTACK_FLASH_STEP_NUM=0
+declare -g IOTSTACK_FLASH_SUPPRESS_STEPS=0
+
+_flash_step_reset() {
+  _IOTSTACK_FLASH_STEP_NUM=0
+  _IOTSTACK_FLASH_DEPLOY_STEP=0
+  IOTSTACK_LOG_INDENT=""
+}
+
+_flash_step_begin() {
+  local title="$1"
+  [[ "${IOTSTACK_FLASH_SUPPRESS_STEPS:-0}" == "1" ]] && return 0
+  _IOTSTACK_FLASH_STEP_NUM=$((_IOTSTACK_FLASH_STEP_NUM + 1))
+  IOTSTACK_LOG_INDENT=""
+  echo ""
+  _iotstack_echo stdout "${BLU}[INFO]${RST} Step ${_IOTSTACK_FLASH_STEP_NUM}: ${title}"
+  IOTSTACK_LOG_INDENT="  "
+}
+
+_flash_step_end() {
+  IOTSTACK_LOG_INDENT=""
+}
+
+declare -g _IOTSTACK_FLASH_DEPLOY_STEP=0
+
+_flash_deploy_step_begin() {
+  [[ "${_IOTSTACK_FLASH_DEPLOY_STEP:-0}" == "1" ]] && return 0
+  _IOTSTACK_FLASH_DEPLOY_STEP=1
+  _flash_step_begin "Deploy to device"
 }
 
 err()  { _iotstack_log_plain "ERROR" "$@"; _iotstack_echo stderr "${RED}[ERROR]${RST} $*"; exit 1; }
@@ -1929,32 +1962,31 @@ _flash_assess_device_runtime() {
     waited=$((waited + 3))
   done
 
-  info "Assessment result:"
-  info "  MAC suffix: ${device_mac}"
+  info "MAC suffix: ${device_mac}"
   bootstrap_hostname="$(iotstack_bootstrap_hostname "$device_mac")"
   if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" && -n "$tty_device" ]]; then
-    info "  Reading on-flash bootstrap partition via USB..."
+    info "Reading on-flash bootstrap partition via USB..."
     bootstrap_hash=$(_flash_bootstrap_image_hash_on_device "$tty_device" 2>/dev/null) || bootstrap_hash="unknown"
-    info "  On-flash bootstrap: ${bootstrap_hostname} (image hash ${bootstrap_hash})"
+    info "On-flash bootstrap: ${bootstrap_hostname} (image hash ${bootstrap_hash})"
   elif [[ $FLASH_ASSESS_BOOTSTRAP_ONLINE -eq 1 ]]; then
     bootstrap_hash=$(_mdns_config_hash_for_hostname "$bootstrap_hostname" "$(iotstack_bootstrap_mdns_service)" 2>/dev/null) \
       || bootstrap_hash="unknown"
-    info "  Runtime bootstrap: ${bootstrap_hostname} (config_hash ${bootstrap_hash})"
+    info "Runtime bootstrap: ${bootstrap_hostname} (config_hash ${bootstrap_hash})"
   elif [[ -n "$tty_device" ]]; then
-    info "  Bootstrap: not on WiFi (use --on-flash-verify for USB partition check)"
+    info "Bootstrap: not on WiFi (use --on-flash-verify for USB partition check)"
   fi
   if [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local running_hash
     running_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || running_hash="unknown"
-    info "  Runtime: production API online (${prod_hostname}, config_hash ${running_hash})"
+    info "Runtime: production API online (${prod_hostname}, config_hash ${running_hash})"
   elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]]; then
     local mdns_only_hash
     mdns_only_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || mdns_only_hash="unknown"
-    info "  Runtime: production on mDNS only (${prod_hostname}, config_hash ${mdns_only_hash}, API port 6053 not reachable)"
+    info "Runtime: production on mDNS only (${prod_hostname}, config_hash ${mdns_only_hash}, API port 6053 not reachable)"
   elif [[ $FLASH_ASSESS_BOOTSTRAP_ONLINE -eq 1 ]]; then
-    info "  Runtime: bootstrap online ($(iotstack_bootstrap_hostname "$device_mac"), OTA port 3232)"
+    info "Runtime: bootstrap online ($(iotstack_bootstrap_hostname "$device_mac"), OTA port 3232)"
   else
-    info "  Runtime: not reachable on WiFi (no production or bootstrap mDNS/API)"
+    info "Runtime: not reachable on WiFi (no production or bootstrap mDNS/API)"
   fi
 }
 
@@ -1981,7 +2013,7 @@ _flash_assess_device_on_flash_action() {
 
   if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" ]]; then
     if [[ -f "$firmware_file" && -n "$_FLASH_PROD_OFFSET" ]]; then
-      info "  Reading on-flash production partition via USB (offset ${_FLASH_PROD_OFFSET})..."
+      info "Reading on-flash production partition via USB (offset ${_FLASH_PROD_OFFSET})..."
       device_md5=$(_flash_read_production_partition_md5 "$tty_device" "$yaml_path" 2>/dev/null) || device_md5=""
       if [[ -n "$device_md5" ]]; then
         running_hash="${device_md5:0:8}"
@@ -2006,68 +2038,68 @@ _flash_assess_device_on_flash_action() {
 
   if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
     if [[ -n "$mdns_hash" && -n "$build_hash" && "$mdns_hash" == "$build_hash" ]]; then
-      info "  Production: matches build (config_hash ${mdns_hash}) -- --erase will wipe and reflash"
+      info "Production: matches build (config_hash ${mdns_hash}) -- --erase will wipe and reflash"
     else
-      info "  Production: --erase will wipe and reflash"
+      info "Production: --erase will wipe and reflash"
     fi
   elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
     if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" ]]; then
       if [[ -n "$build_hash" ]]; then
-        info "  On-flash production: matches build (image ${running_hash}, config_hash ${build_hash})"
+        info "On-flash production: matches build (image ${running_hash}, config_hash ${build_hash})"
       else
-        info "  On-flash production: matches build (image ${running_hash})"
+        info "On-flash production: matches build (image ${running_hash})"
       fi
     elif [[ -n "$mdns_hash" && -n "$build_hash" ]]; then
-      info "  Production: matches build (config_hash ${mdns_hash})"
+      info "Production: matches build (config_hash ${mdns_hash})"
     else
-      info "  Production: matches build"
+      info "Production: matches build"
     fi
   elif [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" && -n "$local_image_hash" && "$running_hash" != "unknown" ]]; then
     if [[ -n "$mdns_hash" && "$mdns_hash" == "$build_hash" ]]; then
-      info "  On-flash production: image ${running_hash} != build image ${local_image_hash} (runtime config_hash ${mdns_hash} matches build)"
+      info "On-flash production: image ${running_hash} != build image ${local_image_hash} (runtime config_hash ${mdns_hash} matches build)"
     else
-      info "  On-flash production: image ${running_hash} != build image ${local_image_hash} (config_hash ${build_hash:-unknown})"
+      info "On-flash production: image ${running_hash} != build image ${local_image_hash} (config_hash ${build_hash:-unknown})"
     fi
   elif [[ -n "$mdns_hash" && -n "$build_hash" ]]; then
-    info "  Production: runtime config_hash ${mdns_hash} != build config_hash ${build_hash}"
+    info "Production: runtime config_hash ${mdns_hash} != build config_hash ${build_hash}"
   elif [[ -n "$build_hash" ]]; then
-    info "  Production: differs from build (config_hash ${build_hash}; runtime hash unavailable)"
+    info "Production: differs from build (config_hash ${build_hash}; runtime hash unavailable)"
   else
-    info "  Production: differs from build"
+    info "Production: differs from build"
   fi
 
   if [[ "${FLASH_ERASE:-0}" == "1" && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
-    info "  Action: erase flash and install ${assess_role} firmware (--erase)"
+    info "Action: erase flash and install ${assess_role} firmware (--erase)"
   elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local want_cols want_w want_h cur_cols cur_w cur_h
     if _flash_matrix_layout_applicable "$assess_role" ""; then
       _flash_resolve_matrix_layout "$assess_role" want_cols want_w want_h
       if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$assess_role" \
           cur_cols cur_w cur_h; then
-        info "  Matrix layout (runtime): ${cur_cols} panel(s), ${cur_w}x${cur_h} px"
+        info "Matrix layout (runtime): ${cur_cols} panel(s), ${cur_w}x${cur_h} px"
         if [[ "$cur_cols" != "$want_cols" || "$cur_w" != "$want_w" || "$cur_h" != "$want_h" ]]; then
-          info "  Matrix layout (target) : ${want_cols} panel(s), ${want_w}x${want_h} px"
-          info "  Action: update matrix layout on device (firmware is current)"
+          info "Matrix layout (target): ${want_cols} panel(s), ${want_w}x${want_h} px"
+          info "Action: update matrix layout on device (firmware is current)"
         else
-          info "  Action: none required -- device is current"
+          info "Action: none required -- device is current"
         fi
       elif _flash_matrix_layout_flags_set; then
-        info "  Matrix layout (target) : ${want_cols} panel(s), ${want_w}x${want_h} px"
-        info "  Action: update matrix layout on device (firmware is current)"
+        info "Matrix layout (target): ${want_cols} panel(s), ${want_w}x${want_h} px"
+        info "Action: update matrix layout on device (firmware is current)"
       else
-        info "  Action: none required -- device is current"
+        info "Action: none required -- device is current"
       fi
     else
-      info "  Action: none required -- device is current"
+      info "Action: none required -- device is current"
     fi
   elif [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
-    info "  Action: reboot into bootstrap to perform update of production partition"
+    info "Action: reboot into bootstrap to perform update of production partition"
   elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]]; then
-    info "  Action: serial bootstrap path (mDNS visible, API unreachable), then OTA production image"
+    info "Action: serial bootstrap path (mDNS visible, API unreachable), then OTA production image"
   elif [[ $FLASH_ASSESS_BOOTSTRAP_ONLINE -eq 1 ]]; then
-    info "  Action: refresh bootstrap on serial if needed, then OTA production image"
+    info "Action: refresh bootstrap on serial if needed, then OTA production image"
   else
-    info "  Action: flash bootstrap via serial, then OTA production image"
+    info "Action: flash bootstrap via serial, then OTA production image"
   fi
 }
 
@@ -4024,26 +4056,26 @@ _wait_for_bootstrap_wifi_ready() {
   return 1
 }
 
-# User-facing flash progress (dual-partition details stay in debug/logs).
-_flash_msg_step_erase() {
-  info "Step ${1}: Erasing flash on ${2}..."
+# User-facing deploy sub-messages (indented under the active flash step).
+_flash_msg_erase() {
+  info "Erasing flash on ${1}..."
 }
 
-_flash_msg_step_prepare_usb() {
-  local step="$1" tty="$2" mac="${3:-}"
+_flash_msg_prepare_usb() {
+  local tty="$1" mac="${2:-}"
   if [[ -n "$mac" ]]; then
-    info "Step ${step}: Preparing device ${mac} on ${tty}..."
+    info "Preparing device ${mac} on ${tty}..."
   else
-    info "Step ${step}: Preparing device on ${tty}..."
+    info "Preparing device on ${tty}..."
   fi
 }
 
-_flash_msg_step_update_production() {
-  info "Step ${1}: Updating production firmware on device ${2} to ${3}..."
+_flash_msg_update_production() {
+  info "Updating production firmware on device ${1} to ${2}..."
 }
 
-_flash_msg_step_wait_online() {
-  info "Step ${2}: Waiting for device ${1} to come online..."
+_flash_msg_wait_online() {
+  info "Waiting for device ${1} to come online..."
 }
 
 _flash_msg_upload_production() {
@@ -4138,9 +4170,9 @@ _flash_prepare_builds() {
 
   if [[ -n "$yaml_path" ]]; then
     device_name=$(basename "$yaml_path" .yaml)
-    info "Building firmware images (bootstrap + ${device_name})..."
+    debug "Targets: bootstrap + ${device_name} (${variant})"
   else
-    info "Building bootstrap firmware (${variant})..."
+    debug "Target: bootstrap (${variant})"
   fi
 
   smart_compile "$bootstrap_yaml" "$build_name" || return 1
@@ -4291,12 +4323,17 @@ _flash_recovery() {
   # without command substitution so all user output reaches the terminal).
   # production_role is passed to write-nvs-secrets.sh so both bootstrap- and
   # production-derived secrets are written to NVS in a single flash.
+  # Optional 4th arg "nested": skip banners/steps/prepare (caller already built).
   local tty_device="$1"
   local mac_return_file="${2:-}"
   local production_role="${3:-}"
+  local nested="${4:-}"
 
-  info "Flashing bootstrap firmware (dual-partition setup)"
-  echo ""
+  if [[ "$nested" != "nested" ]]; then
+    _flash_step_reset
+    info "Flashing bootstrap firmware (dual-partition setup)"
+    echo ""
+  fi
 
   if [[ ! -f "$BOOTSTRAP_TEMPLATE" && ! -f "${YAMLS_DIR}/bootstrap.yaml" ]]; then
     err "Bootstrap template not found: ${YAMLS_DIR}/bootstrap.yaml"
@@ -4311,11 +4348,14 @@ _flash_recovery() {
     if [[ ! -e "$tty_device" ]]; then
       err "TTY device not found: $tty_device"
     fi
-    _flash_prepare_builds "$tty_device" "$production_role" "$yaml_for_role" \
-      || err "Firmware build failed"
-    ok "Firmware builds ready"
-    echo ""
-    info "Flashing to: $tty_device"
+    if [[ "$nested" != "nested" ]]; then
+      _flash_step_begin "Build firmware"
+      _flash_prepare_builds "$tty_device" "$production_role" "$yaml_for_role" \
+        || err "Firmware build failed"
+      ok "Firmware builds ready"
+      _flash_step_begin "Flash bootstrap to device"
+      info "Target port: ${tty_device}"
+    fi
     _flash_bootstrap_to_tty "$tty_device" "$mac_return_file" "$production_role"
     return
   fi
@@ -4367,16 +4407,17 @@ _flash_recovery() {
 
   confirm_multi_device ${#targets[@]} "$(printf '%s\n' "${targets[@]}")"
 
+  _flash_step_begin "Build firmware"
   _flash_prepare_builds_for_targets "$production_role" "$yaml_for_role" "${targets[@]}" \
     || err "Firmware build failed"
   ok "Firmware builds ready"
-  echo ""
+  _flash_step_begin "Flash bootstrap to device"
 
   local failed=0
   local successful_ttys=()
   for tty in "${targets[@]}"; do
     echo ""
-    info "Flashing $tty..."
+    info "Flashing ${tty}..."
     echo "========================================================"
     if _flash_bootstrap_to_tty "$tty" "" "$production_role"; then
       successful_ttys+=("$tty")
@@ -4410,9 +4451,8 @@ _flash_recovery_dual() {
   # Brief pause so mDNS advertisement propagates after WiFi connects.
   sleep 2
 
-  # Second: Discover recovery devices and reassign to production role
-  info "Step 2: Reassigning devices to $production_role firmware via OTA..."
-  echo ""
+  _flash_step_begin "OTA production firmware"
+  info "Reassigning devices to ${production_role} firmware..."
 
   # Discover recovery devices (bootstrap advertises _iotstack-bootstrap._tcp)
   local recovery_macs=()
@@ -4440,9 +4480,8 @@ _flash_recovery_dual() {
   _recovery_ota_args+=(--upgrade-delta --reassign "${recovery_macs[@]}" "$yaml_file" --ota-password "$ota_password" --jobs 1)
   _run_update_devices "${_recovery_ota_args[@]}" || err "OTA update failed"
 
-  # Third: Toggle boot partition to production and reboot devices
-  info "Toggling boot partition to production firmware..."
-  echo ""
+  _flash_step_begin "Set boot partition to production"
+  info "Toggling boot partition on flashed devices..."
 
   # Discover recovery devices and toggle them (bootstrap advertises _iotstack-bootstrap._tcp)
   local recovery_devices=()
@@ -4523,31 +4562,32 @@ _flash_production_smart() {
       err "TTY device not found: $tty_device"
     fi
 
+    _flash_step_reset
     info "Flash target: ${device} production firmware on ${tty_device}"
     echo ""
 
-    # Phase 1: build all firmware before USB/WiFi assessment or flash actions.
+    _flash_step_begin "Build firmware"
     if [[ "$skip_recovery" == "--ota-only" ]]; then
-      info "Building production firmware (--ota-only)..."
+      info "Scope: production only (--ota-only)"
       smart_compile "$yaml_path" "$device" || err "Production compile failed"
     else
       _flash_prepare_builds "$tty_device" "$device" "$yaml_path" || err "Firmware build failed"
     fi
     ok "Firmware builds ready"
-    echo ""
 
-    # Phase 2: assess device state (no compilation below this point).
     local device_mac="" prod_hostname=""
     if [[ "$skip_recovery" != "--ota-only" ]]; then
+      _flash_step_begin "Assess device"
+      info "Port: ${tty_device}"
       device_mac=$(esp_mac_suffix_from_port "$tty_device" 2>/dev/null) || device_mac=""
       if [[ -n "$device_mac" ]]; then
         prod_hostname="${device}-${device_mac}"
-        info "Assessing connected device on ${tty_device}..."
         _flash_assess_device_runtime "$device_mac" "$prod_hostname" "$tty_device"
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
 
         if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
-          _flash_msg_step_erase 1 "$tty_device"
+          _flash_deploy_step_begin
+          _flash_msg_erase "$tty_device"
           local _mac_file
           _mac_file=$(mktemp)
           _flash_bootstrap_to_tty "$tty_device" "$_mac_file" "$device" \
@@ -4559,7 +4599,7 @@ _flash_production_smart() {
           FLASH_ASSESS_PROD_ONLINE=0
           FLASH_ASSESS_FLASH_CURRENT=0
           prod_hostname="${device}-${device_mac}"
-          _flash_msg_step_update_production 2 "$device_mac" "$device"
+          _flash_msg_update_production "$device_mac" "$device"
         elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
           local img_hash layout_rc=0 want_cols want_w want_h
           set +e
@@ -4580,6 +4620,7 @@ _flash_production_smart() {
           ok "Production firmware setup complete!"
           return
         else
+        _flash_deploy_step_begin
         local try_network_ota=false
         if _production_api_reachable "$prod_hostname"; then
           try_network_ota=true
@@ -4612,7 +4653,7 @@ _flash_production_smart() {
             return
           fi
           warn "Network update failed -- preparing device on ${tty_device}"
-          _flash_msg_step_prepare_usb 1 "$tty_device" "$device_mac"
+          _flash_msg_prepare_usb "$tty_device" "$device_mac"
           local _mac_file
           _mac_file=$(mktemp)
           _flash_bootstrap_to_tty "$tty_device" "$_mac_file" "$device" \
@@ -4621,10 +4662,10 @@ _flash_production_smart() {
             device_mac=$(tr -d '[:space:]' < "$_mac_file")
             rm -f "$_mac_file"
           fi
-          _flash_msg_step_update_production 2 "$device_mac" "$device"
+          _flash_msg_update_production "$device_mac" "$device"
         elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]] || _production_mdns_advertised "$prod_hostname"; then
           warn "Device visible on network but API unreachable -- preparing device on ${tty_device}"
-          _flash_msg_step_prepare_usb 1 "$tty_device" "$device_mac"
+          _flash_msg_prepare_usb "$tty_device" "$device_mac"
           local _mac_file
           _mac_file=$(mktemp)
           _flash_bootstrap_to_tty "$tty_device" "$_mac_file" "$device" \
@@ -4633,7 +4674,7 @@ _flash_production_smart() {
             device_mac=$(tr -d '[:space:]' < "$_mac_file")
             rm -f "$_mac_file"
           fi
-          _flash_msg_step_update_production 2 "$device_mac" "$device"
+          _flash_msg_update_production "$device_mac" "$device"
         elif [[ $FLASH_ASSESS_BOOTSTRAP_ONLINE -eq 1 ]] || _bootstrap_ota_reachable "$device_mac"; then
           info "Device ${device_mac} is online and ready for firmware update"
           local _mac_file
@@ -4643,38 +4684,36 @@ _flash_production_smart() {
             device_mac=$(tr -d '[:space:]' < "$_mac_file")
             rm -f "$_mac_file"
           fi
-          _flash_msg_step_update_production 2 "$device_mac" "$device"
+          _flash_msg_update_production "$device_mac" "$device"
         else
           info "Device not on WiFi yet -- provisioning over USB"
-          _flash_msg_step_prepare_usb 1 "$tty_device" "$device_mac"
+          _flash_msg_prepare_usb "$tty_device" "$device_mac"
           local _mac_file
           _mac_file=$(mktemp)
-          _flash_recovery "$tty_device" "$_mac_file" "$device"
+          _flash_recovery "$tty_device" "$_mac_file" "$device" nested
           device_mac=$(tr -d '[:space:]' < "$_mac_file")
           rm -f "$_mac_file"
-          _flash_msg_step_wait_online "$device_mac" 2
+          _flash_msg_wait_online "$device_mac"
         fi
         fi
       else
+        _flash_deploy_step_begin
         info "Could not read device MAC -- provisioning over USB"
-        _flash_msg_step_prepare_usb 1 "$tty_device"
-        echo ""
+        _flash_msg_prepare_usb "$tty_device"
         local _mac_file
         _mac_file=$(mktemp)
-        _flash_recovery "$tty_device" "$_mac_file" "$device"
+        _flash_recovery "$tty_device" "$_mac_file" "$device" nested
         device_mac=$(tr -d '[:space:]' < "$_mac_file")
         rm -f "$_mac_file"
-        echo ""
-        _flash_msg_step_wait_online "${device_mac:-unknown}" 2
-        echo ""
+        _flash_msg_wait_online "${device_mac:-unknown}"
       fi
     else
-      info "Skipping recovery (--ota-only flag)"
-      echo ""
+      info "Skipping device assessment (--ota-only flag)"
     fi
 
     # Reassign bootstrap device to production
     if [[ -n "$device_mac" ]]; then
+      _flash_deploy_step_begin
       device_mac=$(echo "$device_mac" | tr -d '[:space:]')
       local prod_hostname="${device}-${device_mac}"
 
@@ -4683,8 +4722,8 @@ _flash_production_smart() {
       if [[ "${FLASH_ERASE:-0}" != "1" ]] \
           && { [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]] || _wait_for_production_online "$prod_hostname" 10; }; then
         if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 0 ]]; then
+          info "Reassessing device state..."
           _flash_report_device_assessment "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
-          echo ""
         fi
         if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
           ok "Production firmware on flash matches build -- nothing to do"
@@ -4731,7 +4770,7 @@ Or monitor it now: iotstack logs $tty_device"
           sleep 3
           waited=$((waited + 3))
           if (( waited % 15 == 0 )); then
-            info "  Still waiting for device ${device_mac} ($waited/${max_wait}s)..."
+            info "Still waiting for device ${device_mac} ($waited/${max_wait}s)..."
           fi
         done
 
@@ -4773,7 +4812,7 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
       if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" && -n "$production_offset" && -d "$production_build_dir" ]]; then
         local prod_chip="${IOTSTACK_ESPTOOL_CHIP:-}"
         [[ -z "$prod_chip" ]] && prod_chip=$(esp_detect_chip "$tty_device" 2>/dev/null) || true
-        info "  Reading on-flash production partition via USB..."
+        info "Reading on-flash production partition via USB..."
         if [[ -n "$prod_chip" ]] && flash_production_matches_device \
             "$tty_device" "$prod_chip" "$production_build_dir" "$production_offset"; then
           ok "Production partition matches build -- skipping OTA"
