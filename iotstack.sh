@@ -4106,12 +4106,18 @@ _flash_bootstrap_esptool() {
   esptool_output="$create_log_esptool_output"
 }
 
-_ensure_bootstrap_build_for_assess() {
-  # Ensure bootstrap is compiled (shared external_components + partition table for production).
-  # On-flash MD5 read during assessment requires --on-flash-verify.
+_flash_prepare_builds() {
+  # Compile bootstrap (and optionally production) for a USB port before device assessment.
+  # Usage: _flash_prepare_builds <tty> [production_role] [production_yaml_path]
   local tty_device="$1"
-  local production_role="$2"
-  local profile variant board flash_size framework bootstrap_yaml
+  local production_role="${2:-}"
+  local yaml_path="${3:-}"
+  local profile variant board flash_size framework bootstrap_yaml build_name device_name
+
+  [[ -n "$tty_device" && -e "$tty_device" ]] || {
+    echo "TTY device not found: ${tty_device:-<unset>}" >&2
+    return 1
+  }
 
   profile=$(bootstrap_resolve_profile "$tty_device" "$production_role") || return 1
   bootstrap_apply_profile_to_env "$profile"
@@ -4122,7 +4128,48 @@ _ensure_bootstrap_build_for_assess() {
   bootstrap_yaml="${YAMLS_DIR}/$(iotstack_bootstrap_artifact_name "$variant")"
   bootstrap_render_yaml "$variant" "$board" "$flash_size" "$framework" >/dev/null || return 1
   iotstack_register_yaml_cleanup_trap
-  smart_compile "$bootstrap_yaml" bootstrap
+  build_name="bootstrap"
+
+  if [[ $CLEAN_BUILD_DIRECTORY -eq 1 ]]; then
+    info "Cleaning build directory (CLEAN_BUILD_DIRECTORY=1)..."
+    rm -rf "$ESPHOME_BUILD_DIR"
+    ok "Build directory cleaned"
+  fi
+
+  if [[ -n "$yaml_path" ]]; then
+    device_name=$(basename "$yaml_path" .yaml)
+    info "Building firmware images (bootstrap + ${device_name})..."
+  else
+    info "Building bootstrap firmware (${variant})..."
+  fi
+
+  smart_compile "$bootstrap_yaml" "$build_name" || return 1
+
+  if [[ -n "$yaml_path" ]]; then
+    smart_compile "$yaml_path" "$device_name" || return 1
+  fi
+
+  return 0
+}
+
+_flash_prepare_builds_for_targets() {
+  # Compile once per chip variant before flashing multiple USB devices.
+  local production_role="$1"
+  local yaml_path="${2:-}"
+  shift 2 || true
+  local -a targets=("$@")
+  local -A variants_prepared=()
+  local tty profile variant
+
+  [[ ${#targets[@]} -gt 0 ]] || return 0
+
+  for tty in "${targets[@]}"; do
+    profile=$(bootstrap_resolve_profile "$tty" "$production_role") || return 1
+    variant=$(echo "$profile" | cut -d'|' -f1)
+    [[ -n "${variants_prepared[$variant]:-}" ]] && continue
+    _flash_prepare_builds "$tty" "$production_role" "$yaml_path" || return 1
+    variants_prepared[$variant]=1
+  done
 }
 
 _flash_bootstrap_to_tty() {
@@ -4146,15 +4193,14 @@ _flash_bootstrap_to_tty() {
 
   _check_serial_port_in_use "$tty_device"
 
-  if [[ $CLEAN_BUILD_DIRECTORY -eq 1 ]]; then
-    info "Cleaning build directory (CLEAN_BUILD_DIRECTORY=1)..."
-    rm -rf "$ESPHOME_BUILD_DIR"
-    ok "Build directory cleaned"
+  local build_dir_early="${YAMLS_DIR}/.esphome/build/${build_name}/.pioenvs/${build_name}"
+  if [[ ! -f "${build_dir_early}/firmware.bin" ]]; then
+    debug "Bootstrap firmware not pre-built -- compiling for ${variant}"
+    smart_compile "$bootstrap_yaml" "$build_name" || return 1
   fi
 
   debug "Recovery image: ${variant} on ${tty_device}"
   debug "YAML: ${bootstrap_yaml}"
-  smart_compile "$bootstrap_yaml" "$build_name" || return 1
 
   local flash_log_dir="$HOME/.iotstack/logs/flash"
   mkdir -p "$flash_log_dir"
@@ -4256,10 +4302,19 @@ _flash_recovery() {
     err "Bootstrap template not found: ${YAMLS_DIR}/bootstrap.yaml"
   fi
 
+  local yaml_for_role=""
+  if [[ -n "$production_role" ]]; then
+    yaml_for_role=$(resolve_device "$production_role" false) || true
+  fi
+
   if [[ -n "$tty_device" ]]; then
     if [[ ! -e "$tty_device" ]]; then
       err "TTY device not found: $tty_device"
     fi
+    _flash_prepare_builds "$tty_device" "$production_role" "$yaml_for_role" \
+      || err "Firmware build failed"
+    ok "Firmware builds ready"
+    echo ""
     info "Flashing to: $tty_device"
     _flash_bootstrap_to_tty "$tty_device" "$mac_return_file" "$production_role"
     return
@@ -4311,6 +4366,11 @@ _flash_recovery() {
   fi
 
   confirm_multi_device ${#targets[@]} "$(printf '%s\n' "${targets[@]}")"
+
+  _flash_prepare_builds_for_targets "$production_role" "$yaml_for_role" "${targets[@]}" \
+    || err "Firmware build failed"
+  ok "Firmware builds ready"
+  echo ""
 
   local failed=0
   local successful_ttys=()
@@ -4464,18 +4524,26 @@ _flash_production_smart() {
     fi
 
     info "Flash target: ${device} production firmware on ${tty_device}"
+    echo ""
 
-    # Check if user wants to skip recovery
+    # Phase 1: build all firmware before USB/WiFi assessment or flash actions.
+    if [[ "$skip_recovery" == "--ota-only" ]]; then
+      info "Building production firmware (--ota-only)..."
+      smart_compile "$yaml_path" "$device" || err "Production compile failed"
+    else
+      _flash_prepare_builds "$tty_device" "$device" "$yaml_path" || err "Firmware build failed"
+    fi
+    ok "Firmware builds ready"
+    echo ""
+
+    # Phase 2: assess device state (no compilation below this point).
     local device_mac="" prod_hostname=""
     if [[ "$skip_recovery" != "--ota-only" ]]; then
       device_mac=$(esp_mac_suffix_from_port "$tty_device" 2>/dev/null) || device_mac=""
       if [[ -n "$device_mac" ]]; then
         prod_hostname="${device}-${device_mac}"
         info "Assessing connected device on ${tty_device}..."
-        _ensure_bootstrap_build_for_assess "$tty_device" "$device" \
-          || warn "Could not prepare bootstrap build -- partition table may be stale"
         _flash_assess_device_runtime "$device_mac" "$prod_hostname" "$tty_device"
-        smart_compile "$yaml_path" "$device" || err "Production compile failed"
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
 
         if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
@@ -4698,8 +4766,7 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
 
       local production_build_name production_build_dir production_offset skip_production_ota=0
       production_build_name=$(basename "$yaml_path" .yaml)
-      info "Checking production firmware (${production_build_name})..."
-      smart_compile "$yaml_path" "$production_build_name" || err "Production compile failed"
+      debug "Using pre-built production firmware (${production_build_name})"
       production_build_dir="${YAMLS_DIR}/.esphome/build/${production_build_name}/.pioenvs/${production_build_name}"
       production_offset=$(awk -F',' '/^production[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
 
