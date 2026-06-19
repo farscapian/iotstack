@@ -1,8 +1,10 @@
 iotstack devices -- Show discovered ESPHome devices on network
 
-Lists ESPHome devices visible on the network via mDNS. By default shows both
-production and bootstrap (recovery) devices. Optionally filter by role or
-partition.
+Lists ESPHome devices visible on the network via mDNS, then verifies each
+candidate is online with a TCP port check before listing (production: port 6053;
+bootstrap: port 3232 or 6053). Stale avahi-daemon cache entries for powered-off
+devices are omitted. By default shows both production and bootstrap (recovery)
+devices. Optionally filter by role or partition.
 
 Usage:
   iotstack devices [role|other] [--production|--bootstrap] [--json] [--id] [--csv]
@@ -17,9 +19,9 @@ Options:
   --bootstrap   Show only bootstrap/recovery devices (_iotstack-bootstrap._tcp)
 
   With no partition flag, both production and bootstrap are listed. Bootstrap
-  rows are omitted when the same MAC already appears on production (stale mDNS
-  cache). Role filters apply to production devices only; bootstrap hosts are
-  always included when listing both partitions.
+  rows are omitted when the same MAC already appears on live production.
+  Role filters apply to production devices only; bootstrap hosts are always
+  included when listing both partitions (if they pass the TCP liveness check).
 
   Image hashes: devices advertise bootstrap_image_hash and production_image_hash
   in mDNS TXT (_iotstack-bootstrap._tcp, _iotstack-meta._tcp, and config_hash on

@@ -1141,6 +1141,47 @@ _list_devices_collect_mdns_parallel() {
   fi
 }
 
+_list_devices_host_live() {
+  # Return 0 when hostname.local accepts the firmware's service port right now.
+  # Filters stale avahi-daemon cache entries (offline devices can linger in mDNS).
+  local hostname="$1"
+  local bootstrap_prefix
+  bootstrap_prefix="$(iotstack_bootstrap_role)-"
+  if [[ "$hostname" == "${bootstrap_prefix}"* ]]; then
+    _iotstack_ota_tcp_open "$hostname" 3232 \
+      || _iotstack_ota_tcp_open "$hostname" 6053
+    return $?
+  fi
+  _production_api_reachable "$hostname"
+}
+
+_list_devices_filter_live_hosts() {
+  # Keep only mDNS rows whose host accepts a TCP probe (parallel, ~3s per host).
+  local input="$1"
+  local output="$2"
+  local -a rows=() probe_pids=()
+  local row pid rc
+
+  while IFS= read -r row; do
+    [[ -z "$row" ]] && continue
+    rows+=("$row")
+    _list_devices_host_live "${row%%|*}" &
+    probe_pids+=("$!")
+  done <"$input"
+
+  : >"$output"
+  local i=0
+  for pid in "${probe_pids[@]}"; do
+    row="${rows[$i]}"
+    if wait "$pid"; then
+      echo "$row" >>"$output"
+    else
+      debug "Skipping stale mDNS entry (no TCP response): ${row%%|*}"
+    fi
+    i=$((i + 1))
+  done
+}
+
 _list_devices_row_matches_filter() {
   # Return 0 when a discovered row should be listed.
   # device_mode: all | production | bootstrap
@@ -1194,13 +1235,15 @@ list_devices() {
   local device_data
   device_data=$(mktemp)
   # shellcheck disable=SC2064
-  trap "rm -f '$device_data' '${device_data}.merged' '${device_data}.sorted'" RETURN
+  trap "rm -f '$device_data' '${device_data}.merged' '${device_data}.sorted' '${device_data}.live'" RETURN
 
   _list_devices_collect_mdns_parallel "$device_data" "$device_mode"
 
   # Merge supplemental _iotstack-meta rows and duplicate service records by MAC.
   _list_devices_merge_by_mac "$device_data" "${device_data}.merged"
   sort -u "${device_data}.merged" > "${device_data}.sorted"
+  _list_devices_filter_live_hosts "${device_data}.sorted" "${device_data}.live"
+  mv "${device_data}.live" "${device_data}.sorted"
 
   # MAC suffixes with a live production host (used to drop stale bootstrap mDNS).
   declare -A production_macs=()
