@@ -1400,9 +1400,11 @@ list_devices() {
     local w_bootstrap_hash=$(( ${#header_bootstrap_hash} + margin ))
     local w_production_hash=$(( ${#header_production_hash} + margin ))
 
-    # Scan data to find max widths (filtered rows only)
+    # Scan data to find max widths (filtered rows only) and whether any rows will print.
+    local found=0
     while IFS='|' read -r hostname friendly project version bootstrap_hash production_hash; do
       _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
+      found=$((found + 1))
       id="${hostname##*-}"
       area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
       [[ -z "$area" ]] && area="-"
@@ -1418,39 +1420,6 @@ list_devices() {
       (( ${#production_hash} + margin > w_production_hash )) && w_production_hash=$(( ${#production_hash} + margin ))
     done < "${device_data}.sorted"
 
-    if [[ "$device_mode" == "all" ]]; then
-      info "Discovered ESPHome devices on network (production and bootstrap):"
-    elif [[ "$device_mode" == "production" ]]; then
-      info "Discovered ESPHome devices on network:"
-    else
-      info "Discovered bootstrap devices on network:"
-    fi
-    echo
-
-    # Print headers with calculated widths (all left-aligned with %)
-    printf "  ${GRN}%-${w_id}s %-${w_device}s %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_bootstrap_hash}s %-${w_production_hash}s %-${w_area}s${RST}\n" \
-      "$header_id" "$header_device" "$header_friendly" "$header_project" "$header_version" \
-      "$header_bootstrap_hash" "$header_production_hash" "$header_area"
-
-    # Print separator
-    _print_table_rule "$w_id" "$w_device" "$w_friendly" "$w_project" "$w_version" "$w_bootstrap_hash" "$w_production_hash" "$w_area"
-
-    # Print data rows with calculated widths
-    local found=0
-    while IFS='|' read -r hostname friendly project version bootstrap_hash production_hash; do
-      _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
-      id="${hostname##*-}"
-      # Try to get area from HA (match by full hostname or base name)
-      area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
-      [[ -z "$area" ]] && area="-"
-      [[ -z "$bootstrap_hash" ]] && bootstrap_hash="-"
-      [[ -z "$production_hash" ]] && production_hash="-"
-      printf "  ${GRN}%-${w_id}s${RST} %-${w_device}s %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_bootstrap_hash}s %-${w_production_hash}s %-${w_area}s\n" \
-        "$id" "$hostname" "$friendly" "$project" "$version" "$bootstrap_hash" "$production_hash" "$area"
-      found=$((found + 1))
-    done < "${device_data}.sorted"
-
-    echo
     if [[ $found -eq 0 ]]; then
       if [[ -n "$filter_role" ]]; then
         warn "No devices found for role: $filter_role"
@@ -1462,6 +1431,37 @@ list_devices() {
         warn "No ESPHome devices found on network"
       fi
     else
+      if [[ "$device_mode" == "all" ]]; then
+        info "Discovered ESPHome devices on network (production and bootstrap):"
+      elif [[ "$device_mode" == "production" ]]; then
+        info "Discovered ESPHome devices on network:"
+      else
+        info "Discovered bootstrap devices on network:"
+      fi
+      echo
+
+      # Print headers with calculated widths (all left-aligned with %)
+      printf "  ${GRN}%-${w_id}s %-${w_device}s %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_bootstrap_hash}s %-${w_production_hash}s %-${w_area}s${RST}\n" \
+        "$header_id" "$header_device" "$header_friendly" "$header_project" "$header_version" \
+        "$header_bootstrap_hash" "$header_production_hash" "$header_area"
+
+      # Print separator
+      _print_table_rule "$w_id" "$w_device" "$w_friendly" "$w_project" "$w_version" "$w_bootstrap_hash" "$w_production_hash" "$w_area"
+
+      # Print data rows with calculated widths
+      while IFS='|' read -r hostname friendly project version bootstrap_hash production_hash; do
+        _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
+        id="${hostname##*-}"
+        # Try to get area from HA (match by full hostname or base name)
+        area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
+        [[ -z "$area" ]] && area="-"
+        [[ -z "$bootstrap_hash" ]] && bootstrap_hash="-"
+        [[ -z "$production_hash" ]] && production_hash="-"
+        printf "  ${GRN}%-${w_id}s${RST} %-${w_device}s %-${w_friendly}s %-${w_project}s %-${w_version}s %-${w_bootstrap_hash}s %-${w_production_hash}s %-${w_area}s\n" \
+          "$id" "$hostname" "$friendly" "$project" "$version" "$bootstrap_hash" "$production_hash" "$area"
+      done < "${device_data}.sorted"
+
+      echo
       ok "Found $found device(s) on network"
     fi
   fi
