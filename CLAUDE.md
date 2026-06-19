@@ -131,8 +131,8 @@ Cache stored at `~/.iotstack/compilation-cache.csv` (CSV format with headers):
 
 **Columns:**
 - `yaml_name`: YAML filename (e.g., `bleproxy.yaml`, `.iotstack-bootstrap-esp32c6.yaml`)
-- `yaml_sha`: SHA256 hash of YAML + `yamls/external_components/` + `yamls/common/` + **current git tag** (cache key)
-- `binary_sha`: SHA256 of compiled `firmware.bin`
+- `yaml_sha`: last 10 hex chars of SHA256 over YAML + `yamls/external_components/` + `yamls/common/` + **current git tag** (cache key)
+- `binary_sha`: last 10 hex chars of SHA256 of compiled `firmware.bin`
 - `image_hash`: 8-char hex ESPHome image hash (ESPHome `config_hash`; primary runtime comparison key)
 
 Per-device build cache also at `~/.iotstack/logs/<device>.build.cache` (used by `update_devices.sh`).
@@ -146,8 +146,8 @@ Per-device build cache also at `~/.iotstack/logs/<device>.build.cache` (used by 
 **Example cache contents:**
 ```
 yaml_name,yaml_sha,binary_sha,image_hash
-bleproxy.yaml,8f3e2c9d4a1b5f...,c9d2a8e7f3b1c4...,1a25e0c8
-bootstrap.yaml,75e67037f9e3fc23...,a183d757ba74cc50...,3ea7c88a
+bleproxy.yaml,a1b5f8e3e2c9,c4f3b1c7e2a8,1a25e0c8
+bootstrap.yaml,f9e3fc2375e6,cc50a183d757,3ea7c88a
 ```
 
 ### Serial Flash Baud Rate: 9600 (Critical)

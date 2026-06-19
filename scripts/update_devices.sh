@@ -94,10 +94,14 @@ _config_hash_from_build_info() {
 _image_hash_from_compilation_cache() {
   # Prefer compilation-cache.csv (same source as iotstack flash assessment).
   local yaml_file="$1"
-  local yaml_name hash
-  yaml_name=$(basename "$yaml_file")
+  local yaml_name legacy_name hash
+  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
+  legacy_name=$(basename "$yaml_file")
   [[ -f "$COMPILATION_CACHE" ]] || return 1
   hash=$(awk -F, -v name="$yaml_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
+  if [[ -z "$hash" && "$legacy_name" != "$yaml_name" ]]; then
+    hash=$(awk -F, -v name="$legacy_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
+  fi
   [[ -n "$hash" ]] && echo "$hash"
 }
 

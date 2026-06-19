@@ -86,6 +86,27 @@ with open(path, "w", encoding="utf-8") as f:
 PY
 }
 
+iotstack_compilation_cache_yaml_name() {
+  # Stable compilation-cache.csv key for a YAML path.
+  # Production roles compile via yamls/.temp-compile-<role>.yaml.<pid>; cache rows
+  # use the pid-less compile artifact name. Bootstrap uses .iotstack-bootstrap-* rows.
+  local yaml_file="$1"
+  local base
+
+  [[ -n "$yaml_file" ]] || return 1
+  base=$(basename "$yaml_file")
+
+  if [[ "$base" =~ ^(\.temp-compile-.+\.yaml)\.[0-9]+$ ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+  if [[ "$base" =~ ^\.iotstack- ]] || [[ "$base" =~ ^\.temp-compile- ]]; then
+    echo "$base"
+    return 0
+  fi
+  echo ".temp-compile-${base}"
+}
+
 iotstack_prepare_compile_yaml() {
   # Inject the current git tag+commit into project_version. Prints YAML path to compile.
   local src_yaml="$1"

@@ -240,29 +240,37 @@ test_run_step() {
   return 1
 }
 
+test_compilation_cache_yaml_name() {
+  local yaml_file="$1"
+  iotstack_compilation_cache_yaml_name "$yaml_file"
+}
+
 test_compilation_cache_row() {
-  local yaml_name="${1:-bleproxy.yaml}"
+  local yaml_file="${1:-bleproxy.yaml}"
+  local cache_name
   [[ -f "$COMPILATION_CACHE" ]] || return 1
-  awk -F, -v name="$yaml_name" '$1==name { print; exit }' "$COMPILATION_CACHE"
+  cache_name=$(test_compilation_cache_yaml_name "$yaml_file")
+  awk -F, -v name="$cache_name" '$1==name { print; exit }' "$COMPILATION_CACHE"
 }
 
 test_compilation_cache_image_hash() {
-  local yaml_name="${1:-bleproxy.yaml}"
-  test_compilation_cache_row "$yaml_name" | awk -F, '{ print $4 }'
+  local yaml_file="${1:-bleproxy.yaml}"
+  test_compilation_cache_row "$yaml_file" | awk -F, '{ print $4 }'
 }
 
 test_strip_compilation_cache_image_hash() {
   # Simulate a legacy row missing image_hash (backfill should repair on cache hit).
-  local yaml_name="${1:-bleproxy.yaml}"
-  local row yaml_sha binary_sha tmp
-  row=$(test_compilation_cache_row "$yaml_name") || return 1
+  local yaml_file="${1:-bleproxy.yaml}"
+  local row yaml_sha binary_sha cache_name tmp
+  cache_name=$(test_compilation_cache_yaml_name "$yaml_file")
+  row=$(test_compilation_cache_row "$yaml_file") || return 1
   IFS=, read -r _ yaml_sha binary_sha _ <<< "$row"
   [[ -n "$yaml_sha" && -n "$binary_sha" ]] || return 1
   tmp=$(mktemp)
   {
     echo "yaml_name,yaml_sha,binary_sha,image_hash"
-    awk -F, -v name="$yaml_name" 'NR > 1 && $1 != name { print }' "$COMPILATION_CACHE"
-    printf '%s,%s,%s,\n' "$yaml_name" "$yaml_sha" "$binary_sha"
+    awk -F, -v name="$cache_name" 'NR > 1 && $1 != name { print }' "$COMPILATION_CACHE"
+    printf '%s,%s,%s,\n' "$cache_name" "$yaml_sha" "$binary_sha"
   } > "$tmp"
   mv "$tmp" "$COMPILATION_CACHE"
 }

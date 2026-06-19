@@ -119,12 +119,21 @@ _normalize_compilation_cache() {
   {
     echo "yaml_name,yaml_sha,binary_sha,image_hash"
     tail -n +2 "$COMPILATION_CACHE" | awk -F, '
+      function cache_name(name) {
+        if (name ~ /^\.temp-compile-.+\.yaml\.[0-9]+$/) {
+          sub(/\.[0-9]+$/, "", name)
+          return name
+        }
+        if (name ~ /^\.iotstack-/ || name ~ /^\.temp-compile-/) return name
+        return ".temp-compile-" name
+      }
       NF < 1 || $1 == "" { next }
       {
+        key = cache_name($1)
         y = $2; b = $3; h = $4
         if (length(y) > 10) y = substr(y, length(y) - 9)
         if (length(b) > 10) b = substr(b, length(b) - 9)
-        rows[$1] = $1 "," y "," b "," h
+        rows[key] = key "," y "," b "," h
       }
       END { for (n in rows) print rows[n] }
     ' | sort -t, -k1,1
@@ -153,7 +162,7 @@ _compilation_cache_backfill_image_hash() {
   local yaml_file="$1"
   local build_name="$2"
   local yaml_name hash
-  yaml_name=$(basename "$yaml_file")
+  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
   hash=$(_compilation_cache_image_hash "$yaml_file" "$build_name" 2>/dev/null) || true
   [[ -n "$hash" ]] || return 1
   if awk -F, -v name="$yaml_name" '$1==name && $4!="" { found=1 } END { exit !found }' "$COMPILATION_CACHE" 2>/dev/null; then
@@ -167,7 +176,7 @@ _check_compilation_cache() {
   # Returns 0 (can skip) or 1 (must compile)
   local yaml_file="$1"
   local yaml_name yaml_sha cached_sha
-  yaml_name=$(basename "$yaml_file")
+  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
   yaml_sha=$(_compilation_cache_short_sha "$(_get_yaml_sha "$yaml_file")")
 
   [[ ! -f "$COMPILATION_CACHE" ]] && return 1
@@ -190,7 +199,7 @@ _compilation_cache_image_hash() {
   local yaml_file="$1"
   local build_name="${2:-$(basename "$yaml_file" .yaml)}"
   local yaml_name hash
-  yaml_name=$(basename "$yaml_file")
+  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
   [[ -f "$COMPILATION_CACHE" ]] || return 1
   _normalize_compilation_cache
   hash=$(awk -F, -v name="$yaml_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
@@ -207,7 +216,7 @@ _update_compilation_cache() {
   local binary_sha="$2"
   local build_name="${3:-}"
   local yaml_name yaml_sha image_hash tmp
-  yaml_name=$(basename "$yaml_file")
+  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
   yaml_sha=$(_compilation_cache_short_sha "$(_get_yaml_sha "$yaml_file")")
   binary_sha=$(_compilation_cache_short_sha "$binary_sha")
   image_hash=""
@@ -353,9 +362,47 @@ _esphome_compile() {
   return $rc
 }
 
+declare -gA _IOTSTACK_COMPILE_CACHE_HIT_NOTIFIED=()
+declare -gA _IOTSTACK_SMART_COMPILE_DONE=()
+
+_smart_compile_already_done() {
+  local yaml_file="$1"
+  local cache_key
+  cache_key=$(iotstack_compilation_cache_yaml_name "$yaml_file")
+  [[ -n "${_IOTSTACK_SMART_COMPILE_DONE[$cache_key]:-}" ]]
+}
+
+_smart_compile_mark_done() {
+  local yaml_file="$1"
+  local cache_key
+  cache_key=$(iotstack_compilation_cache_yaml_name "$yaml_file")
+  _IOTSTACK_SMART_COMPILE_DONE[$cache_key]=1
+}
+
+_smart_compile_repeat_satisfied() {
+  local yaml_file="$1"
+  local device_name="$2"
+  local firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
+  debug "Build already prepared for $(iotstack_compilation_cache_yaml_name "$yaml_file")"
+  if _is_bootstrap_yaml "$yaml_file"; then
+    _compilation_cache_backfill_image_hash "$yaml_file" "$device_name" || true
+    _sync_bootstrap_partition_table_from_build \
+      || { local fs_size; fs_size=$(_bootstrap_part_size "$firmware_bin")
+           IOTSTACK_BOOTSTRAP_PART_SIZE="$fs_size" _update_partition_table_file; }
+  else
+    ensure_partition_table_artifact
+    _compilation_cache_backfill_image_hash "$yaml_file" "$device_name" || true
+  fi
+}
+
 _smart_compile_cache_hit_notice() {
-  local device_name="$1"
-  local firmware_kind="$2"  # e.g. production, bootstrap
+  local yaml_file="$1"
+  local device_name="$2"
+  local firmware_kind="$3"  # e.g. production, bootstrap
+  local notify_key
+  notify_key="${firmware_kind}:$(iotstack_compilation_cache_yaml_name "$yaml_file")"
+  [[ -n "${_IOTSTACK_COMPILE_CACHE_HIT_NOTIFIED[$notify_key]:-}" ]] && return 0
+  _IOTSTACK_COMPILE_CACHE_HIT_NOTIFIED[$notify_key]=1
   info "Compilation cache hit -- ${firmware_kind} firmware (${device_name}) already built; compile skipped"
 }
 
@@ -377,6 +424,11 @@ smart_compile() {
   local yaml_file="$1"
   local device_name="${2:-unknown}"
 
+  if _smart_compile_already_done "$yaml_file"; then
+    _smart_compile_repeat_satisfied "$yaml_file" "$device_name"
+    return 0
+  fi
+
   local yaml_sha
   yaml_sha=$(_get_yaml_sha "$yaml_file")
   [[ -z "$yaml_sha" ]] && err "Failed to compute SHA256 of $yaml_file"
@@ -394,7 +446,8 @@ smart_compile() {
     if [[ $cached -eq 1 ]]; then
       ensure_partition_table_artifact
       _compilation_cache_backfill_image_hash "$yaml_file" "$device_name" || true
-      _smart_compile_cache_hit_notice "$device_name" "production"
+      _smart_compile_cache_hit_notice "$yaml_file" "$device_name" "production"
+      _smart_compile_mark_done "$yaml_file"
       return 0
     fi
     _update_partition_table_file
@@ -406,6 +459,7 @@ smart_compile() {
       _update_compilation_cache "$yaml_file" "$binary_sha" "$device_name"
       ok "Compilation cache updated"
     fi
+    _smart_compile_mark_done "$yaml_file"
     return 0
   fi
 
@@ -416,10 +470,11 @@ smart_compile() {
   # measure, regenerate the table, then recompile so partitions.bin matches.
   if [[ $cached -eq 1 && -f "$firmware_bin" ]]; then
     _compilation_cache_backfill_image_hash "$yaml_file" "$device_name" || true
-    _smart_compile_cache_hit_notice "$device_name" "bootstrap"
+    _smart_compile_cache_hit_notice "$yaml_file" "$device_name" "bootstrap"
     _sync_bootstrap_partition_table_from_build \
       || { local fs_size; fs_size=$(_bootstrap_part_size "$firmware_bin")
            IOTSTACK_BOOTSTRAP_PART_SIZE="$fs_size" _update_partition_table_file; }
+    _smart_compile_mark_done "$yaml_file"
     return 0
   fi
 
@@ -468,6 +523,7 @@ smart_compile() {
     _update_compilation_cache "$yaml_file" "$binary_sha" "$device_name"
     ok "Compilation cache updated"
   fi
+  _smart_compile_mark_done "$yaml_file"
   return 0
 }
 
@@ -3964,6 +4020,20 @@ _flash_bootstrap_to_tty() {
     debug "On-device partition table also matches compiled build"
     device_mac=$(esp_mac_suffix_resolve "$tty_device") || err "Could not read chip MAC from $tty_device"
     ok "Device MAC: $device_mac"
+
+    _provision_device_nvs "$tty_device" "$device_mac" "$production_role" || \
+      err "Failed to provision device NVS"
+
+    info "Waiting for device to boot..."
+    sleep 3
+
+    if [[ -n "$device_mac" ]]; then
+      if _wait_for_bootstrap_wifi_ready "$device_mac" 90; then
+        ok "Bootstrap OTA service reachable on WiFi"
+      else
+        warn "Bootstrap WiFi wait timed out (90s); proceeding"
+      fi
+    fi
   else
     if [[ "${FLASH_ERASE:-0}" != "1" ]]; then
       if [[ "$FLASH_ASSESS_BOOTSTRAP_MATCH" -eq 0 ]]; then
@@ -4395,6 +4465,16 @@ _flash_production_smart() {
 
       if _bootstrap_ota_reachable "$device_mac"; then
         ok "Device ${device_mac} ready -- starting firmware upload"
+      elif [[ -n "$tty_device" ]]; then
+        if _ensure_device_on_bootstrap "$device_mac" false "$tty_device" "$device"; then
+          ok "Device ${device_mac} ready -- starting firmware upload"
+        else
+          err "Device ${device_mac} did not come online for firmware upload.
+The device is likely unable to connect to WiFi or could not switch to bootstrap.
+Once it connects, run:
+  iotstack update $device
+Or monitor it now: iotstack logs $tty_device"
+        fi
       else
         _flash_msg_waiting_for_upload "$device_mac"
         # The device is ready once its OTA service (port 3232) accepts a
