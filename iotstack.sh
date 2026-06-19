@@ -1109,17 +1109,19 @@ _list_devices_collect_mdns_parallel() {
   local -a browse_pids=()
   local pid
 
+  # -t dumps cached/browse list and exits; skip -r here (per-record resolve is slow).
+  # TCP liveness probes drop stale cache entries; TXT may be backfilled for live hosts.
   if [[ "$device_mode" != "bootstrap" ]]; then
     prod_raw=$(mktemp)
-    timeout 8 avahi-browse -r "_esphomelib._tcp" 2>/dev/null >"$prod_raw" &
+    avahi-browse -t "_esphomelib._tcp" 2>/dev/null >"$prod_raw" &
     browse_pids+=("$!")
     meta_raw=$(mktemp)
-    timeout 8 avahi-browse -r "$(iotstack_meta_mdns_service)" 2>/dev/null >"$meta_raw" &
+    avahi-browse -t "$(iotstack_meta_mdns_service)" 2>/dev/null >"$meta_raw" &
     browse_pids+=("$!")
   fi
   if [[ "$device_mode" != "production" ]]; then
     boot_raw=$(mktemp)
-    timeout 8 avahi-browse -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null >"$boot_raw" &
+    avahi-browse -t "$(iotstack_bootstrap_mdns_service)" 2>/dev/null >"$boot_raw" &
     browse_pids+=("$!")
   fi
 
@@ -1143,6 +1145,21 @@ _list_devices_collect_mdns_parallel() {
 
 _LIST_DEVICES_LIVE_TIMEOUT_SEC=2
 
+_list_devices_bootstrap_live() {
+  # Probe bootstrap OTA (3232) and API (6053) concurrently; either port means alive.
+  local hostname="$1"
+  local timeout_sec="$2"
+  local pid_ota pid_api rc_ota=1 rc_api=1
+
+  _iotstack_tcp_open "$hostname" 3232 "$timeout_sec" &
+  pid_ota=$!
+  _iotstack_tcp_open "$hostname" 6053 "$timeout_sec" &
+  pid_api=$!
+  wait "$pid_ota" && rc_ota=0 || true
+  wait "$pid_api" && rc_api=0 || true
+  [[ $rc_ota -eq 0 || $rc_api -eq 0 ]]
+}
+
 _list_devices_host_live() {
   # Return 0 when hostname.local accepts the firmware's service port right now.
   # Filters stale avahi-daemon cache entries (offline devices can linger in mDNS).
@@ -1150,15 +1167,14 @@ _list_devices_host_live() {
   local bootstrap_prefix
   bootstrap_prefix="$(iotstack_bootstrap_role)-"
   if [[ "$hostname" == "${bootstrap_prefix}"* ]]; then
-    _iotstack_ota_tcp_open "$hostname" 3232 "$_LIST_DEVICES_LIVE_TIMEOUT_SEC" \
-      || _iotstack_ota_tcp_open "$hostname" 6053 "$_LIST_DEVICES_LIVE_TIMEOUT_SEC"
+    _list_devices_bootstrap_live "$hostname" "$_LIST_DEVICES_LIVE_TIMEOUT_SEC"
     return $?
   fi
   _production_api_reachable "$hostname" "$_LIST_DEVICES_LIVE_TIMEOUT_SEC"
 }
 
 _list_devices_filter_live_hosts() {
-  # Keep only mDNS rows whose host accepts a TCP probe (parallel, 2s per host).
+  # Keep only mDNS rows whose host accepts a TCP probe (all hosts probed in parallel).
   local input="$1"
   local output="$2"
   local -a rows=() probe_pids=()
@@ -1263,7 +1279,7 @@ list_devices() {
   # input makes the per-row `jq -r` lookups emit one line per document -- which
   # would put an embedded newline into the area value and break table rows.
   local ha_areas="{}"
-  if [[ "$device_mode" != "bootstrap" ]]; then
+  if [[ "$device_mode" != "bootstrap" ]] && [[ -s "${device_data}.sorted" ]]; then
     if get_ha_device_areas > /tmp/ha_areas.json 2>/dev/null; then
       ha_areas=$(jq -cs 'reduce .[] as $o ({}; . * $o)' /tmp/ha_areas.json 2>/dev/null || echo '{}')
       [[ -z "$ha_areas" ]] && ha_areas="{}"
