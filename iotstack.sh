@@ -651,7 +651,8 @@ declare -g IOTSTACK_FLASH_SUPPRESS_STEPS=0
 
 _flash_step_reset() {
   _IOTSTACK_FLASH_STEP_NUM=0
-  _IOTSTACK_FLASH_DEPLOY_STEP=0
+  _IOTSTACK_FLASH_SERIAL_STEP=0
+  _IOTSTACK_FLASH_OTA_STEP=0
   IOTSTACK_LOG_INDENT=""
 }
 
@@ -679,12 +680,21 @@ _flash_step_end() {
   IOTSTACK_LOG_INDENT=""
 }
 
-declare -g _IOTSTACK_FLASH_DEPLOY_STEP=0
+declare -g _IOTSTACK_FLASH_SERIAL_STEP=0
+declare -g _IOTSTACK_FLASH_OTA_STEP=0
 
-_flash_deploy_step_begin() {
-  [[ "${_IOTSTACK_FLASH_DEPLOY_STEP:-0}" == "1" ]] && return 0
-  _IOTSTACK_FLASH_DEPLOY_STEP=1
-  _flash_step_begin "Deploy to device"
+_flash_serial_step_begin() {
+  # USB/esptool: bootloader, partition table, boot_app0, bootstrap partition only.
+  [[ "${_IOTSTACK_FLASH_SERIAL_STEP:-0}" == "1" ]] && return 0
+  _IOTSTACK_FLASH_SERIAL_STEP=1
+  _flash_step_begin "Serial flash partition table and bootstrap"
+}
+
+_flash_ota_step_begin() {
+  # Production firmware is never written over USB; always OTA from bootstrap.
+  [[ "${_IOTSTACK_FLASH_OTA_STEP:-0}" == "1" ]] && return 0
+  _IOTSTACK_FLASH_OTA_STEP=1
+  _flash_step_begin "OTA production firmware"
 }
 
 err()  { _iotstack_log_plain "ERROR" "$@"; _iotstack_echo stderr "${RED}[ERROR]${RST} $*"; exit 1; }
@@ -4044,9 +4054,7 @@ cmd_flash() {
     fi
   fi
 
-  # For production roles: smart dual-partition setup
-  # If device is fresh (no recovery): flash recovery first, then production
-  # If device exists (has recovery): just flash production via OTA
+  # Production roles: serial = partition table + bootstrap only; production via OTA.
   _flash_production_smart "$device" "$tty_device_or_role" "$skip_recovery"
 }
 
@@ -4080,26 +4088,23 @@ _flash_msg_prepare_usb() {
   fi
 }
 
-_flash_msg_update_production() {
-  info "Updating production firmware on device ${1} to ${2}..."
-}
-
 _flash_msg_wait_online() {
-  info "Waiting for device ${1} to come online..."
+  info "Waiting for bootstrap-${1} on WiFi (OTA port 3232)..."
 }
 
-_flash_msg_upload_production() {
-  info "Uploading ${2} firmware to device ${1}..."
+_flash_msg_ota_production() {
+  info "OTA upload: ${2} production firmware to bootstrap-${1}..."
 }
 
 _flash_msg_waiting_for_upload() {
-  info "Waiting for device ${1} to accept firmware upload..."
+  info "Waiting for bootstrap-${1} OTA service (port 3232)..."
 }
 
 _flash_bootstrap_esptool() {
-  # Write bootstrap binaries; erase first only when requested. Sets esptool_output.
-  # Requires: IOTSTACK_ESPTOOL_CHIP, IOTSTACK_BOOTSTRAP_FLASH_SIZE, build_dir, bootstrap_offset
-  # Usage: _flash_bootstrap_esptool <tty> <flash_log> <build_dir> <bootstrap_offset> [erase:0|1]
+  # Serial flash only: bootloader, partition table, boot_app0, bootstrap app.
+  # Production partition is never written over USB (OTA after bootstrap boots).
+  # Sets esptool_output. Usage: _flash_bootstrap_esptool <tty> <flash_log> <build_dir>
+  #   <bootstrap_offset> [erase:0|1]
   local tty_device="$1"
   local flash_log="$2"
   local build_dir="$3"
@@ -4126,7 +4131,7 @@ _flash_bootstrap_esptool() {
   boot_app0=$(esp_boot_app0_bin_for_build "$build_dir" 2>/dev/null) || true
   [[ -z "$boot_app0" ]] && warn "boot_app0.bin not found -- device may not boot into bootstrap OTA slot"
 
-  info "Writing recovery image (${esptool_chip}, ${esptool_baud} baud)..."
+  info "Writing partition table and bootstrap image (${esptool_chip}, ${esptool_baud} baud)..."
   if [[ $VERBOSE -eq 1 ]] && ! create_log_enabled; then
     info "Detailed output: tail -f $flash_log"
   fi
@@ -4180,14 +4185,15 @@ _flash_prepare_builds() {
 
   if [[ -n "$yaml_path" ]]; then
     device_name=$(basename "$yaml_path" .yaml)
-    debug "Targets: bootstrap + ${device_name} (${variant})"
+    debug "Compile bootstrap (serial) + ${device_name} (OTA only) for ${variant}"
   else
-    debug "Target: bootstrap (${variant})"
+    debug "Compile bootstrap (serial) for ${variant}"
   fi
 
   smart_compile "$bootstrap_yaml" "$build_name" || return 1
 
   if [[ -n "$yaml_path" ]]; then
+    info "Production image (${device_name}) is compiled for OTA, not serial flash"
     smart_compile "$yaml_path" "$device_name" || return 1
   fi
 
@@ -4215,7 +4221,8 @@ _flash_prepare_builds_for_targets() {
 }
 
 _flash_bootstrap_to_tty() {
-  # Compile variant-specific bootstrap, flash, write NVS, wait for WiFi.
+  # Serial: partition table + bootstrap partition, NVS over USB, wait for bootstrap WiFi.
+  # Production is OTA-only (caller runs _flash_ota_step_begin afterward).
   # Returns MAC suffix via stdout or mac_return_file.
   local tty_device="$1"
   local mac_return_file="${2:-}"
@@ -4341,7 +4348,7 @@ _flash_recovery() {
 
   if [[ "$nested" != "nested" ]]; then
     _flash_step_reset
-    info "Flashing bootstrap firmware (dual-partition setup)"
+    info "Serial flash: partition table and bootstrap only (production via OTA)"
     echo ""
   fi
 
@@ -4363,7 +4370,7 @@ _flash_recovery() {
       _flash_prepare_builds "$tty_device" "$production_role" "$yaml_for_role" \
         || err "Firmware build failed"
       ok "Firmware builds ready"
-      _flash_step_begin "Flash bootstrap to device"
+      _flash_serial_step_begin
       info "Target port: ${tty_device}"
     fi
     _flash_bootstrap_to_tty "$tty_device" "$mac_return_file" "$production_role"
@@ -4421,7 +4428,7 @@ _flash_recovery() {
   _flash_prepare_builds_for_targets "$production_role" "$yaml_for_role" "${targets[@]}" \
     || err "Firmware build failed"
   ok "Firmware builds ready"
-  _flash_step_begin "Flash bootstrap to device"
+  _flash_serial_step_begin
 
   local failed=0
   local successful_ttys=()
@@ -4555,9 +4562,8 @@ _flash_recovery_dual() {
 }
 
 _flash_production_smart() {
-  # Smart production firmware flash: detect if device is fresh (needs recovery)
-  # If fresh: flash recovery first, then production via OTA
-  # If exists: skip recovery, just OTA flash production
+  # iotstack flash never serial-writes production. USB writes partition table +
+  # bootstrap only; production is always OTA after the device boots bootstrap.
   local device="$1"
   local tty_device="$2"
   local skip_recovery="$3"
@@ -4573,17 +4579,17 @@ _flash_production_smart() {
     fi
 
     _flash_step_reset
-    info "Flash target: ${device} production firmware on ${tty_device}"
+    info "Flash target: ${device} on ${tty_device} (serial: bootstrap; production: OTA)"
     echo ""
 
     _flash_step_begin "Build firmware"
     if [[ "$skip_recovery" == "--ota-only" ]]; then
-      info "Scope: production only (--ota-only)"
+      info "Scope: production OTA only (--ota-only; no serial flash)"
       smart_compile "$yaml_path" "$device" || err "Production compile failed"
     else
       _flash_prepare_builds "$tty_device" "$device" "$yaml_path" || err "Firmware build failed"
     fi
-    ok "Firmware builds ready"
+    ok "Firmware builds ready (bootstrap serial + production OTA)"
 
     local device_mac="" prod_hostname=""
     if [[ "$skip_recovery" != "--ota-only" ]]; then
@@ -4596,7 +4602,7 @@ _flash_production_smart() {
         _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
 
         if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
-          _flash_deploy_step_begin
+          _flash_serial_step_begin
           _flash_msg_erase "$tty_device"
           local _mac_file
           _mac_file=$(mktemp)
@@ -4609,7 +4615,6 @@ _flash_production_smart() {
           FLASH_ASSESS_PROD_ONLINE=0
           FLASH_ASSESS_FLASH_CURRENT=0
           prod_hostname="${device}-${device_mac}"
-          _flash_msg_update_production "$device_mac" "$device"
         elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
           local img_hash layout_rc=0 want_cols want_w want_h
           set +e
@@ -4630,7 +4635,6 @@ _flash_production_smart() {
           ok "Production firmware setup complete!"
           return
         else
-        _flash_deploy_step_begin
         local try_network_ota=false
         if _production_api_reachable "$prod_hostname"; then
           try_network_ota=true
@@ -4652,17 +4656,19 @@ _flash_production_smart() {
               _flash_resolve_matrix_layout "$device" want_cols want_w want_h
               ok "Matrix layout updated on ${prod_hostname}: ${want_cols} panel(s), ${want_w}x${want_h} px"
             else
-              ok "Production firmware on flash matches build -- nothing to do"
+              ok "Production firmware already current -- OTA skipped"
             fi
             _ha_after_production_online "$yaml_path" "$prod_hostname"
             ok "Production firmware setup complete!"
             return
           fi
+          _flash_ota_step_begin
           if _flash_production_ota_update "$device_mac" "$yaml_path" "$device" "$tty_device"; then
             ok "Production firmware setup complete!"
             return
           fi
-          warn "Network update failed -- preparing device on ${tty_device}"
+          warn "OTA failed -- serial bootstrap refresh on ${tty_device}"
+          _flash_serial_step_begin
           _flash_msg_prepare_usb "$tty_device" "$device_mac"
           local _mac_file
           _mac_file=$(mktemp)
@@ -4672,9 +4678,9 @@ _flash_production_smart() {
             device_mac=$(tr -d '[:space:]' < "$_mac_file")
             rm -f "$_mac_file"
           fi
-          _flash_msg_update_production "$device_mac" "$device"
         elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]] || _production_mdns_advertised "$prod_hostname"; then
-          warn "Device visible on network but API unreachable -- preparing device on ${tty_device}"
+          warn "Device visible on network but API unreachable -- serial bootstrap on ${tty_device}"
+          _flash_serial_step_begin
           _flash_msg_prepare_usb "$tty_device" "$device_mac"
           local _mac_file
           _mac_file=$(mktemp)
@@ -4684,9 +4690,9 @@ _flash_production_smart() {
             device_mac=$(tr -d '[:space:]' < "$_mac_file")
             rm -f "$_mac_file"
           fi
-          _flash_msg_update_production "$device_mac" "$device"
         elif [[ $FLASH_ASSESS_BOOTSTRAP_ONLINE -eq 1 ]] || _bootstrap_ota_reachable "$device_mac"; then
-          info "Device ${device_mac} is online and ready for firmware update"
+          info "Bootstrap-${device_mac} online -- refreshing serial layout if needed"
+          _flash_serial_step_begin
           local _mac_file
           _mac_file=$(mktemp)
           _flash_bootstrap_to_tty "$tty_device" "$_mac_file" "$device" || rm -f "$_mac_file"
@@ -4694,9 +4700,9 @@ _flash_production_smart() {
             device_mac=$(tr -d '[:space:]' < "$_mac_file")
             rm -f "$_mac_file"
           fi
-          _flash_msg_update_production "$device_mac" "$device"
         else
-          info "Device not on WiFi yet -- provisioning over USB"
+          info "Device not on WiFi yet -- serial bootstrap provision on USB"
+          _flash_serial_step_begin
           _flash_msg_prepare_usb "$tty_device" "$device_mac"
           local _mac_file
           _mac_file=$(mktemp)
@@ -4707,8 +4713,8 @@ _flash_production_smart() {
         fi
         fi
       else
-        _flash_deploy_step_begin
-        info "Could not read device MAC -- provisioning over USB"
+        _flash_serial_step_begin
+        info "Could not read device MAC -- serial bootstrap provision on USB"
         _flash_msg_prepare_usb "$tty_device"
         local _mac_file
         _mac_file=$(mktemp)
@@ -4721,9 +4727,9 @@ _flash_production_smart() {
       info "Skipping device assessment (--ota-only flag)"
     fi
 
-    # Reassign bootstrap device to production
+    # OTA production into the production partition (never serial).
     if [[ -n "$device_mac" ]]; then
-      _flash_deploy_step_begin
+      _flash_ota_step_begin
       device_mac=$(echo "$device_mac" | tr -d '[:space:]')
       local prod_hostname="${device}-${device_mac}"
 
@@ -4736,7 +4742,7 @@ _flash_production_smart() {
           _flash_report_device_assessment "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
         fi
         if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 ]]; then
-          ok "Production firmware on flash matches build -- nothing to do"
+          ok "Production firmware already current -- OTA skipped"
           _ha_after_production_online "$yaml_path" "$prod_hostname"
           ok "Production firmware setup complete!"
           return
@@ -4748,10 +4754,10 @@ _flash_production_smart() {
       fi
 
       if _bootstrap_ota_reachable "$device_mac"; then
-        ok "Device ${device_mac} ready -- starting firmware upload"
+        ok "Bootstrap-${device_mac} ready for production OTA"
       elif [[ -n "$tty_device" ]]; then
         if _ensure_device_on_bootstrap "$device_mac" false "$tty_device" "$device"; then
-          ok "Device ${device_mac} ready -- starting firmware upload"
+          ok "Bootstrap-${device_mac} ready for production OTA"
         else
           err "Device ${device_mac} did not come online for firmware upload.
 The device is likely unable to connect to WiFi or could not switch to bootstrap.
@@ -4792,7 +4798,7 @@ It will auto-reboot in ~3 minutes to retry WiFi. Once it connects, run:
 Or monitor it now: iotstack logs /dev/ttyACM0"
         fi
 
-        ok "Device ${device_mac} ready -- starting firmware upload"
+        ok "Bootstrap-${device_mac} ready for production OTA"
       fi
 
       # Resolve the bootstrap device's IP now, before OTA changes the hostname.
@@ -4849,7 +4855,7 @@ Or monitor it now: iotstack logs /dev/ttyACM0"
         return
       fi
 
-      _flash_msg_upload_production "$device_mac" "$device"
+      _flash_msg_ota_production "$device_mac" "$device"
 
       # Retrieve bootstrap role-based OTA password from pass store. The bootstrap
       # device authenticates OTA with its device-specific password derived from

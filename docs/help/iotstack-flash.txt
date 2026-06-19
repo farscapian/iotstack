@@ -1,8 +1,7 @@
-iotstack flash -- Serial flash tool for device setup and recovery
+iotstack flash -- Serial bootstrap flash + OTA production setup
 
-Flashes firmware over USB/serial when OTA is unavailable or for initial setup.
-Fresh devices get recovery and production partitions; existing devices can receive
-an OTA-style update over serial.
+USB/serial writes the partition table and bootstrap partition only. Production
+firmware is always delivered over OTA after the device boots into bootstrap.
 
 Usage:
   iotstack flash <device> [tty-device] [options]
@@ -10,7 +9,7 @@ Usage:
 
 Arguments:
   <device>        Device role (e.g., bleproxy, mmwave, threadrouter)
-  bootstrap        Flash bootstrap image via serial
+  bootstrap        Flash bootstrap image via serial (partition table + bootstrap)
   [tty-device]    Serial device (e.g., /dev/ttyACM0). Omitted: auto-pick
                   from NVS device_role on USB ports, or the only port with
                   a matching chip variant (e.g. matrixdisplay = esp32s3).
@@ -18,13 +17,13 @@ Arguments:
   [role]          Production role for dual-flash (e.g., mmwave, bleproxy)
 
 Options:
-  --ota-only      Skip bootstrap flash, only OTA production (device already
-                  has recovery)
+  --ota-only      Skip serial bootstrap flash; compile and OTA production only
+                  (device already has bootstrap on flash)
   --on-flash-verify
                   Compare firmware by reading flash over USB (slower, more
                   thorough). Default uses runtime mDNS config_hash (same as
                   iotstack devices --production).
-  --erase         Wipe flash partitions then reflash (skip hash comparison)
+  --erase         Wipe flash partitions then reflash bootstrap via serial
 
 Role-specific options (e.g. matrixdisplay HUB75 NVS layout):
 
@@ -38,23 +37,25 @@ NVS secrets (WiFi, OTA password, API key, matrix layout, etc.):
   WiFi (typical first serial provision) or the API is unavailable.
 
 Smart flash (default):
-  Assessment compares runtime config_hash from mDNS (fast). Production OTA
-  is skipped when the running firmware matches the compiled build. Serial
-  erase runs only when the on-device partition table or bootstrap image
-  differs from the current build.
+  1. Build bootstrap + production images (production is for OTA only).
+  2. Assess device (mDNS / optional USB read-flash verify).
+  3. Serial: partition table + bootstrap if needed (never production).
+  4. OTA production into the production partition from bootstrap.
 
-  Use --on-flash-verify to compare by reading the full production and
-  bootstrap partitions over USB instead (adds ~1-2 minutes but verifies
-  what is actually written to flash).
+  Production OTA is skipped when runtime config_hash already matches the
+  build. Serial erase/reflash runs only when the on-device partition table
+  or bootstrap image differs from the current build.
+
+  Use --on-flash-verify to compare by reading bootstrap/production partitions
+  over USB (adds ~1-2 minutes; production read is assessment only, not write).
 
 Examples:
-  iotstack flash bleproxy /dev/ttyUSB0           # Smart setup (recovery + prod)
-  iotstack flash bootstrap mmwave                 # Dual-flash: bootstrap + mmwave
-  iotstack flash bootstrap /dev/ttyUSB0           # Bootstrap image only
-  iotstack flash mmwave /dev/ttyACM0 --ota-only  # Skip recovery, OTA prod only
+  iotstack flash bleproxy /dev/ttyUSB0           # Serial bootstrap + OTA prod
+  iotstack flash bootstrap mmwave                 # Dual: serial bootstrap + OTA mmwave
+  iotstack flash bootstrap /dev/ttyUSB0           # Bootstrap serial only
+  iotstack flash mmwave /dev/ttyACM0 --ota-only  # OTA production only
   iotstack flash matrixdisplay help              # Role-specific flash options
   iotstack flash threadrouter                    # Auto-detect all USB devices
 
 For detailed help including architecture and timing, see:
   docs/help/iotstack-flash-detailed.txt
-
