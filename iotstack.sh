@@ -3818,18 +3818,21 @@ _nvs_update_via_bootstrap_api() {
 }
 
 _provision_device_nvs() {
-  # Write device NVS: API first, USB only when network path is unavailable.
+  # Write device NVS: API first when bootstrap is already on WiFi; USB otherwise.
+  # --erase: bootstrap cannot reach the API until WiFi creds exist in NVS, so USB
+  # is required before the bootstrap image is flashed and the device boots.
   # USB fallback warning is deferred until bootstrap WiFi init times out
-  # (_flash_bootstrap_await_wifi) so first provision is not diagnosed prematurely.
+  # (_flash_bootstrap_await_wifi), except on --erase where USB is expected.
   local tty_device="${1:-}"
   local device_mac="$2"
   local production_role="${3:-}"
   local json_vars
+  local defer_hard_reset=0
 
   IOTSTACK_NVS_PROVISIONED_VIA_USB=0
   json_vars=$(_nvs_secrets_api_json_payload "$device_mac" "$production_role") || return 1
 
-  if _nvs_update_via_bootstrap_api "$device_mac" "$json_vars"; then
+  if [[ "${FLASH_ERASE:-0}" != "1" ]] && _nvs_update_via_bootstrap_api "$device_mac" "$json_vars"; then
     ok "NVS updated via bootstrap API (device rebooting)"
     sleep 5
     _wait_for_device "$(iotstack_bootstrap_hostname "$device_mac")" 60 || true
@@ -3841,8 +3844,13 @@ _provision_device_nvs() {
     return 1
   fi
 
+  if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
+    info "NVS USB write required before bootstrap boot (--erase: WiFi credentials must be in NVS first)"
+    defer_hard_reset=1
+  fi
+
   IOTSTACK_NVS_PROVISIONED_VIA_USB=1
-  _flash_write_nvs_secrets_usb "$tty_device" "$device_mac" "$production_role"
+  _flash_write_nvs_secrets_usb "$tty_device" "$device_mac" "$production_role" "$defer_hard_reset"
 }
 
 _bootstrap_update_nvs_matrix_layout() {
@@ -3877,15 +3885,20 @@ _flash_write_nvs_secrets_usb() {
   local tty_device="$1"
   local device_mac="$2"
   local production_role="${3:-}"
+  local defer_hard_reset="${4:-0}"
+  local -a nvs_args=()
+
+  [[ "$defer_hard_reset" == "1" ]] && nvs_args+=(--no-hard-reset)
 
   info "Writing device-specific secrets to NVS via USB..."
   create_log_serial_capture_pause
   if create_log_child_output_piped; then
     create_log_run "write-nvs-secrets" "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" \
-      "$tty_device" "$device_mac" "$production_role" \
+      "${nvs_args[@]}" "$tty_device" "$device_mac" "$production_role" \
       || err "Failed to write NVS secrets to device"
   else
-    "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" "$tty_device" "$device_mac" "$production_role" \
+    "$SCRIPT_DIR/scripts/write-nvs-secrets.sh" \
+      "${nvs_args[@]}" "$tty_device" "$device_mac" "$production_role" \
       || err "Failed to write NVS secrets to device"
   fi
   ok "NVS secrets written successfully via USB"
@@ -4201,7 +4214,7 @@ _flash_bootstrap_await_wifi() {
     ok "Bootstrap OTA service reachable on WiFi"
     return 0
   fi
-  if [[ "${IOTSTACK_NVS_PROVISIONED_VIA_USB:-0}" == "1" ]]; then
+  if [[ "${IOTSTACK_NVS_PROVISIONED_VIA_USB:-0}" == "1" && "${FLASH_ERASE:-0}" != "1" ]]; then
     warn "Bootstrap API unavailable -- writing NVS via USB on ${tty_device} (required on first provision)"
   fi
   err "Bootstrap WiFi wait timed out (${_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}s) -- $(iotstack_bootstrap_hostname "$device_mac") OTA port 3232 not reachable"
@@ -4236,14 +4249,15 @@ _flash_msg_waiting_for_upload() {
 _flash_bootstrap_esptool() {
   # Serial flash only: bootloader, partition table, boot_app0, bootstrap app.
   # Production partition is never written over USB (OTA after bootstrap boots).
-  # Does not reset the chip -- write-nvs-secrets.sh hard-resets after NVS is written.
+  # Does not reset the chip -- write-nvs-secrets.sh or firmware write hard-resets.
   # Sets esptool_output. Usage: _flash_bootstrap_esptool <tty> <flash_log> <build_dir>
-  #   <bootstrap_offset> [erase:0|1]
+  #   <bootstrap_offset> [erase:0|1] [include_firmware:0|1]
   local tty_device="$1"
   local flash_log="$2"
   local build_dir="$3"
   local bootstrap_offset="$4"
   local erase_flash="${5:-1}"
+  local include_firmware="${6:-1}"
   local esptool_chip="${IOTSTACK_ESPTOOL_CHIP:-esp32c6}"
   local flash_label="${IOTSTACK_BOOTSTRAP_FLASH_SIZE:-4MB}"
   local esptool_baud
@@ -4300,7 +4314,44 @@ _flash_bootstrap_esptool() {
   if [[ -n "$boot_app0" ]]; then
     _flash_esptool_write_step "boot_app0.bin" no-reset 0xd000 "$boot_app0"
   fi
-  _flash_esptool_write_step "firmware.bin" no-reset "$bootstrap_offset" "$build_dir/firmware.bin"
+  if [[ "$include_firmware" == "1" ]]; then
+    _flash_esptool_write_step "firmware.bin" no-reset "$bootstrap_offset" "$build_dir/firmware.bin"
+    esptool_output="$create_log_esptool_output"
+  fi
+  create_log_serial_capture_resume
+}
+
+_flash_bootstrap_esptool_write_firmware() {
+  # Write bootstrap firmware.bin after NVS is populated (--erase first provision).
+  # Usage: _flash_bootstrap_esptool_write_firmware <tty> <flash_log> <build_dir>
+  #   <bootstrap_offset> [after_reset:no-reset|hard-reset]
+  local tty_device="$1"
+  local flash_log="$2"
+  local build_dir="$3"
+  local bootstrap_offset="$4"
+  local after_reset="${5:-no-reset}"
+  local esptool_chip="${IOTSTACK_ESPTOOL_CHIP:-esp32c6}"
+  local flash_label="${IOTSTACK_BOOTSTRAP_FLASH_SIZE:-4MB}"
+  local esptool_baud
+  esptool_baud=$(esp_esptool_baud_for_chip "$esptool_chip")
+  local esptool_src="esptool:${esptool_chip}"
+  local -a esptool_base_args=(
+    --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud"
+  )
+  local -a write_flash_opts=(
+    write-flash --flash-mode dio --flash-size "$flash_label" --flash-freq 40m
+  )
+
+  create_log_serial_capture_pause
+  info "Writing firmware.bin (${esptool_chip}, ${esptool_baud} baud)..."
+  local step_start=$SECONDS
+  create_log_run_esptool "$esptool_src" "$flash_log" \
+    "${esptool_base_args[@]}" \
+    --before no-reset --after "$after_reset" \
+    "${write_flash_opts[@]}" \
+    "$bootstrap_offset" "$build_dir/firmware.bin" \
+    || err "firmware.bin write failed"
+  info "firmware.bin write completed in $((SECONDS - step_start))s"
   esptool_output="$create_log_esptool_output"
   create_log_serial_capture_resume
 }
@@ -4454,22 +4505,44 @@ _flash_bootstrap_to_tty() {
         info "On-device partition table differs from build -- serial upload required"
       fi
     fi
-    _flash_bootstrap_esptool "$tty_device" "$flash_log" "$build_dir" "$bootstrap_offset" "$FLASH_ASSESS_NEED_ERASE"
-    device_mac=$(esp_mac_suffix_resolve "$tty_device" "$create_log_esptool_output") \
-      || err "Failed to extract MAC address from device (try: esptool --port $tty_device chip-id)"
-    ok "Device ${device_mac} prepared for firmware update"
+    if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
+      _flash_bootstrap_esptool "$tty_device" "$flash_log" "$build_dir" "$bootstrap_offset" \
+        "$FLASH_ASSESS_NEED_ERASE" 0
+      device_mac=$(esp_mac_suffix_resolve "$tty_device") \
+        || err "Failed to extract MAC address from device (try: esptool --port $tty_device chip-id)"
 
-    _flash_nvs_step_begin
-    _provision_device_nvs "$tty_device" "$device_mac" "$production_role" || \
-      err "Failed to provision device NVS"
+      _flash_nvs_step_begin
+      _provision_device_nvs "$tty_device" "$device_mac" "$production_role" || \
+        err "Failed to provision device NVS"
 
-    info "Waiting for device to boot..."
-    sleep 3
+      _flash_bootstrap_esptool_write_firmware "$tty_device" "$flash_log" "$build_dir" \
+        "$bootstrap_offset" hard-reset
+      ok "Device ${device_mac} prepared for firmware update"
 
-    if [[ -n "$device_mac" ]]; then
-      _flash_bootstrap_await_wifi "$device_mac" "$tty_device"
+      if [[ -n "$device_mac" ]]; then
+        _flash_bootstrap_await_wifi "$device_mac" "$tty_device"
+      else
+        err "MAC unknown after serial bootstrap flash -- cannot verify bootstrap WiFi"
+      fi
     else
-      err "MAC unknown after serial bootstrap flash -- cannot verify bootstrap WiFi"
+      _flash_bootstrap_esptool "$tty_device" "$flash_log" "$build_dir" "$bootstrap_offset" \
+        "$FLASH_ASSESS_NEED_ERASE"
+      device_mac=$(esp_mac_suffix_resolve "$tty_device" "$create_log_esptool_output") \
+        || err "Failed to extract MAC address from device (try: esptool --port $tty_device chip-id)"
+      ok "Device ${device_mac} prepared for firmware update"
+
+      _flash_nvs_step_begin
+      _provision_device_nvs "$tty_device" "$device_mac" "$production_role" || \
+        err "Failed to provision device NVS"
+
+      info "Waiting for device to boot..."
+      sleep 3
+
+      if [[ -n "$device_mac" ]]; then
+        _flash_bootstrap_await_wifi "$device_mac" "$tty_device"
+      else
+        err "MAC unknown after serial bootstrap flash -- cannot verify bootstrap WiFi"
+      fi
     fi
   fi
 

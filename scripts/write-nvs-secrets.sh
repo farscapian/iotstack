@@ -82,9 +82,15 @@ _get_or_generate_role_ota_password() {
 
 # Arguments
 PRINT_API_JSON=0
+DEFER_HARD_RESET=0
 TTY_DEVICE=""
 DEVICE_MAC=""
 PRODUCTION_ROLE=""
+
+if [[ "${1:-}" == "--no-hard-reset" ]]; then
+  DEFER_HARD_RESET=1
+  shift
+fi
 
 if [[ "${1:-}" == "--print-api-json" ]]; then
   PRINT_API_JSON=1
@@ -347,11 +353,15 @@ else
   err "Failed to write NVS partition to device"
 fi
 
-info "Rebooting device into firmware..."
-if ! esp_esptool_hard_reset "$TTY_DEVICE" "$ESPTOOL_CHIP"; then
-  err "Failed to reset device after NVS write (press the device RESET button and retry)"
+if [[ "${DEFER_HARD_RESET:-0}" == "1" ]]; then
+  info "Deferring device reset until bootstrap firmware is written"
+else
+  info "Rebooting device into firmware..."
+  if ! esp_esptool_hard_reset "$TTY_DEVICE" "$ESPTOOL_CHIP"; then
+    err "Failed to reset device after NVS write (press the device RESET button and retry)"
+  fi
+  ok "Device reset into firmware"
 fi
-ok "Device reset into firmware"
 
 # Cleanup temp files
 rm -f "$NVS_CSV_PATH" "$NVS_BIN_PATH"
