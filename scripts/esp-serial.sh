@@ -323,18 +323,92 @@ esp_esptool_hard_reset() {
   return 1
 }
 
-esp_boot_app0_bin_for_build() {
-  # boot_app0.bin at 0xd000 is required for OTA partition boot selection (Arduino layout).
+esp_esptool_flash_args_file_for_build() {
+  # First line of ESPHome/PlatformIO flash_args (mode, freq, size).
   local build_dir="$1"
   local candidate
 
   [[ -n "$build_dir" ]] || return 1
   for candidate in \
+    "${build_dir}/flash_args" \
+    "${build_dir}/flash_project_args"; do
+    [[ -f "$candidate" ]] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+esp_esptool_flash_param_from_file() {
+  # Read --flash_mode/--flash_freq/--flash_size value from flash_args first line.
+  local file="$1"
+  local key="$2"
+  local -a tokens=()
+  local i
+
+  [[ -f "$file" ]] || return 1
+  read -r -a tokens <"$file" || return 1
+  i=0
+  while (( i < ${#tokens[@]} )); do
+    if [[ "${tokens[i]}" == "$key" && $((i + 1)) -lt ${#tokens[@]} ]]; then
+      printf '%s' "${tokens[i + 1]}"
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
+esp_esptool_flash_params_for_build() {
+  # Set flash_mode, flash_freq, flash_size from build_dir flash_args when present.
+  # Usage: esp_esptool_flash_params_for_build <build_dir> mode_var freq_var size_var
+  local build_dir="$1"
+  local -n _mode_ref="$2"
+  local -n _freq_ref="$3"
+  local -n _size_ref="$4"
+  local flash_file
+
+  _mode_ref=dio
+  _freq_ref=40m
+  _size_ref="${IOTSTACK_BOOTSTRAP_FLASH_SIZE:-4MB}"
+
+  flash_file=$(esp_esptool_flash_args_file_for_build "$build_dir") || return 0
+
+  if mode=$(esp_esptool_flash_param_from_file "$flash_file" --flash_mode); then
+    _mode_ref="$mode"
+  fi
+  if freq=$(esp_esptool_flash_param_from_file "$flash_file" --flash_freq); then
+    _freq_ref="$freq"
+  fi
+  if size=$(esp_esptool_flash_param_from_file "$flash_file" --flash_size); then
+    _size_ref="$size"
+  fi
+}
+
+esp_ota_init_bin_for_build() {
+  # OTA slot init image at 0xd000: prefer build ota_data_initial.bin, else boot_app0.bin.
+  local build_dir="$1"
+  local candidate
+
+  [[ -n "$build_dir" ]] || return 1
+  for candidate in \
+    "${build_dir}/ota_data_initial.bin" \
     "${build_dir}/boot_app0.bin" \
     "${HOME}/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin"; do
     [[ -f "$candidate" ]] && { printf '%s\n' "$candidate"; return 0; }
   done
   return 1
+}
+
+esp_ota_init_bin_label() {
+  local path="$1"
+  case "$(basename "$path")" in
+    ota_data_initial.bin) printf 'ota_data_initial.bin' ;;
+    boot_app0.bin) printf 'boot_app0.bin' ;;
+    *) printf '%s' "$(basename "$path")" ;;
+  esac
+}
+
+esp_boot_app0_bin_for_build() {
+  esp_ota_init_bin_for_build "$@"
 }
 
 esp_mac_from_esptool_output() {

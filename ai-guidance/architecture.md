@@ -55,9 +55,9 @@ bootstrap.yaml,f9e3fc2375e6,cc50a183d757,3ea7c88a
 
 Override with `IOTSTACK_ESPTOOL_BAUD` for experiments. Flash logs include the baud in use.
 
-**Flash frequency:** builds record `--flash_freq` in `.pioenvs/<name>/flash_args` (often **80m** on ESP32-S3 DevKit). Manual esptool writes in `iotstack.sh` must match — see `gotchas.md` / `pitfalls.md`.
+**Flash params:** `esp_esptool_flash_params_for_build()` reads mode/freq/size from `.pioenvs/<name>/flash_args` (often **dio / 80m / 16MB** on ESP32-S3 DevKit). Used by `_flash_bootstrap_esptool` write-flash steps.
 
-Bootstrap serial flash writes `bootloader.bin`, `partitions.bin`, **OTA init at `0xd000`** (`ota_data_initial.bin` or `boot_app0.bin` fallback), and bootstrap `firmware.bin`.
+Bootstrap serial flash writes `bootloader.bin`, `partitions.bin`, **OTA init at `0xd000`** (`esp_ota_init_bin_for_build()`), and bootstrap `firmware.bin`.
 
 ### Session registry (agent monitoring)
 

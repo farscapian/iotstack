@@ -52,11 +52,11 @@ Every `iotstack` invocation appends one TSV line to `~/.iotstack/logs/sessions.w
 
 ### esptool flash frequency (ESP32-S3 / S2)
 
-Firmware builds emit `flash_args` with `--flash_freq 80m` for DevKit-class S3 boards. `iotstack.sh` currently hardcodes `--flash-freq 40m` on manual esptool writes — a mismatch can cause **ROM boot loops** after an otherwise successful USB flash (hash verified, but app never runs). Prefer reading flash params from the build's `flash_args` when fixing flash paths. See `pitfalls.md`.
+Firmware builds record `--flash_mode`, `--flash_freq`, and `--flash_size` on the first line of `.pioenvs/<name>/flash_args`. Bootstrap USB writes must match (e.g. **80m** on ESP32-S3 DevKit). `esp_esptool_flash_params_for_build()` in `scripts/esp-serial.sh` parses `flash_args` / `flash_project_args`; a past hardcoded **40m** mismatch caused **ROM boot loops** after hash-verified writes. See `pitfalls.md`.
 
 ### OTA init partition at `0xd000`
 
-ESPHome builds reference `ota_data_initial.bin` at `0xd000`. `esp_boot_app0_bin_for_build()` falls back to a generic Arduino `boot_app0.bin` when the build tree has no `boot_app0.bin` — content differs from `ota_data_initial.bin`. After `--erase`, wrong or generic otadata can contribute to boot-slot confusion; prefer build-generated `ota_data_initial.bin` when present.
+`esp_ota_init_bin_for_build()` prefers build `ota_data_initial.bin`, then `boot_app0.bin`, then the Arduino package fallback. Log labels use the basename actually flashed (`ota_data_initial.bin` vs `boot_app0.bin`).
 
 ### Matrix display panel layout (NVS, not config_hash)
 

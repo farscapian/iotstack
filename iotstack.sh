@@ -4094,16 +4094,18 @@ _flash_bootstrap_esptool() {
   local erase_flash="${5:-1}"
   local include_firmware="${6:-1}"
   local esptool_chip="${IOTSTACK_ESPTOOL_CHIP:-esp32c6}"
-  local flash_label="${IOTSTACK_BOOTSTRAP_FLASH_SIZE:-4MB}"
+  local flash_mode flash_freq flash_size
   local esptool_baud
   esptool_baud=$(esp_esptool_baud_for_chip "$esptool_chip")
+  esp_esptool_flash_params_for_build "$build_dir" flash_mode flash_freq flash_size
+  debug "esptool write-flash params: mode=${flash_mode} freq=${flash_freq} size=${flash_size}"
 
   local esptool_src="esptool:${esptool_chip}"
 
   create_log_serial_capture_pause
 
   if [[ "$erase_flash" == "1" ]]; then
-    info "Erasing flash memory (${esptool_chip}, ${flash_label}, ${esptool_baud} baud)..."
+    info "Erasing flash memory (${esptool_chip}, ${flash_size}, ${esptool_baud} baud)..."
     local erase_start=$SECONDS
     create_log_run_esptool "$esptool_src" "$flash_log" \
       --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud" \
@@ -4115,15 +4117,16 @@ _flash_bootstrap_esptool() {
     warn "Skipping flash erase (not required for this update)"
   fi
 
-  local boot_app0=""
-  boot_app0=$(esp_boot_app0_bin_for_build "$build_dir" 2>/dev/null) || true
-  [[ -z "$boot_app0" ]] && warn "boot_app0.bin not found -- device may not boot into bootstrap OTA slot"
+  local ota_init_bin="" ota_init_label="ota_data_initial.bin"
+  ota_init_bin=$(esp_ota_init_bin_for_build "$build_dir" 2>/dev/null) || true
+  [[ -z "$ota_init_bin" ]] && warn "OTA init image not found (ota_data_initial.bin / boot_app0.bin) -- device may not boot into bootstrap OTA slot"
+  [[ -n "$ota_init_bin" ]] && ota_init_label=$(esp_ota_init_bin_label "$ota_init_bin")
 
   local -a esptool_base_args=(
     --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud"
   )
   local -a write_flash_opts=(
-    write-flash --flash-mode dio --flash-size "$flash_label" --flash-freq 40m
+    write-flash --flash-mode "$flash_mode" --flash-size "$flash_size" --flash-freq "$flash_freq"
   )
   if [[ $VERBOSE -eq 1 ]] && ! create_log_enabled; then
     info "Detailed output: tail -f $flash_log"
@@ -4148,9 +4151,9 @@ _flash_bootstrap_esptool() {
     # USB CDC (S3/S2): batch layout images -- chained no-reset reconnects fail.
     local -a batch_args=(0x0 "$build_dir/bootloader.bin" 0x8000 "$build_dir/partitions.bin")
     local batch_label="bootloader.bin, partitions.bin"
-    if [[ -n "$boot_app0" ]]; then
-      batch_args+=(0xd000 "$boot_app0")
-      batch_label+=", boot_app0.bin"
+    if [[ -n "$ota_init_bin" ]]; then
+      batch_args+=(0xd000 "$ota_init_bin")
+      batch_label+=", ${ota_init_label}"
     fi
     if [[ "$include_firmware" == "1" ]]; then
       batch_args+=("$bootstrap_offset" "$build_dir/firmware.bin")
@@ -4161,8 +4164,8 @@ _flash_bootstrap_esptool() {
   else
     _flash_esptool_write_step "bootloader.bin" default-reset 0x0 "$build_dir/bootloader.bin"
     _flash_esptool_write_step "partitions.bin" no-reset 0x8000 "$build_dir/partitions.bin"
-    if [[ -n "$boot_app0" ]]; then
-      _flash_esptool_write_step "boot_app0.bin" no-reset 0xd000 "$boot_app0"
+    if [[ -n "$ota_init_bin" ]]; then
+      _flash_esptool_write_step "$ota_init_label" no-reset 0xd000 "$ota_init_bin"
     fi
     if [[ "$include_firmware" == "1" ]]; then
       _flash_esptool_write_step "firmware.bin" no-reset "$bootstrap_offset" "$build_dir/firmware.bin"
@@ -4187,15 +4190,17 @@ _flash_bootstrap_esptool_write_firmware() {
   local bootstrap_offset="$4"
   local after_reset="${5:-no-reset}"
   local esptool_chip="${IOTSTACK_ESPTOOL_CHIP:-esp32c6}"
-  local flash_label="${IOTSTACK_BOOTSTRAP_FLASH_SIZE:-4MB}"
+  local flash_mode flash_freq flash_size
   local esptool_baud
   esptool_baud=$(esp_esptool_baud_for_chip "$esptool_chip")
+  esp_esptool_flash_params_for_build "$build_dir" flash_mode flash_freq flash_size
+  debug "esptool firmware write params: mode=${flash_mode} freq=${flash_freq} size=${flash_size}"
   local esptool_src="esptool:${esptool_chip}"
   local -a esptool_base_args=(
     --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud"
   )
   local -a write_flash_opts=(
-    write-flash --flash-mode dio --flash-size "$flash_label" --flash-freq 40m
+    write-flash --flash-mode "$flash_mode" --flash-size "$flash_size" --flash-freq "$flash_freq"
   )
 
   local before_mode
