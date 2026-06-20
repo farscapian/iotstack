@@ -6,6 +6,31 @@
 - **CLI entrypoint:** `~/.local/bin/iotstack` -> symlinks to `iotstack.sh` in that repo
 - **Grok/Cursor session clones:** `~/.grok/worktrees/mini-projects-iotstack/<session-id>/` (isolated full git clones for agent sessions; not linked `git worktree` entries)
 - **Before testing fixes on Sync:** `git pull origin main` -- stale trees produce confusing output (e.g. `--erase` appearing to do nothing when the fix is not yet pulled)
+- **Handoff between trees:** `origin/main` -- agents publish into it; humans pull it on Sync; new sessions session-sync from it
+
+## Who edits where
+
+| Role | Edit here | Why |
+|------|-----------|-----|
+| Grok/Cursor agent (active session) | `~/.grok/worktrees/mini-projects-iotstack/<session-id>/` | Isolated workspace; commits and publish without touching your daily tree |
+| Human (manual work) | `~/Sync/mini_projects/iotstack` | Canonical repo; `~/.local/bin/iotstack` runs from here |
+
+**Rule of thumb:** agents write the Grok session clone; humans write Sync. Do not edit the active Grok clone by hand during an agent session.
+
+**Agent write access:** treat the open session clone as agent-owned for the duration of the session. No special file permissions required -- avoid parallel human edits in that directory instead.
+
+**Human manual edits:** use Sync. Edit, test with `iotstack`, commit, `git push origin main`. Then session-sync any active Grok clone so the agent sees your commits:
+
+```bash
+~/Sync/mini_projects/iotstack/scripts/init_grok_session.sh \
+  ~/.grok/worktrees/mini-projects-iotstack/<session-id>
+```
+
+**Mid-session human intervention:** prefer telling the agent what to change. If you must edit git-tracked files yourself, edit Sync, push, then session-sync the Grok clone -- do not patch the Grok clone directly.
+
+**When editing the Grok clone by hand is acceptable:** throwaway experiments, a session that is already finished, or running `init_grok_session.sh` (expected).
+
+**Testing agent changes:** `iotstack` always runs from Sync. After the agent publishes, pull on Sync (or let publish do it), then test. Flashing against an unpulled Sync tree is a common source of false failures.
 
 ## AI git workflow
 
@@ -51,21 +76,34 @@ git pull origin main
 
 **Humans editing Sync directly:** `git push origin main` from Sync, then session sync in any active Grok clone.
 
+## End-to-end (quick reference)
+
+**Start a Grok session**
+1. Open the session folder in Cursor/Grok
+2. Run `scripts/init_grok_session.sh` (session sync + goal prompt + agent tips)
+3. Paste the suggested first message into the agent (task + 1-3 `ai-guidance/` files to read)
+
+**During the session**
+- Agent edits and commits only in the Grok session clone
+- Human does not edit that clone by hand; use Sync for manual work (push + session-sync to refresh the agent)
+
+**After agent work**
+- Agent publishes (push from Grok clone, pull on Sync)
+- Human continues on Sync for CLI, flash, and follow-up edits
+
+**Human-only work (no agent)**
+- Edit, commit, and push from Sync only
+- Next agent session picks up your commits via `init_grok_session.sh`
+
 ## Grok session clones
 
-Grok/Cursor agent sessions work in an isolated clone under:
-
-```text
-~/.grok/worktrees/mini-projects-iotstack/<session-id>/
-```
-
-List session directories:
+Session directories:
 
 ```bash
 ls -la ~/.grok/worktrees/mini-projects-iotstack/
 ```
 
-`git worktree list` inside any clone shows only that clone (these are separate repos, not linked git worktrees). The `iotstack` CLI always runs from `~/Sync/mini_projects/iotstack`.
+These are separate full git clones, not linked `git worktree` entries (`git worktree list` shows only the current clone).
 
 ## Git and commit policy
 
@@ -75,13 +113,18 @@ ls -la ~/.grok/worktrees/mini-projects-iotstack/
 
 **Human override:** skip or defer commit/push when the human requests it (e.g. experimental WIP).
 
-### Commit workflow (any clone)
+### Commit workflow
 
-1. Make code changes (Grok clone or Sync)
-2. Stage changes (`git add`)
-3. Commit with a clear message
-4. Publish (Grok clone: push then pull on Sync; Sync-only: push then session sync in active Grok clones)
-5. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate -- firmware picks up the tag on next compile
+**Agent (Grok session clone)**
+1. Make code changes in the session clone
+2. `git add` and commit
+3. Publish: `git push origin main`, then `git pull origin main` on Sync
+4. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate -- firmware picks up the tag on next compile
+
+**Human (Sync repo)**
+1. Make code changes on Sync
+2. `git add`, commit, `git push origin main`
+3. Session-sync any active Grok clone (`init_grok_session.sh`) before resuming agent work there
 
 ## Research FIRST, then debug
 
