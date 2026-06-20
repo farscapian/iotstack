@@ -4233,7 +4233,7 @@ _flash_bootstrap_esptool() {
       --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud" \
       --before default-reset --after no-reset erase-flash \
       || err "Erase failed"
-    ok "Flash memory erased in $((SECONDS - erase_start))s"
+    info "Flash erase completed in $((SECONDS - erase_start))s"
     sleep 3
   else
     warn "Skipping flash erase (not required for this update)"
