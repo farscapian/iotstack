@@ -27,6 +27,7 @@ Changes applied during the split:
 | Internal `#anchor` links across old sections | Updated to `ai-guidance/<file>.md` paths |
 | `### References` under Code Quality | Moved to `references.md` only |
 | Partition offset "see CLAUDE.md" | Points to `partitions.md` |
+| `nvs-secrets.md` ignored by `*secret*` rule | `.gitignore` exception added for `ai-guidance/nvs-secrets.md` |
 
 ### Suggested load patterns
 
