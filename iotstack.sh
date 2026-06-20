@@ -26,7 +26,7 @@ err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
 ok()   { [[ $QUIET -eq 0 ]] && echo -e "${GRN}[OK]${RST} $*"; return 0; }
 warn() { [[ $QUIET -eq 0 ]] && echo -e "${YLW}[WARN]${RST} $*"; return 0; }
 info() { [[ $QUIET -eq 0 ]] && echo -e "${BLU}[INFO]${RST} $*"; return 0; }
-debug() { [[ $VERBOSE -eq 1 ]] && [[ $QUIET -eq 0 ]] && echo -e "${DIM}[DEBUG]${RST} $*"; return 0; }
+debug() { [[ $VERBOSE -eq 1 ]] && [[ $QUIET -eq 0 ]] && echo -e "${DIM}[DEBUG]${RST} $*" >&2; return 0; }
 
 # Forward iotstack global flags to update_devices.sh.
 _update_devices_inherited_flags() {
@@ -80,7 +80,10 @@ _current_config_hash_for_yaml() {
 
   if [[ -n "$device_name" ]] && _is_bootstrap_yaml "$yaml_file"; then
     firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
-    [[ -f "$firmware_bin" ]] && _sync_bootstrap_partition_table_from_build || true
+    if [[ -f "$firmware_bin" ]]; then
+      # Side-effect only; must not write to stdout (hash capture uses command substitution).
+      _sync_bootstrap_partition_table_from_build >/dev/null
+    fi
   fi
 
   compile_yaml=$(iotstack_prepare_compile_yaml "$yaml_file") || return 1
@@ -565,7 +568,7 @@ err()  { _iotstack_log_plain "ERROR" "$@"; _iotstack_echo stderr "${RED}[ERROR]$
 ok()   { [[ $QUIET -eq 0 ]] && { _iotstack_log_plain "OK" "$@"; _iotstack_echo stdout "${GRN}[OK]${RST} $*"; }; return 0; }
 warn() { [[ $QUIET -eq 0 ]] && { _iotstack_log_plain "WARN" "$@"; _iotstack_echo stdout "${YLW}[WARN]${RST} $*"; }; return 0; }
 info() { [[ $QUIET -eq 0 ]] && { _iotstack_log_plain "INFO" "$@"; _iotstack_echo stdout "${BLU}[INFO]${RST} $*"; }; return 0; }
-debug() { [[ $VERBOSE -eq 1 && $QUIET -eq 0 ]] && { _iotstack_log_plain "DEBUG" "$@"; _iotstack_echo stdout "${DIM}[DEBUG]${RST} $*"; }; return 0; }
+debug() { [[ $VERBOSE -eq 1 && $QUIET -eq 0 ]] && { _iotstack_log_plain "DEBUG" "$@"; _iotstack_echo stderr "${DIM}[DEBUG]${RST} $*"; }; return 0; }
 
 _run_update_devices() {
   if create_log_child_output_piped; then
@@ -4141,14 +4144,30 @@ _flash_bootstrap_esptool() {
     info "${step_name} write completed in $((SECONDS - step_start))s"
   }
 
-  _flash_esptool_write_step "bootloader.bin" default-reset 0x0 "$build_dir/bootloader.bin"
-  _flash_esptool_write_step "partitions.bin" no-reset 0x8000 "$build_dir/partitions.bin"
-  if [[ -n "$boot_app0" ]]; then
-    _flash_esptool_write_step "boot_app0.bin" no-reset 0xd000 "$boot_app0"
-  fi
-  if [[ "$include_firmware" == "1" ]]; then
-    _flash_esptool_write_step "firmware.bin" no-reset "$bootstrap_offset" "$build_dir/firmware.bin"
-    esptool_output="$create_log_esptool_output"
+  if esp_esptool_usb_cdc_chip "$esptool_chip"; then
+    # USB CDC (S3/S2): batch layout images -- chained no-reset reconnects fail.
+    local -a batch_args=(0x0 "$build_dir/bootloader.bin" 0x8000 "$build_dir/partitions.bin")
+    local batch_label="bootloader.bin, partitions.bin"
+    if [[ -n "$boot_app0" ]]; then
+      batch_args+=(0xd000 "$boot_app0")
+      batch_label+=", boot_app0.bin"
+    fi
+    if [[ "$include_firmware" == "1" ]]; then
+      batch_args+=("$bootstrap_offset" "$build_dir/firmware.bin")
+      batch_label+=", firmware.bin"
+    fi
+    _flash_esptool_write_step "$batch_label" default-reset "${batch_args[@]}"
+    [[ "$include_firmware" == "1" ]] && esptool_output="$create_log_esptool_output"
+  else
+    _flash_esptool_write_step "bootloader.bin" default-reset 0x0 "$build_dir/bootloader.bin"
+    _flash_esptool_write_step "partitions.bin" no-reset 0x8000 "$build_dir/partitions.bin"
+    if [[ -n "$boot_app0" ]]; then
+      _flash_esptool_write_step "boot_app0.bin" no-reset 0xd000 "$boot_app0"
+    fi
+    if [[ "$include_firmware" == "1" ]]; then
+      _flash_esptool_write_step "firmware.bin" no-reset "$bootstrap_offset" "$build_dir/firmware.bin"
+      esptool_output="$create_log_esptool_output"
+    fi
   fi
   create_log_serial_capture_resume
 }
@@ -4174,12 +4193,15 @@ _flash_bootstrap_esptool_write_firmware() {
     write-flash --flash-mode dio --flash-size "$flash_label" --flash-freq 40m
   )
 
+  local before_mode
+  before_mode=$(esp_esptool_chained_before_mode "$esptool_chip")
+
   create_log_serial_capture_pause
   info "Writing firmware.bin (${esptool_chip}, ${esptool_baud} baud)..."
   local step_start=$SECONDS
   create_log_run_esptool "$esptool_src" "$flash_log" \
     "${esptool_base_args[@]}" \
-    --before no-reset --after "$after_reset" \
+    --before "$before_mode" --after "$after_reset" \
     "${write_flash_opts[@]}" \
     "$bootstrap_offset" "$build_dir/firmware.bin" \
     || err "firmware.bin write failed"

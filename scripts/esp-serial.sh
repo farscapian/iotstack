@@ -271,6 +271,24 @@ esp_serial_tty_blocked_processes() {
   done < <(lsof "$tty" 2>/dev/null | tail -n +2 || true)
 }
 
+esp_esptool_usb_cdc_chip() {
+  # USB CDC/JTAG targets (S3/S2 DevKit): chained --before no-reset often loses the stub.
+  case "${1:-}" in
+    esp32s3|esp32s2) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+esp_esptool_chained_before_mode() {
+  # --before mode for follow-on esptool writes in the same flash session.
+  local chip="${1:-}"
+  if esp_esptool_usb_cdc_chip "$chip"; then
+    printf '%s\n' default-reset
+  else
+    printf '%s\n' no-reset
+  fi
+}
+
 esp_esptool_baud_for_chip() {
   # Flash/probe baud rate per chip family.
   # ESP32-C6 (XIAO): 9600 only -- higher rates corrupt large firmware transfers.
