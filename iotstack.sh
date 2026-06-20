@@ -4402,11 +4402,9 @@ _flash_bootstrap_to_tty() {
     sleep 3
 
     if [[ -n "$device_mac" ]]; then
-      if _wait_for_bootstrap_wifi_ready "$device_mac" "$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC" "$tty_device"; then
-        ok "Bootstrap OTA service reachable on WiFi"
-      else
-        warn "Bootstrap WiFi wait timed out (${_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}s); proceeding"
-      fi
+      _wait_for_bootstrap_wifi_ready "$device_mac" "$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC" "$tty_device" \
+        || err "Bootstrap WiFi wait timed out (${_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}s) -- $(iotstack_bootstrap_hostname "$device_mac") OTA port 3232 not reachable"
+      ok "Bootstrap OTA service reachable on WiFi"
     fi
   else
     if [[ "${FLASH_ERASE:-0}" != "1" ]]; then
@@ -4428,13 +4426,11 @@ _flash_bootstrap_to_tty() {
     sleep 3
 
     if [[ -n "$device_mac" ]]; then
-      if _wait_for_bootstrap_wifi_ready "$device_mac" "$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC" "$tty_device"; then
-        ok "Bootstrap OTA service reachable on WiFi"
-      else
-        warn "Bootstrap WiFi wait timed out (${_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}s); proceeding"
-      fi
+      _wait_for_bootstrap_wifi_ready "$device_mac" "$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC" "$tty_device" \
+        || err "Bootstrap WiFi wait timed out (${_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}s) -- $(iotstack_bootstrap_hostname "$device_mac") OTA port 3232 not reachable"
+      ok "Bootstrap OTA service reachable on WiFi"
     else
-      warn "MAC unknown -- skipping bootstrap WiFi wait"
+      err "MAC unknown after serial bootstrap flash -- cannot verify bootstrap WiFi"
     fi
   fi
 
