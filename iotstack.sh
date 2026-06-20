@@ -4999,7 +4999,6 @@ cmd_logs() {
   if [[ "${pos[0]}" == /dev/* ]]; then
     local port="${pos[0]}"
     [[ -e "$port" ]] || err "Serial device not found: $port"
-    info "Streaming serial logs from $port (Ctrl-C to stop)..."
     local py serial_source
     py=$(head -1 "$(command -v esphome)" 2>/dev/null | sed 's/^#!//')
     [[ -x "$py" ]] || py="python3"
@@ -5009,7 +5008,14 @@ cmd_logs() {
         | create_log_tee_console "$serial_source"
       exit "${PIPESTATUS[0]}"
     fi
-    exec "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" "$port"
+    # No --log-id: auto-create a timestamped log file alongside other iotstack logs.
+    local port_basename logs_file
+    port_basename="${port##*/}"
+    logs_file="${LOGS_DIR}/iotstack-logs-${port_basename}.log"
+    info "Streaming serial logs from $port (Ctrl-C to stop)..."
+    info "Log file: $logs_file"
+    exec "$py" -u "${SCRIPT_DIR}/scripts/serial-logs.py" "$port" \
+      --timestamps --log-file "$logs_file"
   fi
 
   # -- Network: [mac ...] <role> via esphome logs --
