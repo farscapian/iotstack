@@ -368,8 +368,12 @@ create_log_serial_capture_enabled() {
 
 create_log_serial_capture_stop() {
   if [[ -n "${IOTSTACK_SERIAL_LOG_PID:-}" ]]; then
-    kill "$IOTSTACK_SERIAL_LOG_PID" 2>/dev/null || true
-    wait "$IOTSTACK_SERIAL_LOG_PID" 2>/dev/null || true
+    local pid="$IOTSTACK_SERIAL_LOG_PID"
+    kill -TERM -"$pid" 2>/dev/null \
+      || { declare -F esp_serial_kill_process_tree &>/dev/null \
+        && esp_serial_kill_process_tree "$pid"; } \
+      || kill -TERM "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
     unset IOTSTACK_SERIAL_LOG_PID
   fi
 }
@@ -388,6 +392,9 @@ create_log_serial_capture_start() {
   create_log_serial_capture_enabled || return 0
   [[ -n "$tty" ]] || return 0
 
+  if declare -F esp_serial_clear_tty_interference &>/dev/null; then
+    esp_serial_clear_tty_interference "$tty"
+  fi
   create_log_serial_capture_stop
 
   log_file="${IOTSTACK_HOME}/logs/iotstack-${IOTSTACK_LOG_ID}-serial.log"
@@ -412,11 +419,10 @@ create_log_serial_capture_start() {
   stamp_py="$IOTSTACK_LOG_STAMP"
   baud="${IOTSTACK_SERIAL_MONITOR_BAUD:-115200}"
 
-  (
-    "$py" -u "${SCRIPT_DIR}/scripts/serial-logs.py" --reconnect "$tty" "$baud" 2>&1 \
-      | stdbuf -oL -eL python3 -u "$stamp_py" \
-          --source "$source" --log-file "$log_file" --log-only
-  ) &
+  setsid bash -c '
+    exec "$0" -u "$1" --reconnect "$2" "$3" 2>&1 \
+      | stdbuf -oL -eL python3 -u "$4" --source "$5" --log-file "$6" --log-only
+  ' "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" "$tty" "$baud" "$stamp_py" "$source" "$log_file" &
   IOTSTACK_SERIAL_LOG_PID=$!
   export IOTSTACK_SERIAL_LOG_PID
 }

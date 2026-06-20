@@ -303,49 +303,32 @@ _compilation_cache_update_notice() {
 }
 
 _check_serial_port_in_use() {
-  # Check if serial port is already open by screen, minicom, picocom, or other tools
+  # Free the port from stale iotstack captures, then fail on non-iotstack holders.
   local tty_device="$1"
+  local processes pid cmd kill_cmd
 
   debug "_check_serial_port_in_use: checking $tty_device"
 
-  # Try lsof first (most reliable)
+  if [[ -n "${IOTSTACK_FLASH_SERIAL_TTY:-}" && "$IOTSTACK_FLASH_SERIAL_TTY" == "$tty_device" \
+      && -n "${IOTSTACK_SERIAL_LOG_PID:-}" ]]; then
+    debug "Pausing device serial log capture for esptool on $tty_device..."
+    create_log_serial_capture_pause
+    sleep 1
+    return 0
+  fi
+
+  esp_serial_clear_tty_interference "$tty_device"
+
   if command -v lsof &>/dev/null; then
-    debug "_check_serial_port_in_use: lsof found"
-    local processes
-    debug "_check_serial_port_in_use: running lsof..."
-    processes=$(lsof "$tty_device" 2>/dev/null | tail -n +2 || true)  # Skip header, allow failure
-    debug "_check_serial_port_in_use: lsof completed, processes='$processes'"
+    processes=$(esp_serial_tty_blocked_processes "$tty_device" || true)
     if [[ -n "$processes" ]]; then
-      # Extract PID and command for better error message
-      local pid
-      pid=$(echo "$processes" | awk '{print $2}' | head -1)
-      local cmd
-      cmd=$(echo "$processes" | awk '{print $1}' | head -1)
-
-      # If it's an iotstack logs session (serial-logs.py), kill it automatically
-      # so flash can proceed without user intervention.
-      local full_cmdline
-      full_cmdline=$(ps -p "$pid" -o args= 2>/dev/null || true)
-      if [[ "$full_cmdline" == *"serial-logs.py"* ]]; then
-        if [[ -n "${IOTSTACK_FLASH_SERIAL_TTY:-}" && "$IOTSTACK_FLASH_SERIAL_TTY" == "$tty_device" ]]; then
-          debug "Pausing device serial log capture for esptool on $tty_device..."
-          create_log_serial_capture_pause
-          sleep 1
-          return 0
-        fi
-        info "Killing iotstack logs on $tty_device (pid $pid) to free port for flash..."
-        kill "$pid" 2>/dev/null || true
-        sleep 1
-        return 0
-      fi
-
-      local kill_cmd=""
+      pid=$(awk '{print $2}' <<<"$processes" | head -1)
+      cmd=$(awk '{print $1}' <<<"$processes" | head -1)
       if [[ "$cmd" == "screen" ]]; then
         kill_cmd="screen -X -S $pid quit"
       else
         kill_cmd="kill -9 $pid"
       fi
-
       err "Serial port $tty_device is already in use:
 $processes
 
@@ -357,12 +340,10 @@ Or manually: press Ctrl+A then D to detach screen, then run the command above."
     return 0
   fi
 
-  # Fallback to fuser if lsof is not available
   if command -v fuser &>/dev/null; then
     if fuser "$tty_device" >/dev/null 2>&1; then
       warn "Serial port $tty_device may be in use. Close any open terminal sessions before flashing."
     fi
-    return 0
   fi
 }
 

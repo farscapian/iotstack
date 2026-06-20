@@ -9,11 +9,192 @@ _ESP_SERIAL_LOADED=1
 # Cached mapping: esp32c6=/dev/ttyACM0 (written by esp_serial_scan)
 export ESP_SERIAL_MAP="${ESP_SERIAL_MAP:-${ARTIFACTS_DIR}/serial-port-map.env}"
 
+_esp_serial_log() {
+  local level="$1"
+  shift
+  case "$level" in
+    info)
+      if declare -F info &>/dev/null; then info "$@"; else echo "[INFO] $*" >&2; fi
+      ;;
+    warn)
+      if declare -F warn &>/dev/null; then warn "$@"; else echo "[WARN] $*" >&2; fi
+      ;;
+    *)
+      echo "[$level] $*" >&2
+      ;;
+  esac
+}
+
 esp_serial_ports() {
   local dev
   for dev in /dev/ttyACM* /dev/ttyUSB*; do
     [[ -e "$dev" ]] && printf '%s\n' "$dev"
   done
+}
+
+esp_serial_process_cmdline() {
+  local pid="$1"
+  ps -p "$pid" -o args= 2>/dev/null || true
+}
+
+esp_serial_pid_in_tree() {
+  # True when check_pid is root_pid or a descendant.
+  local root_pid="$1"
+  local check_pid="$2"
+  local child
+
+  [[ -n "$root_pid" && -n "$check_pid" ]] || return 1
+  [[ "$root_pid" -eq "$check_pid" ]] && return 0
+  while IFS= read -r child; do
+    [[ -z "$child" ]] && continue
+    esp_serial_pid_in_tree "$child" "$check_pid" && return 0
+  done < <(pgrep -P "$root_pid" 2>/dev/null || true)
+  return 1
+}
+
+esp_serial_kill_process_tree() {
+  local pid="$1"
+  local child
+
+  [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] || return 0
+  while IFS= read -r child; do
+    [[ -z "$child" ]] && continue
+    esp_serial_kill_process_tree "$child"
+  done < <(pgrep -P "$pid" 2>/dev/null || true)
+  kill -TERM "$pid" 2>/dev/null || true
+}
+
+esp_serial_is_iotstack_serial_holder() {
+  local cmdline="$1"
+  [[ "$cmdline" == *"serial-logs.py"* ]] \
+    || { [[ "$cmdline" == *"log-stamp.py"* ]] && [[ "$cmdline" == *"serial:"* ]]; }
+}
+
+esp_serial_is_iotstack_flash_on_tty() {
+  local cmdline="$1"
+  local tty="$2"
+  [[ "$cmdline" == *"iotstack"* && "$cmdline" == *" flash "* && "$cmdline" == *"$tty"* ]]
+}
+
+esp_serial_tty_holder_pids() {
+  # PIDs with the TTY open (lsof), one per line.
+  local tty="$1"
+  local line pid
+
+  [[ -n "$tty" && -e "$tty" ]] || return 0
+  command -v lsof &>/dev/null || return 0
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    pid=$(awk '{print $2}' <<<"$line")
+    [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] && printf '%s\n' "$pid"
+  done < <(lsof -t "$tty" 2>/dev/null | sort -u || true)
+}
+
+esp_serial_iotstack_serial_pids_on_tty() {
+  # serial-logs.py / serial log-stamp.py targeting tty, even if lsof missed them.
+  local tty="$1"
+  local pid cmdline
+
+  [[ -n "$tty" ]] || return 0
+  while IFS= read -r pid; do
+    [[ -z "$pid" ]] && continue
+    cmdline=$(esp_serial_process_cmdline "$pid")
+    [[ -z "$cmdline" ]] && continue
+    if esp_serial_is_iotstack_serial_holder "$cmdline" && [[ "$cmdline" == *"$tty"* ]]; then
+      printf '%s\n' "$pid"
+    fi
+  done < <(pgrep -f 'serial-logs\.py|log-stamp\.py' 2>/dev/null || true)
+}
+
+esp_serial_stale_iotstack_flash_pids_on_tty() {
+  local tty="$1"
+  local pid cmdline
+
+  [[ -n "$tty" ]] || return 0
+  while IFS= read -r pid; do
+    [[ -z "$pid" || "$pid" -eq "$$" ]] && continue
+    cmdline=$(esp_serial_process_cmdline "$pid")
+    esp_serial_is_iotstack_flash_on_tty "$cmdline" "$tty" || continue
+    printf '%s\n' "$pid"
+  done < <(pgrep -f 'iotstack.* flash ' 2>/dev/null || true)
+}
+
+esp_serial_clear_tty_interference() {
+  # Stop iotstack-owned processes that block USB serial (stale logs, captures, stopped flash).
+  # Usage: esp_serial_clear_tty_interference <tty> [preserve_root_pid]
+  local tty="$1"
+  local preserve_root_pid="${2:-${IOTSTACK_SERIAL_LOG_PID:-}}"
+  local -a kill_pids=()
+  local pid cmdline state
+
+  [[ -n "$tty" && -e "$tty" ]] || return 0
+
+  while IFS= read -r pid; do
+    [[ -z "$pid" ]] && continue
+    [[ -n "$preserve_root_pid" ]] && esp_serial_pid_in_tree "$preserve_root_pid" "$pid" && continue
+    kill_pids+=("$pid")
+  done < <(esp_serial_iotstack_serial_pids_on_tty "$tty")
+
+  while IFS= read -r pid; do
+    [[ -z "$pid" ]] && continue
+    [[ -n "$preserve_root_pid" ]] && esp_serial_pid_in_tree "$preserve_root_pid" "$pid" && continue
+    kill_pids+=("$pid")
+  done < <(esp_serial_stale_iotstack_flash_pids_on_tty "$tty")
+
+  # serial-logs.py may be gone while log-stamp.py still runs in the pipeline.
+  while IFS= read -r pid; do
+    [[ -z "$pid" ]] && continue
+    [[ -n "$preserve_root_pid" ]] && esp_serial_pid_in_tree "$preserve_root_pid" "$pid" && continue
+    cmdline=$(esp_serial_process_cmdline "$pid")
+    esp_serial_is_iotstack_serial_holder "$cmdline" || continue
+    kill_pids+=("$pid")
+  done < <(esp_serial_tty_holder_pids "$tty")
+
+  if [[ ${#kill_pids[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  # Deduplicate PIDs.
+  local -A seen=()
+  local -a unique_pids=()
+  for pid in "${kill_pids[@]}"; do
+    [[ -n "${seen[$pid]:-}" ]] && continue
+    seen[$pid]=1
+    unique_pids+=("$pid")
+  done
+
+  for pid in "${unique_pids[@]}"; do
+    cmdline=$(esp_serial_process_cmdline "$pid")
+    state=$(ps -p "$pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+    if [[ "$state" == *T* ]]; then
+      kill -CONT "$pid" 2>/dev/null || true
+    fi
+    if esp_serial_is_iotstack_serial_holder "$cmdline"; then
+      _esp_serial_log info "Stopping stale iotstack serial capture on $tty (pid $pid)..."
+    elif esp_serial_is_iotstack_flash_on_tty "$cmdline" "$tty"; then
+      _esp_serial_log warn "Stopping stale iotstack flash on $tty (pid $pid)..."
+    fi
+    esp_serial_kill_process_tree "$pid"
+  done
+
+  sleep 1
+}
+
+esp_serial_tty_blocked_processes() {
+  # Non-iotstack processes still holding the TTY after cleanup (for error messages).
+  local tty="$1"
+  local line pid cmdline
+
+  [[ -n "$tty" && -e "$tty" ]] || return 0
+  command -v lsof &>/dev/null || return 0
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    pid=$(awk '{print $2}' <<<"$line")
+    cmdline=$(esp_serial_process_cmdline "$pid")
+    esp_serial_is_iotstack_serial_holder "$cmdline" && continue
+    esp_serial_is_iotstack_flash_on_tty "$cmdline" "$tty" && continue
+    printf '%s\n' "$line"
+  done < <(lsof "$tty" 2>/dev/null | tail -n +2 || true)
 }
 
 esp_esptool_baud_for_chip() {
@@ -93,16 +274,35 @@ esp_mac_suffix_resolve() {
 esp_esptool_chip_id() {
   # Run esptool chip-id with auto-reset. Tries 115200 then 9600 for detection.
   local port="$1"
-  local baud out
+  local baud out resume_capture=0 rc=1
 
   [[ -e "$port" ]] || return 1
 
+  if [[ -n "${IOTSTACK_FLASH_SERIAL_TTY:-}" && "$IOTSTACK_FLASH_SERIAL_TTY" == "$port" \
+      && -n "${IOTSTACK_SERIAL_LOG_PID:-}" ]] \
+      && declare -F create_log_serial_capture_pause &>/dev/null; then
+    create_log_serial_capture_pause
+    resume_capture=1
+    sleep 1
+  else
+    esp_serial_clear_tty_interference "$port"
+  fi
+
   for baud in 115200 9600 57600; do
     if out=$(python3 -m esptool --port "$port" --baud "$baud" --before default-reset chip-id 2>/dev/null); then
-      printf '%s' "$out"
-      return 0
+      rc=0
+      break
     fi
   done
+
+  if [[ $resume_capture -eq 1 ]] && declare -F create_log_serial_capture_resume &>/dev/null; then
+    create_log_serial_capture_resume
+  fi
+
+  if [[ $rc -eq 0 ]]; then
+    printf '%s' "$out"
+    return 0
+  fi
   return 1
 }
 
