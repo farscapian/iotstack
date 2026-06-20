@@ -129,12 +129,19 @@ TOKEN TIPS
   - End of session: "Commit and publish" -> push origin main,
     then git pull on ~/Sync/mini_projects/iotstack.
 
+WATCHING LIVE RUNS (when human flashes from Sync)
+  - Registry: ~/.iotstack/logs/sessions.watch (one TSV line per iotstack invocation)
+  - On new line: tail session_log + serial_log columns; see workflow.md § Watching live runs
+  - Typical logs: ~/.iotstack/logs/iotstack-<log-id>.log and iotstack-<log-id>-serial.log
+  - Stuck run: iotstack ps  |  stop all: iotstack kill  (do not kill unless asked)
+
 DO NOT
   - Start a session without session sync (stale clone -> wrong fixes).
   - Load nvs-secrets.md for unrelated flash bugs (large file).
   - Re-explain the AI git workflow every time (see ai-guidance/workflow.md).
   - git pull on Sync while any iotstack command is running (pgrep -af 'iotstack').
   - Run USB/serial tests on /dev/ttyACM0 while iotstack is active on that port.
+  - Wait for the human to paste flash logs if sessions.watch / log files are available.
 
 WHEN DONE (publish)
   git push origin main

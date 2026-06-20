@@ -38,6 +38,18 @@ iotstack reassign 8dfcac 0f4df4 mmwave
 iotstack update yamls/custom.yaml
 ```
 
+### Session logging and live monitoring
+
+| Command / file | Purpose |
+|----------------|---------|
+| `iotstack --log-id=<id> …` | Session log `~/.iotstack/logs/iotstack-<id>.log`; implies `-v` and `--create-log` |
+| `iotstack flash … --log-id=<id>` | Also captures device serial to `iotstack-<id>-serial.log` |
+| `~/.iotstack/logs/sessions.watch` | Append-only registry of every invocation (TSV) — agents tail this for new runs |
+| `iotstack ps` | List `pstree` of running sessions and detached helpers |
+| `iotstack kill` | Stop all running iotstack sessions and helper process trees |
+
+Agent workflow for watching runs: `ai-guidance/workflow.md` § Watching live iotstack runs.
+
 ### Implementation Details
 - `iotstack.sh` loads role list from `roles.conf`
 - Network type auto-detected: checks for `wifi:` or `openthread:` sections in YAML

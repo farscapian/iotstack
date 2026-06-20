@@ -14,3 +14,7 @@
 | Literal `\033[0;32m` in compile spinner | `printf` + single-quoted color vars | Use `$'\033[...]'` or `[INFO]` lines only |
 | `--panel-count=2` ignored when firmware current | Layout is NVS, not config_hash | Bootstrap NVS update path even when firmware matches |
 | Stale CLI behavior after fixes | Testing against unpulled `main` | `git pull origin main` on `~/Sync/mini_projects/iotstack` (or Grok clone behind Sync) |
+| ROM boot loop after USB flash (`entry 0x403c8914`, no app logs) | esptool `--flash-freq 40m` vs build `80m` in `flash_args` | Match build flash params; see `gotchas.md` |
+| Agent misses human's flash run | Not watching `sessions.watch` | Tail `~/.iotstack/logs/sessions.watch`; parse session/serial log paths — `workflow.md` |
+| Hung flash holds `/dev/ttyACM0` | Detached `serial-logs.py` in separate session | `iotstack ps` then `iotstack kill` |
+| Multiple `[OK] NVS` lines in session log | Nested `write-nvs-secrets.sh` + parent `iotstack.sh` messages | One NVS write; see session log sources in `workflow.md` |

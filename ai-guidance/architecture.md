@@ -55,7 +55,13 @@ bootstrap.yaml,f9e3fc2375e6,cc50a183d757,3ea7c88a
 
 Override with `IOTSTACK_ESPTOOL_BAUD` for experiments. Flash logs include the baud in use.
 
-Bootstrap serial flash writes `bootloader.bin`, `partitions.bin`, **`boot_app0.bin` at 0xd000**, and bootstrap `firmware.bin` -- `boot_app0` is required for OTA slot selection after erase.
+**Flash frequency:** builds record `--flash_freq` in `.pioenvs/<name>/flash_args` (often **80m** on ESP32-S3 DevKit). Manual esptool writes in `iotstack.sh` must match — see `gotchas.md` / `pitfalls.md`.
+
+Bootstrap serial flash writes `bootloader.bin`, `partitions.bin`, **OTA init at `0xd000`** (`ota_data_initial.bin` or `boot_app0.bin` fallback), and bootstrap `firmware.bin`.
+
+### Session registry (agent monitoring)
+
+`create_log_watch_append()` writes one TSV line per invocation to `~/.iotstack/logs/sessions.watch` (`IOTSTACK_SESSION_WATCH`). Agents use it to discover new runs and tail `session_log` / `serial_log` columns. Details: `workflow.md` § Watching live iotstack runs.
 
 ### YAML Configuration
 - ESPHome devices are configured via YAML files in `yamls/` (one file per role, e.g. `bleproxy.yaml`, `matrixdisplay.yaml`)

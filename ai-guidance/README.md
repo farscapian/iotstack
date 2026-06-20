@@ -33,7 +33,8 @@ Changes applied during the split:
 
 | Task type | Files |
 |-----------|-------|
-| Flash / serial / esptool | `workflow.md`, `gotchas.md`, `partitions.md`, `pitfalls.md` |
+| Flash / serial / esptool | `workflow.md` (live run watching), `gotchas.md`, `partitions.md`, `pitfalls.md` |
+| Human started a flash / watch logs | `workflow.md` § Watching live iotstack runs |
 | OTA / update / reassign | `architecture.md`, `features.md`, `gotchas.md` |
 | NVS / secrets / WiFi | `nvs-secrets.md`, `security.md`, `partitions.md` |
 | New shell script | `conventions.md`, `code-quality.md`, `implementation.md` |

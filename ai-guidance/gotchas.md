@@ -41,7 +41,22 @@ Bootstrap firmware advertises `_iotstack-bootstrap._tcp` (not `_esphomelib._tcp`
 
 During reassign OTA the discovered host is `bootstrap-<mac>`. Do **not** compare that host's mDNS `config_hash` to the production build hash -- bootstrap TXT carries the bootstrap image hash, not production. `update_devices.sh` always queues a production OTA in `--reassign` mode (no misleading `hash X -> Y` warn). Post-OTA success reporting falls back to build hash from `NEW_CONFIG_HASH`, `build_info.json`, or `compilation-cache.csv` (`image_hash` column via `_resolve_build_config_hash`) when the bootstrap host has no production hash.
 
-After USB bootstrap flash, WiFi readiness is detected by probing `bootstrap-<mac>.local:3232` (`_wait_for_bootstrap_wifi_ready`), not by a serial log line.
+After USB bootstrap flash, WiFi readiness is detected by probing `bootstrap-<mac>.local:3232` (`_wait_for_bootstrap_wifi_ready`), not by a serial log line. Default wait is **10s** (`_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC`) — sufficient only when bootstrap is already running; a **ROM boot loop** (repeating `ESP-ROM:esp32s3`, `entry 0x403c8914`, no `[nvs_secrets]` lines) means the app never started — do not blame WiFi timeout until serial shows bootstrap firmware booted.
+
+### Agent live-run watching (`sessions.watch`)
+
+Every `iotstack` invocation appends one TSV line to `~/.iotstack/logs/sessions.watch` (`IOTSTACK_SESSION_WATCH`). Agents should tail it for new runs, then tail the `session_log` and `serial_log` paths from that line. Full workflow: `workflow.md` § Watching live iotstack runs.
+
+- `iotstack ps` — process trees for active sessions + detached `serial-logs.py` / esptool helpers
+- `iotstack kill` — stop all of the above (SIGCONT stopped jobs, then SIGTERM/SIGKILL per process group)
+
+### esptool flash frequency (ESP32-S3 / S2)
+
+Firmware builds emit `flash_args` with `--flash_freq 80m` for DevKit-class S3 boards. `iotstack.sh` currently hardcodes `--flash-freq 40m` on manual esptool writes — a mismatch can cause **ROM boot loops** after an otherwise successful USB flash (hash verified, but app never runs). Prefer reading flash params from the build's `flash_args` when fixing flash paths. See `pitfalls.md`.
+
+### OTA init partition at `0xd000`
+
+ESPHome builds reference `ota_data_initial.bin` at `0xd000`. `esp_boot_app0_bin_for_build()` falls back to a generic Arduino `boot_app0.bin` when the build tree has no `boot_app0.bin` — content differs from `ota_data_initial.bin`. After `--erase`, wrong or generic otadata can contribute to boot-slot confusion; prefer build-generated `ota_data_initial.bin` when present.
 
 ### Matrix display panel layout (NVS, not config_hash)
 

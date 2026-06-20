@@ -10,13 +10,14 @@ ESP32 ESPHome device management. **Load topic files from `ai-guidance/` instead 
 - New Grok session: run `scripts/init_grok_session.sh` (session sync + agent tips; see `ai-guidance/workflow.md`)
 - After changes: commit in Grok clone, then publish (`git push origin main`; `git pull` on Sync only when no `iotstack` command is running)
 - Never `git pull` on Sync or test `/dev/ttyACM0` while the human has `iotstack` running (see `workflow.md`)
+- When the human runs `iotstack` on Sync: tail `~/.iotstack/logs/sessions.watch` for new runs, then their session/serial logs (`workflow.md` § Watching live runs)
 
 ## Topic index
 
 | File | Load when |
 |------|-----------|
 | [ai-guidance/conventions.md](ai-guidance/conventions.md) | Naming, ASCII-only text, CLI output tags |
-| [ai-guidance/workflow.md](ai-guidance/workflow.md) | Repos, Grok clones, git sync, commit/push policy |
+| [ai-guidance/workflow.md](ai-guidance/workflow.md) | Repos, Grok clones, git sync, `sessions.watch` live monitoring, `iotstack ps`/`kill` |
 | [ai-guidance/configuration.md](ai-guidance/configuration.md) | `~/.iotstack/.env`, compilation cache flags |
 | [ai-guidance/architecture.md](ai-guidance/architecture.md) | mDNS discovery, compile cache, YAML, project version |
 | [ai-guidance/features.md](ai-guidance/features.md) | Update subsets, delta OTA, reassign, verify, HA |
