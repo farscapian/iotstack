@@ -39,7 +39,8 @@ class NVSSecrets : public Component {
                       const std::string &matrix_cols = "",
                       const std::string &matrix_panel_w = "",
                       const std::string &matrix_panel_h = "",
-                      const std::string &device_role = "");
+                      const std::string &device_role = "",
+                      const std::string &git_commit = "");
 
  private:
   std::string ota_nvs_key_{"ota_password"};
@@ -49,6 +50,7 @@ class NVSSecrets : public Component {
   std::string ota_password_;
   std::string api_encryption_key_;
   std::string thread_tlv_;
+  std::string git_commit_;
   bool logged_status_ = false;
 
   std::string read_nvs_string(const char* key);

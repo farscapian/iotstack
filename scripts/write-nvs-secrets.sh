@@ -168,8 +168,11 @@ if [[ -n "$PRODUCTION_ROLE" ]]; then
   PROD_API_KEY=$(echo -n "${PROD_API_BASE}|${DEVICE_MAC}" | sha256sum | cut -c1-64)
 fi
 
+GIT_COMMIT=$(iotstack_git_commit_short)
+
 info "Device secrets ready"
 ok "Bootstrap OTA password: (derived)"
+ok "Git commit for NVS: ${GIT_COMMIT}"
 if [[ -n "$PRODUCTION_ROLE" ]]; then
   ok "Production API key: (derived for role: $PRODUCTION_ROLE)"
 fi
@@ -202,7 +205,7 @@ fi
 
 if [[ "$PRINT_API_JSON" == "1" ]]; then
   export WIFI_SSID WIFI_PASSWORD BOOTSTRAP_OTA_PASSWORD PROD_API_KEY THREAD_TLV \
-         WRITE_MATRIX_LAYOUT MATRIX_COLS MATRIX_PANEL_W MATRIX_PANEL_H PRODUCTION_ROLE
+         WRITE_MATRIX_LAYOUT MATRIX_COLS MATRIX_PANEL_W MATRIX_PANEL_H PRODUCTION_ROLE GIT_COMMIT
   python3 - <<'PY'
 import json, os
 
@@ -212,6 +215,7 @@ payload = {
     "ota_password": os.environ["BOOTSTRAP_OTA_PASSWORD"],
     "api_key": os.environ.get("PROD_API_KEY", ""),
     "thread_tlv": os.environ.get("THREAD_TLV", ""),
+    "git_commit": os.environ.get("GIT_COMMIT", ""),
 }
 if os.environ.get("WRITE_MATRIX_LAYOUT") == "1":
     payload["matrix_cols"] = os.environ.get("MATRIX_COLS", "1")
@@ -234,7 +238,7 @@ export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
        THREAD_TLV="$THREAD_TLV" DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE" \
        NVS_SIZE="$NVS_SIZE" WRITE_MATRIX_LAYOUT="$WRITE_MATRIX_LAYOUT" \
        MATRIX_COLS="${MATRIX_COLS:-}" MATRIX_PANEL_W="${MATRIX_PANEL_W:-}" MATRIX_PANEL_H="${MATRIX_PANEL_H:-}" \
-       PRODUCTION_ROLE="${PRODUCTION_ROLE:-}"
+       PRODUCTION_ROLE="${PRODUCTION_ROLE:-}" GIT_COMMIT="$GIT_COMMIT"
 
 # Use ESP-IDF Python environment which has nvs_partition_gen installed
 ESP_IDF_PYTHON="${HOME}/.espressif/python_env/idf6.1_py3.14_env/bin/python3"
@@ -252,6 +256,7 @@ bootstrap_ota_password = os.environ['BOOTSTRAP_OTA_PASSWORD']
 prod_api_key = os.environ.get('PROD_API_KEY', '')
 thread_tlv = os.environ.get('THREAD_TLV', '')
 production_role = os.environ.get('PRODUCTION_ROLE', '')
+git_commit = os.environ.get('GIT_COMMIT', '')
 write_matrix_layout = os.environ.get('WRITE_MATRIX_LAYOUT', '0') == '1'
 matrix_cols = os.environ.get('MATRIX_COLS', '1')
 matrix_panel_w = os.environ.get('MATRIX_PANEL_W', '64')
@@ -285,6 +290,8 @@ with open(nvs_csv_path, 'w') as f:
         f.write(f"matrix_panel_h,data,u16,{matrix_panel_h}\n")
     if production_role:
         f.write(f"device_role,data,string,{production_role}\n")
+    if git_commit:
+        f.write(f"git_commit,data,string,{git_commit}\n")
 
 print(f"[OK] Created NVS CSV file for nvs_partition_gen")
 

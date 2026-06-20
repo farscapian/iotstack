@@ -2240,6 +2240,7 @@ print(json.dumps({
     "matrix_panel_w": "",
     "matrix_panel_h": "",
     "device_role": os.environ["DEVICE_ROLE"],
+    "git_commit": "",
 }))
 PY
   ) || return 1
@@ -3839,6 +3840,7 @@ print(json.dumps({
     "matrix_panel_w": os.environ["MATRIX_PANEL_W"],
     "matrix_panel_h": os.environ["MATRIX_PANEL_H"],
     "device_role": "",
+    "git_commit": "",
 }))
 PY
   ) || return 1

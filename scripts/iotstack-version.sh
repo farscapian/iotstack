@@ -4,6 +4,27 @@
 [[ -n "${_IOTSTACK_VERSION_LOADED:-}" ]] && return 0
 _IOTSTACK_VERSION_LOADED=1
 
+iotstack_git_root() {
+  local root="${PROJECT_ROOT:-}"
+  if [[ -z "$root" ]]; then
+    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  fi
+  printf '%s\n' "$root"
+}
+
+iotstack_git_commit_short() {
+  # Short git commit at NVS provision / flash time (not baked into firmware config_hash).
+  if [[ -n "${IOTSTACK_GIT_COMMIT:-}" ]]; then
+    echo "$IOTSTACK_GIT_COMMIT"
+    return 0
+  fi
+  local root commit
+  root=$(iotstack_git_root)
+  commit=$(git -C "$root" rev-parse --short=7 HEAD 2>/dev/null) || true
+  [[ -n "$commit" ]] || commit="unknown"
+  echo "$commit"
+}
+
 iotstack_compilation_cache_yaml_name() {
   # Stable compilation-cache.csv key for a YAML path.
   # Production roles compile via yamls/.temp-compile-<role>.yaml.<pid>; cache rows

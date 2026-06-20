@@ -7,7 +7,7 @@
 # ./scripts/read-nvs-secrets.sh wifi_ssid ota_password /dev/ttyACM0
 #
 # Keys (namespace iotstack):
-# wifi_ssid, wifi_password, ota_password, prod_api_key, thread_tlv
+# wifi_ssid, wifi_password, ota_password, prod_api_key, thread_tlv, git_commit
 
 set -euo pipefail
 
@@ -25,7 +25,7 @@ err() { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
 ok() { echo -e "${GRN}[OK]${RST} $*"; }
 info() { echo -e "${YLW}[INFO]${RST} $*"; }
 
-VALID_KEYS=(wifi_ssid wifi_password ota_password prod_api_key thread_tlv device_role)
+VALID_KEYS=(wifi_ssid wifi_password ota_password prod_api_key thread_tlv device_role git_commit)
 
 _is_valid_key() {
  local key="$1"
@@ -55,6 +55,7 @@ Keys:
  prod_api_key Device-specific production API encryption key
  thread_tlv Thread operational dataset TLVs (hex string)
  device_role Provisioned iotstack role (roles.conf name, e.g. bleproxy, mmwave)
+ git_commit Git commit (short) recorded when iotstack last provisioned NVS
 
 Examples:
  read-nvs-secrets.sh --all /dev/ttyACM0

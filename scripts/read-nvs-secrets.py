@@ -34,6 +34,7 @@ KNOWN_KEYS = (
     "prod_api_key",
     "thread_tlv",
     "device_role",
+    "git_commit",
 )
 
 
