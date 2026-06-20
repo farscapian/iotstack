@@ -17,13 +17,19 @@ ok()   { printf '[OK]   %s\n' "$*"; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
 err()  { printf '[ERR]  %s\n' "$*" >&2; exit 1; }
 
+# OSC 8 terminal hyperlink (Cursor, VS Code, iTerm2, etc.)
+print_hyperlink() {
+  local url="$1"
+  local label="${2:-$url}"
+  printf '\033]8;;%s\033\\%s\033]8;;\033\\' "$url" "$label"
+}
+
 usage() {
   cat <<'EOF'
 Usage: init_grok_session.sh [session-clone-path]
 
 Session sync for the authorized AI git workflow: aligns a Grok/Cursor session
-clone with the canonical Sync repo, prompts for a short session goal, and prints
-reminders for efficient agent use.
+clone with the canonical Sync repo and prints reminders for efficient agent use.
 
 Examples:
   cd ~/.grok/worktrees/mini-projects-iotstack/<session-id>
@@ -81,35 +87,13 @@ git clean -fd
 
 COMMIT="$(git log -1 --oneline)"
 BRANCH="$(git branch --show-current)"
+WORKFLOW_MD="${REPO_ROOT}/ai-guidance/workflow.md"
+WORKFLOW_FILE_URL="file://${WORKFLOW_MD}"
+
 ok "Synced to ${BRANCH} @ ${COMMIT}"
-echo ""
-
-# -- Session goal (1-3 sentences) -----------------------------------------------
-
-SESSION_GOAL=""
-line_no=0
-
-echo "Session goal (1-3 sentences; press Enter on an empty line when done):"
-while IFS= read -r line; do
-  [[ -z "$line" && -n "$SESSION_GOAL" ]] && break
-  [[ -z "$line" && -z "$SESSION_GOAL" ]] && continue
-  line_no=$((line_no + 1))
-  [[ $line_no -gt 3 ]] && warn "Using first 3 sentences only."
-  [[ $line_no -gt 3 ]] && break
-  if [[ -n "$SESSION_GOAL" ]]; then
-    SESSION_GOAL="${SESSION_GOAL} ${line}"
-  else
-    SESSION_GOAL="$line"
-  fi
-  [[ $line_no -ge 3 ]] && break
-done </dev/tty
-
-if [[ -z "$SESSION_GOAL" ]]; then
-  SESSION_GOAL="(not specified -- add your task when you open the agent)"
-fi
-
-echo ""
-ok "Session goal recorded."
+printf '[INFO] Workflow guide: '
+print_hyperlink "$WORKFLOW_FILE_URL" "ai-guidance/workflow.md"
+printf '\n'
 echo ""
 
 # -- Agent usage reminder -------------------------------------------------------
@@ -162,7 +146,7 @@ EOF
 cat <<EOF
 New session. init_grok_session.sh complete (session sync) -- on main at ${COMMIT}.
 
-Task: ${SESSION_GOAL}
+Task: <your task in one sentence>
 Read: ai-guidance/workflow.md, ai-guidance/<pick-one-or-two-more>.md
 Constraints: <device, /dev/tty*, role, files not to touch>
 EOF
@@ -170,4 +154,6 @@ EOF
 echo ""
 info "Grok session directories: ${GROK_PARENT}/"
 info "Canonical CLI repo:       ${SYNC_REPO}/"
-info "Full workflow:            ai-guidance/workflow.md"
+printf '[INFO] Full workflow:            '
+print_hyperlink "$WORKFLOW_FILE_URL" "ai-guidance/workflow.md"
+printf '\n'
