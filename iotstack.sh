@@ -4296,7 +4296,7 @@ _flash_prepare_builds() {
 
   if [[ -n "$yaml_path" ]]; then
     device_name=$(basename "$yaml_path" .yaml)
-    debug "Compile bootstrap (serial) + ${device_name} (OTA only) for ${variant}"
+    debug "Compile bootstrap (USB serial) + ${device_name} (same image, OTA delivery) for ${variant}"
   else
     debug "Compile bootstrap (serial) for ${variant}"
   fi
@@ -4304,7 +4304,7 @@ _flash_prepare_builds() {
   smart_compile "$bootstrap_yaml" "$build_name" || return 1
 
   if [[ -n "$yaml_path" ]]; then
-    info "Production image (${device_name}) is compiled for OTA, not serial flash"
+    info "Compiling production image (${device_name}); iotstack flash installs it via OTA (USB writes bootstrap only)"
     smart_compile "$yaml_path" "$device_name" || return 1
   fi
 
