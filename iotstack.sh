@@ -4228,10 +4228,12 @@ _flash_bootstrap_esptool() {
 
   if [[ "$erase_flash" == "1" ]]; then
     info "Erasing flash memory (${esptool_chip}, ${flash_label}, ${esptool_baud} baud)..."
+    local erase_start=$SECONDS
     create_log_run_esptool "$esptool_src" "$flash_log" \
       --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud" \
       --before default-reset --after no-reset erase-flash \
       || err "Erase failed"
+    ok "Flash memory erased in $((SECONDS - erase_start))s"
     sleep 3
   else
     warn "Skipping flash erase (not required for this update)"
