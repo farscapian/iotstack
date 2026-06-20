@@ -12,6 +12,8 @@ Removes:
   - Logs directory (~/.iotstack/logs/); with --create-log / --log-id the session
     log is written after cleanup finishes
   - Artifacts directory (~/.iotstack/artifacts/), including partition table CSV
+  - Temporary YAML files under yamls/ (.temp-compile-*, .iotstack-bootstrap-*.yaml,
+    .temp-ota-upload-*, and related gitignored runtime copies)
 
 Preserves:
   - ESPHome project build output (yamls/.esphome/)

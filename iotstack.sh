@@ -5222,6 +5222,25 @@ _cmd_clean_remove_path() {
   _count_ref=$((_count_ref + 1))
 }
 
+_cmd_clean_remove_temp_yamls() {
+  # Remove gitignored runtime YAML copies under yamls/ (.temp-compile-*, etc.).
+  local -n clean_count_ref="$1"
+  local yamls_dir="${YAMLS_DIR:-}" pattern path
+
+  [[ -n "$yamls_dir" && -d "$yamls_dir" ]] || return 0
+  declare -F iotstack_temp_yaml_patterns &>/dev/null || return 0
+
+  while IFS= read -r pattern; do
+    [[ -z "$pattern" ]] && continue
+    shopt -s nullglob
+    for path in "${yamls_dir}"/${pattern}; do
+      [[ -f "$path" ]] || continue
+      _cmd_clean_remove_path "$path" clean_count_ref
+    done
+    shopt -u nullglob
+  done < <(iotstack_temp_yaml_patterns)
+}
+
 cmd_clean() {
   # Clean iotstack compilation cache, session logs, and ~/.iotstack/artifacts.
   # Does not remove ESPHome build output, ~/.esphome/, or ~/.platformio/.cache.
@@ -5248,6 +5267,8 @@ cmd_clean() {
   for item in "${items_to_clean[@]}"; do
     _cmd_clean_remove_path "$item" cleaned_count
   done
+
+  _cmd_clean_remove_temp_yamls cleaned_count
 
   ok "Clean complete. Removed $cleaned_count item(s)"
   ok "Ready for next compilation"

@@ -21,14 +21,30 @@ BOOTSTRAP_TEMPLATE="${BOOTSTRAP_TEMPLATE:-$(iotstack_bootstrap_template_path)}"
 
 _IOTSTACK_YAML_CLEANUP_TRAP_REGISTERED=0
 
+iotstack_temp_yaml_patterns() {
+  # Gitignored runtime YAML filenames under yamls/ (glob patterns, one per line).
+  cat <<'PATTERNS'
+.temp-compile-*
+.temp-ota-upload-*
+.temp-api-key-*
+.temp-rename-*
+.iotstack-bootstrap-*.yaml
+.iotstack-bootstrap-*.yaml.bak
+.iotstack-*-*.yaml
+.iotstack-*-*.yaml.bak
+PATTERNS
+}
+
 iotstack_cleanup_generated_yamls() {
   # Remove runtime artifacts under yamls/ (gitignored; recreated per invocation).
-  local yamls_dir="${YAMLS_DIR:-}"
+  local yamls_dir="${YAMLS_DIR:-}" pattern
   [[ -z "$yamls_dir" || ! -d "$yamls_dir" ]] && return 0
-  rm -f "${yamls_dir}"/.iotstack-"$(iotstack_bootstrap_role)"-*.yaml \
-        "${yamls_dir}"/.iotstack-bootstrap-*.yaml \
-        "${yamls_dir}"/.temp-ota-upload-*.yaml \
-        "${yamls_dir}"/.temp-compile-*.yaml 2>/dev/null || true
+  while IFS= read -r pattern; do
+    [[ -z "$pattern" ]] && continue
+    shopt -s nullglob
+    rm -f "${yamls_dir}"/${pattern} 2>/dev/null || true
+    shopt -u nullglob
+  done < <(iotstack_temp_yaml_patterns)
 }
 
 iotstack_register_yaml_cleanup_trap() {
