@@ -70,6 +70,9 @@ esp32:
   # NVS partition at 0x3d000 (24KB) for device-specific secrets
   partitions: iotstack_partition_table.csv
 
+# N16R8 only -- stripped for non-S3 variants by bootstrap_render_yaml(). OPI PSRAM shares MSPI clock with flash; omitting causes startup crash.
+psram:
+
 # WiFi credentials are loaded from NVS by nvs_secrets component at startup
 # YAML does not contain any secrets - all come from device flash (NVS)
 wifi:

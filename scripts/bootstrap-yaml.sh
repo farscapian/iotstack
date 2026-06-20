@@ -239,6 +239,7 @@ bootstrap_render_yaml() {
     /^  chip_flash_size:/    { print "  chip_flash_size: " flash; next }
     /^  chip_framework:/     { print "  chip_framework: " framework; next }
     /^  boot_button_pin:/    { print "  boot_button_pin: " boot_pin; next }
+    /^psram:$/               { if (variant == "esp32s3") print; next }
     { print }
   ' "$BOOTSTRAP_TEMPLATE" > "$dst"
   # project_version comes from bootstrap.yaml substitutions (not rewritten at compile time).
