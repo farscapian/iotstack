@@ -5290,6 +5290,22 @@ help_clean() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-clean.txt"
 }
 
+help_ps() {
+  cat "${SCRIPT_DIR}/docs/help/iotstack-ps.txt"
+}
+
+cmd_ps() {
+  if [[ "${1:-}" == "help" ]]; then
+    help_ps
+    return 0
+  fi
+  [[ $# -gt 0 ]] && err "Unknown option for ps: $1 (try 'iotstack ps help')"
+
+  # shellcheck source=scripts/iotstack-ps.sh
+  source "${SCRIPT_DIR}/scripts/iotstack-ps.sh"
+  iotstack_ps
+}
+
 help_tests() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-tests.txt"
 }
@@ -5465,6 +5481,10 @@ main() {
       shift
       cmd_clean "$@"
       ;;
+    ps)
+      shift
+      cmd_ps "$@"
+      ;;
     tests)
       shift
       cmd_tests "$@"
@@ -5493,6 +5513,7 @@ main() {
           otbr)             help_otbr ;;
           commission)       help_commission ;;
           clean)            help_clean ;;
+          ps)               help_ps ;;
           tests)            help_tests ;;
           query)            help_query ;;
           secret)           help_secret ;;

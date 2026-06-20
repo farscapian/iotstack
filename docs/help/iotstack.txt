@@ -24,6 +24,7 @@ Commands:
   otbr                OpenThread Border Router provisioning (flash, vm, snap, docker)
   rotate-secrets      Rotate device secrets (OTA password and API key)
   clean               Clean session logs and artifacts
+  ps                  List process trees for running iotstack commands
   tests               Run overnight integration tests (USB ESP32-C6)
 
 Use 'iotstack <command> help' for detailed help on any command.

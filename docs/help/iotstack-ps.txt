@@ -1,0 +1,22 @@
+iotstack ps -- List running iotstack process trees
+
+Shows pstree output for every top-level iotstack command currently running,
+plus detached helper trees (serial capture, esptool, update_devices.sh) that
+may run in a separate session (for example background serial-logs.py during
+flash).
+
+Excludes this iotstack ps invocation. Use when a flash or update appears
+stuck and you need PIDs / PGIDs before killing a session.
+
+Usage:
+  iotstack ps
+
+Examples:
+  iotstack ps
+  iotstack ps | less
+
+Stop a hung session (replace PID with a root pid from the listing):
+  kill -TERM -$(ps -o pgid= -p PID | tr -d ' ')
+
+If /dev/ttyACM0 stays busy, also stop detached serial capture:
+  pkill -TERM -f 'serial-logs.py.*ttyACM0'
