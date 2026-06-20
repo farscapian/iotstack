@@ -89,18 +89,33 @@ esp_serial_is_iotstack_flash_on_tty() {
 }
 
 esp_serial_pid_in_current_session() {
+  # True when pid is this shell, the flash session root, or any ancestor/descendant
+  # of either (command substitutions and nested bash wrappers use a different $$).
   local pid="$1"
-  local walk="$$"
+  local root walk
 
   [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] || return 1
   [[ "$pid" -eq "$$" ]] && return 0
-  if [[ -n "${IOTSTACK_FLASH_SESSION_PID:-}" && "$pid" -eq "$IOTSTACK_FLASH_SESSION_PID" ]]; then
-    return 0
-  fi
+
+  for root in "${IOTSTACK_FLASH_SESSION_PID:-}" "${IOTSTACK_FLASH_ROOT_PID:-}"; do
+    [[ -z "$root" || ! "$root" =~ ^[0-9]+$ ]] && continue
+    [[ "$pid" -eq "$root" ]] && return 0
+    walk="$root"
+    while [[ -n "$walk" && "$walk" -gt 1 ]]; do
+      [[ "$pid" -eq "$walk" ]] && return 0
+      walk=$(ps -o ppid= -p "$walk" 2>/dev/null | tr -d ' ')
+    done
+    esp_serial_pid_in_tree "$root" "$pid" && return 0
+    esp_serial_pid_in_tree "$pid" "$root" && return 0
+  done
+
+  walk="$$"
   while [[ -n "$walk" && "$walk" -gt 1 ]]; do
     [[ "$pid" -eq "$walk" ]] && return 0
     walk=$(ps -o ppid= -p "$walk" 2>/dev/null | tr -d ' ')
   done
+  esp_serial_pid_in_tree "$$" "$pid" && return 0
+
   return 1
 }
 
@@ -160,12 +175,14 @@ esp_serial_clear_tty_interference() {
 
   while IFS= read -r pid; do
     [[ -z "$pid" ]] && continue
+    esp_serial_pid_in_current_session "$pid" && continue
     [[ -n "$preserve_root_pid" ]] && esp_serial_pid_in_tree "$preserve_root_pid" "$pid" && continue
     kill_pids+=("$pid")
   done < <(esp_serial_iotstack_serial_pids_on_tty "$tty")
 
   while IFS= read -r pid; do
     [[ -z "$pid" ]] && continue
+    esp_serial_pid_in_current_session "$pid" && continue
     [[ -n "$preserve_root_pid" ]] && esp_serial_pid_in_tree "$preserve_root_pid" "$pid" && continue
     kill_pids+=("$pid")
   done < <(esp_serial_stale_iotstack_flash_pids_on_tty "$tty")
@@ -173,6 +190,7 @@ esp_serial_clear_tty_interference() {
   # serial-logs.py may be gone while log-stamp.py still runs in the pipeline.
   while IFS= read -r pid; do
     [[ -z "$pid" ]] && continue
+    esp_serial_pid_in_current_session "$pid" && continue
     [[ -n "$preserve_root_pid" ]] && esp_serial_pid_in_tree "$preserve_root_pid" "$pid" && continue
     cmdline=$(esp_serial_process_cmdline "$pid")
     esp_serial_is_iotstack_serial_holder "$cmdline" || continue
@@ -193,6 +211,7 @@ esp_serial_clear_tty_interference() {
   done
 
   for pid in "${unique_pids[@]}"; do
+    esp_serial_pid_in_current_session "$pid" && continue
     cmdline=$(esp_serial_process_cmdline "$pid")
     state=$(ps -p "$pid" -o stat= 2>/dev/null | tr -d ' ' || true)
     if [[ "$state" == *T* ]]; then
@@ -342,7 +361,7 @@ esp_esptool_chip_id() {
     resume_capture=1
     esp_serial_wait_tty_free "$port" 5 || true
   else
-    esp_serial_clear_tty_interference "$port"
+    esp_serial_clear_tty_interference "$port" "${IOTSTACK_FLASH_SESSION_PID:-}"
     esp_serial_wait_tty_free "$port" 3 || true
   fi
 

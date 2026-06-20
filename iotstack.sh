@@ -2,7 +2,11 @@
 # iotstack.sh -- CLI tool for managing iotstack ESPHome devices
 # Wrapper around update_devices.sh with a cleaner interface
 
-set -euo pipefail
+set -euox pipefail
+
+# Top-level invocation PID; subshells (e.g. profile=$(bootstrap_resolve_profile))
+# use a different $$ but must not be treated as a stale flash session.
+export IOTSTACK_FLASH_ROOT_PID=$$
 
 # Global configuration
 VERBOSE=0
@@ -317,7 +321,7 @@ _check_serial_port_in_use() {
     return 0
   fi
 
-  esp_serial_clear_tty_interference "$tty_device"
+  esp_serial_clear_tty_interference "$tty_device" "${IOTSTACK_FLASH_SESSION_PID:-}"
 
   if command -v lsof &>/dev/null; then
     processes=$(esp_serial_tty_blocked_processes "$tty_device" || true)
@@ -3989,6 +3993,8 @@ _flash_matrix_layout_update_via_bootstrap_if_needed() {
 cmd_flash() {
   _iotstack_command_help_if_requested flash "$@" && return 0
 
+  export IOTSTACK_FLASH_SESSION_PID=$$
+
   local device="" tty_device_or_role="" skip_recovery=""
   export FLASH_ERASE=0
   export FLASH_ON_FLASH_VERIFY=0
@@ -4666,13 +4672,11 @@ _flash_production_smart() {
       err "TTY device not found: $tty_device"
     fi
 
-    export IOTSTACK_FLASH_SESSION_PID=$$
-
     _flash_step_reset
     info "Flash target: ${device} on ${tty_device} (serial: bootstrap; production: OTA)"
     echo ""
 
-    esp_serial_clear_tty_interference "$tty_device"
+    esp_serial_clear_tty_interference "$tty_device" "${IOTSTACK_FLASH_SESSION_PID:-}"
     esp_serial_wait_tty_free "$tty_device" 5 || true
     esp_serial_settle_tty "$tty_device" 2
 
