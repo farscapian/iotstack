@@ -3,8 +3,8 @@
 #
 # Detects the chip on a serial port (or reads a production role YAML), renders
 # yamls/.iotstack-bootstrap-<variant>.yaml from yamls/bootstrap.yaml, and
-# exposes build/flash parameters. Each variant artifact is cached separately in
-# compilation-cache.csv (yaml_name=bootstrap-esp32c6.yaml, etc.).
+# exposes build/flash parameters. Each variant artifact is a separate build
+# directory under yamls/.esphome/build/.
 #
 # Requires config.sh, esp-serial.sh, and yaml-info.sh to be sourced first.
 

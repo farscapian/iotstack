@@ -26,9 +26,9 @@ iotstack_git_commit_short() {
 }
 
 iotstack_compilation_cache_yaml_name() {
-  # Stable compilation-cache.csv key for a YAML path.
-  # Production roles compile via yamls/.temp-compile-<role>.yaml.<pid>; cache rows
-  # use the pid-less compile artifact name. Bootstrap uses .iotstack-bootstrap-* rows.
+  # Stable compile-skip dedup key for a YAML path.
+  # Production roles compile via yamls/.temp-compile-<role>.yaml.<pid>; dedup uses
+  # the pid-less compile artifact name. Bootstrap uses .iotstack-bootstrap-* keys.
   local yaml_file="$1"
   local base
 

@@ -51,8 +51,8 @@ _print_table_rule() {
   printf '%s\n' "$RST"
 }
 
-# -- Compilation Cache --------------------------------------------------------
-# CSV: yaml_name,config_hash (8-char hex ESPHome config_hash; same key as mDNS TXT).
+# -- Compile skip (config_hash) -----------------------------------------------
+# Skip esphome compile when `esphome config-hash` matches build_info.json and firmware.bin exists.
 
 _esphome_config_hash_hex() {
   # Parse "0xabcdef12" from esphome config-hash stdout to 8-char lowercase hex.
@@ -71,7 +71,7 @@ _esphome_config_hash_for_compile_yaml() {
   _esphome_config_hash_hex "$hash_raw"
 }
 
-_compilation_cache_config_hash_for_yaml() {
+_current_config_hash_for_yaml() {
   # Current ESPHome config_hash for a source YAML (includes packages, external_components, etc.).
   local yaml_file="$1"
   local device_name="${2:-}"
@@ -89,93 +89,6 @@ _compilation_cache_config_hash_for_yaml() {
   [[ -n "$hash" ]] && echo "$hash"
 }
 
-_normalize_compilation_cache() {
-  # Upgrade legacy caches; dedupe rows (one row per yaml_name).
-  [[ -f "$COMPILATION_CACHE" ]] || return 0
-  local tmp header
-  header=$(head -1 "$COMPILATION_CACHE")
-  [[ "$header" == "yaml_name,config_hash" ]] && return 0
-
-  tmp=$(mktemp)
-  {
-    echo "yaml_name,config_hash"
-    tail -n +2 "$COMPILATION_CACHE" | awk -F, '
-      function cache_name(name) {
-        if (name ~ /^\.temp-compile-\.iotstack-.+\.yaml/) {
-          sub(/^\.temp-compile-/, "", name)
-          sub(/\.[0-9]+$/, "", name)
-          return name
-        }
-        if (name ~ /^\.temp-compile-.+\.yaml\.[0-9]+$/) {
-          sub(/\.[0-9]+$/, "", name)
-          return name
-        }
-        if (name ~ /^\.iotstack-/ || name ~ /^\.temp-compile-/) return name
-        return ".temp-compile-" name
-      }
-      NF < 1 || $1 == "" { next }
-      {
-        key = cache_name($1)
-        hash = ""
-        if (NF >= 4 && $4 ~ /^[0-9a-fA-F]{8}$/) hash = $4
-        else if (NF >= 2 && $2 ~ /^[0-9a-fA-F]{8}$/) hash = $2
-        if (hash != "") {
-          hash = tolower(hash)
-          rows[key] = key "," hash
-        }
-      }
-      END { for (n in rows) print rows[n] }
-    ' | sort -t, -k1,1
-  } > "$tmp"
-  mv "$tmp" "$COMPILATION_CACHE"
-}
-
-_compilation_cache_patch_config_hash() {
-  # Set config_hash (column 2) on an existing compilation-cache.csv row.
-  local yaml_name="$1"
-  local config_hash="$2"
-  local tmp
-  [[ -f "$COMPILATION_CACHE" && -n "$yaml_name" && -n "$config_hash" ]] || return 1
-  _normalize_compilation_cache
-  tmp=$(mktemp)
-  awk -F, -v OFS=',' -v name="$yaml_name" -v hash="$config_hash" '
-    NR == 1 { print; next }
-    $1 == name { print $1, hash; next }
-    { print }
-  ' "$COMPILATION_CACHE" > "$tmp"
-  mv "$tmp" "$COMPILATION_CACHE"
-}
-
-_compilation_cache_backfill_config_hash() {
-  # Ensure compilation-cache.csv has config_hash for a cached build (no recompile).
-  local yaml_file="$1"
-  local build_name="$2"
-  local yaml_name hash
-  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
-  hash=$(_compilation_cache_config_hash "$yaml_file" "$build_name" 2>/dev/null) || true
-  [[ -n "$hash" ]] || return 1
-  if awk -F, -v name="$yaml_name" '$1==name && $2!="" { found=1 } END { exit !found }' "$COMPILATION_CACHE" 2>/dev/null; then
-    return 0
-  fi
-  _compilation_cache_patch_config_hash "$yaml_name" "$hash"
-}
-
-_check_compilation_cache() {
-  # Check if we can skip compilation based on ESPHome config_hash.
-  # Returns 0 (can skip) or 1 (must compile)
-  local yaml_file="$1"
-  local device_name="${2:-}"
-  local yaml_name current_hash cached_hash
-  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
-
-  [[ ! -f "$COMPILATION_CACHE" ]] && return 1
-  _normalize_compilation_cache
-
-  current_hash=$(_compilation_cache_config_hash_for_yaml "$yaml_file" "$device_name") || return 1
-  cached_hash=$(awk -F, -v name="$yaml_name" '$1==name { hash=$2 } END { print hash }' "$COMPILATION_CACHE")
-  [[ -n "$cached_hash" && "$cached_hash" == "$current_hash" ]]
-}
-
 _config_hash_from_build_dir() {
   # 8-char hex config_hash from ESPHome build_info.json.
   local build_name="$1"
@@ -184,79 +97,55 @@ _config_hash_from_build_dir() {
   python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
 }
 
-_compilation_cache_config_hash() {
-  # config_hash for a yaml row in ~/.iotstack/compilation-cache.csv (mDNS compare key).
-  local yaml_file="$1"
-  local build_name="${2:-$(basename "$yaml_file" .yaml)}"
-  local yaml_name hash
-  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
-  [[ -f "$COMPILATION_CACHE" ]] || return 1
-  _normalize_compilation_cache
-  hash=$(awk -F, -v name="$yaml_name" '$1==name && $2!="" { print $2 }' "$COMPILATION_CACHE" | tail -1)
-  if [[ -z "$hash" ]]; then
-    hash=$(_config_hash_from_build_dir "$build_name" 2>/dev/null) || true
-    [[ -n "$hash" ]] && _compilation_cache_patch_config_hash "$yaml_name" "$hash"
-  fi
-  [[ -n "$hash" ]] && echo "$hash"
-}
-
-_update_compilation_cache() {
-  # Upsert: one row per yaml_name (config_hash from build_info.json after compile).
-  local yaml_file="$1"
-  local build_name="${2:-}"
-  local yaml_name config_hash tmp
-  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
-  config_hash=""
-  [[ -n "$build_name" ]] && config_hash=$(_config_hash_from_build_dir "$build_name" 2>/dev/null) || true
-  [[ -n "$config_hash" ]] || return 1
-
-  mkdir -p "$(dirname "$COMPILATION_CACHE")"
-  _normalize_compilation_cache
-  tmp=$(mktemp)
-
-  if [[ -f "$COMPILATION_CACHE" ]]; then
-    {
-      head -1 "$COMPILATION_CACHE"
-      awk -F, -v name="$yaml_name" 'NR > 1 && $1 != name { print }' "$COMPILATION_CACHE"
-    } > "$tmp"
-  else
-    echo "yaml_name,config_hash" > "$tmp"
-  fi
-  echo "${yaml_name},${config_hash}" >> "$tmp"
-  mv "$tmp" "$COMPILATION_CACHE"
-}
-
-_compilation_cache_miss_reason() {
+_compile_skip_device_name() {
   local yaml_file="$1"
   local device_name="${2:-}"
-  local yaml_name current_hash cached_hash firmware_bin resolved_device
+  local resolved
+  if _is_bootstrap_yaml "$yaml_file"; then
+    resolved="${device_name:-$(iotstack_bootstrap_role)}"
+  else
+    resolved="${device_name:-$(basename "$yaml_file" .yaml)}"
+    [[ "$resolved" =~ ^\.temp-compile- ]] && resolved="${resolved#.temp-compile-}"
+  fi
+  echo "$resolved"
+}
 
-  [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]] && { echo "cache disabled"; return 0; }
-  [[ ! -f "$COMPILATION_CACHE" ]] && { echo "no cache file at ${COMPILATION_CACHE}"; return 0; }
+_build_matches_config_hash() {
+  # Returns 0 when an existing build matches the current esphome config-hash.
+  local yaml_file="$1"
+  local device_name="${2:-}"
+  local resolved_device current_hash built_hash firmware_bin
+  resolved_device=$(_compile_skip_device_name "$yaml_file" "$device_name")
+  firmware_bin="${YAMLS_DIR}/.esphome/build/${resolved_device}/.pioenvs/${resolved_device}/firmware.bin"
+  [[ -f "$firmware_bin" ]] || return 1
+  current_hash=$(_current_config_hash_for_yaml "$yaml_file" "$resolved_device") || return 1
+  built_hash=$(_config_hash_from_build_dir "$resolved_device" 2>/dev/null) || return 1
+  [[ -n "$current_hash" && -n "$built_hash" && "$current_hash" == "$built_hash" ]]
+}
+
+_compile_skip_miss_reason() {
+  local yaml_file="$1"
+  local device_name="${2:-}"
+  local yaml_name current_hash built_hash firmware_bin resolved_device
+
+  [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]] && { echo "compile skip disabled"; return 0; }
 
   yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
-  _normalize_compilation_cache
-  cached_hash=$(awk -F, -v name="$yaml_name" '$1==name { hash=$2 } END { print hash }' "$COMPILATION_CACHE")
+  resolved_device=$(_compile_skip_device_name "$yaml_file" "$device_name")
 
-  if [[ -z "$cached_hash" ]]; then
-    echo "no row for ${yaml_name}"
+  built_hash=$(_config_hash_from_build_dir "$resolved_device" 2>/dev/null) || built_hash=""
+  if [[ -z "$built_hash" ]]; then
+    echo "no build_info.json for ${resolved_device}"
     return 0
   fi
 
-  if _is_bootstrap_yaml "$yaml_file"; then
-    resolved_device="${device_name:-$(iotstack_bootstrap_role)}"
-  else
-    resolved_device="${device_name:-$(basename "$yaml_file" .yaml)}"
-    [[ "$resolved_device" =~ ^\.temp-compile- ]] && resolved_device="${resolved_device#.temp-compile-}"
-  fi
-
-  current_hash=$(_compilation_cache_config_hash_for_yaml "$yaml_file" "$resolved_device" 2>/dev/null) || current_hash=""
+  current_hash=$(_current_config_hash_for_yaml "$yaml_file" "$resolved_device" 2>/dev/null) || current_hash=""
   if [[ -z "$current_hash" ]]; then
     echo "${yaml_name} config_hash unavailable (esphome config-hash failed)"
     return 0
   fi
-  if [[ "$cached_hash" != "$current_hash" ]]; then
-    echo "${yaml_name} config_hash mismatch (cached ${cached_hash}, current ${current_hash})"
+  if [[ "$built_hash" != "$current_hash" ]]; then
+    echo "${yaml_name} config_hash mismatch (built ${built_hash}, current ${current_hash})"
     return 0
   fi
 
@@ -265,18 +154,7 @@ _compilation_cache_miss_reason() {
     echo "${yaml_name} config_hash matched but firmware.bin missing"
     return 0
   fi
-  echo "${yaml_name} cache check failed"
-}
-
-_compilation_cache_update_notice() {
-  local yaml_file="$1"
-  local build_name="${2:-}"
-  local yaml_name config_hash
-  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
-  config_hash=$(_config_hash_from_build_dir "$build_name" 2>/dev/null) \
-    || config_hash=$(_compilation_cache_config_hash "$yaml_file" "$build_name" 2>/dev/null) \
-    || config_hash="unknown"
-  ok "Compilation cache updated: ${yaml_name} config_hash=${config_hash}"
+  echo "${yaml_name} compile skip check failed"
 }
 
 _check_serial_port_in_use() {
@@ -331,7 +209,7 @@ _hex_sizes_equal() {
 
 _partition_table_bootstrap_size() {
   # Bootstrap (ota_0) size from the persisted partition table artifact (~/.iotstack/artifacts/).
-  # Survives `iotstack clean` (unlike compilation-cache.csv) so pass 1 can start exact.
+  # Survives `iotstack clean` so pass 1 can start exact.
   [[ -f "$PARTITION_TABLE" ]] || return 1
   local size label
   label=$(iotstack_bootstrap_role)
@@ -443,13 +321,11 @@ _smart_compile_repeat_satisfied() {
   local firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
   debug "Build already prepared for $(iotstack_compilation_cache_yaml_name "$yaml_file")"
   if _is_bootstrap_yaml "$yaml_file"; then
-    _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
     _sync_bootstrap_partition_table_from_build \
       || { local fs_size; fs_size=$(_bootstrap_part_size "$firmware_bin")
            IOTSTACK_BOOTSTRAP_PART_SIZE="$fs_size" _update_partition_table_file; }
   else
     ensure_partition_table_artifact
-    _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
   fi
 }
 
@@ -470,7 +346,7 @@ _smart_compile_cache_miss_notice() {
   local device_name="$2"
   local firmware_kind="$3"  # e.g. production, bootstrap
   local reason
-  reason=$(_compilation_cache_miss_reason "$yaml_file" "$device_name")
+  reason=$(_compile_skip_miss_reason "$yaml_file" "$device_name")
   info "Compilation cache miss -- ${firmware_kind} firmware (${device_name}): ${reason}"
 }
 
@@ -488,7 +364,7 @@ smart_compile() {
 
   local firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
   local cached=0
-  [[ "${DISABLE_COMPILATION_CACHE:-0}" != "1" ]] && _check_compilation_cache "$yaml_file" "$device_name" && cached=1
+  [[ "${DISABLE_COMPILATION_CACHE:-0}" != "1" ]] && _build_matches_config_hash "$yaml_file" "$device_name" && cached=1
   [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]] && debug "Compilation cache disabled (DISABLE_COMPILATION_CACHE=1)"
 
   # -- Non-bootstrap builds ----------------------------------------------------
@@ -498,7 +374,6 @@ smart_compile() {
   if ! _is_bootstrap_yaml "$yaml_file"; then
     if [[ $cached -eq 1 ]]; then
       ensure_partition_table_artifact
-      _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
       _smart_compile_cache_hit_notice "$yaml_file" "$device_name" "production"
       _smart_compile_mark_done "$yaml_file"
       return 0
@@ -506,9 +381,6 @@ smart_compile() {
     _update_partition_table_file
     _smart_compile_cache_miss_notice "$yaml_file" "$device_name" "production"
     _esphome_compile "$yaml_file" || return 1
-    if _update_compilation_cache "$yaml_file" "$device_name"; then
-      _compilation_cache_update_notice "$yaml_file" "$device_name"
-    fi
     _smart_compile_mark_done "$yaml_file"
     return 0
   fi
@@ -519,7 +391,6 @@ smart_compile() {
   # partitions.bin (not the position-independent app image), so we compile,
   # measure, regenerate the table, then recompile so partitions.bin matches.
   if [[ $cached -eq 1 && -f "$firmware_bin" ]]; then
-    _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
     _smart_compile_cache_hit_notice "$yaml_file" "$device_name" "bootstrap"
     _sync_bootstrap_partition_table_from_build \
       || { local fs_size; fs_size=$(_bootstrap_part_size "$firmware_bin")
@@ -568,9 +439,6 @@ smart_compile() {
     _sync_bootstrap_partition_table_from_build
   fi
 
-  if _update_compilation_cache "$yaml_file" "$device_name"; then
-    _compilation_cache_update_notice "$yaml_file" "$device_name"
-  fi
   _smart_compile_mark_done "$yaml_file"
   return 0
 }
@@ -1919,12 +1787,9 @@ _production_reachable_now() {
 
 _build_image_hash_for_yaml() {
   # image_hash for comparing device mDNS against the compiled build (8-char hex).
-  # Primary source: compilation-cache.csv (same cache smart_compile maintains).
   local yaml_path="$1"
   local yaml_name cache_file hash latest_log
   yaml_name=$(basename "$yaml_path" .yaml)
-  hash=$(_compilation_cache_config_hash "$yaml_path" "$yaml_name" 2>/dev/null) || true
-  [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   hash=$(_config_hash_from_build_dir "$yaml_name" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   cache_file="${HOME}/.iotstack/logs/${yaml_name}/${yaml_name}.build.cache"
@@ -5350,17 +5215,16 @@ _cmd_clean_remove_temp_yamls() {
 }
 
 cmd_clean() {
-  # Clean iotstack compilation cache, session logs, and ~/.iotstack/artifacts.
+  # Clean iotstack session logs and ~/.iotstack/artifacts.
   # Does not remove ESPHome build output, ~/.esphome/, or ~/.platformio/.cache.
   # Session log lines are buffered (IOTSTACK_LOG_BUFFER_FILE) and flushed on EXIT.
-  info "Cleaning iotstack caches, logs, and artifacts..."
+  info "Cleaning iotstack logs and artifacts..."
 
   local cleaned_count=0 item
   local logs_dir="${IOTSTACK_HOME}/logs"
   local artifacts_dir="${IOTSTACK_HOME}/artifacts"
 
   local -a items_to_clean=(
-    "${COMPILATION_CACHE}"
     "${logs_dir}"
     "${artifacts_dir}"
   )

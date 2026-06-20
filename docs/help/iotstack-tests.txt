@@ -29,7 +29,7 @@ Role -> chip mapping (from iotstack roles / YAML variant):
 
 Test suites:
   00-14  ESP32-C6 (bleproxy / bootstrap / mmwave reassign cycle)
-  15-16  Compilation cache via iotstack flash (hit/miss, config_hash backfill)
+  15-16  Compile skip via iotstack flash (hit/miss, build_info.json config_hash)
   20-29  ESP32-S3 (ledlightstrip / silentnotify / matrixdisplay)
 
 Examples:
@@ -64,7 +64,7 @@ Overnight (C6 + S3 plugged in):
   iotstack tests run --iterations 5 2>&1 | tee ~/iotstack-overnight.log
 
 Bootstrap firmware is compiled per chip variant (yamls/.iotstack-bootstrap-esp32c6.yaml,
-etc.) with separate compilation-cache entries.
+etc.) with separate build directories under yamls/.esphome/build/.
 `iotstack flash` detects the chip on each /dev/ttyACM* port and substitutes the
 matching profile before compile.
 

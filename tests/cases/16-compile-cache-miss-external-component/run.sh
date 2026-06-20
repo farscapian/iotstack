@@ -1,10 +1,9 @@
 #!/bin/bash
-# TEST_DESC: Compilation cache miss after external_components change (iotstack flash)
+# TEST_DESC: Compile skip miss after external_components change (iotstack flash)
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 role=bleproxy
-yaml_name="${role}.yaml"
 
 cleanup() {
   test_restore_external_component_cache_bump
@@ -16,7 +15,7 @@ test_require_tty_for_role "$role"
 test_run_step "iotstack flash ${role} ${IOTSTACK_TEST_TTY} (seed)" \
   test_iotstack flash "$role" "$IOTSTACK_TEST_TTY"
 
-test_info "iotstack flash ${role} ${IOTSTACK_TEST_TTY} (confirm cache hit)"
+test_info "iotstack flash ${role} ${IOTSTACK_TEST_TTY} (confirm compile skip hit)"
 output=""
 set +e
 output=$(test_iotstack flash "$role" "$IOTSTACK_TEST_TTY" 2>&1)
@@ -28,9 +27,9 @@ test_assert_output_contains "Compilation cache hit" "$output"
 
 test_bump_external_component_for_cache_miss
 
-before_hash=$(test_compilation_cache_row "$yaml_name" | awk -F, '{ print $2 }')
+before_hash=$(test_build_config_hash "$role")
 
-test_info "iotstack flash ${role} ${IOTSTACK_TEST_TTY} (expect cache miss after partition_manager bump)"
+test_info "iotstack flash ${role} ${IOTSTACK_TEST_TTY} (expect compile skip miss after partition_manager bump)"
 output=""
 set +e
 output=$(test_iotstack flash "$role" "$IOTSTACK_TEST_TTY" 2>&1)
@@ -42,15 +41,15 @@ set -e
 test_assert_output_contains "Compilation cache miss" "$output"
 test_assert_output_contains "Compiling production firmware" "$output"
 
-after_hash=$(test_compilation_cache_row "$yaml_name" | awk -F, '{ print $2 }')
+after_hash=$(test_build_config_hash "$role")
 if [[ -n "$before_hash" && -n "$after_hash" && "$before_hash" != "$after_hash" ]]; then
-  test_ok "compilation-cache config_hash updated after external_components change"
+  test_ok "build_info.json config_hash updated after external_components change"
 else
-  test_fail "Expected compilation-cache config_hash to change (before=${before_hash:-empty} after=${after_hash:-empty})"
+  test_fail "Expected build_info.json config_hash to change (before=${before_hash:-empty} after=${after_hash:-empty})"
   exit 1
 fi
 
-hash=$(test_compilation_cache_config_hash "$yaml_name")
+hash=$(test_build_config_hash "$role")
 if [[ "$hash" =~ ^[0-9a-f]{8}$ ]]; then
   test_ok "config_hash recorded after recompile: ${hash}"
 else

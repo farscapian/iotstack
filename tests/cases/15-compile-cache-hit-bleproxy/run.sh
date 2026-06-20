@@ -1,20 +1,16 @@
 #!/bin/bash
-# TEST_DESC: Compilation cache hit and config_hash backfill (iotstack flash -> smart_compile)
+# TEST_DESC: Compile skip hit via build_info.json config_hash (iotstack flash -> smart_compile)
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 role=bleproxy
-yaml_name="${role}.yaml"
 
 test_require_tty_for_role "$role"
 
 test_run_step "iotstack flash ${role} ${IOTSTACK_TEST_TTY} (seed)" \
   test_iotstack flash "$role" "$IOTSTACK_TEST_TTY"
 
-test_strip_compilation_cache_config_hash "$yaml_name" \
-  || test_fail "Could not strip config_hash from compilation-cache row for ${yaml_name}"
-
-test_info "iotstack flash ${role} ${IOTSTACK_TEST_TTY} (expect cache hit + config_hash backfill)"
+test_info "iotstack flash ${role} ${IOTSTACK_TEST_TTY} (expect compile skip hit)"
 output=""
 set +e
 output=$(test_iotstack flash "$role" "$IOTSTACK_TEST_TTY" 2>&1)
@@ -25,10 +21,10 @@ set -e
 
 test_assert_output_contains "Compilation cache hit" "$output"
 
-hash=$(test_compilation_cache_config_hash "$yaml_name")
+hash=$(test_build_config_hash "$role")
 if [[ "$hash" =~ ^[0-9a-f]{8}$ ]]; then
-  test_ok "config_hash backfilled: ${hash}"
+  test_ok "build_info.json config_hash present: ${hash}"
 else
-  test_fail "config_hash not backfilled in compilation-cache.csv (got: ${hash:-empty})"
+  test_fail "config_hash missing from build_info.json (got: ${hash:-empty})"
   exit 1
 fi

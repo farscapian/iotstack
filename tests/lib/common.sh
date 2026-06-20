@@ -240,39 +240,17 @@ test_run_step() {
   return 1
 }
 
-test_compilation_cache_yaml_name() {
-  local yaml_file="$1"
-  iotstack_compilation_cache_yaml_name "$yaml_file"
+test_build_info_path() {
+  local build_name="$1"
+  printf '%s/.esphome/build/%s/build_info.json' "$YAMLS_DIR" "$build_name"
 }
 
-test_compilation_cache_row() {
-  local yaml_file="${1:-bleproxy.yaml}"
-  local cache_name
-  [[ -f "$COMPILATION_CACHE" ]] || return 1
-  cache_name=$(test_compilation_cache_yaml_name "$yaml_file")
-  awk -F, -v name="$cache_name" '$1==name { print; exit }' "$COMPILATION_CACHE"
-}
-
-test_compilation_cache_config_hash() {
-  local yaml_file="${1:-bleproxy.yaml}"
-  test_compilation_cache_row "$yaml_file" | awk -F, '{ print $2 }'
-}
-
-test_strip_compilation_cache_config_hash() {
-  # Simulate a row missing config_hash (backfill should repair on cache hit).
-  local yaml_file="${1:-bleproxy.yaml}"
-  local row config_hash cache_name tmp
-  cache_name=$(test_compilation_cache_yaml_name "$yaml_file")
-  row=$(test_compilation_cache_row "$yaml_file") || return 1
-  IFS=, read -r _ config_hash <<< "$row"
-  [[ -n "$config_hash" ]] || return 1
-  tmp=$(mktemp)
-  {
-    echo "yaml_name,config_hash"
-    awk -F, -v name="$cache_name" 'NR > 1 && $1 != name { print }' "$COMPILATION_CACHE"
-    printf '%s,\n' "$cache_name"
-  } > "$tmp"
-  mv "$tmp" "$COMPILATION_CACHE"
+test_build_config_hash() {
+  local build_name="${1:-bleproxy}"
+  local build_info
+  build_info=$(test_build_info_path "$build_name")
+  [[ -f "$build_info" ]] || return 1
+  python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
 }
 
 test_assert_output_contains() {

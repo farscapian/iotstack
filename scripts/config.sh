@@ -38,8 +38,6 @@ fi
 # Filenames and paths -- allow user override
 export ROLES_CONF="${ROLES_CONF:-${SCRIPTS_DIR}/roles.conf}"
 export UPDATE_SCRIPT="${UPDATE_SCRIPT:-${SCRIPTS_DIR}/update_devices.sh}"
-export COMPILATION_CACHE="${COMPILATION_CACHE:-${IOTSTACK_HOME}/compilation-cache.csv}"
-
 # Directories -- allow user override (ARTIFACTS_DIR before PARTITION_TABLE)
 export LOGS_DIR="${LOGS_DIR:-${IOTSTACK_HOME}/logs}"
 export ARTIFACTS_DIR="${ARTIFACTS_DIR:-${IOTSTACK_HOME}/artifacts}"

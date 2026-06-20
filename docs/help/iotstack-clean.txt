@@ -1,6 +1,6 @@
 iotstack clean -- Clean iotstack caches and runtime artifacts
 
-Removes the iotstack compilation cache, session logs, and runtime artifacts under
+Removes iotstack session logs and runtime artifacts under
 ~/.iotstack/. Does not delete ESPHome build output (yamls/.esphome/ or anything
 under ~/.esphome/) or PlatformIO's shared cache (~/.platformio/.cache/). Safe to
 rerun; it never deletes source YAMLs. Use when you need to clear iotstack caches
@@ -8,7 +8,6 @@ or reclaim log/artifact disk space. The partition table CSV is regenerated on th
 next compile after artifacts are removed.
 
 Removes:
-  - Compilation cache file (~/.iotstack/compilation-cache.csv)
   - Logs directory (~/.iotstack/logs/); with --create-log / --log-id the session
     log is written after cleanup finishes
   - Artifacts directory (~/.iotstack/artifacts/), including partition table CSV

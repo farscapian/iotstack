@@ -92,36 +92,12 @@ _config_hash_from_build_info() {
   python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
 }
 
-_config_hash_from_compilation_cache() {
-  # Prefer compilation-cache.csv (same source as iotstack flash assessment).
-  local yaml_file="$1"
-  local yaml_name legacy_name hash
-  yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
-  legacy_name=$(basename "$yaml_file")
-  [[ -f "$COMPILATION_CACHE" ]] || return 1
-  hash=$(awk -F, -v name="$yaml_name" '$1==name && $2!="" { print $2 }' "$COMPILATION_CACHE" | tail -1)
-  if [[ -z "$hash" ]]; then
-    # Legacy compilation-cache.csv stored config_hash in column 4 (image_hash).
-    hash=$(awk -F, -v name="$yaml_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
-  fi
-  if [[ -z "$hash" && "$legacy_name" != "$yaml_name" ]]; then
-    hash=$(awk -F, -v name="$legacy_name" '$1==name && $2!="" { print $2 }' "$COMPILATION_CACHE" | tail -1)
-    if [[ -z "$hash" ]]; then
-      hash=$(awk -F, -v name="$legacy_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
-    fi
-  fi
-  [[ -n "$hash" ]] && echo "$hash"
-}
-
 _resolve_build_config_hash() {
   # Authoritative build config_hash when compile is skipped (cache hit).
-  local yaml_file="$1"
-  local build_name="$2"
-  local cached_hash="${3:-}"
+  local build_name="$1"
+  local cached_hash="${2:-}"
   local hash
 
-  hash=$(_config_hash_from_compilation_cache "$yaml_file" 2>/dev/null) || true
-  [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   hash=$(_config_hash_from_build_info "$build_name" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   [[ -n "$cached_hash" ]] && echo "$cached_hash"
@@ -1242,7 +1218,7 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
      && "$CACHED_YAML_SHA256" == "$YAML_SHA256" \
      && "$CACHED_ESPHOME_VER" == "$ESPHOME_VERSION" ]]; then
     log "YAML unchanged, ESPHome ${ESPHOME_VERSION} -- skipping compilation."
-    NEW_CONFIG_HASH=$(_resolve_build_config_hash "$ORIGINAL_YAML_FILE" "$YAML_NAME" "$CACHED_CONFIG_HASH")
+    NEW_CONFIG_HASH=$(_resolve_build_config_hash "$YAML_NAME" "$CACHED_CONFIG_HASH")
     _sync_build_cache_config_hash "$NEW_CONFIG_HASH"
     log "Build config_hash: ${NEW_CONFIG_HASH}"
     COMPILED=true
@@ -1433,7 +1409,7 @@ if [[ "$COMPILED" == false ]]; then
     NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG_FILE" \
       | tail -1 | sed 's/config_hash=0x//')
     [[ -z "$NEW_CONFIG_HASH" ]] && \
-      NEW_CONFIG_HASH=$(_resolve_build_config_hash "$ORIGINAL_YAML_FILE" "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
+      NEW_CONFIG_HASH=$(_resolve_build_config_hash "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
     [[ -n "$NEW_CONFIG_HASH" ]] && COMPILED=true
   else
     COMPILE_LOG=$(mktemp)
@@ -1444,7 +1420,7 @@ if [[ "$COMPILED" == false ]]; then
       NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG" \
         | tail -1 | sed 's/config_hash=0x//')
       [[ -z "$NEW_CONFIG_HASH" ]] && \
-        NEW_CONFIG_HASH=$(_resolve_build_config_hash "$ORIGINAL_YAML_FILE" "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
+        NEW_CONFIG_HASH=$(_resolve_build_config_hash "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
     else
       err "Compilation failed:"
       echo
@@ -1602,7 +1578,7 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
       hash="$NEW_CONFIG_HASH"
     fi
     if [[ -z "$hash" ]]; then
-      hash=$(_resolve_build_config_hash "$ORIGINAL_YAML_FILE" "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
+      hash=$(_resolve_build_config_hash "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
     fi
     [[ -z "$hash" ]] && hash="unknown"
     hash_short="${hash:0:8}"

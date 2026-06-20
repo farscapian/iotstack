@@ -76,7 +76,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
 # iotstack Environment Configuration
 # Location: ~/.iotstack/.env (loaded by default on every invocation)
 
-# Force recompilation of firmware on every build (disables compilation cache)
+# Force recompilation of firmware on every build (disables compile skip)
 # Values: 0 (default, use cache) or 1 (always recompile)
 DISABLE_COMPILATION_CACHE=0
 EOF
