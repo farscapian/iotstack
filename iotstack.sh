@@ -4243,25 +4243,41 @@ _flash_bootstrap_esptool() {
   boot_app0=$(esp_boot_app0_bin_for_build "$build_dir" 2>/dev/null) || true
   [[ -z "$boot_app0" ]] && warn "boot_app0.bin not found -- device may not boot into bootstrap OTA slot"
 
-  info "Writing partition table and bootstrap image (${esptool_chip}, ${esptool_baud} baud)..."
+  local -a esptool_base_args=(
+    --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud"
+  )
+  local -a write_flash_opts=(
+    write-flash --flash-mode dio --flash-size "$flash_label" --flash-freq 40m
+  )
   if [[ $VERBOSE -eq 1 ]] && ! create_log_enabled; then
     info "Detailed output: tail -f $flash_log"
   fi
 
-  local -a write_flash_args=(
-    --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud"
+  info "Writing partition table (${esptool_chip}, ${flash_label}, ${esptool_baud} baud)..."
+  local -a partition_write_args=(
+    "${esptool_base_args[@]}"
     --before default-reset --after no-reset
-    write-flash --flash-mode dio --flash-size "$flash_label" --flash-freq 40m
+    "${write_flash_opts[@]}"
     0x0 "$build_dir/bootloader.bin"
     0x8000 "$build_dir/partitions.bin"
   )
   if [[ -n "$boot_app0" ]]; then
-    write_flash_args+=(0xd000 "$boot_app0")
+    partition_write_args+=(0xd000 "$boot_app0")
   fi
-  write_flash_args+=("$bootstrap_offset" "$build_dir/firmware.bin")
+  local step_start=$SECONDS
+  create_log_run_esptool "$esptool_src" "$flash_log" "${partition_write_args[@]}" \
+    || err "Partition table write failed"
+  info "Partition table write completed in $((SECONDS - step_start))s"
 
-  create_log_run_esptool "$esptool_src" "$flash_log" "${write_flash_args[@]}" \
-    || err "Flash failed"
+  info "Writing bootstrap image (${esptool_chip}, ${bootstrap_offset}, ${esptool_baud} baud)..."
+  step_start=$SECONDS
+  create_log_run_esptool "$esptool_src" "$flash_log" \
+    "${esptool_base_args[@]}" \
+    --before no-reset --after no-reset \
+    "${write_flash_opts[@]}" \
+    "$bootstrap_offset" "$build_dir/firmware.bin" \
+    || err "Bootstrap write failed"
+  info "Bootstrap write completed in $((SECONDS - step_start))s"
   esptool_output="$create_log_esptool_output"
   create_log_serial_capture_resume
 }
