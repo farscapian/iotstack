@@ -9,7 +9,7 @@ ESP32 ESPHome device management. **Load topic files from `ai-guidance/` instead 
 - Agents work in session clones, NOT in Sync: Grok -> `~/.grok/worktrees/mini-projects-iotstack/<session-id>/`; Claude Code -> `~/.claude/worktrees/mini-projects-iotstack/<session-id>/`; CLI runs from `~/Sync/mini_projects/iotstack`
 - Claude Code: NEVER edit files under `~/Sync/mini_projects/iotstack` -- use absolute paths to your session clone only
 - New Grok session: run `scripts/init_grok_session.sh`; new Claude Code session: run `scripts/init_claude_session.sh` (session sync + agent tips; see `ai-guidance/workflow.md`)
-- After changes: commit in the session clone, then `git push origin main`; human pulls Sync when ready (or asks agent to pull)
+- After changes: commit in the session clone; when human says "sync": `git push local-sync main` (NEVER `git push origin` -- human-only)
 - Never `git pull` on Sync or test `/dev/ttyACM0` while the human has `iotstack` running (see `workflow.md`)
 - When the human runs `iotstack` on Sync: tail `~/.iotstack/logs/sessions.watch` for new runs, then their session/serial logs (`workflow.md` § Watching live runs)
 

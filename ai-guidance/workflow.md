@@ -76,19 +76,21 @@ git reset --hard local-sync/main
 git clean -fd
 ```
 
-### 2. Publish (after commits)
+### 2. Sync (when human asks)
 
-Push from the session clone. The human pulls Sync when ready (either they do it themselves, or they ask the agent to):
+Push from the session clone to the local Sync repo. The human then reviews and pushes to origin. **Agents never push to origin.**
 
 ```bash
-# From the session clone:
-git push origin main
+# Check no iotstack command is running (pushing to Sync updates its working tree):
+pgrep -af '(/iotstack\.sh|/iotstack) ' || echo "safe to sync"
 
-# On Sync -- human-initiated or on request:
-cd ~/Sync/mini_projects/iotstack && git pull origin main
+# Push to Sync (local-sync remote set up during session sync step):
+git push local-sync main
 ```
 
-**Agents:** push after every commit unless the human says not to. Do not pull Sync unless the human asks.
+`~/Sync/mini_projects/iotstack` is configured with `receive.denyCurrentBranch = updateInstead`, so the push also updates Sync's working tree.
+
+**Human after sync:** review in Sync, then `git push origin main` when satisfied.
 
 **Humans editing Sync directly:** `git push origin main` from Sync, then session-sync any active agent clone.
 
@@ -101,11 +103,11 @@ Do **not** disrupt a flash, compile, update, or other long-running `iotstack` co
 Sync to Sync **if and only if** no `iotstack` command is running:
 
 ```bash
-# Any match means: do NOT git pull on Sync yet (push from session clone is still OK)
+# Any match means: do NOT git push local-sync yet
 pgrep -af '(/iotstack\.sh|/iotstack) ' || echo "no iotstack sessions"
 ```
 
-If anything is running: commit and `git push origin main` from the session clone, tell the human publish is pending, and pull on Sync only after their session finishes.
+If anything is running: commit in the session clone, tell the human sync is pending, and push local-sync only after their session finishes.
 
 #### Before serial / device testing
 
@@ -259,8 +261,8 @@ pkill -TERM -f 'serial-logs.py.*ttyACM0'   # if port still busy
 - When the human runs `iotstack` on Sync, watch `~/.iotstack/logs/sessions.watch` and tail the run's session/serial logs (see [Watching live iotstack runs](#watching-live-iotstack-runs-agents))
 
 **After agent work**
-- Agent pushes from the session clone (`git push origin main`)
-- Human pulls Sync when ready, or asks the agent to do it: `cd ~/Sync/mini_projects/iotstack && git pull origin main`
+- Agent syncs to Sync on request: `git push local-sync main` (never to origin)
+- Human reviews in `~/Sync/mini_projects/iotstack`, then `git push origin main` when satisfied
 - Human continues on Sync for CLI, flash, and follow-up edits
 
 **Human-only work (no agent)**
@@ -290,7 +292,7 @@ git clone git@github.com:farscapian/iotstack.git ~/.claude/worktrees/mini-projec
 
 ## Git and commit policy
 
-**Agent default:** commit when a task is complete; push to origin when complete **and** no `iotstack` command is running (see [Active iotstack sessions](#3-active-iotstack-sessions-agents----mandatory)) -- unless the human says not to commit yet. Do not pull Sync unless the human asks.
+**Agent default:** commit when a task is complete. Sync to Sync (`git push local-sync main`) only when the human asks, and only when no `iotstack` command is running (see [Active iotstack sessions](#3-active-iotstack-sessions-agents----mandatory)). Never push to origin -- that is human-only.
 
 **Correctness bar:** device testing against real hardware remains the standard for functional validation. Commits can land before the human has flashed every edge case; note untested areas in the commit message when relevant.
 
@@ -301,8 +303,8 @@ git clone git@github.com:farscapian/iotstack.git ~/.claude/worktrees/mini-projec
 **Agent (Grok or Claude Code session clone)**
 1. Make code changes in the session clone (never in Sync)
 2. `git add` and commit
-3. `git push origin main`
-4. Human pulls Sync when ready, or asks the agent: `cd ~/Sync/mini_projects/iotstack && git pull origin main`
+3. When human says "sync": `git push local-sync main` (never `git push origin`)
+4. Human reviews in Sync, then `git push origin main` when satisfied
 5. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate -- firmware picks up the tag on next compile
 
 **Human (Sync repo)**

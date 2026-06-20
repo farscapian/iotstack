@@ -105,7 +105,9 @@ Using Grok / Cursor agents efficiently (iotstack)
 
 AI GIT WORKFLOW (authorized)
   1. Session sync  -- init_grok_session.sh once per session (you just ran this)
-  2. Publish       -- after commits: git push origin main, then git pull on Sync
+  2. Sync          -- when human says "sync": git push local-sync main
+                      (pushes to ~/Sync/mini_projects/iotstack, NOT to origin)
+                      Human reviews and pushes to origin -- NEVER the agent
 
 FIRST MESSAGE (copy/paste template below)
   - Say you ran init_grok_session.sh (session sync complete).
@@ -126,8 +128,8 @@ TOKEN TIPS
   - Session sync once per session (this script), not before every task.
   - Give concrete errors, ports, roles, and file paths up front.
   - Let the agent read source files after guidance, not the whole repo.
-  - End of session: "Commit and publish" -> push origin main,
-    then git pull on ~/Sync/mini_projects/iotstack.
+  - End of session: commit, then sync to Sync on request (git push local-sync main).
+    Human reviews and pushes to origin when satisfied.
 
 WATCHING LIVE RUNS (when human flashes from Sync)
   - Registry: ~/.iotstack/logs/sessions.watch (one TSV line per iotstack invocation)
@@ -137,17 +139,19 @@ WATCHING LIVE RUNS (when human flashes from Sync)
 
 DO NOT
   - Start a session without session sync (stale clone -> wrong fixes).
+  - Push to origin (git push origin main) -- HUMAN ONLY, never an AI agent.
   - Load nvs-secrets.md for unrelated flash bugs (large file).
   - Re-explain the AI git workflow every time (see ai-guidance/workflow.md).
-  - git pull on Sync while any iotstack command is running (pgrep -af 'iotstack').
+  - git push local-sync while any iotstack command is running (pgrep -af 'iotstack').
   - Run USB/serial tests on /dev/ttyACM0 while iotstack is active on that port.
   - Wait for the human to paste flash logs if sessions.watch / log files are available.
 
-WHEN DONE (publish)
-  git push origin main
-  # Pull on Sync only when no iotstack session is running:
-  pgrep -af '(/iotstack\.sh|/iotstack) ' || \
-    (cd ~/Sync/mini_projects/iotstack && git pull origin main)
+WHEN HUMAN SAYS "sync"
+  # Check no iotstack command is running first:
+  pgrep -af '(/iotstack\.sh|/iotstack) ' || echo "safe to sync"
+  # Then push to Sync (local-sync remote was set up during session sync above):
+  git push local-sync main
+  # Human reviews changes in ~/Sync/mini_projects/iotstack, then pushes to origin.
 
 ================================================================================
 Suggested first message to paste into the agent:
