@@ -5,6 +5,7 @@
 - **Primary repo (CLI + daily use):** `~/Sync/mini_projects/iotstack` on branch `main`
 - **CLI entrypoint:** `~/.local/bin/iotstack` -> symlinks to `iotstack.sh` in that repo
 - **Grok/Cursor session clones:** `~/.grok/worktrees/mini-projects-iotstack/<session-id>/` (isolated full git clones for agent sessions; not linked `git worktree` entries)
+- **Claude Code session clones:** `~/.claude/worktrees/mini-projects-iotstack/<session-id>/` (same isolation model; Claude Code edits here via absolute paths; VS Code stays open at Sync for human reference only)
 - **Before testing fixes on Sync:** `git pull origin main` -- stale trees produce confusing output (e.g. `--erase` appearing to do nothing when the fix is not yet pulled)
 - **Handoff between trees:** `origin/main` -- agents publish into it; humans pull it on Sync; new sessions session-sync from it
 
@@ -13,44 +14,59 @@
 | Role | Edit here | Why |
 |------|-----------|-----|
 | Grok/Cursor agent (active session) | `~/.grok/worktrees/mini-projects-iotstack/<session-id>/` | Isolated workspace; commits and publish without touching your daily tree |
+| Claude Code agent (active session) | `~/.claude/worktrees/mini-projects-iotstack/<session-id>/` | Same isolation; human never edits these clones; Claude Code uses absolute paths |
 | Human (manual work) | `~/Sync/mini_projects/iotstack` | Canonical repo; `~/.local/bin/iotstack` runs from here |
 
-**Rule of thumb:** agents write the Grok session clone; humans write Sync. Do not edit the active Grok clone by hand during an agent session.
+**Rule of thumb:** agents write their session clone; humans write Sync. Do not edit an active session clone by hand.
 
 **Agent write access:** treat the open session clone as agent-owned for the duration of the session. No special file permissions required -- avoid parallel human edits in that directory instead.
 
-**Human manual edits:** use Sync. Edit, test with `iotstack`, commit, `git push origin main`. Then session-sync any active Grok clone so the agent sees your commits:
+**Human manual edits:** use Sync. Edit, test with `iotstack`, commit, `git push origin main`. Then session-sync any active agent clone so the agent sees your commits:
 
+Grok:
 ```bash
 ~/Sync/mini_projects/iotstack/scripts/init_grok_session.sh \
   ~/.grok/worktrees/mini-projects-iotstack/<session-id>
 ```
 
-**Mid-session human intervention:** prefer telling the agent what to change. If you must edit git-tracked files yourself, edit Sync, push, then session-sync the Grok clone -- do not patch the Grok clone directly.
+Claude Code:
+```bash
+~/Sync/mini_projects/iotstack/scripts/init_claude_session.sh \
+  ~/.claude/worktrees/mini-projects-iotstack/<session-id>
+```
 
-**When editing the Grok clone by hand is acceptable:** throwaway experiments, a session that is already finished, or running `init_grok_session.sh` (expected).
+**Mid-session human intervention:** prefer telling the agent what to change. If you must edit git-tracked files yourself, edit Sync, push, then session-sync the agent clone -- do not patch the clone directly.
+
+**When editing a session clone by hand is acceptable:** throwaway experiments, a session that is already finished, or running the init script (expected).
 
 **Testing agent changes:** `iotstack` always runs from Sync. After the agent publishes, pull on Sync (or let publish do it), then test. Flashing against an unpulled Sync tree is a common source of false failures.
 
 ## AI git workflow
 
-Authorized workflow for Grok/Cursor agent sessions. Two steps: **session sync** at start, **publish** after commits.
+Authorized workflow for agent sessions (Grok/Cursor and Claude Code). Two steps: **session sync** at start, **publish** after commits.
 
 ### 1. Session sync (start of session)
 
-Align the Grok clone with the canonical Sync repo. Run once per session (or after you edit directly on Sync).
+Align the session clone with the canonical Sync repo. Run once per session (or after the human edits Sync and pushes).
 
-**Recommended:** `scripts/init_grok_session.sh` -- session sync, session-goal prompt, and agent usage reminders.
+**Grok/Cursor:** `scripts/init_grok_session.sh` -- session sync, session-goal prompt, and agent usage reminders.
 
 ```bash
 cd ~/.grok/worktrees/mini-projects-iotstack/<session-id>
 ~/Sync/mini_projects/iotstack/scripts/init_grok_session.sh
 ```
 
-Manual equivalent:
+**Claude Code:** `scripts/init_claude_session.sh` -- same sync + Claude Code specific reminders.
 
 ```bash
-cd ~/.grok/worktrees/mini-projects-iotstack/<session-id>
+cd ~/.claude/worktrees/mini-projects-iotstack/<session-id>
+~/Sync/mini_projects/iotstack/scripts/init_claude_session.sh
+```
+
+Manual equivalent (either agent type):
+
+```bash
+cd <session-clone-path>
 
 git remote add local-sync ~/Sync/mini_projects/iotstack 2>/dev/null \
   || git remote set-url local-sync ~/Sync/mini_projects/iotstack
@@ -62,19 +78,19 @@ git clean -fd
 
 ### 2. Publish (after commits)
 
-Push from the Grok clone, then pull into the canonical repo so `~/.local/bin/iotstack` matches:
+Push from the session clone. The human pulls Sync when ready (either they do it themselves, or they ask the agent to):
 
 ```bash
-cd ~/.grok/worktrees/mini-projects-iotstack/<session-id>
+# From the session clone:
 git push origin main
 
-cd ~/Sync/mini_projects/iotstack
-git pull origin main
+# On Sync -- human-initiated or on request:
+cd ~/Sync/mini_projects/iotstack && git pull origin main
 ```
 
-**Agents:** run publish after every commit in the Grok clone unless the human says not to.
+**Agents:** push after every commit unless the human says not to. Do not pull Sync unless the human asks.
 
-**Humans editing Sync directly:** `git push origin main` from Sync, then session sync in any active Grok clone.
+**Humans editing Sync directly:** `git push origin main` from Sync, then session-sync any active agent clone.
 
 ### 3. Active `iotstack` sessions (agents -- mandatory)
 
@@ -85,11 +101,11 @@ Do **not** disrupt a flash, compile, update, or other long-running `iotstack` co
 Sync to Sync **if and only if** no `iotstack` command is running:
 
 ```bash
-# Any match means: do NOT git pull on Sync yet (push from Grok clone is still OK)
+# Any match means: do NOT git pull on Sync yet (push from session clone is still OK)
 pgrep -af '(/iotstack\.sh|/iotstack) ' || echo "no iotstack sessions"
 ```
 
-If anything is running: commit and `git push origin main` from the Grok clone, tell the human publish is pending, and pull on Sync only after their session finishes.
+If anything is running: commit and `git push origin main` from the session clone, tell the human publish is pending, and pull on Sync only after their session finishes.
 
 #### Before serial / device testing
 
@@ -232,32 +248,49 @@ pkill -TERM -f 'serial-logs.py.*ttyACM0'   # if port still busy
 2. Run `scripts/init_grok_session.sh` (session sync + goal prompt + agent tips)
 3. Paste the suggested first message into the agent (task + 1-3 `ai-guidance/` files to read)
 
-**During the session**
-- Agent edits and commits only in the Grok session clone
-- Human does not edit that clone by hand; use Sync for manual work (push + session-sync to refresh the agent)
+**Start a Claude Code session**
+1. Create a session clone: `git clone git@github.com:farscapian/iotstack.git ~/.claude/worktrees/mini-projects-iotstack/<session-id>`
+2. Run `scripts/init_claude_session.sh` from the clone (session sync + agent tips)
+3. VS Code stays open at Sync for your reference; Claude Code edits the clone via absolute paths
+
+**During any agent session**
+- Agent edits and commits only in the session clone; never in Sync
+- Human does not edit the session clone by hand; use Sync for manual work (push + session-sync to refresh the agent)
 - When the human runs `iotstack` on Sync, watch `~/.iotstack/logs/sessions.watch` and tail the run's session/serial logs (see [Watching live iotstack runs](#watching-live-iotstack-runs-agents))
 
 **After agent work**
-- Agent publishes (push from Grok clone, pull on Sync)
+- Agent pushes from the session clone (`git push origin main`)
+- Human pulls Sync when ready, or asks the agent to do it: `cd ~/Sync/mini_projects/iotstack && git pull origin main`
 - Human continues on Sync for CLI, flash, and follow-up edits
 
 **Human-only work (no agent)**
 - Edit, commit, and push from Sync only
-- Next agent session picks up your commits via `init_grok_session.sh`
+- Next agent session picks up your commits via `init_grok_session.sh` or `init_claude_session.sh`
 
-## Grok session clones
+## Agent session clones
 
-Session directories:
+Both Grok and Claude Code use full git clones, not linked `git worktree` entries (`git worktree list` shows only the current clone).
 
+Grok session directories:
 ```bash
 ls -la ~/.grok/worktrees/mini-projects-iotstack/
 ```
 
-These are separate full git clones, not linked `git worktree` entries (`git worktree list` shows only the current clone).
+Claude Code session directories:
+```bash
+ls -la ~/.claude/worktrees/mini-projects-iotstack/
+```
+
+Create a new Claude Code session clone:
+```bash
+git clone git@github.com:farscapian/iotstack.git ~/.claude/worktrees/mini-projects-iotstack/<session-id>
+~/Sync/mini_projects/iotstack/scripts/init_claude_session.sh \
+  ~/.claude/worktrees/mini-projects-iotstack/<session-id>
+```
 
 ## Git and commit policy
 
-**Agent default:** commit when a task is complete; publish when complete **and** no `iotstack` command is running (see [Active iotstack sessions](#3-active-iotstack-sessions-agents----mandatory)) -- unless the human says not to commit yet.
+**Agent default:** commit when a task is complete; push to origin when complete **and** no `iotstack` command is running (see [Active iotstack sessions](#3-active-iotstack-sessions-agents----mandatory)) -- unless the human says not to commit yet. Do not pull Sync unless the human asks.
 
 **Correctness bar:** device testing against real hardware remains the standard for functional validation. Commits can land before the human has flashed every edge case; note untested areas in the commit message when relevant.
 
@@ -265,16 +298,19 @@ These are separate full git clones, not linked `git worktree` entries (`git work
 
 ### Commit workflow
 
-**Agent (Grok session clone)**
-1. Make code changes in the session clone
+**Agent (Grok or Claude Code session clone)**
+1. Make code changes in the session clone (never in Sync)
 2. `git add` and commit
-3. Publish: `git push origin main`; `git pull origin main` on Sync only when no `iotstack` command is running
-4. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate -- firmware picks up the tag on next compile
+3. `git push origin main`
+4. Human pulls Sync when ready, or asks the agent: `cd ~/Sync/mini_projects/iotstack && git pull origin main`
+5. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate -- firmware picks up the tag on next compile
 
 **Human (Sync repo)**
 1. Make code changes on Sync
 2. `git add`, commit, `git push origin main`
-3. Session-sync any active Grok clone (`init_grok_session.sh`) before resuming agent work there
+3. Session-sync any active agent clone before resuming agent work:
+   - Grok: `init_grok_session.sh`
+   - Claude Code: `init_claude_session.sh`
 
 ## Research FIRST, then debug
 

@@ -6,9 +6,10 @@ ESP32 ESPHome device management. **Load topic files from `ai-guidance/` instead 
 
 - Branding: always lowercase `iotstack` (never IoT Stack / iotStack)
 - Text: ASCII-only in docs, logs, help, and code comments
-- Agents work in `~/.grok/worktrees/mini-projects-iotstack/<session-id>/`; CLI runs from `~/Sync/mini_projects/iotstack`
-- New Grok session: run `scripts/init_grok_session.sh` (session sync + agent tips; see `ai-guidance/workflow.md`)
-- After changes: commit in Grok clone, then publish (`git push origin main`; `git pull` on Sync only when no `iotstack` command is running)
+- Agents work in session clones, NOT in Sync: Grok -> `~/.grok/worktrees/mini-projects-iotstack/<session-id>/`; Claude Code -> `~/.claude/worktrees/mini-projects-iotstack/<session-id>/`; CLI runs from `~/Sync/mini_projects/iotstack`
+- Claude Code: NEVER edit files under `~/Sync/mini_projects/iotstack` -- use absolute paths to your session clone only
+- New Grok session: run `scripts/init_grok_session.sh`; new Claude Code session: run `scripts/init_claude_session.sh` (session sync + agent tips; see `ai-guidance/workflow.md`)
+- After changes: commit in the session clone, then `git push origin main`; human pulls Sync when ready (or asks agent to pull)
 - Never `git pull` on Sync or test `/dev/ttyACM0` while the human has `iotstack` running (see `workflow.md`)
 - When the human runs `iotstack` on Sync: tail `~/.iotstack/logs/sessions.watch` for new runs, then their session/serial logs (`workflow.md` § Watching live runs)
 
@@ -17,7 +18,7 @@ ESP32 ESPHome device management. **Load topic files from `ai-guidance/` instead 
 | File | Load when |
 |------|-----------|
 | [ai-guidance/conventions.md](ai-guidance/conventions.md) | Naming, ASCII-only text, CLI output tags |
-| [ai-guidance/workflow.md](ai-guidance/workflow.md) | Repos, Grok clones, git sync, `sessions.watch` live monitoring, `iotstack ps`/`kill` |
+| [ai-guidance/workflow.md](ai-guidance/workflow.md) | Repos, agent session clones (Grok + Claude Code), git sync, `sessions.watch` live monitoring, `iotstack ps`/`kill` |
 | [ai-guidance/configuration.md](ai-guidance/configuration.md) | `~/.iotstack/.env`, compilation cache flags |
 | [ai-guidance/architecture.md](ai-guidance/architecture.md) | mDNS discovery, compile cache, YAML, project version |
 | [ai-guidance/features.md](ai-guidance/features.md) | Update subsets, delta OTA, reassign, verify, HA |
