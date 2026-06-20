@@ -26,7 +26,14 @@ ls -la ~/.grok/worktrees/mini-projects-iotstack/
 
 ### Option B -- sync Grok clone from Sync (session start or after human edits on Sync)
 
-Run in the Grok session clone to match the canonical local repo:
+**Recommended:** run `scripts/init_grok_session.sh` from the session clone (or pass the clone path). It performs Option B, prompts for a one-to-three sentence session goal, and prints agent usage reminders.
+
+```bash
+cd ~/.grok/worktrees/mini-projects-iotstack/<session-id>
+~/Sync/mini_projects/iotstack/scripts/init_grok_session.sh
+```
+
+Manual equivalent:
 
 ```bash
 cd ~/.grok/worktrees/mini-projects-iotstack/<session-id>
