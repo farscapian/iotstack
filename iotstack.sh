@@ -674,6 +674,7 @@ declare -g IOTSTACK_FLASH_SUPPRESS_STEPS=0
 _flash_step_reset() {
   _IOTSTACK_FLASH_STEP_NUM=0
   _IOTSTACK_FLASH_SERIAL_STEP=0
+  _IOTSTACK_FLASH_NVS_STEP=0
   _IOTSTACK_FLASH_OTA_STEP=0
   export IOTSTACK_LOG_INDENT=""
 }
@@ -703,6 +704,7 @@ _flash_step_end() {
 }
 
 declare -g _IOTSTACK_FLASH_SERIAL_STEP=0
+declare -g _IOTSTACK_FLASH_NVS_STEP=0
 declare -g _IOTSTACK_FLASH_OTA_STEP=0
 
 _flash_serial_step_begin() {
@@ -710,6 +712,13 @@ _flash_serial_step_begin() {
   [[ "${_IOTSTACK_FLASH_SERIAL_STEP:-0}" == "1" ]] && return 0
   _IOTSTACK_FLASH_SERIAL_STEP=1
   _flash_step_begin "Serial flash partition table and bootstrap"
+}
+
+_flash_nvs_step_begin() {
+  # WiFi credentials and device secrets (API when bootstrap is online, else USB).
+  [[ "${_IOTSTACK_FLASH_NVS_STEP:-0}" == "1" ]] && return 0
+  _IOTSTACK_FLASH_NVS_STEP=1
+  _flash_step_begin "Write device-specific secrets to NVS"
 }
 
 _flash_ota_step_begin() {
@@ -4427,6 +4436,7 @@ _flash_bootstrap_to_tty() {
     device_mac=$(esp_mac_suffix_resolve "$tty_device") || err "Could not read chip MAC from $tty_device"
     ok "Device MAC: $device_mac"
 
+    _flash_nvs_step_begin
     _provision_device_nvs "$tty_device" "$device_mac" "$production_role" || \
       err "Failed to provision device NVS"
 
@@ -4449,6 +4459,7 @@ _flash_bootstrap_to_tty() {
       || err "Failed to extract MAC address from device (try: esptool --port $tty_device chip-id)"
     ok "Device ${device_mac} prepared for firmware update"
 
+    _flash_nvs_step_begin
     _provision_device_nvs "$tty_device" "$device_mac" "$production_role" || \
       err "Failed to provision device NVS"
 
