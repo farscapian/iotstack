@@ -4253,31 +4253,27 @@ _flash_bootstrap_esptool() {
     info "Detailed output: tail -f $flash_log"
   fi
 
-  info "Writing partition table (${esptool_chip}, ${flash_label}, ${esptool_baud} baud)..."
-  local -a partition_write_args=(
-    "${esptool_base_args[@]}"
-    --before default-reset --after no-reset
-    "${write_flash_opts[@]}"
-    0x0 "$build_dir/bootloader.bin"
-    0x8000 "$build_dir/partitions.bin"
-  )
-  if [[ -n "$boot_app0" ]]; then
-    partition_write_args+=(0xd000 "$boot_app0")
-  fi
-  local step_start=$SECONDS
-  create_log_run_esptool "$esptool_src" "$flash_log" "${partition_write_args[@]}" \
-    || err "Partition table write failed"
-  info "Partition table write completed in $((SECONDS - step_start))s"
+  _flash_esptool_write_step() {
+    local step_name="$1"
+    local before_mode="$2"
+    shift 2
+    info "Writing ${step_name} (${esptool_chip}, ${esptool_baud} baud)..."
+    local step_start=$SECONDS
+    create_log_run_esptool "$esptool_src" "$flash_log" \
+      "${esptool_base_args[@]}" \
+      --before "$before_mode" --after no-reset \
+      "${write_flash_opts[@]}" \
+      "$@" \
+      || err "${step_name} write failed"
+    info "${step_name} write completed in $((SECONDS - step_start))s"
+  }
 
-  info "Writing bootstrap image (${esptool_chip}, ${bootstrap_offset}, ${esptool_baud} baud)..."
-  step_start=$SECONDS
-  create_log_run_esptool "$esptool_src" "$flash_log" \
-    "${esptool_base_args[@]}" \
-    --before no-reset --after no-reset \
-    "${write_flash_opts[@]}" \
-    "$bootstrap_offset" "$build_dir/firmware.bin" \
-    || err "Bootstrap write failed"
-  info "Bootstrap write completed in $((SECONDS - step_start))s"
+  _flash_esptool_write_step "bootloader.bin" default-reset 0x0 "$build_dir/bootloader.bin"
+  _flash_esptool_write_step "partitions.bin" no-reset 0x8000 "$build_dir/partitions.bin"
+  if [[ -n "$boot_app0" ]]; then
+    _flash_esptool_write_step "boot_app0.bin" no-reset 0xd000 "$boot_app0"
+  fi
+  _flash_esptool_write_step "firmware.bin" no-reset "$bootstrap_offset" "$build_dir/firmware.bin"
   esptool_output="$create_log_esptool_output"
   create_log_serial_capture_resume
 }
