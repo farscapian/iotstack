@@ -4695,7 +4695,7 @@ _flash_production_smart() {
 
     local device_mac="" prod_hostname=""
     if [[ "$skip_recovery" != "--ota-only" ]]; then
-      _flash_step_begin "Assess device"
+      _flash_step_begin "Assessing device"
       info "Port: ${tty_device}"
       # esptool chip-id needs exclusive TTY access; serial capture starts after MAC read.
       info "Reading chip MAC via USB..."
