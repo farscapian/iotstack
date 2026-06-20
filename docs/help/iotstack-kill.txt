@@ -1,0 +1,16 @@
+iotstack kill -- Stop any running iotstack command
+
+Stops every running iotstack session (flash, update, logs, tests, clean, or
+any other subcommand) plus detached helper trees such as background serial
+capture and esptool. Sends SIGCONT to stopped jobs, then SIGTERM to each
+process group, then SIGKILL after ~3s if needed.
+
+Excludes this iotstack kill invocation. Same behavior as: iotstack ps kill
+
+Usage:
+  iotstack kill
+
+Examples:
+  iotstack kill
+  iotstack ps          # inspect trees first
+  iotstack ps kill     # same as iotstack kill

@@ -25,6 +25,7 @@ Commands:
   rotate-secrets      Rotate device secrets (OTA password and API key)
   clean               Clean session logs and artifacts
   ps                  List process trees for running iotstack commands
+  kill                Stop any running iotstack command (alias: iotstack ps kill)
   tests               Run overnight integration tests (USB ESP32-C6)
 
 Use 'iotstack <command> help' for detailed help on any command.

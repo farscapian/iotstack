@@ -5,21 +5,23 @@ plus detached helper trees (serial capture, esptool, update_devices.sh) that
 may run in a separate session (for example background serial-logs.py during
 flash).
 
-Excludes this iotstack ps invocation. Use when a flash or update appears
+Excludes this iotstack ps invocation. Use when any iotstack command appears
 stuck and you need PIDs / PGIDs before killing a session.
 
 Usage:
   iotstack ps
   iotstack ps kill
+  iotstack kill              # same as iotstack ps kill
 
 Subcommands:
   (default)   List running iotstack process trees
-  kill        Stop every running iotstack session and detached helper tree
+  kill        Stop any running iotstack command and detached helper trees
                 (SIGTERM, then SIGKILL after ~3s). Excludes this invocation.
 
 Examples:
   iotstack ps
   iotstack ps | less
+  iotstack kill
   iotstack ps kill
 
 Manual stop (replace PID with a root pid from iotstack ps):

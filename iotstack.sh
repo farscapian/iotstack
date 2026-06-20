@@ -5294,6 +5294,22 @@ help_ps() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-ps.txt"
 }
 
+help_kill() {
+  cat "${SCRIPT_DIR}/docs/help/iotstack-kill.txt"
+}
+
+cmd_kill() {
+  if [[ "${1:-}" == "help" ]]; then
+    help_kill
+    return 0
+  fi
+  [[ $# -gt 0 ]] && err "Unknown option for kill: $1 (try 'iotstack kill help')"
+
+  # shellcheck source=scripts/iotstack-ps.sh
+  source "${SCRIPT_DIR}/scripts/iotstack-ps.sh"
+  iotstack_ps_kill
+}
+
 cmd_ps() {
   local subcommand="${1:-}"
 
@@ -5499,6 +5515,10 @@ main() {
       shift
       cmd_ps "$@"
       ;;
+    kill)
+      shift
+      cmd_kill "$@"
+      ;;
     tests)
       shift
       cmd_tests "$@"
@@ -5528,6 +5548,7 @@ main() {
           commission)       help_commission ;;
           clean)            help_clean ;;
           ps)               help_ps ;;
+          kill)             help_kill ;;
           tests)            help_tests ;;
           query)            help_query ;;
           secret)           help_secret ;;

@@ -9,9 +9,10 @@ _IOTSTACK_PS_LOADED=1
 # shellcheck source=scripts/esp-serial.sh
 source "${SCRIPTS_DIR}/esp-serial.sh"
 
-_iotstack_ps_is_ps_command() {
+_iotstack_ps_is_self_command() {
   local cmdline="$1"
-  [[ "$cmdline" == *"iotstack ps"* || "$cmdline" == *"iotstack.sh ps"* ]]
+  [[ "$cmdline" == *"iotstack ps"* || "$cmdline" == *"iotstack.sh ps"* \
+    || "$cmdline" == *"iotstack kill"* || "$cmdline" == *"iotstack.sh kill"* ]]
 }
 
 _iotstack_ps_skip_pid() {
@@ -24,7 +25,7 @@ _iotstack_ps_skip_pid() {
 
   cmdline=$(esp_serial_process_cmdline "$pid")
   [[ -z "$cmdline" ]] && return 0
-  _iotstack_ps_is_ps_command "$cmdline" && return 0
+  _iotstack_ps_is_self_command "$cmdline" && return 0
   return 1
 }
 
@@ -244,7 +245,7 @@ iotstack_ps() {
   fi
 
   echo ""
-  info "Stop all: iotstack ps kill"
+  info "Stop any running: iotstack kill"
 }
 
 iotstack_ps_kill() {
@@ -258,7 +259,7 @@ iotstack_ps_kill() {
     return 0
   fi
 
-  info "Stopping ${#roots[@]} iotstack session(s) and ${#helpers[@]} detached helper tree(s)..."
+  info "Stopping any running iotstack commands: ${#roots[@]} session(s), ${#helpers[@]} detached helper tree(s)..."
 
   for pid in "${roots[@]}"; do
     _iotstack_ps_kill_group "$pid" "session" || failures=$((failures + 1))
