@@ -133,15 +133,93 @@ _iotstack_ps_print_session() {
   _iotstack_ps_print_tree "$pid"
 }
 
-iotstack_ps() {
-  local -a roots=() helpers=() unique_helpers=()
-  local pid cmdline label
+_iotstack_ps_collect_sessions() {
+  # Populate caller arrays: roots (session leaders) and helpers (detached group leaders).
+  local -n _roots_ref="$1"
+  local -n _helpers_ref="$2"
+  local pid cmdline label pgid
   local -A seen_helpers=()
+
+  _roots_ref=()
+  _helpers_ref=()
 
   while IFS= read -r pid; do
     [[ -z "$pid" ]] && continue
-    roots+=("$pid")
+    _roots_ref+=("$pid")
   done < <(_iotstack_ps_root_pids | sort -n -u)
+
+  while IFS= read -r pid; do
+    [[ -z "$pid" ]] && continue
+    _iotstack_ps_pid_in_any_root "$pid" "${_roots_ref[@]}" && continue
+    pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
+    [[ -n "$pgid" && "$pid" -ne "$pgid" ]] && continue
+    [[ -n "${seen_helpers[$pid]:-}" ]] && continue
+    seen_helpers[$pid]=1
+    _helpers_ref+=("$pid")
+  done < <(_iotstack_ps_collect_helper_pids | sort -n -u)
+}
+
+_iotstack_ps_pgid_alive() {
+  local pgid="$1"
+
+  [[ -n "$pgid" && "$pgid" =~ ^[0-9]+$ ]] || return 1
+  pgrep -g "$pgid" >/dev/null 2>&1
+}
+
+_iotstack_ps_resume_stopped_group() {
+  local pgid="$1"
+  local pid state
+
+  [[ -n "$pgid" && "$pgid" =~ ^[0-9]+$ ]] || return 0
+  while IFS= read -r pid; do
+    [[ -z "$pid" ]] && continue
+    state=$(ps -p "$pid" -o stat= 2>/dev/null | tr -d ' ' || true)
+    [[ "$state" == *T* ]] && kill -CONT "$pid" 2>/dev/null || true
+  done < <(pgrep -g "$pgid" 2>/dev/null || true)
+}
+
+_iotstack_ps_kill_group() {
+  local pid="$1"
+  local label="$2"
+  local pgid cmdline i
+
+  [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] || return 0
+  kill -0 "$pid" 2>/dev/null || return 0
+
+  pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
+  [[ -z "$pgid" ]] && return 1
+
+  cmdline=$(esp_serial_process_cmdline "$pid")
+  info "Stopping ${label} pid ${pid} pgid ${pgid}"
+  [[ -n "$cmdline" ]] && echo "  cmd: $cmdline"
+
+  _iotstack_ps_resume_stopped_group "$pgid"
+  kill -TERM -"$pgid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+  for i in 1 2 3 4 5 6; do
+    _iotstack_ps_pgid_alive "$pgid" || {
+      ok "Stopped ${label} (pgid ${pgid})"
+      return 0
+    }
+    sleep 0.5
+  done
+
+  warn "Sending SIGKILL to pgid ${pgid}..."
+  _iotstack_ps_resume_stopped_group "$pgid"
+  kill -KILL -"$pgid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+  esp_serial_kill_process_tree "$pid"
+  sleep 0.2
+  if _iotstack_ps_pgid_alive "$pgid"; then
+    warn "${label} pgid ${pgid} may still be running"
+    return 1
+  fi
+  ok "Stopped ${label} (pgid ${pgid})"
+}
+
+iotstack_ps() {
+  local -a roots=() helpers=()
+  local pid cmdline label
+
+  _iotstack_ps_collect_sessions roots helpers
 
   if [[ ${#roots[@]} -eq 0 ]]; then
     info "No iotstack command sessions running."
@@ -151,17 +229,6 @@ iotstack_ps() {
       _iotstack_ps_print_session "$pid" "session"
     done
   fi
-
-  while IFS= read -r pid; do
-    local pgid
-    [[ -z "$pid" ]] && continue
-    _iotstack_ps_pid_in_any_root "$pid" "${roots[@]}" && continue
-    pgid=$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')
-    [[ -n "$pgid" && "$pid" -ne "$pgid" ]] && continue
-    [[ -n "${seen_helpers[$pid]:-}" ]] && continue
-    seen_helpers[$pid]=1
-    helpers+=("$pid")
-  done < <(_iotstack_ps_collect_helper_pids | sort -n -u)
 
   if [[ ${#helpers[@]} -gt 0 ]]; then
     info "${#helpers[@]} detached iotstack helper process tree(s):"
@@ -177,5 +244,41 @@ iotstack_ps() {
   fi
 
   echo ""
-  info "Stop a session: kill -TERM -\$(ps -o pgid= -p <pid> | tr -d ' ')"
+  info "Stop all: iotstack ps kill"
+}
+
+iotstack_ps_kill() {
+  local -a roots=() helpers=()
+  local pid cmdline label failures=0
+
+  _iotstack_ps_collect_sessions roots helpers
+
+  if [[ ${#roots[@]} -eq 0 && ${#helpers[@]} -eq 0 ]]; then
+    ok "No iotstack processes to stop."
+    return 0
+  fi
+
+  info "Stopping ${#roots[@]} iotstack session(s) and ${#helpers[@]} detached helper tree(s)..."
+
+  for pid in "${roots[@]}"; do
+    _iotstack_ps_kill_group "$pid" "session" || failures=$((failures + 1))
+  done
+
+  for pid in "${helpers[@]}"; do
+    cmdline=$(esp_serial_process_cmdline "$pid")
+    label=$(_iotstack_ps_helper_label "$cmdline")
+    _iotstack_ps_kill_group "$pid" "detached ${label}" || failures=$((failures + 1))
+  done
+
+  roots=()
+  helpers=()
+  _iotstack_ps_collect_sessions roots helpers
+  if [[ ${#roots[@]} -eq 0 && ${#helpers[@]} -eq 0 ]]; then
+    ok "All iotstack processes stopped."
+    return 0
+  fi
+
+  warn "${#roots[@]} session(s) and ${#helpers[@]} helper tree(s) may still be running."
+  info "Run 'iotstack ps' to inspect remaining processes."
+  return "$(( failures > 0 ? failures : 1 ))"
 }

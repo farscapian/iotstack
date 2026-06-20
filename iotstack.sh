@@ -5295,15 +5295,29 @@ help_ps() {
 }
 
 cmd_ps() {
-  if [[ "${1:-}" == "help" ]]; then
-    help_ps
-    return 0
-  fi
-  [[ $# -gt 0 ]] && err "Unknown option for ps: $1 (try 'iotstack ps help')"
+  local subcommand="${1:-}"
 
-  # shellcheck source=scripts/iotstack-ps.sh
-  source "${SCRIPT_DIR}/scripts/iotstack-ps.sh"
-  iotstack_ps
+  case "$subcommand" in
+    help)
+      help_ps
+      return 0
+      ;;
+    kill)
+      shift
+      [[ $# -gt 0 ]] && err "Unknown option for ps kill: $1 (try 'iotstack ps help')"
+      # shellcheck source=scripts/iotstack-ps.sh
+      source "${SCRIPT_DIR}/scripts/iotstack-ps.sh"
+      iotstack_ps_kill
+      ;;
+    "")
+      # shellcheck source=scripts/iotstack-ps.sh
+      source "${SCRIPT_DIR}/scripts/iotstack-ps.sh"
+      iotstack_ps
+      ;;
+    *)
+      err "Unknown ps subcommand: $subcommand (try 'iotstack ps help')"
+      ;;
+  esac
 }
 
 help_tests() {

@@ -10,13 +10,17 @@ stuck and you need PIDs / PGIDs before killing a session.
 
 Usage:
   iotstack ps
+  iotstack ps kill
+
+Subcommands:
+  (default)   List running iotstack process trees
+  kill        Stop every running iotstack session and detached helper tree
+                (SIGTERM, then SIGKILL after ~3s). Excludes this invocation.
 
 Examples:
   iotstack ps
   iotstack ps | less
+  iotstack ps kill
 
-Stop a hung session (replace PID with a root pid from the listing):
+Manual stop (replace PID with a root pid from iotstack ps):
   kill -TERM -$(ps -o pgid= -p PID | tr -d ' ')
-
-If /dev/ttyACM0 stays busy, also stop detached serial capture:
-  pkill -TERM -f 'serial-logs.py.*ttyACM0'
