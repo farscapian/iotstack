@@ -363,6 +363,39 @@ esp_mac_suffix_resolve() {
   esp_mac_suffix_from_port "$port"
 }
 
+esp_mac_suffix_resolve_timeout() {
+  # esp_mac_suffix_resolve with a hard wall-clock limit (post-layout USB handoff).
+  local port="$1"
+  local esptool_capture="${2:-}"
+  local timeout_sec="${3:-${IOTSTACK_POST_LAYOUT_USB_TIMEOUT_SEC:-45}}"
+  local scripts_dir mac rc=0
+
+  [[ -e "$port" ]] || return 1
+  [[ "$timeout_sec" =~ ^[0-9]+$ && "$timeout_sec" -gt 0 ]] || timeout_sec=45
+
+  if [[ -n "$esptool_capture" ]]; then
+    mac=$(esp_mac_from_esptool_output "$esptool_capture" 2>/dev/null) || mac=""
+    if [[ -n "$mac" && "$mac" =~ ^[0-9a-f]{6}$ ]]; then
+      printf '%s\n' "$mac"
+      return 0
+    fi
+  fi
+
+  scripts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  mac=$(timeout "$timeout_sec" bash -c '
+    # shellcheck source=scripts/esp-serial.sh
+    source "$0/esp-serial.sh"
+    esp_mac_suffix_from_port "$1"
+  ' "$scripts_dir" "$port" 2>/dev/null) || rc=$?
+
+  if [[ $rc -eq 124 ]]; then
+    IOTSTACK_LAST_ESPTOOL_ERROR="chip MAC read timed out after ${timeout_sec}s on ${port}"
+    return 124
+  fi
+  [[ -n "$mac" && "$mac" =~ ^[0-9a-f]{6}$ ]] && { printf '%s\n' "$mac"; return 0; }
+  return 1
+}
+
 esp_esptool_chip_id() {
   # Run esptool chip-id with auto-reset. Tries 115200 then 9600 for detection.
   local port="$1"

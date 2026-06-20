@@ -4379,8 +4379,17 @@ _flash_bootstrap_to_tty() {
       _flash_bootstrap_esptool "$tty_device" "$flash_log" "$build_dir" "$bootstrap_offset" \
         "$FLASH_ASSESS_NEED_ERASE" 0
       if [[ -z "$device_mac" ]]; then
-        device_mac=$(esp_mac_suffix_resolve "$tty_device") \
-          || err "Failed to extract MAC address from device (try: esptool --port $tty_device chip-id)"
+        local _post_layout_timeout="${IOTSTACK_POST_LAYOUT_USB_TIMEOUT_SEC:-45}"
+        local _post_layout_mac_rc=0
+        info "Reading chip MAC from ${tty_device} after layout flash (timeout ${_post_layout_timeout}s)..."
+        device_mac=$(esp_mac_suffix_resolve_timeout "$tty_device" "" "$_post_layout_timeout") \
+          || _post_layout_mac_rc=$?
+        if [[ -z "$device_mac" ]]; then
+          if [[ $_post_layout_mac_rc -eq 124 ]]; then
+            err "Timed out reading chip MAC from ${tty_device} after layout flash (${_post_layout_timeout}s)"
+          fi
+          err "Failed to extract MAC address from device (try: esptool --port $tty_device chip-id)"
+        fi
       else
         debug "Reusing chip MAC ${device_mac} from preflight (skip chip-id after layout flash)"
       fi
