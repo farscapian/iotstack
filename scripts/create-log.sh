@@ -367,14 +367,24 @@ create_log_serial_capture_enabled() {
 }
 
 create_log_serial_capture_stop() {
+  local pid tty
+
   if [[ -n "${IOTSTACK_SERIAL_LOG_PID:-}" ]]; then
-    local pid="$IOTSTACK_SERIAL_LOG_PID"
+    pid="$IOTSTACK_SERIAL_LOG_PID"
     kill -TERM -"$pid" 2>/dev/null \
       || { declare -F esp_serial_kill_process_tree &>/dev/null \
         && esp_serial_kill_process_tree "$pid"; } \
       || kill -TERM "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
     unset IOTSTACK_SERIAL_LOG_PID
+  fi
+
+  tty="${IOTSTACK_FLASH_SERIAL_TTY:-}"
+  if [[ -n "$tty" ]] && declare -F esp_serial_clear_tty_interference &>/dev/null; then
+    esp_serial_clear_tty_interference "$tty"
+  fi
+  if [[ -n "$tty" ]] && declare -F esp_serial_wait_tty_free &>/dev/null; then
+    esp_serial_wait_tty_free "$tty" 5
   fi
 }
 
@@ -408,9 +418,6 @@ create_log_serial_capture_start() {
     printf '%s === serial capture started (%s) ===\n' "$(date -Iseconds)" "$tty" >"$log_file"
   fi
 
-  if [[ "$variant" == "unknown" ]] && declare -F esp_detect_chip &>/dev/null; then
-    variant=$(esp_detect_chip "$tty" 2>/dev/null) || variant="unknown"
-  fi
   source=$(create_log_serial_source "$tty" "$variant")
 
   py=$(head -1 "$(command -v esphome)" 2>/dev/null | sed 's/^#!//')

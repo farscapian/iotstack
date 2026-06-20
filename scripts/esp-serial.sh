@@ -180,6 +180,23 @@ esp_serial_clear_tty_interference() {
   sleep 1
 }
 
+esp_serial_wait_tty_free() {
+  # Wait until no process holds the TTY (after stopping serial capture).
+  local tty="$1"
+  local timeout_s="${2:-5}"
+  local elapsed=0
+
+  [[ -n "$tty" && -e "$tty" ]] || return 0
+  command -v lsof &>/dev/null || return 0
+
+  while (( elapsed < timeout_s )); do
+    [[ -z "$(esp_serial_tty_holder_pids "$tty")" ]] && return 0
+    sleep 0.2
+    elapsed=$((elapsed + 1))
+  done
+  return 1
+}
+
 esp_serial_tty_blocked_processes() {
   # Non-iotstack processes still holding the TTY after cleanup (for error messages).
   local tty="$1"
@@ -283,9 +300,10 @@ esp_esptool_chip_id() {
       && declare -F create_log_serial_capture_pause &>/dev/null; then
     create_log_serial_capture_pause
     resume_capture=1
-    sleep 1
+    esp_serial_wait_tty_free "$port" 5 || true
   else
     esp_serial_clear_tty_interference "$port"
+    esp_serial_wait_tty_free "$port" 3 || true
   fi
 
   for baud in 115200 9600 57600; do

@@ -4664,7 +4664,8 @@ _flash_production_smart() {
     info "Flash target: ${device} on ${tty_device} (serial: bootstrap; production: OTA)"
     echo ""
 
-    _flash_serial_log_setup "$tty_device"
+    esp_serial_clear_tty_interference "$tty_device"
+    esp_serial_wait_tty_free "$tty_device" 5 || true
 
     _flash_step_begin "Build firmware"
     if [[ "$skip_recovery" == "--ota-only" ]]; then
@@ -4674,6 +4675,9 @@ _flash_production_smart() {
       _flash_prepare_builds "$tty_device" "$device" "$yaml_path" || err "Firmware build failed"
     fi
     ok "Firmware builds ready (bootstrap serial + production OTA)"
+
+    # Serial capture holds the TTY; start only after USB chip detection / compile prep.
+    _flash_serial_log_setup "$tty_device" "${IOTSTACK_ESPTOOL_CHIP:-}"
 
     local device_mac="" prod_hostname=""
     if [[ "$skip_recovery" != "--ota-only" ]]; then
