@@ -259,6 +259,42 @@ create_log_run() {
   "$@"
 }
 
+create_log_watch_append() {
+  # Append one TSV line to IOTSTACK_SESSION_WATCH for every iotstack invocation.
+  # Columns: ts, pid, log_id, session_log, serial_log, command
+  local invocation_cmd="$1"
+  local watch_file="${IOTSTACK_SESSION_WATCH:-${IOTSTACK_HOME}/logs/sessions.watch}"
+  local ts log_id session_log serial_log
+
+  ts=$(date -Iseconds)
+  mkdir -p "$(dirname "$watch_file")"
+
+  if [[ ! -f "$watch_file" ]]; then
+    printf '#%s\t%s\t%s\t%s\t%s\t%s\n' \
+      ts pid log_id session_log serial_log command >"$watch_file"
+  fi
+
+  if [[ -n "${IOTSTACK_LOG_ID:-}" ]]; then
+    log_id="$IOTSTACK_LOG_ID"
+    serial_log="${IOTSTACK_HOME}/logs/iotstack-${IOTSTACK_LOG_ID}-serial.log"
+  else
+    log_id="-"
+    serial_log="-"
+  fi
+
+  if [[ -n "${IOTSTACK_LOG_FILE:-}" ]]; then
+    session_log="$IOTSTACK_LOG_FILE"
+  else
+    session_log="-"
+  fi
+
+  invocation_cmd="${invocation_cmd//$'\t'/ }"
+  invocation_cmd="${invocation_cmd//$'\n'/ }"
+
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$ts" "$$" "$log_id" "$session_log" "$serial_log" "$invocation_cmd" >>"$watch_file"
+}
+
 create_log_setup() {
   # Keep stdout/stderr on the terminal so child tools (esphome, esptool, etc.) stay
   # line-buffered. iotstack messages are stamped via create_log_stamp_line(); piped

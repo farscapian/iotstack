@@ -40,6 +40,8 @@ export ROLES_CONF="${ROLES_CONF:-${SCRIPTS_DIR}/roles.conf}"
 export UPDATE_SCRIPT="${UPDATE_SCRIPT:-${SCRIPTS_DIR}/update_devices.sh}"
 # Directories -- allow user override (ARTIFACTS_DIR before PARTITION_TABLE)
 export LOGS_DIR="${LOGS_DIR:-${IOTSTACK_HOME}/logs}"
+# Append-only registry of iotstack invocations (tail -f to detect new runs).
+export IOTSTACK_SESSION_WATCH="${IOTSTACK_SESSION_WATCH:-${LOGS_DIR}/sessions.watch}"
 export ARTIFACTS_DIR="${ARTIFACTS_DIR:-${IOTSTACK_HOME}/artifacts}"
 export PASS_STORE_DIR="${PASS_STORE_DIR:-${IOTSTACK_HOME}/.pass}"
 export GNUPG_HOME="${GNUPG_HOME:-${IOTSTACK_HOME}/.gnupg}"

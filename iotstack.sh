@@ -5326,11 +5326,17 @@ cmd_tests() {
 }
 
 main() {
+  local invocation_cmd="iotstack" arg
+  for arg in "$@"; do
+    invocation_cmd+=" $(printf '%q' "$arg")"
+  done
+
   iotstack_parse_global_argv "$@"
   set -- "${IOTSTACK_ARGV[@]}"
 
   local command="${1:-help}"
   create_log_setup "$command"
+  create_log_watch_append "$invocation_cmd"
 
   if [[ "$command" == "flash" && "${2:-}" != "help" ]]; then
     _flash_preflight_step_begin
