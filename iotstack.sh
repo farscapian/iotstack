@@ -4343,9 +4343,6 @@ _flash_bootstrap_to_tty() {
   iotstack_register_yaml_cleanup_trap
   build_name="bootstrap"
 
-  _flash_serial_log_setup "$tty_device" "$variant"
-  _check_serial_port_in_use "$tty_device"
-
   local build_dir_early="${YAMLS_DIR}/.esphome/build/${build_name}/.pioenvs/${build_name}"
   if [[ ! -f "${build_dir_early}/firmware.bin" ]]; then
     debug "Bootstrap firmware not pre-built -- compiling for ${variant}"
@@ -4375,6 +4372,9 @@ _flash_bootstrap_to_tty() {
   local device_mac=""
   device_mac=$(esp_mac_suffix_from_port "$tty_device" 2>/dev/null) || device_mac=""
   flash_assess_bootstrap_device "$tty_device" "$esptool_chip" "$build_dir" "$bootstrap_offset" "$device_mac"
+
+  _flash_serial_log_setup "$tty_device" "$variant"
+  _check_serial_port_in_use "$tty_device"
 
   local skip_serial="$FLASH_ASSESS_SKIP_SERIAL"
   if [[ "$skip_serial" -eq 1 ]]; then
@@ -4689,18 +4689,22 @@ _flash_production_smart() {
     fi
     ok "Firmware builds ready (bootstrap serial + production OTA)"
 
-    # Serial capture holds the TTY; start only after USB chip detection / compile prep.
-    _flash_serial_log_setup "$tty_device" "${IOTSTACK_ESPTOOL_CHIP:-}"
-
     local device_mac="" prod_hostname=""
     if [[ "$skip_recovery" != "--ota-only" ]]; then
       _flash_step_begin "Assess device"
       info "Port: ${tty_device}"
+      # esptool chip-id needs exclusive TTY access; serial capture starts after MAC read.
+      info "Reading chip MAC via USB..."
       device_mac=$(esp_mac_suffix_from_port "$tty_device" 2>/dev/null) || device_mac=""
       if [[ -n "$device_mac" ]]; then
         prod_hostname="${device}-${device_mac}"
-        _flash_assess_device_runtime "$device_mac" "$prod_hostname" "$tty_device"
-        _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
+        if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
+          info "MAC suffix: ${device_mac}"
+          info "Action: erase flash and install ${device} firmware (--erase)"
+        else
+          _flash_assess_device_runtime "$device_mac" "$prod_hostname" "$tty_device"
+          _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
+        fi
 
         if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
           _flash_serial_step_begin
