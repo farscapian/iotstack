@@ -4770,6 +4770,12 @@ _flash_production_smart() {
     info "Flash target: ${device} on ${tty_device} (serial: bootstrap; production: OTA)"
     echo ""
 
+    local conflict_pid=""
+    conflict_pid=$(esp_flash_sessions_on_tty "$tty_device" | head -1) || true
+    if [[ -n "$conflict_pid" ]]; then
+      err "Another iotstack flash is already running on ${tty_device} (pid ${conflict_pid}). Wait for it to finish or stop it before starting a second flash."
+    fi
+
     esp_serial_clear_tty_interference "$tty_device" "${IOTSTACK_FLASH_SESSION_PID:-}"
     esp_serial_wait_tty_free "$tty_device" 5 || true
     esp_serial_settle_tty "$tty_device" 2

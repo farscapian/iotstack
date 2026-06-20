@@ -394,6 +394,12 @@ esp_esptool_chip_id() {
   fi
   rm -f "$err_file"
 
+  if [[ $rc -eq 0 ]]; then
+    # Ensure esptool released the TTY and the chip left the ROM stub (S3 status LED).
+    esp_serial_wait_tty_free "$port" 3 || true
+    esp_serial_settle_tty "$port" 1
+  fi
+
   if [[ $resume_capture -eq 1 ]] && declare -F create_log_serial_capture_resume &>/dev/null; then
     create_log_serial_capture_resume
   fi
@@ -403,6 +409,21 @@ esp_esptool_chip_id() {
     return 0
   fi
   return 1
+}
+
+esp_flash_sessions_on_tty() {
+  # Other iotstack flash invocations targeting the same TTY (pid per line).
+  local tty="$1"
+  local pid cmdline
+
+  [[ -n "$tty" ]] || return 0
+  while IFS= read -r pid; do
+    [[ -z "$pid" || "$pid" == "$$" ]] && continue
+    esp_serial_pid_in_current_session "$pid" && continue
+    cmdline=$(esp_serial_process_cmdline "$pid")
+    esp_serial_is_iotstack_flash_on_tty "$cmdline" "$tty" || continue
+    printf '%s\n' "$pid"
+  done < <(pgrep -f '(/iotstack\.sh|/iotstack) .+ flash ' 2>/dev/null || true)
 }
 
 esp_detect_chip() {
