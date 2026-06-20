@@ -420,11 +420,17 @@ _esphome_compile() {
   compile_log=$(mktemp)
   info "Compiling $(basename "$compile_yaml")..."
   if iotstack_compilation_output_enabled; then
+    local -a compile_tee_targets=("$compile_log")
+    [[ -e /dev/tty && -w /dev/tty ]] && compile_tee_targets+=("/dev/tty")
     if create_log_child_output_piped; then
-      if ! esphome compile "$compile_yaml" 2>&1 | tee "$compile_log" | create_log_tee_console "esphome:compile"; then
+      create_log_subprocess_indent_env
+      if ! env PYTHONUNBUFFERED=1 stdbuf -oL -eL esphome compile "$compile_yaml" 2>&1 \
+          | stdbuf -oL -eL tee "${compile_tee_targets[@]}" \
+          | create_log_tee_console "esphome:compile"; then
         rc=1
       fi
-    elif ! esphome compile "$compile_yaml" 2>&1 | tee "$compile_log"; then
+    elif ! env PYTHONUNBUFFERED=1 stdbuf -oL -eL esphome compile "$compile_yaml" 2>&1 \
+        | stdbuf -oL -eL tee "$compile_log"; then
       rc=1
     fi
     [[ $rc -eq 1 ]] && _esphome_compile_show_failure "$compile_yaml" "$compile_log"
@@ -4660,12 +4666,15 @@ _flash_production_smart() {
       err "TTY device not found: $tty_device"
     fi
 
+    export IOTSTACK_FLASH_SESSION_PID=$$
+
     _flash_step_reset
     info "Flash target: ${device} on ${tty_device} (serial: bootstrap; production: OTA)"
     echo ""
 
     esp_serial_clear_tty_interference "$tty_device"
     esp_serial_wait_tty_free "$tty_device" 5 || true
+    esp_serial_settle_tty "$tty_device" 2
 
     _flash_step_begin "Build firmware"
     if [[ "$skip_recovery" == "--ota-only" ]]; then

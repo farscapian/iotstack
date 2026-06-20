@@ -127,15 +127,10 @@ bootstrap_resolve_profile() {
   # Emits: variant|board|flash_size|framework|esptool_chip|flash_hex
   local tty="$1"
   local production_role="${2:-}"
-  local port_variant="" role_profile="" variant board flash_size framework
+  local port_variant="" role_profile="" variant board flash_size framework chip_hint=""
 
   [[ -n "$tty" && -e "$tty" ]] || {
     echo "TTY device not found: $tty" >&2
-    return 1
-  }
-
-  port_variant=$(esp_detect_chip "$tty") || {
-    echo "Could not detect chip on $tty" >&2
     return 1
   }
 
@@ -144,6 +139,18 @@ bootstrap_resolve_profile() {
       echo "Could not read esp32 profile for role: $production_role" >&2
       return 1
     }
+    chip_hint=$(echo "$role_profile" | cut -d'|' -f1)
+  fi
+
+  port_variant=$(esp_detect_chip "$tty" "$chip_hint") || {
+    echo "Could not detect chip on $tty" >&2
+    if [[ -n "${IOTSTACK_LAST_ESPTOOL_ERROR:-}" ]]; then
+      echo "${IOTSTACK_LAST_ESPTOOL_ERROR}" >&2
+    fi
+    return 1
+  }
+
+  if [[ -n "$production_role" ]]; then
     variant=$(echo "$role_profile" | cut -d'|' -f1)
     board=$(echo "$role_profile" | cut -d'|' -f2)
     flash_size=$(echo "$role_profile" | cut -d'|' -f3)

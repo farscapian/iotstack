@@ -8,6 +8,7 @@ _ESP_SERIAL_LOADED=1
 
 # Cached mapping: esp32c6=/dev/ttyACM0 (written by esp_serial_scan)
 export ESP_SERIAL_MAP="${ESP_SERIAL_MAP:-${ARTIFACTS_DIR}/serial-port-map.env}"
+export IOTSTACK_LAST_ESPTOOL_ERROR=""
 
 _esp_serial_log() {
   local level="$1"
@@ -70,10 +71,37 @@ esp_serial_is_iotstack_serial_holder() {
     || { [[ "$cmdline" == *"log-stamp.py"* ]] && [[ "$cmdline" == *"serial:"* ]]; }
 }
 
+esp_serial_is_iotstack_flash_invocation() {
+  local cmdline="$1"
+  # Wrapper shells embed iotstack commands in -c strings; only match real invocations.
+  if [[ "$cmdline" =~ ^(/bin/)?bash[[:space:]] ]] && [[ "$cmdline" == *" -c "* ]]; then
+    return 1
+  fi
+  [[ "$cmdline" == *"/iotstack.sh"* || "$cmdline" == *"/iotstack "* \
+    || "$cmdline" =~ (^|[[:space:]])iotstack[[:space:]] ]]
+}
+
 esp_serial_is_iotstack_flash_on_tty() {
   local cmdline="$1"
   local tty="$2"
-  [[ "$cmdline" == *"iotstack"* && "$cmdline" == *" flash "* && "$cmdline" == *"$tty"* ]]
+  esp_serial_is_iotstack_flash_invocation "$cmdline" || return 1
+  [[ "$cmdline" == *" flash "* && "$cmdline" == *"$tty"* ]]
+}
+
+esp_serial_pid_in_current_session() {
+  local pid="$1"
+  local walk="$$"
+
+  [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] || return 1
+  [[ "$pid" -eq "$$" ]] && return 0
+  if [[ -n "${IOTSTACK_FLASH_SESSION_PID:-}" && "$pid" -eq "$IOTSTACK_FLASH_SESSION_PID" ]]; then
+    return 0
+  fi
+  while [[ -n "$walk" && "$walk" -gt 1 ]]; do
+    [[ "$pid" -eq "$walk" ]] && return 0
+    walk=$(ps -o ppid= -p "$walk" 2>/dev/null | tr -d ' ')
+  done
+  return 1
 }
 
 esp_serial_tty_holder_pids() {
@@ -112,11 +140,12 @@ esp_serial_stale_iotstack_flash_pids_on_tty() {
 
   [[ -n "$tty" ]] || return 0
   while IFS= read -r pid; do
-    [[ -z "$pid" || "$pid" -eq "$$" ]] && continue
+    [[ -z "$pid" ]] && continue
+    esp_serial_pid_in_current_session "$pid" && continue
     cmdline=$(esp_serial_process_cmdline "$pid")
     esp_serial_is_iotstack_flash_on_tty "$cmdline" "$tty" || continue
     printf '%s\n' "$pid"
-  done < <(pgrep -f 'iotstack.* flash ' 2>/dev/null || true)
+  done < <(pgrep -f '(/iotstack\.sh|/iotstack) .+ flash ' 2>/dev/null || true)
 }
 
 esp_serial_clear_tty_interference() {
@@ -178,6 +207,15 @@ esp_serial_clear_tty_interference() {
   done
 
   sleep 1
+  esp_serial_settle_tty "$tty" 2
+}
+
+esp_serial_settle_tty() {
+  # USB CDC ports need a moment after close/kill before esptool can reconnect.
+  local tty="$1"
+  local delay_s="${2:-1}"
+  [[ -n "$tty" && -e "$tty" ]] || return 0
+  sleep "$delay_s"
 }
 
 esp_serial_wait_tty_free() {
@@ -291,7 +329,9 @@ esp_mac_suffix_resolve() {
 esp_esptool_chip_id() {
   # Run esptool chip-id with auto-reset. Tries 115200 then 9600 for detection.
   local port="$1"
-  local baud out resume_capture=0 rc=1
+  local chip_hint="${2:-${IOTSTACK_ESPTOOL_CHIP:-}}"
+  local baud out resume_capture=0 rc=1 attempt
+  local -a esptool_args err_file
 
   [[ -e "$port" ]] || return 1
 
@@ -306,12 +346,33 @@ esp_esptool_chip_id() {
     esp_serial_wait_tty_free "$port" 3 || true
   fi
 
-  for baud in 115200 9600 57600; do
-    if out=$(python3 -m esptool --port "$port" --baud "$baud" --before default-reset chip-id 2>/dev/null); then
-      rc=0
-      break
-    fi
+  esp_serial_settle_tty "$port" 1
+
+  err_file=$(mktemp)
+  IOTSTACK_LAST_ESPTOOL_ERROR=""
+  for attempt in 1 2 3 4; do
+    for baud in 115200 9600 57600; do
+      esptool_args=(--port "$port" --baud "$baud" --before default-reset chip-id)
+      [[ -n "$chip_hint" ]] && esptool_args=(--chip "$chip_hint" "${esptool_args[@]}")
+      : >"$err_file"
+      if out=$(python3 -m esptool "${esptool_args[@]}" 2>"$err_file"); then
+        rc=0
+        break 2
+      fi
+      if [[ -s "$err_file" ]]; then
+        IOTSTACK_LAST_ESPTOOL_ERROR=$(tail -5 "$err_file")
+      fi
+    done
+    [[ $rc -eq 0 ]] && break
+    esp_serial_settle_tty "$port" 2
   done
+  if [[ $rc -ne 0 && -n "${IOTSTACK_LAST_ESPTOOL_ERROR:-}" ]]; then
+    _esp_serial_log warn "esptool chip-id failed on $port:"
+    while IFS= read -r line; do
+      [[ -n "$line" ]] && _esp_serial_log warn "  $line"
+    done <<<"$IOTSTACK_LAST_ESPTOOL_ERROR"
+  fi
+  rm -f "$err_file"
 
   if [[ $resume_capture -eq 1 ]] && declare -F create_log_serial_capture_resume &>/dev/null; then
     create_log_serial_capture_resume
@@ -327,11 +388,12 @@ esp_esptool_chip_id() {
 esp_detect_chip() {
   # Echo esphome/esp-idf variant slug: esp32c6, esp32s3, esp32, esp32c3, ...
   local port="$1"
+  local chip_hint="${2:-}"
   local out variant
 
   [[ -e "$port" ]] || return 1
 
-  if ! out=$(esp_esptool_chip_id "$port"); then
+  if ! out=$(esp_esptool_chip_id "$port" "$chip_hint"); then
     return 1
   fi
 
