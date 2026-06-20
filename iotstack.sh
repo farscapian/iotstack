@@ -2109,7 +2109,7 @@ _flash_assess_device_on_flash_action() {
   fi
 
   if [[ "${FLASH_ERASE:-0}" == "1" && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
-    info "Action: erase flash and install ${assess_role} firmware (--erase)"
+    info "Action: erase flash (due to --erase), then install bootstrap via USB, then ${assess_role} via OTA."
   elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local want_cols want_w want_h cur_cols cur_w cur_h
     if _flash_matrix_layout_applicable "$assess_role" ""; then
@@ -4704,7 +4704,7 @@ _flash_production_smart() {
         prod_hostname="${device}-${device_mac}"
         if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
           info "MAC suffix: ${device_mac}"
-          info "Action: erase flash and install ${device} firmware (--erase)"
+          info "Action: erase flash (due to --erase), then install bootstrap via USB, then ${device} via OTA."
         else
           _flash_assess_device_runtime "$device_mac" "$prod_hostname" "$tty_device"
           _flash_assess_device_on_flash_action "$tty_device" "$yaml_path" "$device_mac" "$prod_hostname"
