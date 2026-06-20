@@ -63,7 +63,7 @@ _esphome_config_hash_hex() {
 }
 
 _esphome_config_hash_for_compile_yaml() {
-  # ESPHome config_hash for a prepared compile YAML (project_version already injected).
+  # ESPHome config_hash for a prepared compile YAML.
   local compile_yaml="$1"
   local hash_raw hash
   [[ -f "$compile_yaml" ]] || return 1

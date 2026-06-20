@@ -3,7 +3,7 @@ substitutions:
   device_role: "silentnotify"
   friendly_name: "Silent Notify"
   boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
-  project_version: "0.0.0-dev"  # overridden at compile time from git tag
+  project_version: "0.0.0-dev"
 
 esphome:
   name: "${device_role}"

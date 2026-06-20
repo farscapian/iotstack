@@ -221,8 +221,7 @@ bootstrap_render_yaml() {
     /^  boot_button_pin:/    { print "  boot_button_pin: " boot_pin; next }
     { print }
   ' "$BOOTSTRAP_TEMPLATE" > "$dst"
-  # project_version is injected at compile time in iotstack_prepare_compile_yaml()
-  # so the artifact hash stays stable for compilation-cache.csv lookups.
+  # project_version comes from bootstrap.yaml substitutions (not rewritten at compile time).
 
   # Do not register EXIT trap here -- callers often capture this path via $(...)
   # which runs in a subshell; the trap would delete the artifact when that

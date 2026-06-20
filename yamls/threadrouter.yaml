@@ -3,7 +3,7 @@ substitutions:
   development_status: "prod"
   device_role: "threadrouter"
   friendly_name: "Thread Router"
-  project_version: "0.0.0-dev"  # overridden at compile time from git tag
+  project_version: "0.0.0-dev"
 
 esphome:
   name: ${device_role}

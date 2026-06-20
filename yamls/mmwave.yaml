@@ -4,7 +4,7 @@ substitutions:
   development_status: "prod"
   device_role: "mmwave"
   friendly_name: "mmWave Presense Detector"
-  project_version: "0.0.0-dev"  # overridden at compile time from git tag
+  project_version: "0.0.0-dev"
 
 
 # External components (replaces deprecated custom_components folder)
