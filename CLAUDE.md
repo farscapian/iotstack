@@ -8,7 +8,8 @@ ESP32 ESPHome device management. **Load topic files from `ai-guidance/` instead 
 - Text: ASCII-only in docs, logs, help, and code comments
 - Agents work in `~/.grok/worktrees/mini-projects-iotstack/<session-id>/`; CLI runs from `~/Sync/mini_projects/iotstack`
 - New Grok session: run `scripts/init_grok_session.sh` (session sync + agent tips; see `ai-guidance/workflow.md`)
-- After changes: commit in Grok clone, then publish (`git push origin main`, `git pull origin main` on Sync)
+- After changes: commit in Grok clone, then publish (`git push origin main`; `git pull` on Sync only when no `iotstack` command is running)
+- Never `git pull` on Sync or test `/dev/ttyACM0` while the human has `iotstack` running (see `workflow.md`)
 
 ## Topic index
 

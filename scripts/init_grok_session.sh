@@ -133,10 +133,14 @@ DO NOT
   - Start a session without session sync (stale clone -> wrong fixes).
   - Load nvs-secrets.md for unrelated flash bugs (large file).
   - Re-explain the AI git workflow every time (see ai-guidance/workflow.md).
+  - git pull on Sync while any iotstack command is running (pgrep -af 'iotstack').
+  - Run USB/serial tests on /dev/ttyACM0 while iotstack is active on that port.
 
 WHEN DONE (publish)
   git push origin main
-  cd ~/Sync/mini_projects/iotstack && git pull origin main
+  # Pull on Sync only when no iotstack session is running:
+  pgrep -af '(/iotstack\.sh|/iotstack) ' || \
+    (cd ~/Sync/mini_projects/iotstack && git pull origin main)
 
 ================================================================================
 Suggested first message to paste into the agent:

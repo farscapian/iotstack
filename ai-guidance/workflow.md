@@ -76,6 +76,36 @@ git pull origin main
 
 **Humans editing Sync directly:** `git push origin main` from Sync, then session sync in any active Grok clone.
 
+### 3. Active `iotstack` sessions (agents -- mandatory)
+
+Do **not** disrupt a flash, compile, update, or other long-running `iotstack` command the human started on Sync.
+
+#### Before publish (push + pull on Sync)
+
+Sync to Sync **if and only if** no `iotstack` command is running:
+
+```bash
+# Any match means: do NOT git pull on Sync yet (push from Grok clone is still OK)
+pgrep -af '(/iotstack\.sh|/iotstack) ' || echo "no iotstack sessions"
+```
+
+If anything is running: commit and `git push origin main` from the Grok clone, tell the human publish is pending, and pull on Sync only after their session finishes.
+
+#### Before serial / device testing
+
+Never run tests that touch `/dev/ttyACM0` (or any USB serial port the human is using) while `iotstack` is active:
+
+```bash
+pgrep -af '(/iotstack\.sh|/iotstack) '    # running iotstack?
+lsof /dev/ttyACM0 2>/dev/null             # port held by another process?
+```
+
+Includes: `iotstack flash`, `iotstack tests run`, `read-nvs-secrets.sh`, `write-nvs-secrets.sh`, `esptool` on that port, and hardware test cases that flash or probe USB.
+
+**Safe without the port:** unit checks, `bash -n`, compile-only paths, mocks, and reading logs under `~/.iotstack/logs/`.
+
+**When in doubt:** ask the human or wait for their running command to finish.
+
 ## End-to-end (quick reference)
 
 **Start a Grok session**
@@ -107,7 +137,7 @@ These are separate full git clones, not linked `git worktree` entries (`git work
 
 ## Git and commit policy
 
-**Agent default:** commit, publish (push + pull on Sync) when a task is complete -- unless the human says not to commit yet.
+**Agent default:** commit when a task is complete; publish when complete **and** no `iotstack` command is running (see [Active iotstack sessions](#3-active-iotstack-sessions-agents----mandatory)) -- unless the human says not to commit yet.
 
 **Correctness bar:** device testing against real hardware remains the standard for functional validation. Commits can land before the human has flashed every edge case; note untested areas in the commit message when relevant.
 
@@ -118,7 +148,7 @@ These are separate full git clones, not linked `git worktree` entries (`git work
 **Agent (Grok session clone)**
 1. Make code changes in the session clone
 2. `git add` and commit
-3. Publish: `git push origin main`, then `git pull origin main` on Sync
+3. Publish: `git push origin main`; `git pull origin main` on Sync only when no `iotstack` command is running
 4. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate -- firmware picks up the tag on next compile
 
 **Human (Sync repo)**

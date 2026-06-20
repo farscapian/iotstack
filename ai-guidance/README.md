@@ -11,7 +11,7 @@ Split from the former monolithic `CLAUDE.md` so agents load only the topics need
 ## Publish (end of session)
 
 1. Commit in the Grok clone
-2. **Publish** -- `git push origin main`, then `git pull origin main` on `~/Sync/mini_projects/iotstack`
+2. **Publish** -- `git push origin main`; `git pull origin main` on Sync only when no `iotstack` command is running (`workflow.md`)
 
 ## Review notes (2026-06-19 refactor)
 
