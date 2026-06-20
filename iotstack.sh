@@ -1280,6 +1280,7 @@ _list_devices_collect_mdns_parallel() {
 }
 
 _LIST_DEVICES_LIVE_TIMEOUT_SEC=2
+_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC=10
 
 _list_devices_bootstrap_live() {
   # Probe bootstrap OTA (3232) and API (6053) concurrently; either port means alive.
@@ -1725,13 +1726,20 @@ _wait_for_ota_service() {
   local hostname="$1"
   local max_wait="${2:-90}"
   local waited=0
+  local probe_timeout=3 poll_sleep=3 progress_interval=15
+  if (( max_wait <= _BOOTSTRAP_WIFI_READY_TIMEOUT_SEC )); then
+    probe_timeout=2
+    poll_sleep=1
+    progress_interval=5
+  fi
   while (( waited < max_wait )); do
-    if timeout 3 bash -c "echo > /dev/tcp/${hostname}.local/3232" 2>/dev/null; then
+    if _iotstack_tcp_open "$hostname" 3232 "$probe_timeout"; then
       return 0
     fi
-    sleep 3
-    waited=$((waited + 3))
-    (( waited % 15 == 0 )) && info "  ...still waiting for ${hostname} OTA service ($waited/${max_wait}s)"
+    sleep "$poll_sleep"
+    waited=$((waited + poll_sleep))
+    (( waited > 0 && waited % progress_interval == 0 )) \
+      && info "  ...still waiting for ${hostname} OTA service ($waited/${max_wait}s)"
   done
   return 1
 }
@@ -4160,7 +4168,7 @@ _wait_for_bootstrap_wifi_ready() {
   # the device is already on WiFi but does not emit a known console line.
   # Usage: _wait_for_bootstrap_wifi_ready <mac_suffix> [timeout_seconds] [tty_device]
   local device_mac="$1"
-  local timeout_s="${2:-90}"
+  local timeout_s="${2:-$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}"
   local tty_device="${3:-}"
   local hostname
   hostname=$(iotstack_bootstrap_hostname "$device_mac")
@@ -4394,10 +4402,10 @@ _flash_bootstrap_to_tty() {
     sleep 3
 
     if [[ -n "$device_mac" ]]; then
-      if _wait_for_bootstrap_wifi_ready "$device_mac" 90 "$tty_device"; then
+      if _wait_for_bootstrap_wifi_ready "$device_mac" "$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC" "$tty_device"; then
         ok "Bootstrap OTA service reachable on WiFi"
       else
-        warn "Bootstrap WiFi wait timed out (90s); proceeding"
+        warn "Bootstrap WiFi wait timed out (${_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}s); proceeding"
       fi
     fi
   else
@@ -4420,10 +4428,10 @@ _flash_bootstrap_to_tty() {
     sleep 3
 
     if [[ -n "$device_mac" ]]; then
-      if _wait_for_bootstrap_wifi_ready "$device_mac" 90 "$tty_device"; then
+      if _wait_for_bootstrap_wifi_ready "$device_mac" "$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC" "$tty_device"; then
         ok "Bootstrap OTA service reachable on WiFi"
       else
-        warn "Bootstrap WiFi wait timed out (90s); proceeding"
+        warn "Bootstrap WiFi wait timed out (${_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}s); proceeding"
       fi
     else
       warn "MAC unknown -- skipping bootstrap WiFi wait"
