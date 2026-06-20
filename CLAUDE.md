@@ -11,10 +11,11 @@ This applies in code comments, documentation, help text, and all user-facing mes
 
 ## Canonical Development Path
 
-- **Primary repo:** `~/Sync/mini_projects/iotstack` on branch `main`
+- **Primary repo (CLI + daily use):** `~/Sync/mini_projects/iotstack` on branch `main`
 - **CLI entrypoint:** `~/.local/bin/iotstack` -> symlinks to `iotstack.sh` in that repo
-- **Before testing fixes:** `git pull` on `main` -- stale local trees produce confusing output (e.g. `--erase` appearing to do nothing when the fix is not yet pulled)
-- Grok/Cursor worktrees may mirror the same commit but are not the install target; develop and commit on `main` unless explicitly working in a worktree
+- **Grok/Cursor session clones:** `~/.grok/worktrees/mini-projects-iotstack/<session-id>/` (isolated full git clones for agent sessions; not linked `git worktree` entries)
+- **Before testing fixes on Sync:** `git pull origin main` -- stale trees produce confusing output (e.g. `--erase` appearing to do nothing when the fix is not yet pulled)
+- **Default agent workflow:** edit in the Grok session clone; publish to `origin/main`; pull into Sync (see [Grok session worktrees](#grok-session-worktrees) below)
 
 ## ASCII-Only Text (Repo-Wide)
 
@@ -493,7 +494,7 @@ Network-first, USB-last:
 | Slow bootstrap USB assess (~60s) | mDNS fast path skipped (device offline or old bootstrap without TXT) | Ensure bootstrap on WiFi; reflash bootstrap once to pick up mDNS TXT records |
 | Literal `\033[0;32m` in compile spinner | `printf` + single-quoted color vars | Use `$'\033[...]'` or `[INFO]` lines only |
 | `--panel-count=2` ignored when firmware current | Layout is NVS, not config_hash | Bootstrap NVS update path even when firmware matches |
-| Stale CLI behavior after fixes | Testing against unpulled `main` | `git pull` on `~/Sync/mini_projects/iotstack` |
+| Stale CLI behavior after fixes | Testing against unpulled `main` | `git pull origin main` on `~/Sync/mini_projects/iotstack` (or Grok clone behind Sync) |
 
 ## Device Types
 
@@ -528,12 +529,61 @@ Default workflow -- **git commits and pushes only after the human has**:
 2. **Verified functionality** works as expected
 3. **Explicitly approved** the changes (or directly requested commit/push)
 
-**Workflow:**
-1. Make code changes on `main` at `~/Sync/mini_projects/iotstack`
+### Grok session worktrees
+
+Grok/Cursor agent sessions work in an isolated clone under:
+
+```text
+~/.grok/worktrees/mini-projects-iotstack/<session-id>/
+```
+
+List session directories:
+
+```bash
+ls -la ~/.grok/worktrees/mini-projects-iotstack/
+```
+
+`git worktree list` inside any clone shows only that clone (these are separate repos, not linked git worktrees). The `iotstack` CLI always runs from `~/Sync/mini_projects/iotstack`.
+
+**Option B -- sync Grok clone from Sync (start of session or after human edits on Sync):**
+
+Run in the Grok session clone to match the canonical local repo:
+
+```bash
+cd ~/.grok/worktrees/mini-projects-iotstack/<session-id>
+
+git remote add local-sync ~/Sync/mini_projects/iotstack 2>/dev/null \
+  || git remote set-url local-sync ~/Sync/mini_projects/iotstack
+
+git fetch local-sync main
+git reset --hard local-sync/main
+git clean -fd
+```
+
+**Option A -- publish Grok changes to Sync (end of session, after commit approval):**
+
+Push from the Grok clone, then pull into the canonical repo:
+
+```bash
+cd ~/.grok/worktrees/mini-projects-iotstack/<session-id>
+git push origin main
+
+cd ~/Sync/mini_projects/iotstack
+git pull origin main
+```
+
+Agents: after committing in the Grok clone, always run Option A so `~/.local/bin/iotstack` sees the same commit.
+
+**Direct edit on Sync (optional):** humans may still change `~/Sync/mini_projects/iotstack` directly. After pushing from Sync, run Option B in any active Grok clone to catch up.
+
+### Commit workflow (any clone)
+
+1. Make code changes (Grok clone or Sync)
 2. Stage changes (`git add`)
 3. Wait for human approval unless they explicitly ask to commit
-4. Commit with a clear message; push to `origin/main` when approved
-5. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate -- firmware picks up the tag on next compile
+4. Commit with a clear message
+5. If edits were in a Grok clone: **Option A** (`git push origin main` from Grok, then `git pull origin main` on Sync). If edits were on Sync: `git push origin main` from Sync, then Option B in active Grok clones
+6. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate -- firmware picks up the tag on next compile
 
 This keeps commits aligned with validated device behavior. AI-assisted sessions may commit when the human explicitly requests it, but device validation remains the bar for correctness.
 
