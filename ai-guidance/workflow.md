@@ -6,27 +6,16 @@
 - **CLI entrypoint:** `~/.local/bin/iotstack` -> symlinks to `iotstack.sh` in that repo
 - **Grok/Cursor session clones:** `~/.grok/worktrees/mini-projects-iotstack/<session-id>/` (isolated full git clones for agent sessions; not linked `git worktree` entries)
 - **Before testing fixes on Sync:** `git pull origin main` -- stale trees produce confusing output (e.g. `--erase` appearing to do nothing when the fix is not yet pulled)
-- **Default agent workflow:** edit in the Grok session clone; publish to `origin/main`; pull into Sync (below)
 
-## Grok session clones
+## AI git workflow
 
-Grok/Cursor agent sessions work in an isolated clone under:
+Authorized workflow for Grok/Cursor agent sessions. Two steps: **session sync** at start, **publish** after commits.
 
-```text
-~/.grok/worktrees/mini-projects-iotstack/<session-id>/
-```
+### 1. Session sync (start of session)
 
-List session directories:
+Align the Grok clone with the canonical Sync repo. Run once per session (or after you edit directly on Sync).
 
-```bash
-ls -la ~/.grok/worktrees/mini-projects-iotstack/
-```
-
-`git worktree list` inside any clone shows only that clone (these are separate repos, not linked git worktrees). The `iotstack` CLI always runs from `~/Sync/mini_projects/iotstack`.
-
-### Option B -- sync Grok clone from Sync (session start or after human edits on Sync)
-
-**Recommended:** run `scripts/init_grok_session.sh` from the session clone (or pass the clone path). It performs Option B, prompts for a one-to-three sentence session goal, and prints agent usage reminders.
+**Recommended:** `scripts/init_grok_session.sh` -- session sync, session-goal prompt, and agent usage reminders.
 
 ```bash
 cd ~/.grok/worktrees/mini-projects-iotstack/<session-id>
@@ -46,9 +35,9 @@ git reset --hard local-sync/main
 git clean -fd
 ```
 
-### Option A -- publish Grok changes to Sync (after commits)
+### 2. Publish (after commits)
 
-Push from the Grok clone, then pull into the canonical repo:
+Push from the Grok clone, then pull into the canonical repo so `~/.local/bin/iotstack` matches:
 
 ```bash
 cd ~/.grok/worktrees/mini-projects-iotstack/<session-id>
@@ -58,13 +47,29 @@ cd ~/Sync/mini_projects/iotstack
 git pull origin main
 ```
 
-**Agents:** after every commit in the Grok clone, run Option A so `~/.local/bin/iotstack` sees the same commit.
+**Agents:** run publish after every commit in the Grok clone unless the human says not to.
 
-**Humans editing Sync directly:** push from Sync, then run Option B in any active Grok clone.
+**Humans editing Sync directly:** `git push origin main` from Sync, then session sync in any active Grok clone.
+
+## Grok session clones
+
+Grok/Cursor agent sessions work in an isolated clone under:
+
+```text
+~/.grok/worktrees/mini-projects-iotstack/<session-id>/
+```
+
+List session directories:
+
+```bash
+ls -la ~/.grok/worktrees/mini-projects-iotstack/
+```
+
+`git worktree list` inside any clone shows only that clone (these are separate repos, not linked git worktrees). The `iotstack` CLI always runs from `~/Sync/mini_projects/iotstack`.
 
 ## Git and commit policy
 
-**Agent default:** commit, push `origin main`, and pull on Sync when a task is complete -- unless the human says not to commit yet.
+**Agent default:** commit, publish (push + pull on Sync) when a task is complete -- unless the human says not to commit yet.
 
 **Correctness bar:** device testing against real hardware remains the standard for functional validation. Commits can land before the human has flashed every edge case; note untested areas in the commit message when relevant.
 
@@ -75,7 +80,7 @@ git pull origin main
 1. Make code changes (Grok clone or Sync)
 2. Stage changes (`git add`)
 3. Commit with a clear message
-4. Publish: Grok clone -> **Option A**; Sync-only edits -> `git push origin main` then Option B in active Grok clones
+4. Publish (Grok clone: push then pull on Sync; Sync-only: push then session sync in active Grok clones)
 5. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate -- firmware picks up the tag on next compile
 
 ## Research FIRST, then debug

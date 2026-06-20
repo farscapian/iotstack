@@ -4,14 +4,14 @@ Split from the former monolithic `CLAUDE.md` so agents load only the topics need
 
 ## Session startup (Grok clone)
 
-1. **Option B** -- sync from canonical repo (`ai-guidance/workflow.md`)
+1. **Session sync** -- `scripts/init_grok_session.sh` (see `workflow.md`)
 2. Read this index; load 1-3 topic files relevant to the task
 3. Do not load all files unless doing a broad audit
 
-## Publish changes (end of session)
+## Publish (end of session)
 
 1. Commit in the Grok clone
-2. **Option A** -- `git push origin main`, then `git pull origin main` on `~/Sync/mini_projects/iotstack`
+2. **Publish** -- `git push origin main`, then `git pull origin main` on `~/Sync/mini_projects/iotstack`
 
 ## Review notes (2026-06-19 refactor)
 

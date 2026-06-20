@@ -1,5 +1,5 @@
 #!/bin/bash
-# init_grok_session.sh -- Sync a Grok session clone (Option B) and print agent tips
+# init_grok_session.sh -- Grok session sync (AI git workflow step 1) and agent tips
 #
 # Usage:
 #   scripts/init_grok_session.sh [session-clone-path]
@@ -21,8 +21,9 @@ usage() {
   cat <<'EOF'
 Usage: init_grok_session.sh [session-clone-path]
 
-Syncs a Grok/Cursor session clone from the canonical Sync repo (Option B), prompts
-for a short session goal, and prints reminders for efficient agent use.
+Session sync for the authorized AI git workflow: aligns a Grok/Cursor session
+clone with the canonical Sync repo, prompts for a short session goal, and prints
+reminders for efficient agent use.
 
 Examples:
   cd ~/.grok/worktrees/mini-projects-iotstack/<session-id>
@@ -67,7 +68,7 @@ info "Session clone: $REPO_ROOT"
 info "Sync source:   $SYNC_REPO"
 echo ""
 
-info "Option B: fetching local-sync/main and resetting..."
+info "Session sync: fetching local-sync/main and resetting..."
 if git remote get-url local-sync &>/dev/null; then
   git remote set-url local-sync "$SYNC_REPO"
 else
@@ -118,8 +119,12 @@ cat <<'EOF'
 Using Grok / Cursor agents efficiently (iotstack)
 ================================================================================
 
+AI GIT WORKFLOW (authorized)
+  1. Session sync  -- init_grok_session.sh once per session (you just ran this)
+  2. Publish       -- after commits: git push origin main, then git pull on Sync
+
 FIRST MESSAGE (copy/paste template below)
-  - Say you ran init_grok_session.sh (Option B done).
+  - Say you ran init_grok_session.sh (session sync complete).
   - State your task in one sentence.
   - Name 1-3 ai-guidance files to read (not all of them, not old monolithic text).
 
@@ -134,21 +139,20 @@ WHAT TO READ (pick 1-3 by task type)
   CLAUDE.md is an index only. Do not ask the agent to "read all of CLAUDE.md".
 
 TOKEN TIPS
-  - Option B once per session (this script), not before every task.
+  - Session sync once per session (this script), not before every task.
   - Give concrete errors, ports, roles, and file paths up front.
   - Let the agent read source files after guidance, not the whole repo.
-  - End of session: "Commit and publish (Option A)" -> push origin main,
+  - End of session: "Commit and publish" -> push origin main,
     then git pull on ~/Sync/mini_projects/iotstack.
 
 DO NOT
-  - Start a session without Option B (stale clone -> wrong fixes).
+  - Start a session without session sync (stale clone -> wrong fixes).
   - Load nvs-secrets.md for unrelated flash bugs (large file).
-  - Re-explain Grok/Sync workflow every time (see ai-guidance/workflow.md).
+  - Re-explain the AI git workflow every time (see ai-guidance/workflow.md).
 
-WHEN DONE
-  Option A (from this clone):
-    git push origin main
-    cd ~/Sync/mini_projects/iotstack && git pull origin main
+WHEN DONE (publish)
+  git push origin main
+  cd ~/Sync/mini_projects/iotstack && git pull origin main
 
 ================================================================================
 Suggested first message to paste into the agent:
@@ -156,7 +160,7 @@ Suggested first message to paste into the agent:
 EOF
 
 cat <<EOF
-New session. init_grok_session.sh complete (Option B) -- on main at ${COMMIT}.
+New session. init_grok_session.sh complete (session sync) -- on main at ${COMMIT}.
 
 Task: ${SESSION_GOAL}
 Read: ai-guidance/workflow.md, ai-guidance/<pick-one-or-two-more>.md
@@ -166,3 +170,4 @@ EOF
 echo ""
 info "Grok session directories: ${GROK_PARENT}/"
 info "Canonical CLI repo:       ${SYNC_REPO}/"
+info "Full workflow:            ai-guidance/workflow.md"
