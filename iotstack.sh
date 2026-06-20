@@ -4169,7 +4169,12 @@ _flash_bootstrap_esptool() {
       esptool_output="$create_log_esptool_output"
     fi
   fi
-  create_log_serial_capture_resume
+  # Layout-only flash (--erase path): no firmware yet; device ROM-boot-loops. Keep
+  # serial capture paused so esptool can run chip-id/NVS/firmware steps and the
+  # serial log is not flooded with reset spam.
+  if [[ "$include_firmware" == "1" ]]; then
+    create_log_serial_capture_resume
+  fi
 }
 
 _flash_bootstrap_esptool_write_firmware() {
@@ -4373,8 +4378,12 @@ _flash_bootstrap_to_tty() {
     if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
       _flash_bootstrap_esptool "$tty_device" "$flash_log" "$build_dir" "$bootstrap_offset" \
         "$FLASH_ASSESS_NEED_ERASE" 0
-      device_mac=$(esp_mac_suffix_resolve "$tty_device") \
-        || err "Failed to extract MAC address from device (try: esptool --port $tty_device chip-id)"
+      if [[ -z "$device_mac" ]]; then
+        device_mac=$(esp_mac_suffix_resolve "$tty_device") \
+          || err "Failed to extract MAC address from device (try: esptool --port $tty_device chip-id)"
+      else
+        debug "Reusing chip MAC ${device_mac} from preflight (skip chip-id after layout flash)"
+      fi
 
       _flash_nvs_step_begin
       _provision_device_nvs "$tty_device" "$device_mac" "$production_role" || \
