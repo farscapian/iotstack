@@ -371,7 +371,8 @@ esp_esptool_chip_id() {
   IOTSTACK_LAST_ESPTOOL_ERROR=""
   for attempt in 1 2 3 4; do
     for baud in 115200 9600 57600; do
-      esptool_args=(--port "$port" --baud "$baud" --before default-reset chip-id)
+      # --after hard-reset: return to running firmware after probe (S3 status LED / USB stub).
+      esptool_args=(--port "$port" --baud "$baud" --before default-reset --after hard-reset chip-id)
       [[ -n "$chip_hint" ]] && esptool_args=(--chip "$chip_hint" "${esptool_args[@]}")
       : >"$err_file"
       if out=$(python3 -m esptool "${esptool_args[@]}" 2>"$err_file"); then

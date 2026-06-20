@@ -4336,7 +4336,13 @@ _flash_prepare_builds() {
     return 1
   }
 
-  profile=$(bootstrap_resolve_profile "$tty_device" "$production_role") || return 1
+  # When production_role is known, profile comes from role YAML -- defer USB chip-id
+  # until flash assessment so esptool does not leave S3 in bootloader during compile.
+  if [[ -n "$production_role" ]]; then
+    profile=$(bootstrap_profile_emit_from_role "$production_role") || return 1
+  else
+    profile=$(bootstrap_resolve_profile "$tty_device" "") || return 1
+  fi
   bootstrap_apply_profile_to_env "$profile"
   variant=$(echo "$profile" | cut -d'|' -f1)
   board=$(echo "$profile" | cut -d'|' -f2)
@@ -4355,9 +4361,9 @@ _flash_prepare_builds() {
 
   if [[ -n "$yaml_path" ]]; then
     device_name=$(basename "$yaml_path" .yaml)
-    debug "Compile bootstrap (USB serial) + ${device_name} (same image, OTA delivery) for ${variant}"
+    debug "Compile bootstrap + ${device_name} for ${variant} (USB chip verify deferred until after build)"
   else
-    debug "Compile bootstrap (serial) for ${variant}"
+    debug "Compile bootstrap for ${variant} (USB chip verify deferred until after build)"
   fi
 
   smart_compile "$bootstrap_yaml" "$build_name" || return 1
@@ -4381,11 +4387,16 @@ _flash_prepare_builds_for_targets() {
 
   [[ ${#targets[@]} -gt 0 ]] || return 0
 
+  if [[ -n "$production_role" ]]; then
+    _flash_prepare_builds "${targets[0]}" "$production_role" "$yaml_path" || return 1
+    return 0
+  fi
+
   for tty in "${targets[@]}"; do
-    profile=$(bootstrap_resolve_profile "$tty" "$production_role") || return 1
+    profile=$(bootstrap_resolve_profile "$tty" "") || return 1
     variant=$(echo "$profile" | cut -d'|' -f1)
     [[ -n "${variants_prepared[$variant]:-}" ]] && continue
-    _flash_prepare_builds "$tty" "$production_role" "$yaml_path" || return 1
+    _flash_prepare_builds "$tty" "" "$yaml_path" || return 1
     variants_prepared[$variant]=1
   done
 }

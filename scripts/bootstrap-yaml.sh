@@ -126,6 +126,26 @@ bootstrap_profile_from_role() {
   yaml_esp32_profile "$yaml_file"
 }
 
+bootstrap_profile_emit_from_role() {
+  # Chip profile for compile from production role YAML only (no USB esptool probe).
+  # Usage: bootstrap_profile_emit_from_role <production_role>
+  # Emits: variant|board|flash_size|framework|esptool_chip|flash_hex
+  local production_role="$1"
+  local role_profile variant board flash_size framework flash_hex
+
+  role_profile=$(bootstrap_profile_from_role "$production_role") || {
+    echo "Could not read esp32 profile for role: $production_role" >&2
+    return 1
+  }
+  variant=$(echo "$role_profile" | cut -d'|' -f1)
+  board=$(echo "$role_profile" | cut -d'|' -f2)
+  flash_size=$(echo "$role_profile" | cut -d'|' -f3)
+  role_profile=$(bootstrap_chip_defaults "$variant") || return 1
+  framework=$(echo "$role_profile" | cut -d'|' -f3)
+  flash_hex=$(flash_size_to_hex "$flash_size") || return 1
+  printf '%s|%s|%s|%s|%s|%s\n' "$variant" "$board" "$flash_size" "$framework" "$variant" "$flash_hex"
+}
+
 bootstrap_profile_from_tty() {
   local tty="$1"
   local variant defaults board flash_size framework
