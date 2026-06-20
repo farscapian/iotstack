@@ -72,6 +72,7 @@ esp32:
 
 # N16R8 only -- stripped for non-S3 variants by bootstrap_render_yaml(). OPI PSRAM shares MSPI clock with flash; omitting causes startup crash.
 psram:
+  mode: octal
 
 # WiFi credentials are loaded from NVS by nvs_secrets component at startup
 # YAML does not contain any secrets - all come from device flash (NVS)
