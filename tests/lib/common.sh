@@ -253,24 +253,24 @@ test_compilation_cache_row() {
   awk -F, -v name="$cache_name" '$1==name { print; exit }' "$COMPILATION_CACHE"
 }
 
-test_compilation_cache_image_hash() {
+test_compilation_cache_config_hash() {
   local yaml_file="${1:-bleproxy.yaml}"
-  test_compilation_cache_row "$yaml_file" | awk -F, '{ print $4 }'
+  test_compilation_cache_row "$yaml_file" | awk -F, '{ print $2 }'
 }
 
-test_strip_compilation_cache_image_hash() {
-  # Simulate a legacy row missing image_hash (backfill should repair on cache hit).
+test_strip_compilation_cache_config_hash() {
+  # Simulate a row missing config_hash (backfill should repair on cache hit).
   local yaml_file="${1:-bleproxy.yaml}"
-  local row yaml_sha binary_sha cache_name tmp
+  local row config_hash cache_name tmp
   cache_name=$(test_compilation_cache_yaml_name "$yaml_file")
   row=$(test_compilation_cache_row "$yaml_file") || return 1
-  IFS=, read -r _ yaml_sha binary_sha _ <<< "$row"
-  [[ -n "$yaml_sha" && -n "$binary_sha" ]] || return 1
+  IFS=, read -r _ config_hash <<< "$row"
+  [[ -n "$config_hash" ]] || return 1
   tmp=$(mktemp)
   {
-    echo "yaml_name,yaml_sha,binary_sha,image_hash"
+    echo "yaml_name,config_hash"
     awk -F, -v name="$cache_name" 'NR > 1 && $1 != name { print }' "$COMPILATION_CACHE"
-    printf '%s,%s,%s,\n' "$cache_name" "$yaml_sha" "$binary_sha"
+    printf '%s,\n' "$cache_name"
   } > "$tmp"
   mv "$tmp" "$COMPILATION_CACHE"
 }

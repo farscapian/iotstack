@@ -52,87 +52,53 @@ _print_table_rule() {
 }
 
 # -- Compilation Cache --------------------------------------------------------
+# CSV: yaml_name,config_hash (8-char hex ESPHome config_hash; same key as mDNS TXT).
 
-_compilation_cache_short_sha() {
-  # Last 10 hex chars stored in compilation-cache.csv (full SHA256 computed first).
-  local sha="$1"
-  [[ -n "$sha" ]] || return 0
-  ((${#sha} > 10)) && echo "${sha: -10}" || echo "$sha"
+_esphome_config_hash_hex() {
+  # Parse "0xabcdef12" from esphome config-hash stdout to 8-char lowercase hex.
+  local raw="${1,,}"
+  raw="${raw#0x}"
+  [[ "$raw" =~ ^[0-9a-f]{8}$ ]] || return 1
+  echo "$raw"
 }
 
-_get_yaml_sha() {
-  # SHA256 of the YAML plus the shared external_components and common/ package
-  # includes, so a change to any of them invalidates the compile cache -- the
-  # device YAML may reference them only via !include / packages:, so hashing the
-  # YAML text alone would miss those changes and reuse a stale build.
-  local yaml_file="$1"
+_esphome_config_hash_for_compile_yaml() {
+  # ESPHome config_hash for a prepared compile YAML (project_version already injected).
+  local compile_yaml="$1"
+  local hash_raw hash
+  [[ -f "$compile_yaml" ]] || return 1
+  hash_raw=$(esphome -q config-hash "$compile_yaml" 2>/dev/null | tail -1) || return 1
+  _esphome_config_hash_hex "$hash_raw"
+}
 
-  if [[ ! -f "$yaml_file" ]]; then
-    echo ""
-    return
+_compilation_cache_config_hash_for_yaml() {
+  # Current ESPHome config_hash for a source YAML (includes packages, external_components, etc.).
+  local yaml_file="$1"
+  local device_name="${2:-}"
+  local compile_yaml hash firmware_bin
+  [[ -f "$yaml_file" ]] || return 1
+
+  if [[ -n "$device_name" ]] && _is_bootstrap_yaml "$yaml_file"; then
+    firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
+    [[ -f "$firmware_bin" ]] && _sync_bootstrap_partition_table_from_build || true
   fi
 
-  local combined_hash
-  # project_version is injected at compile time; git tag+commit is folded below.
-  combined_hash=$(
-    python3 - "$yaml_file" <<'PY'
-import hashlib, re, sys
-path = sys.argv[1]
-with open(path, encoding="utf-8") as f:
-    content = f.read()
-content = re.sub(r"^\s*project_version:.*\n", "", content, flags=re.MULTILINE, count=1)
-print(hashlib.sha256(content.encode()).hexdigest())
-PY
-  )
-
-  # Fold in every file under external_components/ and common/ (sorted for a
-  # stable order; __pycache__ excluded so regenerated .pyc don't churn the key).
-  local dir dir_hash
-  for dir in "${YAMLS_DIR}/external_components" "${YAMLS_DIR}/common"; do
-    [[ -d "$dir" ]] || continue
-    dir_hash=$(find "$dir" -type f ! -path '*__pycache__*' -print0 | sort -z | xargs -0 cat 2>/dev/null | sha256sum | awk '{print $1}')
-    combined_hash=$(echo -n "${combined_hash}${dir_hash}" | sha256sum | awk '{print $1}')
-  done
-
-  combined_hash=$(echo -n "${combined_hash}$(iotstack_project_version)" | sha256sum | awk '{print $1}')
-
-  echo "$combined_hash"
-}
-
-_get_binary_sha() {
-  # Get SHA256 of compiled firmware binary
-  local device_name="$1"
-  local build_dir="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
-  [[ -f "$build_dir" ]] && sha256sum "$build_dir" | awk '{print $1}' || echo ""
+  compile_yaml=$(iotstack_prepare_compile_yaml "$yaml_file") || return 1
+  hash=$(_esphome_config_hash_for_compile_yaml "$compile_yaml") || hash=""
+  iotstack_cleanup_compile_yaml "$compile_yaml" "$yaml_file"
+  [[ -n "$hash" ]] && echo "$hash"
 }
 
 _normalize_compilation_cache() {
-  # Upgrade legacy caches; shorten SHAs; dedupe rows (one row per yaml_name).
+  # Upgrade legacy caches; dedupe rows (one row per yaml_name).
   [[ -f "$COMPILATION_CACHE" ]] || return 0
   local tmp header
   header=$(head -1 "$COMPILATION_CACHE")
-
-  if [[ "$header" == *config_hash* ]]; then
-    tmp=$(mktemp)
-    sed '1s/config_hash/image_hash/' "$COMPILATION_CACHE" >"$tmp"
-    mv "$tmp" "$COMPILATION_CACHE"
-    header=$(head -1 "$COMPILATION_CACHE")
-  fi
-  if [[ "$header" != *image_hash* ]]; then
-    tmp=$(mktemp)
-    {
-      echo "yaml_name,yaml_sha,binary_sha,image_hash"
-      tail -n +2 "$COMPILATION_CACHE" | while IFS= read -r line; do
-        [[ -z "$line" ]] && continue
-        echo "${line},"
-      done
-    } > "$tmp"
-    mv "$tmp" "$COMPILATION_CACHE"
-  fi
+  [[ "$header" == "yaml_name,config_hash" ]] && return 0
 
   tmp=$(mktemp)
   {
-    echo "yaml_name,yaml_sha,binary_sha,image_hash"
+    echo "yaml_name,config_hash"
     tail -n +2 "$COMPILATION_CACHE" | awk -F, '
       function cache_name(name) {
         if (name ~ /^\.temp-compile-\.iotstack-.+\.yaml/) {
@@ -150,10 +116,13 @@ _normalize_compilation_cache() {
       NF < 1 || $1 == "" { next }
       {
         key = cache_name($1)
-        y = $2; b = $3; h = $4
-        if (length(y) > 10) y = substr(y, length(y) - 9)
-        if (length(b) > 10) b = substr(b, length(b) - 9)
-        rows[key] = key "," y "," b "," h
+        hash = ""
+        if (NF >= 4 && $4 ~ /^[0-9a-fA-F]{8}$/) hash = $4
+        else if (NF >= 2 && $2 ~ /^[0-9a-fA-F]{8}$/) hash = $2
+        if (hash != "") {
+          hash = tolower(hash)
+          rows[key] = key "," hash
+        }
       }
       END { for (n in rows) print rows[n] }
     ' | sort -t, -k1,1
@@ -161,86 +130,85 @@ _normalize_compilation_cache() {
   mv "$tmp" "$COMPILATION_CACHE"
 }
 
-_compilation_cache_patch_image_hash() {
-  # Set image_hash (column 4) on an existing compilation-cache.csv row.
+_compilation_cache_patch_config_hash() {
+  # Set config_hash (column 2) on an existing compilation-cache.csv row.
   local yaml_name="$1"
-  local image_hash="$2"
+  local config_hash="$2"
   local tmp
-  [[ -f "$COMPILATION_CACHE" && -n "$yaml_name" && -n "$image_hash" ]] || return 1
+  [[ -f "$COMPILATION_CACHE" && -n "$yaml_name" && -n "$config_hash" ]] || return 1
   _normalize_compilation_cache
   tmp=$(mktemp)
-  awk -F, -v OFS=',' -v name="$yaml_name" -v hash="$image_hash" '
+  awk -F, -v OFS=',' -v name="$yaml_name" -v hash="$config_hash" '
     NR == 1 { print; next }
-    $1 == name { print $1, $2, $3, hash; next }
+    $1 == name { print $1, hash; next }
     { print }
   ' "$COMPILATION_CACHE" > "$tmp"
   mv "$tmp" "$COMPILATION_CACHE"
 }
 
-_compilation_cache_backfill_image_hash() {
-  # Ensure compilation-cache.csv has image_hash for a cached build (no recompile).
+_compilation_cache_backfill_config_hash() {
+  # Ensure compilation-cache.csv has config_hash for a cached build (no recompile).
   local yaml_file="$1"
   local build_name="$2"
   local yaml_name hash
   yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
-  hash=$(_compilation_cache_image_hash "$yaml_file" "$build_name" 2>/dev/null) || true
+  hash=$(_compilation_cache_config_hash "$yaml_file" "$build_name" 2>/dev/null) || true
   [[ -n "$hash" ]] || return 1
-  if awk -F, -v name="$yaml_name" '$1==name && $4!="" { found=1 } END { exit !found }' "$COMPILATION_CACHE" 2>/dev/null; then
+  if awk -F, -v name="$yaml_name" '$1==name && $2!="" { found=1 } END { exit !found }' "$COMPILATION_CACHE" 2>/dev/null; then
     return 0
   fi
-  _compilation_cache_patch_image_hash "$yaml_name" "$hash"
+  _compilation_cache_patch_config_hash "$yaml_name" "$hash"
 }
 
 _check_compilation_cache() {
-  # Check if we can skip compilation based on YAML SHA
+  # Check if we can skip compilation based on ESPHome config_hash.
   # Returns 0 (can skip) or 1 (must compile)
   local yaml_file="$1"
-  local yaml_name yaml_sha cached_sha
+  local device_name="${2:-}"
+  local yaml_name current_hash cached_hash
   yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
-  yaml_sha=$(_compilation_cache_short_sha "$(_get_yaml_sha "$yaml_file")")
 
   [[ ! -f "$COMPILATION_CACHE" ]] && return 1
   _normalize_compilation_cache
 
-  cached_sha=$(awk -F, -v name="$yaml_name" '$1==name { sha=$2 } END { print sha }' "$COMPILATION_CACHE")
-  [[ -n "$cached_sha" && "$cached_sha" == "$yaml_sha" ]]
+  current_hash=$(_compilation_cache_config_hash_for_yaml "$yaml_file" "$device_name") || return 1
+  cached_hash=$(awk -F, -v name="$yaml_name" '$1==name { hash=$2 } END { print hash }' "$COMPILATION_CACHE")
+  [[ -n "$cached_hash" && "$cached_hash" == "$current_hash" ]]
 }
 
-_build_image_hash_from_build_dir() {
-  # 8-char hex image hash from ESPHome build_info.json (ESPHome field: config_hash).
+_config_hash_from_build_dir() {
+  # 8-char hex config_hash from ESPHome build_info.json.
   local build_name="$1"
   local build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
   [[ -f "$build_info" ]] || return 1
   python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
 }
 
-_compilation_cache_image_hash() {
-  # image_hash for a yaml row in ~/.iotstack/compilation-cache.csv (mDNS compare key).
+_compilation_cache_config_hash() {
+  # config_hash for a yaml row in ~/.iotstack/compilation-cache.csv (mDNS compare key).
   local yaml_file="$1"
   local build_name="${2:-$(basename "$yaml_file" .yaml)}"
   local yaml_name hash
   yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
   [[ -f "$COMPILATION_CACHE" ]] || return 1
   _normalize_compilation_cache
-  hash=$(awk -F, -v name="$yaml_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
+  hash=$(awk -F, -v name="$yaml_name" '$1==name && $2!="" { print $2 }' "$COMPILATION_CACHE" | tail -1)
   if [[ -z "$hash" ]]; then
-    hash=$(_build_image_hash_from_build_dir "$build_name" 2>/dev/null) || true
-    [[ -n "$hash" ]] && _compilation_cache_patch_image_hash "$yaml_name" "$hash"
+    hash=$(_config_hash_from_build_dir "$build_name" 2>/dev/null) || true
+    [[ -n "$hash" ]] && _compilation_cache_patch_config_hash "$yaml_name" "$hash"
   fi
   [[ -n "$hash" ]] && echo "$hash"
 }
 
 _update_compilation_cache() {
-  # Upsert: one row per yaml_name (yaml_sha, binary_sha, image_hash).
+  # Upsert: one row per yaml_name (config_hash from build_info.json after compile).
   local yaml_file="$1"
-  local binary_sha="$2"
-  local build_name="${3:-}"
-  local yaml_name yaml_sha image_hash tmp
+  local build_name="${2:-}"
+  local yaml_name config_hash tmp
   yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
-  yaml_sha=$(_compilation_cache_short_sha "$(_get_yaml_sha "$yaml_file")")
-  binary_sha=$(_compilation_cache_short_sha "$binary_sha")
-  image_hash=""
-  [[ -n "$build_name" ]] && image_hash=$(_build_image_hash_from_build_dir "$build_name" 2>/dev/null) || true
+  config_hash=""
+  [[ -n "$build_name" ]] && config_hash=$(_config_hash_from_build_dir "$build_name" 2>/dev/null) || true
+  [[ -n "$config_hash" ]] || return 1
 
   mkdir -p "$(dirname "$COMPILATION_CACHE")"
   _normalize_compilation_cache
@@ -252,42 +220,49 @@ _update_compilation_cache() {
       awk -F, -v name="$yaml_name" 'NR > 1 && $1 != name { print }' "$COMPILATION_CACHE"
     } > "$tmp"
   else
-    echo "yaml_name,yaml_sha,binary_sha,image_hash" > "$tmp"
+    echo "yaml_name,config_hash" > "$tmp"
   fi
-  echo "${yaml_name},${yaml_sha},${binary_sha},${image_hash}" >> "$tmp"
+  echo "${yaml_name},${config_hash}" >> "$tmp"
   mv "$tmp" "$COMPILATION_CACHE"
 }
 
 _compilation_cache_miss_reason() {
   local yaml_file="$1"
-  local yaml_name yaml_sha cached_sha firmware_bin device_name
+  local device_name="${2:-}"
+  local yaml_name current_hash cached_hash firmware_bin resolved_device
 
   [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]] && { echo "cache disabled"; return 0; }
   [[ ! -f "$COMPILATION_CACHE" ]] && { echo "no cache file at ${COMPILATION_CACHE}"; return 0; }
 
   yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
-  yaml_sha=$(_compilation_cache_short_sha "$(_get_yaml_sha "$yaml_file")")
   _normalize_compilation_cache
-  cached_sha=$(awk -F, -v name="$yaml_name" '$1==name { sha=$2 } END { print sha }' "$COMPILATION_CACHE")
+  cached_hash=$(awk -F, -v name="$yaml_name" '$1==name { hash=$2 } END { print hash }' "$COMPILATION_CACHE")
 
-  if [[ -z "$cached_sha" ]]; then
+  if [[ -z "$cached_hash" ]]; then
     echo "no row for ${yaml_name}"
-    return 0
-  fi
-  if [[ "$cached_sha" != "$yaml_sha" ]]; then
-    echo "${yaml_name} yaml_sha mismatch (cached ${cached_sha}, current ${yaml_sha})"
     return 0
   fi
 
   if _is_bootstrap_yaml "$yaml_file"; then
-    device_name="$(iotstack_bootstrap_role)"
+    resolved_device="${device_name:-$(iotstack_bootstrap_role)}"
   else
-    device_name=$(basename "$yaml_file" .yaml)
-    [[ "$device_name" =~ ^\.temp-compile- ]] && device_name="${device_name#.temp-compile-}"
+    resolved_device="${device_name:-$(basename "$yaml_file" .yaml)}"
+    [[ "$resolved_device" =~ ^\.temp-compile- ]] && resolved_device="${resolved_device#.temp-compile-}"
   fi
-  firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
+
+  current_hash=$(_compilation_cache_config_hash_for_yaml "$yaml_file" "$resolved_device" 2>/dev/null) || current_hash=""
+  if [[ -z "$current_hash" ]]; then
+    echo "${yaml_name} config_hash unavailable (esphome config-hash failed)"
+    return 0
+  fi
+  if [[ "$cached_hash" != "$current_hash" ]]; then
+    echo "${yaml_name} config_hash mismatch (cached ${cached_hash}, current ${current_hash})"
+    return 0
+  fi
+
+  firmware_bin="${YAMLS_DIR}/.esphome/build/${resolved_device}/.pioenvs/${resolved_device}/firmware.bin"
   if [[ ! -f "$firmware_bin" ]]; then
-    echo "${yaml_name} key matched but firmware.bin missing"
+    echo "${yaml_name} config_hash matched but firmware.bin missing"
     return 0
   fi
   echo "${yaml_name} cache check failed"
@@ -295,15 +270,13 @@ _compilation_cache_miss_reason() {
 
 _compilation_cache_update_notice() {
   local yaml_file="$1"
-  local binary_sha="$2"
-  local build_name="${3:-}"
-  local yaml_name yaml_sha short_binary image_hash
+  local build_name="${2:-}"
+  local yaml_name config_hash
   yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
-  yaml_sha=$(_compilation_cache_short_sha "$(_get_yaml_sha "$yaml_file")")
-  short_binary=$(_compilation_cache_short_sha "$binary_sha")
-  image_hash=$(_build_image_hash_from_build_dir "$build_name" 2>/dev/null) || image_hash=""
-  [[ -n "$image_hash" ]] || image_hash="unknown"
-  ok "Compilation cache updated: ${yaml_name} yaml_sha=${yaml_sha} binary_sha=${short_binary} image_hash=${image_hash}"
+  config_hash=$(_config_hash_from_build_dir "$build_name" 2>/dev/null) \
+    || config_hash=$(_compilation_cache_config_hash "$yaml_file" "$build_name" 2>/dev/null) \
+    || config_hash="unknown"
+  ok "Compilation cache updated: ${yaml_name} config_hash=${config_hash}"
 }
 
 _check_serial_port_in_use() {
@@ -470,13 +443,13 @@ _smart_compile_repeat_satisfied() {
   local firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
   debug "Build already prepared for $(iotstack_compilation_cache_yaml_name "$yaml_file")"
   if _is_bootstrap_yaml "$yaml_file"; then
-    _compilation_cache_backfill_image_hash "$yaml_file" "$device_name" || true
+    _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
     _sync_bootstrap_partition_table_from_build \
       || { local fs_size; fs_size=$(_bootstrap_part_size "$firmware_bin")
            IOTSTACK_BOOTSTRAP_PART_SIZE="$fs_size" _update_partition_table_file; }
   else
     ensure_partition_table_artifact
-    _compilation_cache_backfill_image_hash "$yaml_file" "$device_name" || true
+    _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
   fi
 }
 
@@ -497,7 +470,7 @@ _smart_compile_cache_miss_notice() {
   local device_name="$2"
   local firmware_kind="$3"  # e.g. production, bootstrap
   local reason
-  reason=$(_compilation_cache_miss_reason "$yaml_file")
+  reason=$(_compilation_cache_miss_reason "$yaml_file" "$device_name")
   info "Compilation cache miss -- ${firmware_kind} firmware (${device_name}): ${reason}"
 }
 
@@ -513,13 +486,9 @@ smart_compile() {
     return 0
   fi
 
-  local yaml_sha
-  yaml_sha=$(_get_yaml_sha "$yaml_file")
-  [[ -z "$yaml_sha" ]] && err "Failed to compute SHA256 of $yaml_file"
-
   local firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
   local cached=0
-  [[ "${DISABLE_COMPILATION_CACHE:-0}" != "1" ]] && _check_compilation_cache "$yaml_file" && cached=1
+  [[ "${DISABLE_COMPILATION_CACHE:-0}" != "1" ]] && _check_compilation_cache "$yaml_file" "$device_name" && cached=1
   [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]] && debug "Compilation cache disabled (DISABLE_COMPILATION_CACHE=1)"
 
   # -- Non-bootstrap builds ----------------------------------------------------
@@ -529,7 +498,7 @@ smart_compile() {
   if ! _is_bootstrap_yaml "$yaml_file"; then
     if [[ $cached -eq 1 ]]; then
       ensure_partition_table_artifact
-      _compilation_cache_backfill_image_hash "$yaml_file" "$device_name" || true
+      _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
       _smart_compile_cache_hit_notice "$yaml_file" "$device_name" "production"
       _smart_compile_mark_done "$yaml_file"
       return 0
@@ -537,10 +506,8 @@ smart_compile() {
     _update_partition_table_file
     _smart_compile_cache_miss_notice "$yaml_file" "$device_name" "production"
     _esphome_compile "$yaml_file" || return 1
-    local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
-    if [[ -n "$binary_sha" ]]; then
-      _update_compilation_cache "$yaml_file" "$binary_sha" "$device_name"
-      _compilation_cache_update_notice "$yaml_file" "$binary_sha" "$device_name"
+    if _update_compilation_cache "$yaml_file" "$device_name"; then
+      _compilation_cache_update_notice "$yaml_file" "$device_name"
     fi
     _smart_compile_mark_done "$yaml_file"
     return 0
@@ -552,7 +519,7 @@ smart_compile() {
   # partitions.bin (not the position-independent app image), so we compile,
   # measure, regenerate the table, then recompile so partitions.bin matches.
   if [[ $cached -eq 1 && -f "$firmware_bin" ]]; then
-    _compilation_cache_backfill_image_hash "$yaml_file" "$device_name" || true
+    _compilation_cache_backfill_config_hash "$yaml_file" "$device_name" || true
     _smart_compile_cache_hit_notice "$yaml_file" "$device_name" "bootstrap"
     _sync_bootstrap_partition_table_from_build \
       || { local fs_size; fs_size=$(_bootstrap_part_size "$firmware_bin")
@@ -601,10 +568,8 @@ smart_compile() {
     _sync_bootstrap_partition_table_from_build
   fi
 
-  local binary_sha; binary_sha=$(_get_binary_sha "$device_name")
-  if [[ -n "$binary_sha" ]]; then
-    _update_compilation_cache "$yaml_file" "$binary_sha" "$device_name"
-    _compilation_cache_update_notice "$yaml_file" "$binary_sha" "$device_name"
+  if _update_compilation_cache "$yaml_file" "$device_name"; then
+    _compilation_cache_update_notice "$yaml_file" "$device_name"
   fi
   _smart_compile_mark_done "$yaml_file"
   return 0
@@ -1958,9 +1923,9 @@ _build_image_hash_for_yaml() {
   local yaml_path="$1"
   local yaml_name cache_file hash latest_log
   yaml_name=$(basename "$yaml_path" .yaml)
-  hash=$(_compilation_cache_image_hash "$yaml_path" "$yaml_name" 2>/dev/null) || true
+  hash=$(_compilation_cache_config_hash "$yaml_path" "$yaml_name" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }
-  hash=$(_build_image_hash_from_build_dir "$yaml_name" 2>/dev/null) || true
+  hash=$(_config_hash_from_build_dir "$yaml_name" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   cache_file="${HOME}/.iotstack/logs/${yaml_name}/${yaml_name}.build.cache"
   if [[ -f "$cache_file" ]]; then

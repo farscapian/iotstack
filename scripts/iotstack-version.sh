@@ -113,7 +113,7 @@ iotstack_compilation_cache_yaml_name() {
 
 iotstack_prepare_compile_yaml() {
   # Inject the current git tag+commit into project_version. Prints YAML path to compile.
-  # Always use a temp copy so rendered .iotstack-* artifacts are not mutated (stable yaml_sha).
+  # Always use a temp copy so rendered .iotstack-* artifacts are not mutated.
   local src_yaml="$1"
   local base compile_yaml
 

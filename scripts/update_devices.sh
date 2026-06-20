@@ -92,16 +92,23 @@ _config_hash_from_build_info() {
   python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
 }
 
-_image_hash_from_compilation_cache() {
+_config_hash_from_compilation_cache() {
   # Prefer compilation-cache.csv (same source as iotstack flash assessment).
   local yaml_file="$1"
   local yaml_name legacy_name hash
   yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
   legacy_name=$(basename "$yaml_file")
   [[ -f "$COMPILATION_CACHE" ]] || return 1
-  hash=$(awk -F, -v name="$yaml_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
+  hash=$(awk -F, -v name="$yaml_name" '$1==name && $2!="" { print $2 }' "$COMPILATION_CACHE" | tail -1)
+  if [[ -z "$hash" ]]; then
+    # Legacy compilation-cache.csv stored config_hash in column 4 (image_hash).
+    hash=$(awk -F, -v name="$yaml_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
+  fi
   if [[ -z "$hash" && "$legacy_name" != "$yaml_name" ]]; then
-    hash=$(awk -F, -v name="$legacy_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
+    hash=$(awk -F, -v name="$legacy_name" '$1==name && $2!="" { print $2 }' "$COMPILATION_CACHE" | tail -1)
+    if [[ -z "$hash" ]]; then
+      hash=$(awk -F, -v name="$legacy_name" '$1==name && $4!="" { print $4 }' "$COMPILATION_CACHE" | tail -1)
+    fi
   fi
   [[ -n "$hash" ]] && echo "$hash"
 }
@@ -113,7 +120,7 @@ _resolve_build_config_hash() {
   local cached_hash="${3:-}"
   local hash
 
-  hash=$(_image_hash_from_compilation_cache "$yaml_file" 2>/dev/null) || true
+  hash=$(_config_hash_from_compilation_cache "$yaml_file" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   hash=$(_config_hash_from_build_info "$build_name" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }
