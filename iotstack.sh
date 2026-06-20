@@ -1970,6 +1970,7 @@ FLASH_ASSESS_PROD_ONLINE=0
 FLASH_ASSESS_PROD_MDNS=0
 FLASH_ASSESS_BOOTSTRAP_ONLINE=0
 FLASH_ASSESS_FLASH_CURRENT=0
+IOTSTACK_NVS_PROVISIONED_VIA_USB=0
 
 _flash_assess_device_runtime() {
   # Quick WiFi/runtime probe (no compile). Sets FLASH_ASSESS_PROD_ONLINE / BOOTSTRAP_ONLINE.
@@ -3809,11 +3810,14 @@ _nvs_update_via_bootstrap_api() {
 
 _provision_device_nvs() {
   # Write device NVS: API first, USB only when network path is unavailable.
+  # USB fallback warning is deferred until bootstrap WiFi init times out
+  # (_flash_bootstrap_await_wifi) so first provision is not diagnosed prematurely.
   local tty_device="${1:-}"
   local device_mac="$2"
   local production_role="${3:-}"
   local json_vars
 
+  IOTSTACK_NVS_PROVISIONED_VIA_USB=0
   json_vars=$(_nvs_secrets_api_json_payload "$device_mac" "$production_role") || return 1
 
   if _nvs_update_via_bootstrap_api "$device_mac" "$json_vars"; then
@@ -3828,7 +3832,7 @@ _provision_device_nvs() {
     return 1
   fi
 
-  warn "Bootstrap API unavailable -- writing NVS via USB on ${tty_device} (required on first provision)"
+  IOTSTACK_NVS_PROVISIONED_VIA_USB=1
   _flash_write_nvs_secrets_usb "$tty_device" "$device_mac" "$production_role"
 }
 
@@ -4180,6 +4184,20 @@ _wait_for_bootstrap_wifi_ready() {
   return 1
 }
 
+_flash_bootstrap_await_wifi() {
+  # Wait for bootstrap OTA on WiFi; on timeout, warn if NVS was provisioned via USB.
+  local device_mac="$1"
+  local tty_device="$2"
+  if _wait_for_bootstrap_wifi_ready "$device_mac" "$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC" "$tty_device"; then
+    ok "Bootstrap OTA service reachable on WiFi"
+    return 0
+  fi
+  if [[ "${IOTSTACK_NVS_PROVISIONED_VIA_USB:-0}" == "1" ]]; then
+    warn "Bootstrap API unavailable -- writing NVS via USB on ${tty_device} (required on first provision)"
+  fi
+  err "Bootstrap WiFi wait timed out (${_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}s) -- $(iotstack_bootstrap_hostname "$device_mac") OTA port 3232 not reachable"
+}
+
 # User-facing deploy sub-messages (indented under the active flash step).
 _flash_msg_erase() {
   info "Erasing flash on ${1}..."
@@ -4416,9 +4434,7 @@ _flash_bootstrap_to_tty() {
     sleep 3
 
     if [[ -n "$device_mac" ]]; then
-      _wait_for_bootstrap_wifi_ready "$device_mac" "$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC" "$tty_device" \
-        || err "Bootstrap WiFi wait timed out (${_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}s) -- $(iotstack_bootstrap_hostname "$device_mac") OTA port 3232 not reachable"
-      ok "Bootstrap OTA service reachable on WiFi"
+      _flash_bootstrap_await_wifi "$device_mac" "$tty_device"
     fi
   else
     if [[ "${FLASH_ERASE:-0}" != "1" ]]; then
@@ -4440,9 +4456,7 @@ _flash_bootstrap_to_tty() {
     sleep 3
 
     if [[ -n "$device_mac" ]]; then
-      _wait_for_bootstrap_wifi_ready "$device_mac" "$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC" "$tty_device" \
-        || err "Bootstrap WiFi wait timed out (${_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}s) -- $(iotstack_bootstrap_hostname "$device_mac") OTA port 3232 not reachable"
-      ok "Bootstrap OTA service reachable on WiFi"
+      _flash_bootstrap_await_wifi "$device_mac" "$tty_device"
     else
       err "MAC unknown after serial bootstrap flash -- cannot verify bootstrap WiFi"
     fi
