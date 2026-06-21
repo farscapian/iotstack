@@ -353,6 +353,26 @@ _smart_compile_cache_miss_notice() {
   info "Compilation cache miss -- ${firmware_kind} firmware (${device_name}): ${reason}"
 }
 
+_flash_sync_update_devices_cache() {
+  # After smart_compile, write update_devices.sh's build cache so --reassign skips recompile.
+  local yaml_file="$1"
+  local yaml_name
+  yaml_name=$(basename "$yaml_file" .yaml)
+  local cache_file="${IOTSTACK_HOME}/logs/${yaml_name}.build.cache"
+  local build_info="${YAMLS_DIR}/.esphome/build/${yaml_name}/build_info.json"
+  [[ -f "$build_info" ]] || return 0
+  local yaml_sha256 esphome_version config_hash
+  yaml_sha256=$(sha256sum "$yaml_file" | awk '{print $1}') || return 0
+  esphome_version=$(esphome version 2>/dev/null | grep -o '[0-9][0-9]*\.[0-9.]*' | head -1) || return 0
+  config_hash=$(python3 -c \
+    "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" \
+    "$build_info" 2>/dev/null) || return 0
+  mkdir -p "$(dirname "$cache_file")"
+  printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
+    "$yaml_sha256" "$esphome_version" "$config_hash" > "$cache_file"
+  debug "Synced update_devices build cache for ${yaml_name}"
+}
+
 smart_compile() {
   # Smart compilation that uses cache to skip rebuilds.
   # Usage: smart_compile <yaml_file> [device_name_for_logging]
@@ -4279,6 +4299,7 @@ _flash_prepare_builds() {
   if [[ -n "$yaml_path" ]]; then
     info "Compiling production image (${device_name}); iotstack flash installs it via OTA (USB writes bootstrap only)"
     smart_compile "$yaml_path" "$device_name" || return 1
+    _flash_sync_update_devices_cache "$yaml_path"
   fi
 
   return 0
@@ -5404,11 +5425,6 @@ main() {
 
   local command="${1:-help}"
   create_log_setup "$command"
-  create_log_watch_append "$invocation_cmd"
-
-  if [[ "$command" == "flash" && "${2:-}" != "help" ]]; then
-    _flash_preflight_step_begin
-  fi
 
   if create_log_enabled; then
     info "Session log: ${IOTSTACK_LOG_FILE}"
@@ -5418,6 +5434,12 @@ main() {
       export _FLASH_SERIAL_LOG_ANNOUNCED=1
       info "Serial log:  ${IOTSTACK_SERIAL_LOG_FILE}"
     fi
+  fi
+  create_log_write_header "$command"
+  create_log_watch_append "$invocation_cmd"
+
+  if [[ "$command" == "flash" && "${2:-}" != "help" ]]; then
+    _flash_preflight_step_begin
   fi
 
   # Load environment file if it exists

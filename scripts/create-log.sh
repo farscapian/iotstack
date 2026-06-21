@@ -272,8 +272,11 @@ create_log_setup() {
   #
   # --create-log: generates iotstack-<guid>.log (always fresh; GUID is unique per run).
   # Without --create-log: no session log.
+  #
+  # Does NOT write the === header; call create_log_write_header() after announcing
+  # session/serial log paths so those lines appear first in the log file.
   local command="$1"
-  local log_name session_cmd
+  local log_name
   create_log_enabled || return 0
 
   export PYTHONUNBUFFERED=1
@@ -284,13 +287,10 @@ create_log_setup() {
   fi
   export IOTSTACK_LOG_FILE="${IOTSTACK_HOME}/logs/${log_name}.log"
 
-  session_cmd="iotstack"
-  if [[ ${#IOTSTACK_ARGV[@]} -gt 0 ]]; then
-    session_cmd+=" ${IOTSTACK_ARGV[*]}"
-  fi
-
   if [[ "$command" == "clean" ]]; then
     create_log_defer_start
+    local session_cmd="iotstack"
+    [[ ${#IOTSTACK_ARGV[@]} -gt 0 ]] && session_cmd+=" ${IOTSTACK_ARGV[*]}"
     printf '%s === %s ===\n' "$(date -Iseconds)" "$session_cmd" >> "$IOTSTACK_LOG_BUFFER_FILE"
     return 0
   fi
@@ -298,14 +298,20 @@ create_log_setup() {
   mkdir -p "$(dirname "$IOTSTACK_LOG_FILE")"
 
   if [[ -n "${IOTSTACK_LOG_ID:-}" && -f "$IOTSTACK_LOG_FILE" ]]; then
-    {
-      echo ""
-      printf '%s === %s ===\n' "$(date -Iseconds)" "$session_cmd"
-    } >> "$IOTSTACK_LOG_FILE"
+    echo "" >> "$IOTSTACK_LOG_FILE"
   else
     : > "$IOTSTACK_LOG_FILE"
-    printf '%s === %s ===\n' "$(date -Iseconds)" "$session_cmd" >> "$IOTSTACK_LOG_FILE"
   fi
+}
+
+create_log_write_header() {
+  # Write the === iotstack <command> === banner to the session log.
+  # Called after session/serial log paths are announced so those lines appear first.
+  create_log_enabled || return 0
+  [[ -n "${IOTSTACK_LOG_FILE:-}" ]] || return 0
+  local session_cmd="iotstack"
+  [[ ${#IOTSTACK_ARGV[@]} -gt 0 ]] && session_cmd+=" ${IOTSTACK_ARGV[*]}"
+  printf '%s === %s ===\n' "$(date -Iseconds)" "$session_cmd" >> "$IOTSTACK_LOG_FILE"
 }
 
 create_log_serial_source() {
