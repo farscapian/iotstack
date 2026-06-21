@@ -14,6 +14,11 @@ static const char *const TAG = "partition";
 
 namespace {
 
+// ESPHome config hash and build-time string are in the first RODATA segment
+// (~107 KB on ESP32-S3). Cap reads to 128 KB so they fit in internal SRAM
+// without requiring PSRAM, which may not be available on all devices.
+static const size_t MAX_SCAN_BYTES = 128 * 1024;
+
 bool looks_like_esphome_build_time_(const char *s, size_t avail) {
   // ESPHome embeds ESPHOME_BUILD_TIME_STR as "YYYY-MM-DD HH:MM:SS ..."
   if (avail < 19)
@@ -60,8 +65,9 @@ bool find_config_hash_in_partition_(const esp_partition_t *part, uint32_t *out_h
   if (esp_ota_get_partition_description(part, &desc) != ESP_OK)
     return false;
 
-  std::vector<uint8_t> image(part->size);
-  if (esp_partition_read(part, 0, image.data(), part->size) != ESP_OK)
+  size_t scan_size = std::min((size_t) part->size, MAX_SCAN_BYTES);
+  std::vector<uint8_t> image(scan_size);
+  if (esp_partition_read(part, 0, image.data(), scan_size) != ESP_OK)
     return false;
 
   for (size_t i = 0; i + 19 < image.size(); i++) {
@@ -94,14 +100,16 @@ bool read_config_hash_with_calibration_(const esp_partition_t *running, const es
   if (running == nullptr || alt == nullptr || alt_hash == nullptr)
     return false;
 
-  std::vector<uint8_t> running_image(running->size);
-  std::vector<uint8_t> alt_image(alt->size);
-  if (esp_partition_read(running, 0, running_image.data(), running->size) != ESP_OK)
+  size_t run_scan = std::min((size_t) running->size, MAX_SCAN_BYTES);
+  size_t alt_scan = std::min((size_t) alt->size, MAX_SCAN_BYTES);
+  std::vector<uint8_t> running_image(run_scan);
+  std::vector<uint8_t> alt_image(alt_scan);
+  if (esp_partition_read(running, 0, running_image.data(), run_scan) != ESP_OK)
     return false;
   esp_app_desc_t alt_desc;
   if (esp_ota_get_partition_description(alt, &alt_desc) != ESP_OK)
     return false;
-  if (esp_partition_read(alt, 0, alt_image.data(), alt->size) != ESP_OK)
+  if (esp_partition_read(alt, 0, alt_image.data(), alt_scan) != ESP_OK)
     return false;
 
   int calibrated_off = 0;
