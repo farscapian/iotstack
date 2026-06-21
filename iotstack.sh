@@ -481,7 +481,7 @@ source "${SCRIPT_DIR}/scripts/config.sh"
 source "${SCRIPT_DIR}/scripts/create-log.sh"
 
 # --create-log: stamp iotstack messages to the session log (implies --timestamp);
-# stdout stays on the tty. --log-id=<id> implies --create-log and -v; appends to iotstack-<id>.log.
+# stdout stays on the tty. --create-log generates a GUID log id; implies --timestamp and -v.
 _iotstack_log_plain() {
   local tag="$1"
   shift
@@ -3979,7 +3979,7 @@ _flash_serial_log_teardown() {
 }
 
 _flash_serial_log_setup() {
-  # With --log-id, capture firmware serial output to iotstack-<id>-serial.log.
+  # With --create-log, capture firmware serial output to iotstack-<guid>-serial.log.
   local tty="$1"
   local variant="${2:-}"
   create_log_serial_capture_enabled || return 0
@@ -5008,7 +5008,7 @@ cmd_logs() {
         | create_log_tee_console "$serial_source"
       exit "${PIPESTATUS[0]}"
     fi
-    # No --log-id: auto-create a timestamped log file alongside other iotstack logs.
+    # No --create-log: auto-create a timestamped log file alongside other iotstack logs.
     local port_basename logs_file
     port_basename="${port##*/}"
     logs_file="${LOGS_DIR}/iotstack-logs-${port_basename}.log"

@@ -42,8 +42,7 @@ iotstack update yamls/custom.yaml
 
 | Command / file | Purpose |
 |----------------|---------|
-| `iotstack --log-id=<id> …` | Session log `~/.iotstack/logs/iotstack-<id>.log`; implies `-v` and `--create-log` |
-| `iotstack flash … --log-id=<id>` | Also captures device serial to `iotstack-<id>-serial.log` |
+| `iotstack --create-log …` | Session log `~/.iotstack/logs/iotstack-<guid>.log`; implies `-v`; serial to `iotstack-<guid>-serial.log` on flash |
 | `~/.iotstack/logs/sessions.watch` | Append-only registry of every invocation (TSV) — agents tail this for new runs |
 | `iotstack ps` | List `pstree` of running sessions and detached helpers |
 | `iotstack kill` | Stop all running iotstack sessions and helper process trees |

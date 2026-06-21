@@ -134,7 +134,7 @@ TOKEN TIPS
 WATCHING LIVE RUNS (when human flashes from Sync)
   - Registry: ~/.iotstack/logs/sessions.watch (one TSV line per iotstack invocation)
   - On new line: tail session_log + serial_log columns; see workflow.md § Watching live runs
-  - Typical logs: ~/.iotstack/logs/iotstack-<log-id>.log and iotstack-<log-id>-serial.log
+  - Typical logs: ~/.iotstack/logs/iotstack-<guid>.log and iotstack-<guid>-serial.log
   - Stuck run: iotstack ps  |  stop all: iotstack kill  (do not kill unless asked)
 
 DO NOT
