@@ -5432,6 +5432,8 @@ main() {
       local _early_serial_log="${IOTSTACK_HOME}/logs/iotstack-${IOTSTACK_LOG_ID}-serial.log"
       export IOTSTACK_SERIAL_LOG_FILE="$_early_serial_log"
       export _FLASH_SERIAL_LOG_ANNOUNCED=1
+      mkdir -p "$(dirname "$IOTSTACK_SERIAL_LOG_FILE")"
+      touch "$IOTSTACK_SERIAL_LOG_FILE"
       info "Serial log:  ${IOTSTACK_SERIAL_LOG_FILE}"
     fi
   fi
