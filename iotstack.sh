@@ -567,7 +567,7 @@ _flash_serial_step_begin() {
   # USB/esptool: bootloader, partition table, boot_app0, bootstrap partition only.
   [[ "${_IOTSTACK_FLASH_SERIAL_STEP:-0}" == "1" ]] && return 0
   _IOTSTACK_FLASH_SERIAL_STEP=1
-  _flash_step_begin "Serial flash partition table and bootstrap"
+  _flash_step_begin "Flashing production partition table and bootstrap image via serial"
 }
 
 _flash_nvs_step_begin() {
