@@ -3877,8 +3877,13 @@ _flash_matrix_layout_update_via_bootstrap_if_needed() {
   _flash_store_matrix_layout_pass "$device" "$want_cols" "$want_w" "$want_h"
 
   info "Step 3: Booting production firmware with updated NVS..."
-  if ! _boot_partition_network production "$device_mac"; then
-    warn "Could not toggle boot partition via network -- try: iotstack set-boot ${device_mac} production"
+  local _layout_yaml
+  _layout_yaml=$(resolve_device "$device" false 2>/dev/null) || _layout_yaml=""
+  if [[ -n "$_layout_yaml" ]]; then
+    _flash_invoke_update "$device_mac" "$_layout_yaml" "$device" "$tty_device"
+  else
+    warn "Could not resolve yaml for ${device} -- try: iotstack flash ${device} ${tty_device}"
+    return 1
   fi
 
   if _wait_for_production_online "$prod_hostname" 90; then
