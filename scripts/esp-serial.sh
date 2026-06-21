@@ -33,6 +33,58 @@ esp_serial_ports() {
   done
 }
 
+esp_tty_is_native_jtag() {
+  # True when tty is an ESP32-S3/S2 native USB JTAG/CDC port (Espressif VID 303a).
+  # Uses udevadm; returns 1 if udevadm is unavailable or VID is not 303a.
+  local tty="$1"
+  local vid
+  [[ -e "$tty" ]] || return 1
+  vid=$(udevadm info --query=property --name="$tty" 2>/dev/null \
+        | grep '^ID_VENDOR_ID=' | cut -d= -f2)
+  [[ "$vid" == "303a" ]]
+}
+
+esp_uart0_companion_port() {
+  # Given a flash TTY that is a native USB JTAG port (VID=303a), find the
+  # companion USB-UART chip port on the same USB parent hub (the separate
+  # UART0/GPIO43 interface present on DevKitC-1 style boards).
+  #
+  # Returns the companion TTY on stdout and exits 0 if found.
+  # Returns nothing and exits 1 if:
+  #   - tty is not native JTAG (caller should use tty directly)
+  #   - no companion port found (single-port board)
+  local tty="$1"
+  esp_tty_is_native_jtag "$tty" || return 1
+
+  # USB sysfs path for the JTAG device, e.g.
+  #   /devices/pci.../usb1/1-2/1-2.3/1-2.3:1.0/tty/ttyACM1
+  local jtag_syspath
+  jtag_syspath=$(udevadm info --query=property --name="$tty" 2>/dev/null \
+                 | grep '^DEVPATH=' | cut -d= -f2)
+  [[ -n "$jtag_syspath" ]] || return 1
+
+  # Walk up two levels: interface -> USB device -> USB hub (parent)
+  local jtag_usb_dev="${jtag_syspath%/*:*}"   # strip :interface suffix
+  local usb_hub="${jtag_usb_dev%/*}"           # parent hub path
+
+  local dev devpath vid
+  for dev in /dev/ttyACM* /dev/ttyUSB*; do
+    [[ -e "$dev" && "$dev" != "$tty" ]] || continue
+    devpath=$(udevadm info --query=property --name="$dev" 2>/dev/null \
+              | grep '^DEVPATH=' | cut -d= -f2)
+    [[ -n "$devpath" ]] || continue
+    # Must share the same USB hub parent
+    [[ "${devpath%/*:*}" == "$usb_hub"* ]] || continue
+    # Must NOT be another native JTAG port
+    vid=$(udevadm info --query=property --name="$dev" 2>/dev/null \
+          | grep '^ID_VENDOR_ID=' | cut -d= -f2)
+    [[ "$vid" == "303a" ]] && continue
+    printf '%s\n' "$dev"
+    return 0
+  done
+  return 1
+}
+
 esp_serial_process_cmdline() {
   local pid="$1"
   ps -p "$pid" -o args= 2>/dev/null || true

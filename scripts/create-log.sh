@@ -402,18 +402,25 @@ create_log_serial_capture_enabled() {
   [[ -n "${IOTSTACK_LOG_ID:-}" ]]
 }
 
-create_log_serial_capture_stop() {
-  local pid tty
+_create_log_kill_serial_pid() {
+  local pid="$1"
+  [[ -n "$pid" ]] || return 0
+  kill -TERM -"$pid" 2>/dev/null \
+    || { declare -F esp_serial_kill_process_tree &>/dev/null \
+      && esp_serial_kill_process_tree "$pid"; } \
+    || kill -TERM "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
 
-  if [[ -n "${IOTSTACK_SERIAL_LOG_PID:-}" ]]; then
-    pid="$IOTSTACK_SERIAL_LOG_PID"
-    kill -TERM -"$pid" 2>/dev/null \
-      || { declare -F esp_serial_kill_process_tree &>/dev/null \
-        && esp_serial_kill_process_tree "$pid"; } \
-      || kill -TERM "$pid" 2>/dev/null || true
-    wait "$pid" 2>/dev/null || true
-    unset IOTSTACK_SERIAL_LOG_PID
-  fi
+create_log_serial_capture_stop() {
+  local tty
+
+  _create_log_kill_serial_pid "${IOTSTACK_SERIAL_LOG_PID:-}"
+  unset IOTSTACK_SERIAL_LOG_PID
+
+  # Companion port capture (UART0 chip on dual-port boards).
+  _create_log_kill_serial_pid "${IOTSTACK_SERIAL_LOG_PID2:-}"
+  unset IOTSTACK_SERIAL_LOG_PID2
 
   tty="${IOTSTACK_FLASH_SERIAL_TTY:-}"
   if [[ -n "$tty" ]] && declare -F esp_serial_clear_tty_interference &>/dev/null; then
@@ -428,12 +435,28 @@ create_log_serial_capture_pause() {
   create_log_serial_capture_stop
 }
 
+_create_log_start_one_capture() {
+  # Start one background serial-logs.py instance appending to log_file.
+  # Usage: _create_log_start_one_capture <tty> <source> <log_file> <py> <stamp_py> <baud>
+  # Prints the background PID on stdout.
+  local tty="$1" source="$2" log_file="$3" py="$4" stamp_py="$5" baud="$6"
+  setsid bash -c '
+    exec "$0" -u "$1" --reconnect "$2" "$3" 2>&1 \
+      | stdbuf -oL -eL python3 -u "$4" --source "$5" --log-file "$6" --log-only
+  ' "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" "$tty" "$baud" "$stamp_py" "$source" "$log_file" &
+  printf '%s\n' "$!"
+}
+
 create_log_serial_capture_start() {
   # Background serial monitor -> iotstack-<log-id>-serial.log (file only; --reconnect).
+  # On boards with a native USB JTAG port (VID 303a) plus a companion UART0 chip
+  # port (e.g. DevKitC-1), both ports are captured into the same log file so that
+  # bootloader output (UART0) and USB_SERIAL_JTAG app output are both recorded.
+  # Single-port boards (Seeed XIAO etc.) are unaffected.
   # Usage: create_log_serial_capture_start <tty> [variant]
   local tty="$1"
   local variant="${2:-unknown}"
-  local log_file source py baud stamp_py
+  local log_file source py baud stamp_py companion
 
   create_log_serial_capture_enabled || return 0
   [[ -n "$tty" ]] || return 0
@@ -446,6 +469,7 @@ create_log_serial_capture_start() {
   log_file="${IOTSTACK_HOME}/logs/iotstack-${IOTSTACK_LOG_ID}-serial.log"
   export IOTSTACK_SERIAL_LOG_FILE="$log_file"
   export IOTSTACK_FLASH_SERIAL_TTY="$tty"
+  export IOTSTACK_FLASH_SERIAL_VARIANT="$variant"
 
   mkdir -p "$(dirname "$log_file")"
   if [[ -f "$log_file" ]]; then
@@ -455,19 +479,31 @@ create_log_serial_capture_start() {
   fi
 
   source=$(create_log_serial_source "$tty" "$variant")
-
   py=$(head -1 "$(command -v esphome)" 2>/dev/null | sed 's/^#!//')
   [[ -x "$py" ]] || py="python3"
-
   stamp_py="$IOTSTACK_LOG_STAMP"
   baud="${IOTSTACK_SERIAL_MONITOR_BAUD:-115200}"
 
-  setsid bash -c '
-    exec "$0" -u "$1" --reconnect "$2" "$3" 2>&1 \
-      | stdbuf -oL -eL python3 -u "$4" --source "$5" --log-file "$6" --log-only
-  ' "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" "$tty" "$baud" "$stamp_py" "$source" "$log_file" &
-  IOTSTACK_SERIAL_LOG_PID=$!
+  IOTSTACK_SERIAL_LOG_PID=$(_create_log_start_one_capture \
+    "$tty" "$source" "$log_file" "$py" "$stamp_py" "$baud")
   export IOTSTACK_SERIAL_LOG_PID
+
+  # Detect companion UART0 chip port on dual-port boards (e.g. DevKitC-1).
+  # Captures bootloader output which goes to UART0 regardless of app logger.
+  if declare -F esp_uart0_companion_port &>/dev/null; then
+    companion=$(esp_uart0_companion_port "$tty" 2>/dev/null) || true
+    if [[ -n "$companion" ]]; then
+      if declare -F esp_serial_clear_tty_interference &>/dev/null; then
+        esp_serial_clear_tty_interference "$companion"
+      fi
+      printf '%s === serial capture started (%s) ===\n' "$(date -Iseconds)" "$companion" >>"$log_file"
+      local companion_source
+      companion_source=$(create_log_serial_source "$companion" "uart0")
+      IOTSTACK_SERIAL_LOG_PID2=$(_create_log_start_one_capture \
+        "$companion" "$companion_source" "$log_file" "$py" "$stamp_py" "$baud")
+      export IOTSTACK_SERIAL_LOG_PID2
+    fi
+  fi
 }
 
 create_log_serial_capture_resume() {

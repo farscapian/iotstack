@@ -170,7 +170,7 @@ interval:
 
 logger:
   level: DEBUG  # Enhanced logging to debug NVS issues
-  hardware_uart: UART0
+  hardware_uart: USB_SERIAL_JTAG
   logs:
     nvs_secrets: DEBUG
     wifi: DEBUG
