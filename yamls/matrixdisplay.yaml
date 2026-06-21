@@ -67,7 +67,7 @@ api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
 
 logger:
-  baud_rate: 115200
+  hardware_uart: USB_SERIAL_JTAG
 
 font:
   - file: "gfonts://Roboto"

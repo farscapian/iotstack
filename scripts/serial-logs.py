@@ -74,7 +74,6 @@ def main() -> int:
         while True:
             try:
                 ser = serial.Serial(port, baud, timeout=1)
-                ser.reset_input_buffer()
             except Exception as exc:  # noqa: BLE001
                 if reconnect:
                     print(f"[serial-logs] waiting for {port}: {exc}", file=sys.stderr)
