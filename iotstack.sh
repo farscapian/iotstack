@@ -3834,6 +3834,9 @@ _flash_matrix_layout_update_via_bootstrap_if_needed() {
 
   if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
       cur_cols cur_w cur_h; then
+    if [[ "$cur_cols" == "$want_cols" && "$cur_w" == "$want_w" && "$cur_h" == "$want_h" ]]; then
+      return 0
+    fi
     info "Matrix layout mismatch: runtime ${cur_cols} panel(s) ${cur_w}x${cur_h} px -> target ${want_cols} panel(s) ${want_w}x${want_h} px"
   else
     info "Matrix layout: writing target ${want_cols} panel(s), ${want_w}x${want_h} px to NVS"
