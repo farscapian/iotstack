@@ -1565,17 +1565,14 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
     cat "$WORK_DIR/${HOSTNAME}.log" 2>/dev/null || true
   fi
   if [[ "$(cat "$WORK_DIR/${HOSTNAME}.result" 2>/dev/null)" == ok ]]; then
-    # Pre-flash mDNS hash (missing on bootstrap during reassign); fall back to build hash.
-    hash="${DEVICE_HASHES[$HOSTNAME]:-}"
-    if [[ -z "$hash" && -n "$NEW_CONFIG_HASH" ]]; then
-      hash="$NEW_CONFIG_HASH"
-    fi
+    # Show the hash of what was installed (build hash), not the pre-flash device hash.
+    hash="$NEW_CONFIG_HASH"
     if [[ -z "$hash" ]]; then
       hash=$(_resolve_build_config_hash "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
     fi
     [[ -z "$hash" ]] && hash="unknown"
     hash_short="${hash:0:8}"
-    ok "${HOSTNAME}: flash successful. (hash: ${hash_short})"
+    ok "${HOSTNAME}: flash successful. (installed: ${hash_short})"
     OK_LIST+=("$HOSTNAME")
   else
     err "${HOSTNAME}: flash FAILED."
