@@ -1,9 +1,9 @@
 #!/bin/bash
-# TEST_DESC: Force OTA reflash of bleproxy (--erase)
+# TEST_DESC: Update bleproxy (already current after flash -- confirms delta skip, no error)
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/common.sh"
 
 mac=$(test_ensure_mac bleproxy) || { test_fail "No bleproxy device on network"; exit 1; }
 
-test_run_step "iotstack update ${mac} bleproxy --erase" \
-  test_iotstack update "$mac" bleproxy --erase
+test_run_step "iotstack update ${mac} bleproxy" \
+  test_iotstack update "$mac" bleproxy

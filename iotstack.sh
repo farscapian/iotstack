@@ -2304,7 +2304,7 @@ _update_via_bootstrap() {
   # OTA never overwrites the bootstrap partition. Used by cmd_update and iotstack flash.
   #
   # Usage: _update_via_bootstrap <role> <yaml_file> [mac ...] [-- <update_args...>]
-  #   update_args may include --upgrade-delta, --erase, --jobs N, and /dev/tty* (USB fallback).
+  #   update_args may include --upgrade-delta, --jobs N, and /dev/tty* (USB fallback).
   #   Explicit MACs are used directly (device may be bootstrap-only during first flash).
   local role="$1"
   local yaml_file="$2"
@@ -2402,13 +2402,17 @@ cmd_update() {
         ota_password="$2"
         shift 2
         ;;
-      --dry-run|--erase|--jobs)
+      --dry-run|--jobs)
         update_args+=("$1")
         if [[ "$1" == "--jobs" ]]; then
           shift
           update_args+=("$1")
         fi
         shift
+        ;;
+      --erase)
+        err "--erase is not valid for 'iotstack update'; use 'iotstack flash' to erase and reinstall from USB"
+        exit 1
         ;;
       all)
         if [[ -z "$device_or_yaml" ]]; then
