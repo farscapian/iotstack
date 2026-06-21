@@ -5401,6 +5401,12 @@ main() {
 
   if create_log_enabled; then
     info "Session log: ${IOTSTACK_LOG_FILE}"
+    if [[ "$command" == "flash" ]] && create_log_serial_capture_enabled; then
+      local _early_serial_log="${IOTSTACK_HOME}/logs/iotstack-${IOTSTACK_LOG_ID}-serial.log"
+      export IOTSTACK_SERIAL_LOG_FILE="$_early_serial_log"
+      export _FLASH_SERIAL_LOG_ANNOUNCED=1
+      info "Serial log:  ${IOTSTACK_SERIAL_LOG_FILE}"
+    fi
   fi
 
   # Load environment file if it exists
