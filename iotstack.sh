@@ -1874,13 +1874,12 @@ _flash_assess_device_runtime() {
     bootstrap_hash=$(_mdns_config_hash_for_hostname "$bootstrap_hostname" "$(iotstack_bootstrap_mdns_service)" 2>/dev/null) \
       || bootstrap_hash="unknown"
     info "Runtime bootstrap: ${bootstrap_hostname} (config_hash ${bootstrap_hash})"
-  elif [[ -n "$tty_device" ]]; then
-    info "Bootstrap: not on WiFi (use --on-flash-verify for USB partition check)"
   fi
   if [[ $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local running_hash
     running_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || running_hash="unknown"
-    info "Runtime: production API online (${prod_hostname}, config_hash ${running_hash})"
+    info "Device is running production image ${prod_hostname} with config_hash=${running_hash}"
+    info "Production API is online"
   elif [[ $FLASH_ASSESS_PROD_MDNS -eq 1 ]]; then
     local mdns_only_hash
     mdns_only_hash=$(_mdns_config_hash_for_hostname "$prod_hostname" 2>/dev/null) || mdns_only_hash="unknown"
