@@ -4369,7 +4369,7 @@ _flash_bootstrap_to_tty() {
   fi
 
   debug "Recovery image: ${variant} on ${tty_device}"
-  debug "YAML: ${bootstrap_yaml}"
+  debug "YAML: ${bootstrap_yaml#"${SCRIPT_DIR}/"}"
 
   local flash_log_dir="$HOME/.iotstack/logs/flash"
   mkdir -p "$flash_log_dir"
