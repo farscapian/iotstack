@@ -2179,7 +2179,18 @@ _ota_via_bootstrap() {
   if [[ "$is_dry_run" != true ]]; then
     if _bootstrap_update_nvs_device_role "$mac" "$conf_role"; then
       debug "[$mac] NVS device_role set to $conf_role"
-      sleep 3
+      # NVS update triggers safe_reboot() on bootstrap; wait for it to reconnect.
+      local bs_host
+      bs_host=$(iotstack_bootstrap_hostname "$mac")
+      info "[$mac] Waiting for $bs_host to reconnect after NVS reboot..."
+      if ! _wait_for_device "$bs_host" 60; then
+        warn "[$mac] $bs_host did not reappear after NVS update reboot"
+        return 1
+      fi
+      if ! _wait_for_ota_service "$bs_host" 30; then
+        warn "[$mac] $bs_host OTA service not reachable after NVS reboot"
+        return 1
+      fi
     else
       debug "[$mac] NVS device_role not updated via API (may be set on next USB provision)"
     fi
