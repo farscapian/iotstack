@@ -10,7 +10,6 @@
 # Options:
 #   --upgrade-delta        Only flash devices whose config_hash differs from the
 #                          current build (default: on)
-#   --erase         Erase and reflash all devices regardless of running firmware
 #   --verify               Compile, then check each device's config_hash; report
 #                          pass/fail and exit (no flashing, no changes to HA)
 #   --force-update-entities Recreate entity IDs for all devices, even if no
@@ -55,7 +54,6 @@ trap 'cleanup; exit 130' INT
 
 # -- Defaults ----------------------------------------------------------------
 UPGRADE_DELTA=true
-FLASH_ERASE=false
 VERIFY=false
 DRY_RUN=false
 VERBOSE=false
@@ -693,7 +691,7 @@ usage() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --upgrade-delta)         UPGRADE_DELTA=true;  shift ;;
-    --erase)          FLASH_ERASE=true;   shift ;;
+    --erase)          err "--erase is not valid for update_devices.sh; use 'iotstack flash' for USB erase"; exit 1 ;;
     --verify)                VERIFY=true;         shift ;;
     --force-update-entities) FORCE_UPDATE_ENTITIES=true; shift ;;
     --dry-run)               DRY_RUN=true;        shift ;;
@@ -733,7 +731,7 @@ if [[ "$REASSIGN_MODE" == true ]]; then
 else
   if [[ -z "$YAML_FILE" ]]; then
     err "No yaml file specified."
-    echo "Usage: $0 [--upgrade-delta] [--erase] [--verify] [--dry-run] [--jobs N] <yaml-file>"
+    echo "Usage: $0 [--upgrade-delta] [--verify] [--dry-run] [--jobs N] <yaml-file>"
     exit 1
   fi
 fi
@@ -1311,10 +1309,6 @@ while IFS= read -r HOSTNAME; do
     continue
   fi
 
-  if [[ "$FLASH_ERASE" == true ]]; then
-    FLASH_LIST+=("$HOSTNAME")
-    continue
-  fi
 
   # Reassign discovers bootstrap-<mac>; its mDNS config_hash is the bootstrap
   # build, not the production image being OTA'd into the production partition.
