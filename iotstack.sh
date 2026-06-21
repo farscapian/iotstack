@@ -1657,7 +1657,6 @@ _flash_invoke_update() {
   local tty_device="${4:-}"
   declare -a update_args=(--upgrade-delta)
 
-  [[ "${FLASH_ERASE:-0}" == "1" ]] && update_args+=(--erase)
   [[ -n "$tty_device" ]] && update_args+=("$tty_device")
 
   _flash_msg_ota_production "$device_mac" "$device_role"

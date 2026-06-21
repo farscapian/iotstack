@@ -62,6 +62,13 @@ iotstack_prepare_compile_yaml() {
   # Must live under yamls/ (same dir as source) so !include common/... resolves.
   compile_yaml="$(cd "$(dirname "$src_yaml")" && pwd)/.temp-compile-${base}.$$"
   cp "$src_yaml" "$compile_yaml"
+
+  # Inject current git commit into project_version so the flashed firmware reports it.
+  # Uses the temp copy only -- source YAML stays unchanged (no dirty git state).
+  local git_commit
+  git_commit=$(iotstack_git_commit_short)
+  sed -i "s/project_version: \"[^\"]*\"/project_version: \"${git_commit}\"/" "$compile_yaml"
+
   printf '%s\n' "$compile_yaml"
 }
 
