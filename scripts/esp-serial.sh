@@ -182,7 +182,7 @@ esp_serial_tty_holder_pids() {
     [[ -z "$line" ]] && continue
     pid=$(awk '{print $2}' <<<"$line")
     [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] && printf '%s\n' "$pid"
-  done < <(lsof -t "$tty" 2>/dev/null | sort -u || true)
+  done < <(timeout 5s lsof -t "$tty" 2>/dev/null | sort -u || true)
 }
 
 esp_serial_iotstack_serial_pids_on_tty() {
@@ -320,7 +320,7 @@ esp_serial_tty_blocked_processes() {
     esp_serial_is_iotstack_serial_holder "$cmdline" && continue
     esp_serial_is_iotstack_flash_on_tty "$cmdline" "$tty" && continue
     printf '%s\n' "$line"
-  done < <(lsof "$tty" 2>/dev/null | tail -n +2 || true)
+  done < <(timeout 5s lsof "$tty" 2>/dev/null | tail -n +2 || true)
 }
 
 esp_esptool_usb_cdc_chip() {

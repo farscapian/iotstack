@@ -1661,6 +1661,7 @@ _flash_invoke_update() {
 
   _flash_msg_ota_production "$device_mac" "$device_role"
   _update_via_bootstrap "$device_role" "$yaml_path" "$device_mac" -- "${update_args[@]}"
+  create_log_serial_relabel "$device_role"
 }
 
 _wait_for_production_online() {
@@ -4027,6 +4028,7 @@ _flash_serial_log_setup() {
   [[ -n "$tty" && -e "$tty" ]] || return 0
 
   export IOTSTACK_FLASH_SERIAL_VARIANT="${variant:-${IOTSTACK_ESPTOOL_CHIP:-unknown}}"
+  export IOTSTACK_FLASH_SERIAL_LABEL="bootstrap"
 
   if [[ -z "${_FLASH_SERIAL_LOG_TRAP_REGISTERED:-}" ]]; then
     local prior_cmd=""

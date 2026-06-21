@@ -315,9 +315,15 @@ create_log_write_header() {
 }
 
 create_log_serial_source() {
-  # Label for ESP serial streams: serial:<variant>:<tty>
+  # Label for ESP serial streams. Uses IOTSTACK_FLASH_SERIAL_LABEL when set
+  # (role-aware prefix like "bootstrap" or "matrixdisplay"); otherwise falls
+  # back to "serial:<variant>:<tty>".
   local tty="$1"
   local variant="${2:-}"
+  if [[ -n "${IOTSTACK_FLASH_SERIAL_LABEL:-}" ]]; then
+    printf '%s' "$IOTSTACK_FLASH_SERIAL_LABEL"
+    return
+  fi
   if [[ -z "$variant" ]]; then
     if declare -F esp_detect_chip &>/dev/null; then
       variant=$(esp_detect_chip "$tty" 2>/dev/null) || variant="unknown"
@@ -450,4 +456,11 @@ create_log_serial_capture_start() {
 create_log_serial_capture_resume() {
   [[ -n "${IOTSTACK_FLASH_SERIAL_TTY:-}" ]] || return 0
   create_log_serial_capture_start "${IOTSTACK_FLASH_SERIAL_TTY}" "${IOTSTACK_FLASH_SERIAL_VARIANT:-unknown}"
+}
+
+create_log_serial_relabel() {
+  # Switch the serial log source label and restart capture with the new prefix.
+  # Usage: create_log_serial_relabel <label>  (e.g. "matrixdisplay")
+  export IOTSTACK_FLASH_SERIAL_LABEL="$1"
+  create_log_serial_capture_resume
 }
