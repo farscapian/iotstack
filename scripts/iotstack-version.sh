@@ -25,6 +25,15 @@ iotstack_git_commit_short() {
   echo "$commit"
 }
 
+iotstack_git_tag() {
+  # Latest git tag; falls back to "untagged" if no tags exist.
+  local root tag
+  root=$(iotstack_git_root)
+  tag=$(git -C "$root" describe --tags --abbrev=0 2>/dev/null) || true
+  [[ -n "$tag" ]] || tag="untagged"
+  echo "$tag"
+}
+
 iotstack_compilation_cache_yaml_name() {
   # Stable compile-skip dedup key for a YAML path.
   # Production roles compile via yamls/.temp-compile-<role>.yaml.<pid>; dedup uses
@@ -63,11 +72,11 @@ iotstack_prepare_compile_yaml() {
   compile_yaml="$(cd "$(dirname "$src_yaml")" && pwd)/.temp-compile-${base}.$$"
   cp "$src_yaml" "$compile_yaml"
 
-  # Inject current git commit into project_version so the flashed firmware reports it.
+  # Inject latest git tag into project_version so the flashed firmware reports it.
   # Uses the temp copy only -- source YAML stays unchanged (no dirty git state).
-  local git_commit
-  git_commit=$(iotstack_git_commit_short)
-  sed -i "s/project_version: \"[^\"]*\"/project_version: \"${git_commit}\"/" "$compile_yaml"
+  local git_tag
+  git_tag=$(iotstack_git_tag)
+  sed -i "s/project_version: \"[^\"]*\"/project_version: \"${git_tag}\"/" "$compile_yaml"
 
   printf '%s\n' "$compile_yaml"
 }
