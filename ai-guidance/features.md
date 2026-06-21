@@ -17,7 +17,6 @@ iotstack update 135b60 1a7b00 1af95c threadrouter
 
 # Works with all options
 iotstack update a1a7b0 8e1aa8 bleproxy --dry-run
-iotstack update a1a7b0 mmwave --erase
 ```
 
 **How it works:**
@@ -29,8 +28,8 @@ iotstack update a1a7b0 mmwave --erase
 ### 2. Delta Updates (Default: On)
 - **Primary comparison:** `config_hash` from device mDNS TXT vs. compiled build
 - Only flashes devices with mismatched hashes (`--upgrade-delta`, default in `update_devices.sh`)
-- **`--erase`:** force all matched devices onto the flash list (separate `FLASH_ERASE` flag -- does not disable compile cache)
 - Fallback to `project_version` comparison if `config_hash` unavailable in mDNS
+- **`--erase` is not a valid `iotstack update` flag** -- it is USB-only and belongs to `iotstack flash` only
 
 
 ### 3. Device Reassignment (`iotstack reassign` / `--reassign`)

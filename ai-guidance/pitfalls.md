@@ -9,6 +9,8 @@
 | Entity updates affect wrong integrations | Not checking platform field | Always filter: `if platform != 'esphome': continue` |
 | `iotstack verify` prints nothing / exits immediately | `log()` returned 1 under `set -e` when not verbose | `log()` always returns 0; use `info()` for required output |
 | `--erase` says it will reflash but exits early | Assessment ignored `FLASH_ERASE` on mDNS hash match | Honor `FLASH_ERASE` in all match branches; pull latest `main` |
+| `iotstack update ... --erase` or `update_devices.sh --erase` errors out | `--erase` was removed from both; it is USB-only, valid only for `iotstack flash` | Use `iotstack flash <role> <tty> --erase` for a full USB erase and reinstall |
+| OTA fails immediately, no error in session log, flash log dir empty | `FIRMWARE_BIN` in `update_devices.sh` used relative `yamls/` path; resolves incorrectly when CWD != project root | Fixed: uses `${YAMLS_DIR}` (absolute). If you see this again, check `FIRMWARE_BIN` assignment. |
 | OTA success shows `hash: unknown` | Bootstrap host missing TXT (old firmware) or avahi browse miss | Reflash bootstrap so `_iotstack-bootstrap._tcp` carries `config_hash`; `_resolve_build_config_hash` fallback |
 | Slow bootstrap USB assess (~60s) | mDNS fast path skipped (device offline or old bootstrap without TXT) | Ensure bootstrap on WiFi; reflash bootstrap once to pick up mDNS TXT records |
 | Literal `\033[0;32m` in compile spinner | `printf` + single-quoted color vars | Use `$'\033[...]'` or `[INFO]` lines only |

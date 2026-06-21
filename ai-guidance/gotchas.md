@@ -10,17 +10,18 @@ Production firmware has **no OTA server** in YAML. Update/reassign/flash paths:
 
 `iotstack flash --erase` on an online production device still goes through this bootstrap path for the actual OTA step.
 
-### `--erase` assessment and update_devices
+### `--erase` is `iotstack flash`-only
+
+`--erase` is a USB-only flag meaning "erase the entire flash chip before writing." It is only valid for `iotstack flash`.
+
+- **`update_devices.sh`** and **`iotstack update`** reject `--erase` with an immediate error — it has no meaning in an OTA-only context.
+- `iotstack flash` does NOT forward `--erase` to the internal `update_devices.sh --reassign` call for the production OTA step. The erase already happened at the USB bootstrap step.
+- `_flash_invoke_update` (the function that calls `update_devices.sh --reassign`) must not include `--erase` in its `update_args`.
 
 **iotstack.sh flash assessment** (`FLASH_ERASE=1`):
 - Must skip early exit in `_flash_production_matches_build` when hashes match
 - Must skip the **second** mDNS `config_hash` match check in `_flash_assess_device` (there were two independent "current" checks)
 - Export `FLASH_ERASE=1` explicitly before assessment helpers run
-
-**update_devices.sh** (`--erase`):
-- Uses a dedicated `FLASH_ERASE=true` flag to force devices onto the flash list
-- **Do not** tie `--erase` to `UPGRADE_DELTA=false` -- that skipped compile-cache / `NEW_CONFIG_HASH` resolution and caused `hash: unknown` plus redundant compiles
-- `iotstack flash` passes **both** `--upgrade-delta` and `--erase` during bootstrap OTA; argument order must leave `FLASH_ERASE` effective without disabling delta compile logic
 
 ### `iotstack verify` and `set -e`
 
@@ -39,9 +40,26 @@ Bootstrap firmware advertises `_iotstack-bootstrap._tcp` (not `_esphomelib._tcp`
 
 ### Post-OTA hash reporting
 
-During reassign OTA the discovered host is `bootstrap-<mac>`. Do **not** compare that host's mDNS `config_hash` to the production build hash -- bootstrap TXT carries the bootstrap image hash, not production. `update_devices.sh` always queues a production OTA in `--reassign` mode (no misleading `hash X -> Y` warn). Post-OTA success reporting falls back to build hash from `NEW_CONFIG_HASH`, `build_info.json`, or `compilation-cache.csv` (`image_hash` column via `_resolve_build_config_hash`) when the bootstrap host has no production hash.
+During reassign OTA the discovered host is `bootstrap-<mac>`. Do **not** compare that host's mDNS `config_hash` to the production build hash -- bootstrap TXT carries the bootstrap image hash, not production. `update_devices.sh` always queues a production OTA in `--reassign` mode (no misleading `hash X -> Y` warn).
+
+The flash success line (`ok "${HOSTNAME}: flash successful. (installed: ${hash_short})"`) uses `NEW_CONFIG_HASH` (the production firmware hash from `build_info.json`) -- **not** `DEVICE_HASHES[$HOSTNAME]` (the pre-flash mDNS hash of the bootstrap device). The pre-flash hash is the bootstrap's config_hash and would be misleading here. `NEW_CONFIG_HASH` is always set before the flash loop runs.
 
 After USB bootstrap flash, WiFi readiness is detected by probing `bootstrap-<mac>.local:3232` (`_wait_for_bootstrap_wifi_ready`), not by a serial log line. Default wait is **10s** (`_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC`) — sufficient only when bootstrap is already running; a **ROM boot loop** (repeating `ESP-ROM:esp32s3`, `entry 0x403c8914`, no `[nvs_secrets]` lines) means the app never started — do not blame WiFi timeout until serial shows bootstrap firmware booted.
+
+### `FIRMWARE_BIN` must use `${YAMLS_DIR}`, not `yamls/`
+
+`update_devices.sh` resolves the OTA binary as:
+```bash
+FIRMWARE_BIN="${YAMLS_DIR}/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"
+```
+
+`YAMLS_DIR` is an absolute path exported from `config.sh`. **Never use a relative `yamls/` prefix** — if iotstack is invoked from any directory other than the project root, `FIRMWARE_BIN` resolves to a nonexistent path, `esphome upload --file ""` fails immediately with no visible error, and the OTA log directory is left empty.
+
+### Build cache sync between `iotstack flash` Step 1 and Step 5
+
+`iotstack flash` compiles both bootstrap and production in Step 1 via `smart_compile`. `update_devices.sh` (Step 5) has its own independent build cache at `~/.iotstack/logs/<device>.build.cache` (yaml_sha256 + esphome_version + config_hash). Without syncing them, Step 5 sees a cache miss and recompiles.
+
+`_flash_sync_update_devices_cache()` in `iotstack.sh` is called immediately after the production `smart_compile` in Step 1. It writes the same cache keys that `update_devices.sh` would write itself, giving Step 5 an instant cache hit. If you refactor the compile flow, ensure this sync call is preserved after production compilation.
 
 ### Agent live-run watching (`sessions.watch`)
 

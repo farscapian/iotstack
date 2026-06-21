@@ -56,3 +56,20 @@ r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)'
 - Per-device build cache: `~/.iotstack/logs/<device>.build.cache` (YAML SHA + ESPHome version + config_hash)
 - Global compilation cache: `~/.iotstack/compilation-cache.csv` (`image_hash` column; used by `smart_compile` / flash assessment)
 - Cache invalidated on YAML/common/external_components changes, new git tag, or ESPHome upgrade
+
+### Session log ordering (`create-log.sh`)
+
+The session log line order matters for agents tailing the file:
+
+```
+<timestamp> [iotstack.sh] [INFO] Session log: /path/to/iotstack-<guid>.log
+<timestamp> [iotstack.sh] [INFO] Serial log:  /path/to/iotstack-<guid>-serial.log
+<timestamp> === iotstack flash matrixdisplay /dev/ttyACM0 --erase ===
+```
+
+**How this is achieved:**
+- `create_log_setup()` creates/truncates the log file but does **not** write the `===` header.
+- `create_log_write_header()` writes the `===` header separately; it is called in `main()` **after** the `info "Session log: ..."` and `info "Serial log: ..."` lines.
+- The serial log file is `touch`ed before its path is announced so an agent can `tail -f` it immediately.
+
+Do not merge `create_log_write_header()` back into `create_log_setup()` -- that restores the old ordering where the header appeared before the log path lines.

@@ -70,26 +70,25 @@ Bootstrap serial flash writes `bootloader.bin`, `partitions.bin`, **OTA init at 
 - **No `safe_mode:`** -- boot-loop recovery is handled by `partition_manager`
 - **No `factory_reset` button** -- physical reset is `common/boot_button.yaml`
 
-### Project Version (Build-Time Git Tag + Commit)
+### Project Version (Build-Time Git Tag)
 
-All role YAMLs use a substitution injected before every `esphome compile`:
+All role YAMLs use a substitution variable injected before every `esphome compile`:
 
 ```yaml
 substitutions:
-  project_version: "0.0.0-dev"  # placeholder; overridden at compile time
+  project_version: "0.0.0-dev"  # placeholder in source; overridden at compile time
 esphome:
   project:
     version: "${project_version}"
 ```
 
-**Resolution order** (`scripts/iotstack-version.sh`):
-1. `IOTSTACK_PROJECT_VERSION` env var (tests/overrides; full string, commit not auto-appended)
-2. `<latest-tag>+<short-commit>` where tag is `git describe --tags --abbrev=0` (e.g. `v0.1.0+f7f2d73`)
-3. Fallback `0.0.0-dev+<short-commit>` when no tags exist
+**Resolution** (`scripts/iotstack-version.sh`, `iotstack_git_tag()`):
+- Latest annotated tag via `git describe --tags --abbrev=0` (e.g. `v0.1.0`)
+- Fallback `untagged` when no tags exist
 
-The commit suffix (`git rev-parse --short=7 HEAD`) identifies the exact tree flashed to the device. Compilation caches invalidate on every commit even when the semver tag is unchanged.
+**Injection:** `iotstack_prepare_compile_yaml()` copies the source YAML to a temp file (`yamls/.temp-compile-<role>.yaml.<pid>`) and patches `project_version` with `sed`. Source YAMLs in git stay at `0.0.0-dev`; only compile-time copies get the real tag.
 
-**Injection points:** `iotstack.sh` `_esphome_compile`, `update_devices.sh`, `bootstrap-yaml.sh` (variant artifacts). Source YAMLs in git stay at `0.0.0-dev`; only compile-time copies get the real tag+commit.
+**Cache invalidation:** compilation caches invalidate when the tag changes (tag is folded into the `yaml_sha` cache key). Commits that do not create a new tag do NOT trigger recompilation -- this is intentional. To force a rebuild, create a new tag or set `DISABLE_COMPILATION_CACHE=1`.
 
 **Gotcha:** compile-time copies must live under `yamls/` (e.g. `yamls/.temp-compile-matrixdisplay.yaml.<pid>`), not `/tmp`, because ESPHome resolves `!include common/...` relative to the YAML file path.
 
