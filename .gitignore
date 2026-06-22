@@ -17,7 +17,7 @@ otbr/logs/
 otbr/*.env
 
 # Exception: allow documentation and components (not actual secrets)
-!ai-guidance/nvs-secrets.md
+!agentstartstack/nvs-secrets.md
 !docs/secrets.md
 !docs/help/iotstack-secret.txt
 !docs/help/iotstack-secret-detailed.txt

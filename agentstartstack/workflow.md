@@ -247,7 +247,7 @@ pkill -TERM -f 'serial-logs.py.*ttyACM0'   # if port still busy
 **Start a Grok session**
 1. Open the session folder in Cursor/Grok
 2. Run `scripts/init_grok_session.sh` (session sync + goal prompt + agent tips)
-3. Paste the suggested first message into the agent (task + 1-3 `ai-guidance/` files to read)
+3. Paste the suggested first message into the agent (task + 1-3 `agentstartstack/` files to read)
 
 **Start a Claude Code session**
 1. Create a session clone: `git clone git@github.com:farscapian/iotstack.git ~/.claude/worktrees/mini-projects-iotstack/<session-id>`

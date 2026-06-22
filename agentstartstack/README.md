@@ -1,4 +1,4 @@
-# ai-guidance
+# agentstartstack
 
 Split from the former monolithic `CLAUDE.md` so agents load only the topics needed for a task.
 
@@ -24,10 +24,10 @@ Changes applied during the split:
 | Orphaned YAML bullets under NVS architecture | Moved to item 3 (YAML placeholders); clarified they are compile-time only |
 | `[CRITICAL] CRITICAL` duplicate prefix | Normalized to `## CRITICAL` in `security.md` |
 | Stale "wait for human approval to commit" | Updated in `workflow.md`: agents auto-commit/push/pull unless human says otherwise; device testing remains the correctness bar |
-| Internal `#anchor` links across old sections | Updated to `ai-guidance/<file>.md` paths |
+| Internal `#anchor` links across old sections | Updated to `agentstartstack/<file>.md` paths |
 | `### References` under Code Quality | Moved to `references.md` only |
 | Partition offset "see CLAUDE.md" | Points to `partitions.md` |
-| `nvs-secrets.md` ignored by `*secret*` rule | `.gitignore` exception added for `ai-guidance/nvs-secrets.md` |
+| `nvs-secrets.md` ignored by `*secret*` rule | `.gitignore` exception added for `agentstartstack/nvs-secrets.md` |
 
 ### Suggested load patterns
 
@@ -44,4 +44,4 @@ Changes applied during the split:
 
 ### Maintenance
 
-When adding guidance, append to the smallest applicable topic file. Update `CLAUDE.md` index table if adding a new file. Keep cross-references as relative `ai-guidance/*.md` links.
+When adding guidance, append to the smallest applicable topic file. Update `CLAUDE.md` index table if adding a new file. Keep cross-references as relative `agentstartstack/*.md` links.

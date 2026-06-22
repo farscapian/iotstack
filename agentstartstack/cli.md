@@ -47,7 +47,7 @@ iotstack update yamls/custom.yaml
 | `iotstack ps` | List `pstree` of running sessions and detached helpers |
 | `iotstack kill` | Stop all running iotstack sessions and helper process trees |
 
-Agent workflow for watching runs: `ai-guidance/workflow.md` § Watching live iotstack runs.
+Agent workflow for watching runs: `agentstartstack/workflow.md` § Watching live iotstack runs.
 
 ### Implementation Details
 - `iotstack.sh` loads role list from `roles.conf`

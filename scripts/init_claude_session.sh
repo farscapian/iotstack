@@ -87,12 +87,12 @@ git clean -fd
 
 COMMIT="$(git log -1 --oneline)"
 BRANCH="$(git branch --show-current)"
-WORKFLOW_MD="${REPO_ROOT}/ai-guidance/workflow.md"
+WORKFLOW_MD="${REPO_ROOT}/agentstartstack/workflow.md"
 WORKFLOW_FILE_URL="file://${WORKFLOW_MD}"
 
 ok "Synced to ${BRANCH} @ ${COMMIT}"
 printf '[INFO] Workflow guide: '
-print_hyperlink "$WORKFLOW_FILE_URL" "ai-guidance/workflow.md"
+print_hyperlink "$WORKFLOW_FILE_URL" "agentstartstack/workflow.md"
 printf '\n'
 echo ""
 
@@ -116,7 +116,7 @@ IMPORTANT: Claude Code always edits files in the session clone (~/.claude/worktr
 FIRST MESSAGE (copy/paste template below)
   - Say you ran init_claude_session.sh (session sync complete).
   - State your task in one sentence.
-  - Name 1-3 ai-guidance files to read (not all of them, not old monolithic text).
+  - Name 1-3 agentstartstack files to read (not all of them, not old monolithic text).
 
 WHAT TO READ (pick 1-3 by task type)
   Flash / serial / TTY     -> workflow.md, gotchas.md, pitfalls.md
@@ -124,7 +124,7 @@ WHAT TO READ (pick 1-3 by task type)
   NVS / secrets / WiFi     -> nvs-secrets.md, security.md
   New shell script         -> conventions.md, code-quality.md
   New device role          -> cli.md, devices.md, architecture.md
-  Docs / workflow only     -> workflow.md, ai-guidance/README.md
+  Docs / workflow only     -> workflow.md, agentstartstack/README.md
 
   CLAUDE.md is an index only. Do not ask the agent to "read all of CLAUDE.md".
 
@@ -146,13 +146,13 @@ DO NOT
   - Edit files under ~/Sync/mini_projects/iotstack -- work only in the session clone.
   - Push to origin (git push origin main) -- HUMAN ONLY, never an AI agent.
   - Load nvs-secrets.md for unrelated flash bugs (large file).
-  - Re-explain the AI git workflow every time (see ai-guidance/workflow.md).
+  - Re-explain the AI git workflow every time (see agentstartstack/workflow.md).
   - git push local-sync while any iotstack command is running (pgrep -af 'iotstack').
   - Run USB/serial tests on /dev/ttyACM0 while iotstack is active on that port.
   - Wait for the human to paste flash logs if sessions.watch / log files are available.
 
 WHEN HUMAN SAYS "sync"
-  nut iotstack    # or: nut (from Sync pwd) -- see ai-guidance/nut.md
+  nut iotstack    # or: nut (from Sync pwd) -- see agentstartstack/nut.md
   # Human reviews changes in ~/Sync/mini_projects/iotstack, then pushes to origin.
 
 ================================================================================
@@ -164,7 +164,7 @@ cat <<EOF
 New session. init_claude_session.sh complete (session sync) -- on main at ${COMMIT}.
 
 Task: <your task in one sentence>
-Read: ai-guidance/workflow.md, ai-guidance/<pick-one-or-two-more>.md
+Read: agentstartstack/workflow.md, agentstartstack/<pick-one-or-two-more>.md
 Constraints: <device, /dev/tty*, role, files not to touch>
 EOF
 
@@ -172,5 +172,5 @@ echo ""
 info "Claude Code session directories: ${CLAUDE_PARENT}/"
 info "Canonical CLI repo:              ${SYNC_REPO}/"
 printf '[INFO] Full workflow:                '
-print_hyperlink "$WORKFLOW_FILE_URL" "ai-guidance/workflow.md"
+print_hyperlink "$WORKFLOW_FILE_URL" "agentstartstack/workflow.md"
 printf '\n'
