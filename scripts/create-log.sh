@@ -386,8 +386,10 @@ create_log_serial_capture_enabled() {
 
 create_log_serial_capture_stop() {
   local pid tty
+  local _had_capture=0
 
   if [[ -n "${IOTSTACK_SERIAL_LOG_PID:-}" ]]; then
+    _had_capture=1
     pid="$IOTSTACK_SERIAL_LOG_PID"
     kill -TERM -"$pid" 2>/dev/null \
       || { declare -F esp_serial_kill_process_tree &>/dev/null \
@@ -398,11 +400,9 @@ create_log_serial_capture_stop() {
   fi
 
   tty="${IOTSTACK_FLASH_SERIAL_TTY:-}"
-  if [[ -n "$tty" ]] && declare -F esp_serial_clear_tty_interference &>/dev/null; then
-    esp_serial_clear_tty_interference "$tty"
-  fi
-  if [[ -n "$tty" ]] && declare -F esp_serial_wait_tty_free &>/dev/null; then
-    esp_serial_wait_tty_free "$tty" 5
+  if [[ "$_had_capture" -eq 1 && -n "$tty" ]]; then
+    declare -F esp_serial_clear_tty_interference &>/dev/null && esp_serial_clear_tty_interference "$tty"
+    declare -F esp_serial_wait_tty_free &>/dev/null && esp_serial_wait_tty_free "$tty" 5
   fi
 }
 
@@ -421,7 +421,9 @@ create_log_serial_capture_start() {
   [[ -n "$tty" ]] || return 0
 
   if declare -F esp_serial_clear_tty_interference &>/dev/null; then
-    esp_serial_clear_tty_interference "$tty"
+    if [[ "$tty" != "${IOTSTACK_FLASH_SERIAL_TTY:-}" ]]; then
+      esp_serial_clear_tty_interference "$tty"
+    fi
   fi
   create_log_serial_capture_stop
 
