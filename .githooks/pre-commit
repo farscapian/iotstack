@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Pre-commit: shellcheck staged shell scripts before allowing a commit.
 set -euo pipefail
-
-ROOT="$(git rev-parse --show-toplevel)"
-exec "${ROOT}/scripts/shellcheck-staged.sh"
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "/home/derek/Sync/mini_projects/iotstack")"
+exec "${ROOT}/scripts/shellcheck-staged.sh" "$@"

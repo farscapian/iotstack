@@ -1,6 +1,6 @@
 # iotstack -- AI Development Notes (index)
 
-ESP32 ESPHome device management. **Load topic files from `agentstartstack/` instead of reading this index repeatedly.**
+ESP32 ESPHome device management. **Load topic files on demand -- do not read this entire index repeatedly.**
 
 ## Quick rules
 
@@ -8,18 +8,28 @@ ESP32 ESPHome device management. **Load topic files from `agentstartstack/` inst
 - Text: ASCII-only in docs, logs, help, and code comments
 - Agents work in session clones, NOT in Sync: Grok -> `~/.grok/worktrees/mini-projects-iotstack/<session-id>/`; Claude Code -> `~/.claude/worktrees/mini-projects-iotstack/<session-id>/`; CLI runs from `~/Sync/mini_projects/iotstack`
 - Claude Code: NEVER edit files under `~/Sync/mini_projects/iotstack` -- use absolute paths to your session clone only
-- New Grok session: run `scripts/init_grok_session.sh`; new Claude Code session: run `scripts/init_claude_session.sh` (session sync + agent tips; see `agentstartstack/workflow.md`)
-- After changes: commit in session clone; human runs `nut` then `git push origin main` (or `nutup`). NEVER `git push origin` from agents (see `agentstartstack/nut.md`)
-- Never `git pull` on Sync or test `/dev/ttyACM0` while the human has `iotstack` running (see `workflow.md`)
-- When the human runs `iotstack` on Sync: tail `~/.iotstack/logs/sessions.watch` for new runs, then their session/serial logs (`workflow.md` § Watching live runs)
+- New Grok session: run `scripts/init_grok_session.sh`; new Claude Code session: run `scripts/init_claude_session.sh` (see `.agentstartstack/agentstartstack/workflow.md`)
+- After changes: commit in session clone; human runs `nut` then `git push origin main` (or `nutup`). NEVER `git push origin` from agents (see `.agentstartstack/agentstartstack/nut.md`)
+- Never `nut` or `git pull` on Sync while `iotstack` is running
+- When the human runs `iotstack` on Sync: tail `~/.iotstack/logs/sessions.watch` (see `agentstartstack/workflow.md`)
 
-## Topic index
+## Generic guidance (.agentstartstack submodule)
 
 | File | Load when |
 |------|-----------|
-| [agentstartstack/conventions.md](agentstartstack/conventions.md) | Naming, ASCII-only text, CLI output tags |
-| [agentstartstack/workflow.md](agentstartstack/workflow.md) | Repos, agent session clones (Grok + Claude Code), git sync, `sessions.watch` live monitoring, `iotstack ps`/`kill` |
-| [agentstartstack/nut.md](agentstartstack/nut.md) | `nut` command -- Newest commit Until Transferred (human Sync handoff) |
+| [.agentstartstack/agentstartstack/workflow.md](.agentstartstack/agentstartstack/workflow.md) | Repos, session clones, git sync |
+| [.agentstartstack/agentstartstack/nut.md](.agentstartstack/agentstartstack/nut.md) | `nut` / `nutup` handoff |
+| [.agentstartstack/agentstartstack/conventions.md](.agentstartstack/agentstartstack/conventions.md) | Naming, ASCII-only, output tags |
+| [.agentstartstack/agentstartstack/security.md](.agentstartstack/agentstartstack/security.md) | Never print secrets (generic) |
+| [.agentstartstack/agentstartstack/code-quality.md](.agentstartstack/agentstartstack/code-quality.md) | shellcheck, git hooks |
+| [.agentstartstack/agentstartstack/implementation.md](.agentstartstack/agentstartstack/implementation.md) | Common shell patterns |
+| [.agentstartstack/agentstartstack/testing.md](.agentstartstack/agentstartstack/testing.md) | Generic pre-handoff checks |
+
+## Project guidance
+
+| File | Load when |
+|------|-----------|
+| [agentstartstack/workflow.md](agentstartstack/workflow.md) | `sessions.watch`, live flash monitoring, tty guards |
 | [agentstartstack/configuration.md](agentstartstack/configuration.md) | `~/.iotstack/.env`, compilation cache flags |
 | [agentstartstack/architecture.md](agentstartstack/architecture.md) | mDNS discovery, compile cache, YAML, project version |
 | [agentstartstack/features.md](agentstartstack/features.md) | Update subsets, delta OTA, reassign, verify, HA |
@@ -30,10 +40,11 @@ ESP32 ESPHome device management. **Load topic files from `agentstartstack/` inst
 | [agentstartstack/pitfalls.md](agentstartstack/pitfalls.md) | Symptom -> cause -> fix lookup table |
 | [agentstartstack/devices.md](agentstartstack/devices.md) | Per-role hardware notes |
 | [agentstartstack/nvs-secrets.md](agentstartstack/nvs-secrets.md) | NVS namespace, WiFi/Thread from NVS, pass store |
-| [agentstartstack/security.md](agentstartstack/security.md) | Never print secrets; `pass insert` twice |
+| [agentstartstack/security.md](agentstartstack/security.md) | OTA passwords, `pass insert` twice |
 | [agentstartstack/flash-encryption.md](agentstartstack/flash-encryption.md) | eFuses / flash encryption (TODO) |
 | [agentstartstack/testing.md](agentstartstack/testing.md) | Pre-handoff device testing checklist |
-| [agentstartstack/code-quality.md](agentstartstack/code-quality.md) | shellcheck rules and examples |
 | [agentstartstack/references.md](agentstartstack/references.md) | External docs and key source files |
 
-Full catalog and review notes: [agentstartstack/README.md](agentstartstack/README.md).
+Full catalog: [agentstartstack/README.md](agentstartstack/README.md).
+
+Origin: `git@github.com:farscapian/iotstack.git`
