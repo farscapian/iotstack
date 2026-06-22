@@ -1,5 +1,5 @@
 <svg width="100%" viewBox="0 0 680 760" role="img" xmlns="http://www.w3.org/2000/svg">
-<title>SK6812 LED strip wiring diagram v4</title>
+<title>SK6812 LED strip wiring diagram v5</title>
 <desc>Wiring from wall outlet through PSU to SK6812 strip and XIAO ESP32-C6, correct PSU terminal labels L N earth -V -V +V +V</desc>
 <defs>
   <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
@@ -113,7 +113,7 @@
 
 <!-- Left pins -->
 <rect x="414" y="124" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
-<text class="ts" x="434" y="131" dominant-baseline="central" font-weight="600">D0 / GPIO1  <- data out</text>
+<text class="ts" x="434" y="131" dominant-baseline="central" font-weight="600">D0 / GPIO2  <- data out</text>
 <rect x="414" y="144" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>
 <text class="ts" x="434" y="151" dominant-baseline="central">D1 / GPIO2</text>
 <rect x="414" y="164" width="14" height="14" rx="2" fill="none" stroke="#94a3b8" stroke-width="0.5"/>

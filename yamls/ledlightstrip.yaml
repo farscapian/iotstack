@@ -1,10 +1,16 @@
+# SK6812 RGBW LED Strip -- Thread end device (XIAO ESP32-C6)
+# See docs/ledlightstrip.md for wiring diagram and safety notes.
+
 substitutions:
   development_status: "dev"
   device_role: "ledstrip"
   friendly_name: "LED Light Strip"
-  boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
   project_version: "0.0.0-dev"
-
+  # LED strip hardware -- override these if your wiring or strip differs
+  strip_data_pin: GPIO2   # D0 on XIAO ESP32-C6 silkscreen (via 330 Ohm series resistor to DIN)
+  strip_num_leds: "300"
+  strip_gamma: "2.8"
+  strip_transition: "500ms"
 
 # External components (replaces deprecated custom_components folder)
 external_components:
@@ -13,7 +19,7 @@ external_components:
       path: ./external_components
     components: [nvs_secrets, partition_manager]
 
-# Shared boot-button / restart / partition-toggle behavior (same on every device)
+# Shared boot-button / restart / partition-toggle behavior (default pin: GPIO9 on XIAO ESP32-C6)
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
@@ -27,26 +33,34 @@ esphome:
   name_add_mac_suffix: true
 
 esp32:
-  board: esp32-s3-devkitc-1
-  variant: esp32s3
+  board: seeed_xiao_esp32c6
+  variant: esp32c6
   framework:
-    type: arduino
-  flash_size: 16MB
+    type: esp-idf
+  flash_size: 4MB
 
-# WiFi credentials are loaded from NVS by nvs_secrets component at startup
-wifi:
-  ssid: "configured-via-nvs"  # Placeholder - overridden by nvs_secrets component
-  password: "placeholder"      # Placeholder - overridden by nvs_secrets component
+# Thread configuration.
+# tlv: is a PLACEHOLDER complete dataset -- all values are fake and satisfy ESPHome's
+# config validator only. nvs_secrets applies the REAL operational dataset from NVS
+# (key: thread_tlv) at runtime via otDatasetSetActiveTlvs(), and the device joins
+# the real Thread network. force_dataset: false so a stored real dataset is not clobbered.
+openthread:
+  device_type: FTD
+  force_dataset: false
+  tlv: "0e080000000000000001000300000f0102beef0208dead00beef00cafe0314696f74737461636b2d706c616365686f6c646572041000000000000000000000000000000000051000112233445566778899aabbccddeeff0708fd112233445566770c0402a0f8ff"
 
-# Custom NVS secrets component - reads production-specific secrets from NVS
+network:
+  enable_ipv6: true
+
+# Custom NVS secrets component -- reads API key and Thread TLV from NVS at startup
 nvs_secrets:
   api_nvs_key: prod_api_key
 
 api:
-  # API encryption key is set dynamically by nvs_secrets component from NVS
+  # Encryption key loaded from NVS by nvs_secrets at runtime
 
 logger:
-  baud_rate: 115200
+  hardware_uart: USB_SERIAL_JTAG
 
 time:
   - platform: sntp
@@ -57,32 +71,43 @@ sensor:
     name: "Uptime"
     update_interval: 60s
     entity_category: diagnostic
-  - platform: wifi_signal
-    name: "WiFi Signal"
-    update_interval: 60s
-    entity_category: diagnostic
 
-# Buttons: "Restart" and "Toggle Boot Partition" come from partition_mgmt package.
+text_sensor:
+  - platform: openthread_info
+    role:
+      name: "Thread Role"
+      entity_category: diagnostic
+    ip_address:
+      name: "Thread IPv6 Address"
+      entity_category: diagnostic
+
+# Onboard LED -- XIAO ESP32-C6 GPIO15, active-low
+output:
+  - platform: gpio
+    pin:
+      number: GPIO15
+      inverted: true
+    id: onboard_led_output
 
 light:
-  # Status LED on GPIO21 (user LED)
-  - platform: status_led
+  - platform: binary
     name: "Status LED"
-    id: led_status
-    pin:
-      number: GPIO21
-      inverted: true
+    output: onboard_led_output
+    id: status_led
 
-  # SK6812 RGBW LED strip (full RGBW support via Arduino + neopixelbus)
+  # SK6812 RGBW addressable strip via RMT peripheral.
+  # Wiring: ${strip_data_pin} -> 330 Ohm -> DIN; PSU 5V/20A -> strip VCC; 1000 uF cap at strip input.
+  # 3.3V GPIO logic to 5V SK6812 is marginal (threshold ~3.5V at 5V VCC) but works in practice
+  # at short data wire runs (< ~2-3m). For longer runs add a 74AHCT125 level shifter before DIN.
   - platform: neopixelbus
     type: GRBW
     variant: SK6812
-    pin: GPIO8
-    num_leds: 300
+    pin: ${strip_data_pin}
+    num_leds: ${strip_num_leds}
     name: "LED Strip 01"
     id: led_strip_01
-    default_transition_length: 500ms
-    gamma_correct: 2.8
+    default_transition_length: ${strip_transition}
+    gamma_correct: ${strip_gamma}
     restore_mode: RESTORE_AND_ON
     effects:
       - addressable_rainbow:

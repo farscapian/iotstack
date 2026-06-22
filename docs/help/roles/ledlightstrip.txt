@@ -1,10 +1,10 @@
 iotstack ledlightstrip -- LED Light Strip
 
-ESP32-S3 WiFi addressable LED strip (SK6812).
+XIAO ESP32-C6 Thread addressable LED strip (SK6812 RGBW). [WARN] In development.
 
 Config: yamls/ledlightstrip.yaml
-Chip: esp32s3
-Network: WiFi
+Chip: esp32c6
+Network: Thread (FTD)
 
 Commands (shared help for flash, update, reassign, verify):
 
