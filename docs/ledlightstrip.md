@@ -7,8 +7,8 @@
 Experimental controller for SK6812 RGBW addressable LED light strips (4-channel: red, green,
 blue, white). Control colors, brightness, and effects from Home Assistant via Thread.
 
-**Current Status**: Basic functionality defined. neopixelbus + esp-idf + Thread path not yet
-tested on hardware. Effects stability not confirmed.
+**Current Status**: Basic functionality defined. esp32_rmt_led_strip + esp-idf + Thread path
+not yet tested on hardware. Effects stability not confirmed.
 
 ## [WARN] SAFETY DISCLAIMER
 
@@ -34,10 +34,11 @@ tested on hardware. Effects stability not confirmed.
 | Part | Value | Notes |
 |------|-------|-------|
 | MCU | Seeed XIAO ESP32-C6 | Thread end device |
-| Strip | SK6812 RGBW | 5V, 4-channel (GRBW order) |
+| Strip | SK6812 RGBW | 5V, 4-channel (GRB + W) |
 | PSU | Aclorol 5V 20A (or equivalent) | See power budget below |
-| Series resistor | 330 Ohm | GPIO2 to DIN; no polarity |
+| Series resistor | 330 Ohm | GPIO0 (D0) to DIN; no polarity |
 | Bulk capacitor | 1000 uF electrolytic | Across strip VCC/GND at input; + to VCC |
+| Antenna | External u.FL | Selected at boot via GPIO3/GPIO14 RF switch |
 
 ## Wiring
 
@@ -59,15 +60,17 @@ See [led-light-strip-diagram.svg](led-light-strip-diagram.svg) for the full sche
 | Strip GND (white) | PSU -V terminal 1 |
 | XIAO 5V pin | PSU +V terminal 2 |
 | XIAO GND pin | PSU -V terminal 2 |
-| Strip DIN (green) | XIAO GPIO2 (D0) via 330 Ohm resistor |
+| Strip DIN (green) | XIAO GPIO0 (D0) via 330 Ohm resistor |
 | 1000 uF cap | Across +V / -V at strip input; + lead to +V |
 
 ### Pin assignments (XIAO ESP32-C6)
 
 | GPIO | Function |
 |------|----------|
-| GPIO2 (D0) | LED strip data out -> 330 Ohm -> DIN |
+| GPIO0 (D0) | LED strip data out -> 330 Ohm -> DIN |
+| GPIO3 | RF switch enable (driven LOW at boot to power the antenna switch) |
 | GPIO9 | Boot button (default; handled by boot_button package) |
+| GPIO14 | RF antenna select (driven HIGH at boot = external u.FL) |
 | GPIO15 | Onboard status LED (active-low) |
 
 ## Electrical notes
@@ -79,7 +82,7 @@ The XIAO ESP32-C6 outputs 3.3V logic. SK6812 at 5V VCC has a HIGH input threshol
 lengths (< ~2-3m) with clean power.
 
 For longer runs or if you see flickering/corrupted colors: add a 74AHCT125 or SN74HCT245
-level shifter between GPIO2 and the 330 Ohm resistor. The resistor stays on the output
+level shifter between GPIO0 and the 330 Ohm resistor. The resistor stays on the output
 side of the level shifter.
 
 ### Power budget
@@ -99,6 +102,11 @@ full strip.
 Thread end device (FTD). Joins the existing Thread mesh via the Thread Router device.
 Home Assistant accesses it through the border router over IPv6. No WiFi credentials needed.
 
+**Antenna:** this device uses the external u.FL antenna. The YAML drives GPIO3 LOW (power the
+RF switch) and GPIO14 HIGH (select external) in `esphome.on_boot` before the radio starts.
+To use the onboard ceramic antenna instead, remove that on_boot block and the two RF-switch
+outputs (onboard is the hardware default).
+
 ## Configuration
 
 YAML: `yamls/ledlightstrip.yaml`
@@ -107,7 +115,7 @@ Tunable substitutions at the top of the YAML:
 
 | Substitution | Default | Description |
 |---|---|---|
-| strip_data_pin | GPIO2 | Data GPIO (D0 on XIAO C6 silkscreen) |
+| strip_data_pin | GPIO0 | Data GPIO (D0 on XIAO C6 silkscreen) |
 | strip_num_leds | 300 | LED count for your strip |
 | strip_gamma | 2.8 | Gamma correction exponent |
 | strip_transition | 500ms | Default transition length |
@@ -117,7 +125,7 @@ Tunable substitutions at the top of the YAML:
 - [OK] Basic RGBW color control
 - [OK] Brightness adjustment
 - [WARN] Effects (experimental, stability not confirmed)
-- [WARN] neopixelbus + esp-idf + Thread not yet tested on hardware
+- [WARN] esp32_rmt_led_strip + esp-idf + Thread not yet tested on hardware
 - [FAIL] Power management not optimized
 - [FAIL] Not tested with full-length high-current strips
 

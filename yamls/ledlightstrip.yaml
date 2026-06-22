@@ -7,7 +7,7 @@ substitutions:
   friendly_name: "LED Light Strip"
   project_version: "0.0.0-dev"
   # LED strip hardware -- override these if your wiring or strip differs
-  strip_data_pin: GPIO2   # D0 on XIAO ESP32-C6 silkscreen (via 330 Ohm series resistor to DIN)
+  strip_data_pin: GPIO0   # = D0 on XIAO ESP32-C6 silkscreen (via 330 Ohm series resistor to DIN)
   strip_num_leds: "300"
   strip_gamma: "2.8"
   strip_transition: "500ms"
@@ -31,6 +31,14 @@ esphome:
     name: "iotstack.${device_role}-${development_status}"
     version: "${project_version}"
   name_add_mac_suffix: true
+  on_boot:
+    # Select external u.FL antenna BEFORE the Thread radio comes up.
+    # XIAO ESP32-C6: GPIO3 (RF_SWITCH_EN) LOW powers the RF switch;
+    # GPIO14 (RF_ANT_SELECT) HIGH routes RF to the external u.FL connector.
+    - priority: 800
+      then:
+        - output.turn_off: rf_switch_en
+        - output.turn_on: rf_ant_select
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -89,6 +97,15 @@ output:
       inverted: true
     id: onboard_led_output
 
+  # XIAO ESP32-C6 external-antenna RF switch (driven at boot; see esphome.on_boot).
+  # GPIO3 = RF_SWITCH_EN (LOW powers the switch); GPIO14 = RF_ANT_SELECT (HIGH = u.FL).
+  - platform: gpio
+    pin: GPIO3
+    id: rf_switch_en
+  - platform: gpio
+    pin: GPIO14
+    id: rf_ant_select
+
 light:
   - platform: binary
     name: "Status LED"
@@ -96,12 +113,16 @@ light:
     id: status_led
 
   # SK6812 RGBW addressable strip via RMT peripheral.
+  # esp32_rmt_led_strip (NOT neopixelbus) -- neopixelbus is Arduino-only and will not
+  # compile under esp-idf, which Thread requires. is_rgbw: true drives the 4th (white)
+  # channel; rgb_order is the RGB part only (SK6812 strips are GRB + W).
   # Wiring: ${strip_data_pin} -> 330 Ohm -> DIN; PSU 5V/20A -> strip VCC; 1000 uF cap at strip input.
   # 3.3V GPIO logic to 5V SK6812 is marginal (threshold ~3.5V at 5V VCC) but works in practice
   # at short data wire runs (< ~2-3m). For longer runs add a 74AHCT125 level shifter before DIN.
-  - platform: neopixelbus
-    type: GRBW
-    variant: SK6812
+  - platform: esp32_rmt_led_strip
+    chipset: SK6812
+    rgb_order: GRB
+    is_rgbw: true
     pin: ${strip_data_pin}
     num_leds: ${strip_num_leds}
     name: "LED Strip 01"
