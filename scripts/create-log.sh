@@ -431,8 +431,13 @@ create_log_serial_capture_start() {
   export IOTSTACK_FLASH_SERIAL_VARIANT="$variant"
 
   mkdir -p "$(dirname "$log_file")"
+  local _label_hint="${IOTSTACK_FLASH_SERIAL_LABEL:-}"
   if [[ -f "$log_file" ]]; then
-    printf '\n%s === serial capture resumed (%s) ===\n' "$(date -Iseconds)" "$tty" >>"$log_file"
+    if [[ -n "$_label_hint" ]]; then
+      printf '\n%s === serial capture resumed (%s) [%s] ===\n' "$(date -Iseconds)" "$tty" "$_label_hint" >>"$log_file"
+    else
+      printf '\n%s === serial capture resumed (%s) ===\n' "$(date -Iseconds)" "$tty" >>"$log_file"
+    fi
   else
     printf '%s === serial capture started (%s) ===\n' "$(date -Iseconds)" "$tty" >"$log_file"
   fi

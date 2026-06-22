@@ -1660,8 +1660,8 @@ _flash_invoke_update() {
   [[ -n "$tty_device" ]] && update_args+=("$tty_device")
 
   _flash_msg_ota_production "$device_mac" "$device_role"
-  _update_via_bootstrap "$device_role" "$yaml_path" "$device_mac" -- "${update_args[@]}"
   create_log_serial_relabel "$device_role"
+  _update_via_bootstrap "$device_role" "$yaml_path" "$device_mac" -- "${update_args[@]}"
 }
 
 _wait_for_production_online() {
@@ -4369,7 +4369,7 @@ _flash_bootstrap_to_tty() {
   fi
 
   debug "Recovery image: ${variant} on ${tty_device}"
-  debug "YAML: ${bootstrap_yaml#"${SCRIPT_DIR}/"}"
+  debug "YAML: ${bootstrap_yaml#"${YAMLS_DIR%/*}/"}"
 
   local flash_log_dir="$HOME/.iotstack/logs/flash"
   mkdir -p "$flash_log_dir"

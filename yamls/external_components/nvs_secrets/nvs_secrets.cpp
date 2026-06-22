@@ -158,11 +158,11 @@ void NVSSecrets::apply_api_encryption_key_() {
     psk[i] = static_cast<uint8_t>(byte);
   }
 
-  if (api_server->save_noise_psk(psk, true)) {
-    ESP_LOGI(TAG, "[NVS] API encryption enabled (key loaded from '%s')", api_nvs_key_.c_str());
-  } else {
-    ESP_LOGW(TAG, "[NVS] Failed to apply API encryption key from NVS");
-  }
+  // Use set_noise_psk (in-memory only) rather than save_noise_psk (NVS
+  // preferences). We always reload from iotstack NVS on every boot, so there
+  // is no need to persist the key through ESPHome's separate preferences layer.
+  api_server->set_noise_psk(psk);
+  ESP_LOGI(TAG, "[NVS] API encryption enabled (key loaded from '%s')", api_nvs_key_.c_str());
 #endif
 }
 
