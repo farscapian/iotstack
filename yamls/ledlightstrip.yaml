@@ -24,6 +24,7 @@ packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
   ext_antenna: !include common/xiao_c6_ext_antenna.yaml  # external u.FL antenna select
+  strip_light: !include common/ledstrip_light.yaml       # shared SK6812 strip + effects
 
 esphome:
   name: ledstrip
@@ -91,44 +92,12 @@ output:
       inverted: true
     id: onboard_led_output
 
+# LED Strip 01 (SK6812 RGBW) comes from the strip_light package.
+# Wiring: ${strip_data_pin} -> 330 Ohm -> DIN; PSU 5V/20A -> strip VCC; 1000 uF cap at input.
+# 3.3V GPIO logic to 5V SK6812 is marginal (threshold ~3.5V at 5V VCC) but works at short
+# data runs (< ~2-3m); add a 74AHCT125 level shifter before DIN for longer runs.
 light:
   - platform: binary
     name: "Status LED"
     output: onboard_led_output
     id: status_led
-
-  # SK6812 RGBW addressable strip via RMT peripheral.
-  # esp32_rmt_led_strip (NOT neopixelbus) -- neopixelbus is Arduino-only and will not
-  # compile under esp-idf, which Thread requires. is_rgbw: true drives the 4th (white)
-  # channel; rgb_order is the RGB part only (SK6812 strips are GRB + W).
-  # Wiring: ${strip_data_pin} -> 330 Ohm -> DIN; PSU 5V/20A -> strip VCC; 1000 uF cap at strip input.
-  # 3.3V GPIO logic to 5V SK6812 is marginal (threshold ~3.5V at 5V VCC) but works in practice
-  # at short data wire runs (< ~2-3m). For longer runs add a 74AHCT125 level shifter before DIN.
-  - platform: esp32_rmt_led_strip
-    chipset: SK6812
-    rgb_order: GRB
-    is_rgbw: true
-    pin: ${strip_data_pin}
-    num_leds: ${strip_num_leds}
-    name: "LED Strip 01"
-    id: led_strip_01
-    default_transition_length: ${strip_transition}
-    gamma_correct: ${strip_gamma}
-    restore_mode: RESTORE_AND_ON
-    effects:
-      - addressable_rainbow:
-          name: Rainbow
-          speed: 10
-          width: 50
-      - addressable_color_wipe:
-          name: Color Wipe
-      - addressable_scan:
-          name: Scan
-      - addressable_twinkle:
-          name: Twinkle
-      - addressable_random_twinkle:
-          name: Random Twinkle
-      - addressable_fireworks:
-          name: Fireworks
-      - addressable_flicker:
-          name: Flicker

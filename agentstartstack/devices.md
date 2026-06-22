@@ -23,12 +23,17 @@ Roles are listed in `scripts/roles.conf`. Examples:
 - Board: ESP32-S3-DevKitC-1, HUB75 panels
 - Panel layout in NVS; see [gotchas.md](gotchas.md) (Matrix display panel layout)
 
-### LED Light Strip
-- YAML: `yamls/ledlightstrip.yaml`
-- mDNS hostname: `ledstrip-<mac>`
-- Board: Seeed XIAO ESP32-C6
-- Network: Thread (FTD)
-- Strip: SK6812 RGBW, default 300 LEDs
-- Data pin: GPIO2 (D0 silkscreen) via 330 Ohm series resistor to DIN
-- PSU: 5V 20A external supply; XIAO powered from same PSU (5V pin)
+### LED Light Strip (SK6812 RGBW, default 300 LEDs)
+Same strip + wiring across three board/network/framework variants (roles in `roles.conf`):
+
+| Role | Board | Network | Framework | mDNS | Data pin |
+|------|-------|---------|-----------|------|----------|
+| `ledlightstrip` | XIAO ESP32-C6 | Thread (FTD) | esp-idf (esp32_rmt_led_strip) | `ledstrip-<mac>` | D0 = GPIO0 |
+| `ledlightstrip-s3` | XIAO ESP32-S3 | WiFi | esp-idf (esp32_rmt_led_strip) | `ledstrip-s3-<mac>` | D0 = GPIO1 |
+| `ledlightstrip-s3-arduino` | XIAO ESP32-S3 | WiFi | arduino (neopixelbus) | `ledstrip-s3-arduino-<mac>` | D0 = GPIO1 |
+
+- Shared strip definition: `yamls/common/ledstrip_light.yaml` (the two esp-idf variants).
+- C6 external u.FL antenna via `yamls/common/xiao_c6_ext_antenna.yaml` (GPIO3/GPIO14); S3 has no antenna GPIO.
+- PSU: 5V 20A external supply; XIAO powered from same PSU (5V pin); 330 Ohm on data, 1000 uF at strip input.
+- `neopixelbus` is Arduino-only (fails under esp-idf); the arduino variant exists to A/B it against esp32_rmt_led_strip on S3.
 - See [docs/ledlightstrip.md](../docs/ledlightstrip.md) and [docs/led-light-strip-diagram.svg](../docs/led-light-strip-diagram.svg)

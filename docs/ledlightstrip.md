@@ -5,10 +5,26 @@
 ## Overview
 
 Experimental controller for SK6812 RGBW addressable LED light strips (4-channel: red, green,
-blue, white). Control colors, brightness, and effects from Home Assistant via Thread.
+blue, white). Control colors, brightness, and effects from Home Assistant.
 
-**Current Status**: Basic functionality defined. esp32_rmt_led_strip + esp-idf + Thread path
-not yet tested on hardware. Effects stability not confirmed.
+**Current Status**: Basic functionality defined. None of the variants below are yet tested on
+hardware. Effects stability not confirmed.
+
+## Variants
+
+Same strip and wiring; the board determines the network (the ESP32-S3 has no Thread radio).
+All three are roles in `scripts/roles.conf`:
+
+| Role | Board | Network | Framework | LED driver | Data pin |
+|------|-------|---------|-----------|------------|----------|
+| `ledlightstrip` | XIAO ESP32-C6 | Thread (FTD) | esp-idf | esp32_rmt_led_strip | D0 = GPIO0 |
+| `ledlightstrip-s3` | XIAO ESP32-S3 | WiFi | esp-idf | esp32_rmt_led_strip | D0 = GPIO1 |
+| `ledlightstrip-s3-arduino` | XIAO ESP32-S3 | WiFi | arduino | neopixelbus | D0 = GPIO1 |
+
+The two esp-idf variants share the strip + effects via `yamls/common/ledstrip_light.yaml`.
+The arduino variant is an A/B experiment: `neopixelbus` only builds under the Arduino
+framework (it fails under esp-idf), so it carries its own light block. `iotstack roles`
+shows the board/variant/framework/network for each.
 
 ## [WARN] SAFETY DISCLAIMER
 
@@ -33,12 +49,12 @@ not yet tested on hardware. Effects stability not confirmed.
 
 | Part | Value | Notes |
 |------|-------|-------|
-| MCU | Seeed XIAO ESP32-C6 | Thread end device |
+| MCU | Seeed XIAO ESP32-C6 or ESP32-S3 | C6 = Thread; S3 = WiFi (see Variants) |
 | Strip | SK6812 RGBW | 5V, 4-channel (GRB + W) |
 | PSU | Aclorol 5V 20A (or equivalent) | See power budget below |
-| Series resistor | 330 Ohm | GPIO0 (D0) to DIN; no polarity |
+| Series resistor | 330 Ohm | D0 to DIN; no polarity (D0 = GPIO0 on C6, GPIO1 on S3) |
 | Bulk capacitor | 1000 uF electrolytic | Across strip VCC/GND at input; + to VCC |
-| Antenna | External u.FL | Selected at boot via GPIO3/GPIO14 RF switch |
+| Antenna | External u.FL | C6: selected at boot via GPIO3/GPIO14 RF switch. S3: plain u.FL connector, no GPIO |
 
 ## Wiring
 
@@ -63,7 +79,7 @@ See [led-light-strip-diagram.svg](led-light-strip-diagram.svg) for the full sche
 | Strip DIN (green) | XIAO GPIO0 (D0) via 330 Ohm resistor |
 | 1000 uF cap | Across +V / -V at strip input; + lead to +V |
 
-### Pin assignments (XIAO ESP32-C6)
+### Pin assignments -- XIAO ESP32-C6 (Thread)
 
 | GPIO | Function |
 |------|----------|
@@ -73,17 +89,28 @@ See [led-light-strip-diagram.svg](led-light-strip-diagram.svg) for the full sche
 | GPIO14 | RF antenna select (driven HIGH at boot = external u.FL) |
 | GPIO15 | Onboard status LED (active-low) |
 
+### Pin assignments -- XIAO ESP32-S3 (WiFi)
+
+| GPIO | Function |
+|------|----------|
+| GPIO1 (D0) | LED strip data out -> 330 Ohm -> DIN |
+| GPIO0 | Boot button (override boot_button_pin; handled by boot_button package) |
+| GPIO21 | Onboard status LED (active-low) |
+
+The S3 has no RF-switch GPIOs -- the u.FL connector is wired directly, so there is no
+antenna config and no GPIO3/GPIO14 use.
+
 ## Electrical notes
 
 ### 3.3V logic to 5V SK6812
 
-The XIAO ESP32-C6 outputs 3.3V logic. SK6812 at 5V VCC has a HIGH input threshold of
-~3.5V (0.7 x VCC). This is marginal. In practice it works reliably at short data wire
-lengths (< ~2-3m) with clean power.
+Both the XIAO ESP32-C6 and ESP32-S3 output 3.3V logic. SK6812 at 5V VCC has a HIGH input
+threshold of ~3.5V (0.7 x VCC). This is marginal. In practice it works reliably at short
+data wire lengths (< ~2-3m) with clean power.
 
 For longer runs or if you see flickering/corrupted colors: add a 74AHCT125 or SN74HCT245
-level shifter between GPIO0 and the 330 Ohm resistor. The resistor stays on the output
-side of the level shifter.
+level shifter between the data GPIO and the 330 Ohm resistor. The resistor stays on the
+output side of the level shifter.
 
 ### Power budget
 
@@ -99,23 +126,28 @@ full strip.
 
 ## Network
 
-Thread end device (FTD). Joins the existing Thread mesh via the Thread Router device.
-Home Assistant accesses it through the border router over IPv6. No WiFi credentials needed.
+**C6 (`ledlightstrip`)** -- Thread end device (FTD). Joins the existing Thread mesh via the
+Thread Router device; Home Assistant reaches it through the border router over IPv6. No WiFi
+credentials needed. Antenna: the C6 uses the external u.FL antenna, selected by driving GPIO3
+LOW (power the RF switch) and GPIO14 HIGH (select external) in `esphome.on_boot` before the
+radio starts (factored into `yamls/common/xiao_c6_ext_antenna.yaml`). To use the onboard
+ceramic antenna instead, drop that package (onboard is the hardware default).
 
-**Antenna:** this device uses the external u.FL antenna. The YAML drives GPIO3 LOW (power the
-RF switch) and GPIO14 HIGH (select external) in `esphome.on_boot` before the radio starts.
-To use the onboard ceramic antenna instead, remove that on_boot block and the two RF-switch
-outputs (onboard is the hardware default).
+**S3 (`ledlightstrip-s3`, `ledlightstrip-s3-arduino`)** -- WiFi (the S3 has no Thread radio).
+Credentials come from NVS like the other WiFi devices. The u.FL connector is wired directly;
+no antenna GPIO config.
 
 ## Configuration
 
-YAML: `yamls/ledlightstrip.yaml`
+YAMLs: `yamls/ledlightstrip.yaml` (C6), `yamls/ledlightstrip-s3.yaml` (S3 esp-idf),
+`yamls/ledlightstrip-s3-arduino.yaml` (S3 arduino). The shared strip definition lives in
+`yamls/common/ledstrip_light.yaml` (used by the two esp-idf variants).
 
-Tunable substitutions at the top of the YAML:
+Tunable substitutions at the top of each board YAML:
 
 | Substitution | Default | Description |
 |---|---|---|
-| strip_data_pin | GPIO0 | Data GPIO (D0 on XIAO C6 silkscreen) |
+| strip_data_pin | GPIO0 (C6) / GPIO1 (S3) | Data GPIO (D0 silkscreen on either board) |
 | strip_num_leds | 300 | LED count for your strip |
 | strip_gamma | 2.8 | Gamma correction exponent |
 | strip_transition | 500ms | Default transition length |
@@ -125,7 +157,7 @@ Tunable substitutions at the top of the YAML:
 - [OK] Basic RGBW color control
 - [OK] Brightness adjustment
 - [WARN] Effects (experimental, stability not confirmed)
-- [WARN] esp32_rmt_led_strip + esp-idf + Thread not yet tested on hardware
+- [WARN] None of the three variants (C6/Thread, S3/esp-idf, S3/arduino) tested on hardware
 - [FAIL] Power management not optimized
 - [FAIL] Not tested with full-length high-current strips
 

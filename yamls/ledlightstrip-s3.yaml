@@ -1,0 +1,90 @@
+# SK6812 RGBW LED Strip -- WiFi end device (XIAO ESP32-S3, esp-idf).
+# S3 has no 802.15.4 radio, so this variant is WiFi (the C6 ledlightstrip.yaml
+# is the Thread variant). Shares the strip + effects via common/ledstrip_light.yaml.
+# See docs/ledlightstrip.md for the (shared) wiring diagram and safety notes.
+
+substitutions:
+  development_status: "dev"
+  device_role: "ledstrip-s3"
+  friendly_name: "LED Light Strip S3"
+  project_version: "0.0.0-dev"
+  boot_button_pin: GPIO0  # XIAO ESP32-S3 BOOT button
+  # LED strip hardware -- override if your wiring or strip differs
+  strip_data_pin: GPIO1   # = D0 on XIAO ESP32-S3 silkscreen (via 330 Ohm series resistor to DIN)
+  strip_num_leds: "300"
+  strip_gamma: "2.8"
+  strip_transition: "500ms"
+
+# External components (replaces deprecated custom_components folder)
+external_components:
+  - source:
+      type: local
+      path: ./external_components
+    components: [nvs_secrets, partition_manager]
+
+# Shared boot-button / restart / partition-toggle + the SK6812 strip definition.
+# No ext_antenna package: the XIAO ESP32-S3 u.FL connector has no RF-switch GPIO.
+packages:
+  partition_mgmt: !include common/partition_manager.yaml
+  boot_button: !include common/boot_button.yaml
+  strip_light: !include common/ledstrip_light.yaml
+
+esphome:
+  name: ledstrip-s3
+  friendly_name: ${friendly_name}
+  project:
+    name: "iotstack.${device_role}-${development_status}"
+    version: "${project_version}"
+  name_add_mac_suffix: true
+
+esp32:
+  board: seeed_xiao_esp32s3
+  variant: esp32s3
+  framework:
+    type: esp-idf
+  flash_size: 8MB
+
+# WiFi credentials are loaded from NVS by nvs_secrets component at startup
+wifi:
+  ssid: "configured-via-nvs"  # Placeholder - overridden by nvs_secrets component
+  password: "placeholder"      # Placeholder - overridden by nvs_secrets component
+
+# Custom NVS secrets component - reads production-specific secrets from NVS
+nvs_secrets:
+  api_nvs_key: prod_api_key
+
+api:
+  # API encryption key is set dynamically by nvs_secrets component from NVS
+
+logger:
+  hardware_uart: USB_SERIAL_JTAG
+
+time:
+  - platform: sntp
+    id: device_time
+
+sensor:
+  - platform: uptime
+    name: "Uptime"
+    update_interval: 60s
+    entity_category: diagnostic
+  - platform: wifi_signal
+    name: "WiFi Signal"
+    update_interval: 60s
+    entity_category: diagnostic
+
+# Onboard LED -- XIAO ESP32-S3 user LED GPIO21, active-low
+output:
+  - platform: gpio
+    pin:
+      number: GPIO21
+      inverted: true
+    id: onboard_led_output
+
+# LED Strip 01 (SK6812 RGBW) comes from the strip_light package.
+# Wiring: ${strip_data_pin} -> 330 Ohm -> DIN; PSU 5V/20A -> strip VCC; 1000 uF cap at input.
+light:
+  - platform: binary
+    name: "Status LED"
+    output: onboard_led_output
+    id: status_led

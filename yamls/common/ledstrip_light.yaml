@@ -1,0 +1,46 @@
+# Shared SK6812 RGBW addressable-strip definition for the esp-idf LED-strip
+# profiles (XIAO C6 / Thread and XIAO S3 / WiFi). Included via packages:.
+#
+# The including board profile provides these substitutions and its own status
+# LED + radio block:
+#   strip_data_pin    data GPIO (C6 D0 = GPIO0, S3 D0 = GPIO1)
+#   strip_num_leds    LED count
+#   strip_gamma       gamma_correct exponent
+#   strip_transition  default transition length
+#
+# esp32_rmt_led_strip (NOT neopixelbus): neopixelbus is Arduino-only and will
+# not build under esp-idf. is_rgbw: true drives the 4th (white) channel;
+# rgb_order is the RGB part only (SK6812 = GRB + W).
+#
+# The Arduino/neopixelbus S3 profile does NOT include this file -- that platform
+# uses different option keys, so it carries its own light block.
+
+light:
+  - platform: esp32_rmt_led_strip
+    chipset: SK6812
+    rgb_order: GRB
+    is_rgbw: true
+    pin: ${strip_data_pin}
+    num_leds: ${strip_num_leds}
+    name: "LED Strip 01"
+    id: led_strip_01
+    default_transition_length: ${strip_transition}
+    gamma_correct: ${strip_gamma}
+    restore_mode: RESTORE_AND_ON
+    effects:
+      - addressable_rainbow:
+          name: Rainbow
+          speed: 10
+          width: 50
+      - addressable_color_wipe:
+          name: Color Wipe
+      - addressable_scan:
+          name: Scan
+      - addressable_twinkle:
+          name: Twinkle
+      - addressable_random_twinkle:
+          name: Random Twinkle
+      - addressable_fireworks:
+          name: Fireworks
+      - addressable_flicker:
+          name: Flicker

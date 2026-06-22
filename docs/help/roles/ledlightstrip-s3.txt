@@ -1,0 +1,26 @@
+iotstack ledlightstrip-s3 -- LED Light Strip (XIAO ESP32-S3, WiFi)
+
+XIAO ESP32-S3 WiFi addressable LED strip (SK6812 RGBW). [WARN] In development.
+S3 has no Thread radio, so this variant is WiFi. Shares the strip + effects with
+the C6 ledlightstrip via yamls/common/ledstrip_light.yaml.
+
+Config: yamls/ledlightstrip-s3.yaml
+Chip: esp32s3
+Framework: esp-idf (esp32_rmt_led_strip)
+Network: WiFi
+Data pin: D0 = GPIO1
+
+Commands (shared help for flash, update, reassign, verify):
+
+  iotstack flash ledlightstrip-s3 /dev/ttyACM0
+  iotstack update ledlightstrip-s3
+  iotstack update <MAC> ledlightstrip-s3
+  iotstack reassign <MAC> ledlightstrip-s3
+  iotstack verify ledlightstrip-s3
+
+General command reference:
+
+  iotstack flash help
+  iotstack update help
+  iotstack reassign help
+  iotstack verify help

@@ -690,11 +690,15 @@ get_yaml_device_info() {
   local variant=""
   local network_type=""
   local dev_status=""
+  local framework=""
 
   if [[ -f "$yaml_file" ]]; then
     # Extract board and variant from esp32 section
     board=$(grep -A5 "^esp32:" "$yaml_file" | grep -E "^\s*board:\s*" | head -1 | sed 's/.*board:\s*//; s/\s*$//')
     variant=$(grep -A5 "^esp32:" "$yaml_file" | grep -E "^\s*variant:\s*" | head -1 | sed 's/.*variant:\s*//; s/\s*$//')
+
+    # Extract framework type (esp-idf / arduino) from esp32.framework section
+    framework=$(grep -A10 "^esp32:" "$yaml_file" | grep -A2 "framework:" | grep -E "^\s*type:\s*" | head -1 | sed 's/.*type:\s*//; s/\s*$//')
 
     # Extract development_status from substitutions section
     dev_status=$(grep -E "^\s*development_status:\s*" "$yaml_file" | head -1 | sed 's/.*development_status:\s*//; s/"//g; s/\s*$//')
@@ -707,7 +711,8 @@ get_yaml_device_info() {
     fi
   fi
 
-  echo "${board}|${variant}|${network_type}|${dev_status}"
+  # Field 5 (framework) appended so existing f1-f4 consumers stay valid.
+  echo "${board}|${variant}|${network_type}|${dev_status}|${framework}"
 }
 
 # List available role names from roles.conf
@@ -3143,11 +3148,11 @@ list_roles() {
   fi
 
   if [[ "$output_format" == "csv" ]]; then
-    echo "Role,Board,Variant,Network,Status,Config"
+    echo "Role,Board,Variant,Framework,Network,Status,Config"
     # Collect and sort roles by status (prod first) then by name
     {
       list_roles_from_conf | while read -r device; do
-        local yaml_file board variant network_type dev_status config_file device_info
+        local yaml_file board variant network_type dev_status framework config_file device_info
         yaml_file="${YAMLS_DIR}/${device}.yaml"
 
         if [[ -f "$yaml_file" ]]; then
@@ -3156,12 +3161,14 @@ list_roles() {
           variant=$(echo "$device_info" | cut -d'|' -f2)
           network_type=$(echo "$device_info" | cut -d'|' -f3)
           dev_status=$(echo "$device_info" | cut -d'|' -f4)
+          framework=$(echo "$device_info" | cut -d'|' -f5)
           config_file=$(basename "$yaml_file")
         else
           board=""
           variant=""
           network_type=""
           dev_status=""
+          framework=""
           config_file=""
         fi
 
@@ -3171,13 +3178,13 @@ list_roles() {
           prod) sort_key="0" ;;
           *) sort_key="1" ;;
         esac
-        printf "%s_%s|%s,%s,%s,%s,%s,%s\n" "$sort_key" "$device" "$device" "$board" "$variant" "$network_type" "$dev_status" "$config_file"
+        printf "%s_%s|%s,%s,%s,%s,%s,%s,%s\n" "$sort_key" "$device" "$device" "$board" "$variant" "$framework" "$network_type" "$dev_status" "$config_file"
       done
     } | sort -t_ -k1,1 -k2 | cut -d'|' -f2-
   elif [[ "$output_format" == "json" ]]; then
     {
       list_roles_from_conf | while read -r device; do
-        local yaml_file board variant network_type dev_status config_file device_info
+        local yaml_file board variant network_type dev_status framework config_file device_info
         yaml_file="${YAMLS_DIR}/${device}.yaml"
 
         if [[ -f "$yaml_file" ]]; then
@@ -3186,12 +3193,14 @@ list_roles() {
           variant=$(echo "$device_info" | cut -d'|' -f2)
           network_type=$(echo "$device_info" | cut -d'|' -f3)
           dev_status=$(echo "$device_info" | cut -d'|' -f4)
+          framework=$(echo "$device_info" | cut -d'|' -f5)
           config_file=$(basename "$yaml_file")
         else
           board=""
           variant=""
           network_type=""
           dev_status=""
+          framework=""
           config_file=""
         fi
 
@@ -3200,17 +3209,18 @@ list_roles() {
           prod) sort_key="0" ;;
           *) sort_key="1" ;;
         esac
-        printf "%s_%s|%s|%s|%s|%s|%s|%s\n" "$sort_key" "$device" "$device" "$board" "$variant" "$network_type" "$dev_status" "$config_file"
+        printf "%s_%s|%s|%s|%s|%s|%s|%s|%s\n" "$sort_key" "$device" "$device" "$board" "$variant" "$framework" "$network_type" "$dev_status" "$config_file"
       done
-    } | sort -t_ -k1,1 -k2 | cut -d'|' -f2- | while IFS='|' read -r device board variant network_type dev_status config_file; do
+    } | sort -t_ -k1,1 -k2 | cut -d'|' -f2- | while IFS='|' read -r device board variant framework network_type dev_status config_file; do
       jq -nc \
         --arg role "$device" \
         --arg board "$board" \
         --arg variant "$variant" \
+        --arg framework "$framework" \
         --arg network "$network_type" \
         --arg status "$dev_status" \
         --arg config "$config_file" \
-        '{role: $role, board: $board, variant: $variant, network: $network, status: $status, config: $config}'
+        '{role: $role, board: $board, variant: $variant, framework: $framework, network: $network, status: $status, config: $config}'
     done | _iotstack_json_slurp
   else
     # Text format - gather data first
@@ -3222,7 +3232,7 @@ list_roles() {
     trap "rm -f '$temp_data' '$temp_unsorted'" RETURN
 
     while IFS= read -r device; do
-      local yaml_file board variant network_type dev_status config_display device_info
+      local yaml_file board variant network_type dev_status framework config_display device_info
       yaml_file="${YAMLS_DIR}/${device}.yaml"
 
       if [[ -f "$yaml_file" ]]; then
@@ -3231,12 +3241,14 @@ list_roles() {
         variant=$(echo "$device_info" | cut -d'|' -f2)
         network_type=$(echo "$device_info" | cut -d'|' -f3)
         dev_status=$(echo "$device_info" | cut -d'|' -f4)
+        framework=$(echo "$device_info" | cut -d'|' -f5)
         config_display=$(basename "$yaml_file")
       else
         board=""
         variant=""
         network_type=""
         dev_status=""
+        framework=""
         config_display=""
       fi
 
@@ -3246,7 +3258,7 @@ list_roles() {
         prod) sort_key="0" ;;
         *) sort_key="1" ;;
       esac
-      printf "%s_%s|%s|%s|%s|%s|%s|%s\n" "$sort_key" "$device" "$device" "$board" "$variant" "$network_type" "$dev_status" "$config_display" >> "$temp_unsorted"
+      printf "%s_%s|%s|%s|%s|%s|%s|%s|%s\n" "$sort_key" "$device" "$device" "$board" "$variant" "$framework" "$network_type" "$dev_status" "$config_display" >> "$temp_unsorted"
     done < <(list_roles_from_conf)
 
     # Sort by status (prod first) then by role name
@@ -3256,6 +3268,7 @@ list_roles() {
     local header_role="Role"
     local header_board="Board"
     local header_variant="Variant"
+    local header_framework="Framework"
     local header_network="Network"
     local header_status="Status"
     local header_config="Config"
@@ -3263,14 +3276,16 @@ list_roles() {
     local w_role=$(( ${#header_role} + margin ))
     local w_board=$(( ${#header_board} + margin ))
     local w_variant=$(( ${#header_variant} + margin ))
+    local w_framework=$(( ${#header_framework} + margin ))
     local w_network=$(( ${#header_network} + margin ))
     local w_status=$(( ${#header_status} + margin ))
     local w_config=$(( ${#header_config} + margin ))
 
-    while IFS='|' read -r device board variant network_type dev_status config_display; do
+    while IFS='|' read -r device board variant framework network_type dev_status config_display; do
       (( ${#device} + margin > w_role )) && w_role=$(( ${#device} + margin ))
       (( ${#board} + margin > w_board )) && w_board=$(( ${#board} + margin ))
       (( ${#variant} + margin > w_variant )) && w_variant=$(( ${#variant} + margin ))
+      (( ${#framework} + margin > w_framework )) && w_framework=$(( ${#framework} + margin ))
       (( ${#network_type} + margin > w_network )) && w_network=$(( ${#network_type} + margin ))
       (( ${#dev_status} + margin > w_status )) && w_status=$(( ${#dev_status} + margin ))
       (( ${#config_display} + margin > w_config )) && w_config=$(( ${#config_display} + margin ))
@@ -3280,16 +3295,16 @@ list_roles() {
     echo
 
     # Print headers
-    printf "  ${GRN}%-${w_role}s %-${w_board}s %-${w_variant}s %-${w_network}s %-${w_status}s %-${w_config}s${RST}\n" \
-      "$header_role" "$header_board" "$header_variant" "$header_network" "$header_status" "$header_config"
+    printf "  ${GRN}%-${w_role}s %-${w_board}s %-${w_variant}s %-${w_framework}s %-${w_network}s %-${w_status}s %-${w_config}s${RST}\n" \
+      "$header_role" "$header_board" "$header_variant" "$header_framework" "$header_network" "$header_status" "$header_config"
 
     # Print separator
-    _print_table_rule "$w_role" "$w_board" "$w_variant" "$w_network" "$w_status" "$w_config"
+    _print_table_rule "$w_role" "$w_board" "$w_variant" "$w_framework" "$w_network" "$w_status" "$w_config"
 
     # Print data rows
-    while IFS='|' read -r device board variant network_type dev_status config_display; do
-      printf "  ${GRN}%-${w_role}s${RST} %-${w_board}s %-${w_variant}s %-${w_network}s %-${w_status}s %-${w_config}s\n" \
-        "$device" "$board" "$variant" "$network_type" "$dev_status" "$config_display"
+    while IFS='|' read -r device board variant framework network_type dev_status config_display; do
+      printf "  ${GRN}%-${w_role}s${RST} %-${w_board}s %-${w_variant}s %-${w_framework}s %-${w_network}s %-${w_status}s %-${w_config}s\n" \
+        "$device" "$board" "$variant" "$framework" "$network_type" "$dev_status" "$config_display"
     done < "$temp_data"
 
 
