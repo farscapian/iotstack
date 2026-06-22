@@ -40,6 +40,7 @@ Changes applied during the split:
 | New shell script | `conventions.md`, `code-quality.md`, `implementation.md` |
 | New device role | `cli.md`, `devices.md`, `architecture.md` |
 | CI / commit hygiene | `workflow.md`, `code-quality.md`, `testing.md` |
+| Human Sync handoff | `nut.md`, `workflow.md` |
 
 ### Maintenance
 

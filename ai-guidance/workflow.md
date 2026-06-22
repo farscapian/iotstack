@@ -78,14 +78,14 @@ git clean -fd
 
 ### 2. Sync (when human asks)
 
-Push from the session clone to the local Sync repo. The human then reviews and pushes to origin. **Agents never push to origin.**
+Push the latest agent-worktree commit to the local Sync repo. The human then reviews and pushes to origin. **Agents never push to origin.**
+
+**Human command:** `nut` (or `nut iotstack`) -- see [nut.md](nut.md). Finds the newest commit in the matching agent worktree, runs guards, and `git push local-sync main`.
 
 ```bash
-# Check no iotstack command is running (pushing to Sync updates its working tree):
-pgrep -af '(/iotstack\.sh|/iotstack) ' || echo "safe to sync"
-
-# Push to Sync (local-sync remote set up during session sync step):
-git push local-sync main
+nut iotstack
+# equivalent manual path (nut runs this after picking the worktree):
+# git -C <worktree> push local-sync main
 ```
 
 `~/Sync/mini_projects/iotstack` is configured with `receive.denyCurrentBranch = updateInstead`, so the push also updates Sync's working tree.
@@ -260,7 +260,7 @@ pkill -TERM -f 'serial-logs.py.*ttyACM0'   # if port still busy
 - When the human runs `iotstack` on Sync, watch `~/.iotstack/logs/sessions.watch` and tail the run's session/serial logs (see [Watching live iotstack runs](#watching-live-iotstack-runs-agents))
 
 **After agent work**
-- Agent syncs to Sync on request: `git push local-sync main` (never to origin)
+- Human lands agent commits on Sync: `nut` (never `git push origin` from agents)
 - Human reviews in `~/Sync/mini_projects/iotstack`, then `git push origin main` when satisfied
 - Human continues on Sync for CLI, flash, and follow-up edits
 
@@ -291,7 +291,7 @@ git clone git@github.com:farscapian/iotstack.git ~/.claude/worktrees/mini-projec
 
 ## Git and commit policy
 
-**Agent default:** commit when a task is complete. Sync to Sync (`git push local-sync main`) only when the human asks, and only when no `iotstack` command is running (see [Active iotstack sessions](#3-active-iotstack-sessions-agents----mandatory)). Never push to origin -- that is human-only.
+**Agent default:** commit when a task is complete. Human runs `nut` when ready (see [nut.md](nut.md)); `nut` refuses while `iotstack` is running (see [Active iotstack sessions](#3-active-iotstack-sessions-agents----mandatory)). Never push to origin -- that is human-only.
 
 **Correctness bar:** device testing against real hardware remains the standard for functional validation. Commits can land before the human has flashed every edge case; note untested areas in the commit message when relevant.
 
@@ -302,7 +302,7 @@ git clone git@github.com:farscapian/iotstack.git ~/.claude/worktrees/mini-projec
 **Agent (Grok or Claude Code session clone)**
 1. Make code changes in the session clone (never in Sync)
 2. `git add` and commit
-3. When human says "sync": `git push local-sync main` (never `git push origin`)
+3. Human: `nut` (never `git push origin` from agents)
 4. Human reviews in Sync, then `git push origin main` when satisfied
 5. Tag releases with annotated tags (`git tag -a vX.Y.Z`) when appropriate -- firmware picks up the tag on next compile
 

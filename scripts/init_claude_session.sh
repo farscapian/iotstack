@@ -152,10 +152,7 @@ DO NOT
   - Wait for the human to paste flash logs if sessions.watch / log files are available.
 
 WHEN HUMAN SAYS "sync"
-  # Check no iotstack command is running first:
-  pgrep -af '(/iotstack\.sh|/iotstack) ' || echo "safe to sync"
-  # Then push to Sync (local-sync remote was set up during session sync above):
-  git push local-sync main
+  nut iotstack    # or: nut (from Sync pwd) -- see ai-guidance/nut.md
   # Human reviews changes in ~/Sync/mini_projects/iotstack, then pushes to origin.
 
 ================================================================================
