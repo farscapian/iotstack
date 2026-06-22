@@ -18,6 +18,7 @@ external_components:
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
+  ext_antenna: !include common/xiao_c6_ext_antenna.yaml
 
 esphome:
   name: ${device_role}
@@ -27,14 +28,16 @@ esphome:
     name: "iotstack.${device_role}-${development_status}"
     version: "${project_version}"
   on_boot:
-    priority: -100
-    then:
-      - light.turn_on:
-          id: rgb_led
-          red: 100%
-          green: 0%
-          blue: 0%
-          brightness: 100%
+    # List form (note leading "-") so this concatenates with the on_boot the
+    # ext_antenna package contributes, instead of one overriding the other.
+    - priority: -100
+      then:
+        - light.turn_on:
+            id: rgb_led
+            red: 100%
+            green: 0%
+            blue: 0%
+            brightness: 100%
 
 esp32:
   board: seeed_xiao_esp32c6

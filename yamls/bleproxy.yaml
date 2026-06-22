@@ -19,6 +19,7 @@ external_components:
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
+  ext_antenna: !include common/xiao_c6_ext_antenna.yaml
 
 esphome:
   name: ${device_role}

@@ -23,6 +23,7 @@ external_components:
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
+  ext_antenna: !include common/xiao_c6_ext_antenna.yaml  # external u.FL antenna select
 
 esphome:
   name: ledstrip
@@ -31,14 +32,6 @@ esphome:
     name: "iotstack.${device_role}-${development_status}"
     version: "${project_version}"
   name_add_mac_suffix: true
-  on_boot:
-    # Select external u.FL antenna BEFORE the Thread radio comes up.
-    # XIAO ESP32-C6: GPIO3 (RF_SWITCH_EN) LOW powers the RF switch;
-    # GPIO14 (RF_ANT_SELECT) HIGH routes RF to the external u.FL connector.
-    - priority: 800
-      then:
-        - output.turn_off: rf_switch_en
-        - output.turn_on: rf_ant_select
 
 esp32:
   board: seeed_xiao_esp32c6
@@ -89,22 +82,14 @@ text_sensor:
       name: "Thread IPv6 Address"
       entity_category: diagnostic
 
-# Onboard LED -- XIAO ESP32-C6 GPIO15, active-low
+# Onboard LED -- XIAO ESP32-C6 GPIO15, active-low.
+# RF-switch outputs (GPIO3/GPIO14) come from the ext_antenna package.
 output:
   - platform: gpio
     pin:
       number: GPIO15
       inverted: true
     id: onboard_led_output
-
-  # XIAO ESP32-C6 external-antenna RF switch (driven at boot; see esphome.on_boot).
-  # GPIO3 = RF_SWITCH_EN (LOW powers the switch); GPIO14 = RF_ANT_SELECT (HIGH = u.FL).
-  - platform: gpio
-    pin: GPIO3
-    id: rf_switch_en
-  - platform: gpio
-    pin: GPIO14
-    id: rf_ant_select
 
 light:
   - platform: binary

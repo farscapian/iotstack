@@ -1,0 +1,29 @@
+# External u.FL antenna select for Seeed XIAO ESP32-C6 ONLY.
+#
+# The XIAO C6 routes RF through an FM8625H switch driven by two GPIOs:
+#   GPIO3  (RF_SWITCH_EN)  LOW  -> power the RF switch
+#   GPIO14 (RF_ANT_SELECT) HIGH -> route RF to the external u.FL connector
+# Both are set in on_boot (priority 800) before the radio starts. Onboard
+# ceramic antenna is the hardware default; include this package only on C6
+# boards fitted with the external antenna.
+#
+# NOTE: do NOT include on XIAO ESP32-S3 -- that board has no RF switch GPIO
+# (the u.FL connector is wired directly; nothing to configure).
+#
+# on_boot here is the LIST form so it concatenates cleanly with any on_boot
+# the including device already defines (ESPHome merges package lists by append).
+
+esphome:
+  on_boot:
+    - priority: 800
+      then:
+        - output.turn_off: rf_switch_en
+        - output.turn_on: rf_ant_select
+
+output:
+  - platform: gpio
+    pin: GPIO3
+    id: rf_switch_en
+  - platform: gpio
+    pin: GPIO14
+    id: rf_ant_select
