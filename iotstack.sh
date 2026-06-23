@@ -5454,6 +5454,7 @@ main() {
 
   if [[ "$command" == "flash" && "${2:-}" != "help" ]]; then
     _flash_preflight_step_begin
+    info "iotstack git commit (HEAD): $(iotstack_git_commit_short)"
   fi
 
   # Load environment file if it exists
