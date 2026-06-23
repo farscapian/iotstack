@@ -28,6 +28,7 @@ RST='\033[0m'
 err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
 ok()   { [[ "${PRINT_API_JSON:-0}" == "1" ]] && return 0; echo -e "${GRN}[OK]${RST} $*" >&2; }
 info() { [[ "${PRINT_API_JSON:-0}" == "1" ]] && return 0; echo -e "${YLW}[INFO]${RST} $*" >&2; }
+warn() { echo -e "${YLW}[WARN]${RST} $*" >&2; }
 
 # Get or prompt for credential (lazy-loading on demand)
 _get_or_prompt_credential() {
@@ -186,14 +187,13 @@ WRITE_MATRIX_LAYOUT=0
 MATRIX_COLS="${MATRIX_COLS:-}"
 MATRIX_PANEL_W="${MATRIX_PANEL_W:-}"
 MATRIX_PANEL_H="${MATRIX_PANEL_H:-}"
-if [[ "$PRODUCTION_ROLE" == "matrixdisplay" ]] || \
-   [[ -n "$MATRIX_COLS" || -n "$MATRIX_PANEL_W" || -n "$MATRIX_PANEL_H" ]]; then
+# Matrix layout keys are matrix-display only. Gate strictly on the role so stray
+# MATRIX_* env vars can never leak panel geometry into a non-matrix device's NVS.
+if [[ "$PRODUCTION_ROLE" == "matrixdisplay" ]]; then
   WRITE_MATRIX_LAYOUT=1
-  if [[ -n "$PRODUCTION_ROLE" ]]; then
-    [[ -z "$MATRIX_COLS" ]] && MATRIX_COLS=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_cols" 2>/dev/null || echo "")
-    [[ -z "$MATRIX_PANEL_W" ]] && MATRIX_PANEL_W=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_panel_w" 2>/dev/null || echo "")
-    [[ -z "$MATRIX_PANEL_H" ]] && MATRIX_PANEL_H=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_panel_h" 2>/dev/null || echo "")
-  fi
+  [[ -z "$MATRIX_COLS" ]] && MATRIX_COLS=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_cols" 2>/dev/null || echo "")
+  [[ -z "$MATRIX_PANEL_W" ]] && MATRIX_PANEL_W=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_panel_w" 2>/dev/null || echo "")
+  [[ -z "$MATRIX_PANEL_H" ]] && MATRIX_PANEL_H=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_panel_h" 2>/dev/null || echo "")
   MATRIX_COLS="${MATRIX_COLS:-1}"
   MATRIX_PANEL_W="${MATRIX_PANEL_W:-64}"
   MATRIX_PANEL_H="${MATRIX_PANEL_H:-32}"
@@ -201,6 +201,9 @@ if [[ "$PRODUCTION_ROLE" == "matrixdisplay" ]] || \
     err "MATRIX_COLS must be 1 or 2 (got: $MATRIX_COLS)"
   fi
   info "Matrix layout NVS: ${MATRIX_COLS} panel(s), ${MATRIX_PANEL_W}x${MATRIX_PANEL_H} px each"
+elif [[ -n "$MATRIX_COLS" || -n "$MATRIX_PANEL_W" || -n "$MATRIX_PANEL_H" ]]; then
+  warn "Ignoring matrix layout flags -- role '${PRODUCTION_ROLE:-unknown}' is not a matrix display; matrix_* keys not written to NVS"
+  MATRIX_COLS="" MATRIX_PANEL_W="" MATRIX_PANEL_H=""
 fi
 
 if [[ "$PRINT_API_JSON" == "1" ]]; then

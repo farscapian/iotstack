@@ -3827,8 +3827,11 @@ _flash_matrix_layout_update_via_bootstrap_if_needed() {
   local prod_hostname="$4"
   local want_cols want_w want_h cur_cols cur_w cur_h verify_cols verify_w verify_h
 
-  # mismatch returns 0 when layouts already match; 1 when NVS update is needed.
-  if ! _flash_matrix_layout_mismatch "$device" "$device_mac" "$prod_hostname"; then
+  # _flash_matrix_layout_mismatch returns 0 when no NVS update is needed (layouts
+  # already match, OR this is not a matrix-display role) and 1 when an update is
+  # needed. Only proceed when an update is actually needed -- otherwise this would
+  # write matrix_* keys to non-matrix devices (e.g. bleproxy).
+  if _flash_matrix_layout_mismatch "$device" "$device_mac" "$prod_hostname"; then
     return 0
   fi
   _flash_resolve_matrix_layout "$device" want_cols want_w want_h
