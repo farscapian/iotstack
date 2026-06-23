@@ -410,12 +410,33 @@ create_log_serial_capture_pause() {
   create_log_serial_capture_stop
 }
 
+create_log_serial_stable_tty() {
+  # Resolve /dev/ttyACMx to its stable /dev/serial/by-id/ symlink. ESP32-C6 uses
+  # native USB-Serial/JTAG, so every reset drops and re-enumerates the USB device
+  # -- often returning a *different* ttyACM node. The by-id symlink tracks the same
+  # physical chip across re-enumeration, so the capture monitor (which reopens the
+  # path on each --reconnect) follows the device instead of waiting forever on a
+  # node it has left. Prints the by-id path if found, otherwise the original tty.
+  local tty="$1" resolved link
+  resolved=$(readlink -f "$tty" 2>/dev/null) || resolved="$tty"
+  if [[ -d /dev/serial/by-id ]]; then
+    for link in /dev/serial/by-id/*; do
+      [[ -e "$link" ]] || continue
+      if [[ "$(readlink -f "$link" 2>/dev/null)" == "$resolved" ]]; then
+        printf '%s\n' "$link"
+        return 0
+      fi
+    done
+  fi
+  printf '%s\n' "$tty"
+}
+
 create_log_serial_capture_start() {
   # Background serial monitor -> iotstack-<log-id>-serial.log (file only; --reconnect).
   # Usage: create_log_serial_capture_start <tty> [variant]
   local tty="$1"
   local variant="${2:-unknown}"
-  local log_file source py baud stamp_py
+  local log_file source py baud stamp_py capture_tty
 
   create_log_serial_capture_enabled || return 0
   [[ -n "$tty" ]] || return 0
@@ -446,6 +467,17 @@ create_log_serial_capture_start() {
 
   source=$(create_log_serial_source "$tty" "$variant")
 
+  # Monitor a stable by-id path so the capture survives C6 USB re-enumeration on
+  # reset. Cache it (IOTSTACK_FLASH_SERIAL_BYID) so a resume right after esptool
+  # resets the chip still uses the stable path even if the raw ttyACM node is
+  # momentarily gone.
+  if [[ -n "${IOTSTACK_FLASH_SERIAL_BYID:-}" && -e "${IOTSTACK_FLASH_SERIAL_BYID}" ]]; then
+    capture_tty="$IOTSTACK_FLASH_SERIAL_BYID"
+  else
+    capture_tty=$(create_log_serial_stable_tty "$tty")
+    [[ "$capture_tty" == /dev/serial/by-id/* ]] && export IOTSTACK_FLASH_SERIAL_BYID="$capture_tty"
+  fi
+
   py=$(head -1 "$(command -v esphome)" 2>/dev/null | sed 's/^#!//')
   [[ -x "$py" ]] || py="python3"
 
@@ -455,7 +487,7 @@ create_log_serial_capture_start() {
   setsid bash -c '
     exec "$0" -u "$1" --reconnect "$2" "$3" 2>&1 \
       | stdbuf -oL -eL python3 -u "$4" --source "$5" --log-file "$6" --log-only
-  ' "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" "$tty" "$baud" "$stamp_py" "$source" "$log_file" &
+  ' "$py" "${SCRIPT_DIR}/scripts/serial-logs.py" "$capture_tty" "$baud" "$stamp_py" "$source" "$log_file" &
   IOTSTACK_SERIAL_LOG_PID=$!
   export IOTSTACK_SERIAL_LOG_PID
 }
