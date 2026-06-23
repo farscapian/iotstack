@@ -6,12 +6,12 @@ ESP32 ESPHome device management. **Load topic files on demand -- do not read thi
 
 - Branding: always lowercase `iotstack` (never IoT Stack / iotStack)
 - Text: ASCII-only in docs, logs, help, and code comments
-- Agents work in session clones, NOT in Sync: Grok -> `~/.grok/worktrees/mini-projects-iotstack/<session-id>/`; Claude Code -> `~/.claude/worktrees/mini-projects-iotstack/<session-id>/`; CLI runs from `~/Sync/mini_projects/iotstack`
-- Claude Code: NEVER edit files under `~/Sync/mini_projects/iotstack` -- use absolute paths to your session clone only
+- Agents work in session clones, NOT in the canonical local repo: Grok -> `~/.grok/worktrees/mini-projects-iotstack/<session-id>/`; Claude Code -> `~/.claude/worktrees/mini-projects-iotstack/<session-id>/`; CLI runs from the canonical local repo `~/Sync/mini_projects/iotstack`
+- Claude Code: NEVER edit files under the canonical local repo (`~/Sync/mini_projects/iotstack`) -- use absolute paths to your session clone only
 - New Grok session: run `scripts/init_grok_session.sh`; new Claude Code session: run `scripts/init_claude_session.sh` (see `.agentstartstack/agentstartstack/workflow.md`)
 - After changes: commit in session clone; human runs `nut` then `git push origin main` (or `nutup`). NEVER `git push origin` from agents (see `.agentstartstack/agentstartstack/nut.md`)
-- Never `nut` or `git pull` on Sync while `iotstack` is running
-- When the human runs `iotstack` on Sync: tail `~/.iotstack/logs/sessions.watch` (see `agentstartstack/workflow.md`)
+- Never `nut` or `git pull` on the canonical local repo while `iotstack` is running
+- When the human runs `iotstack` on the canonical local repo: tail `~/.iotstack/logs/sessions.watch` (see `agentstartstack/workflow.md`)
 
 ## Generic guidance (.agentstartstack submodule)
 

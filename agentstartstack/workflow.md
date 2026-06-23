@@ -10,16 +10,16 @@
 
 ## Active `iotstack` sessions (agents -- mandatory)
 
-Do **not** disrupt a flash, compile, update, or other long-running `iotstack` command the human started on Sync.
+Do **not** disrupt a flash, compile, update, or other long-running `iotstack` command the human started on the canonical local repo.
 
-### Before nut / sync to Sync
+### Before nut / local-sync
 
 ```bash
 # Any match means: do NOT nut yet
 pgrep -af '(/iotstack\.sh|/iotstack) ' || echo "no iotstack sessions"
 ```
 
-If anything is running: commit in the session clone, tell the human sync is pending, and wait.
+If anything is running: commit in the session clone, tell the human local-sync is pending, and wait.
 
 ### Before serial / device testing
 
@@ -36,7 +36,7 @@ Includes: `iotstack flash`, `iotstack tests run`, `read-nvs-secrets.sh`, `write-
 
 ## Watching live iotstack runs (agents)
 
-When the human runs `iotstack` from Sync (especially `flash`, `update`, or long compiles), **watch logs proactively** -- do not wait for them to paste output. Every invocation appends one line to a session registry; use that to discover new runs and tail the right log files.
+When the human runs `iotstack` from the canonical local repo (especially `flash`, `update`, or long compiles), **watch logs proactively** -- do not wait for them to paste output. Every invocation appends one line to a session registry; use that to discover new runs and tail the right log files.
 
 ### Session registry (`sessions.watch`)
 
@@ -135,7 +135,7 @@ pkill -TERM -f 'serial-logs.py.*ttyACM0'
 | `Bootstrap WiFi wait timed out`; serial shows WiFi/`heartbeat` | Bootstrap up but slow or wrong network | `bootstrap-<mac>.local:3232`, WiFi creds in NVS |
 | esptool verify failed | Transfer corruption (common on **C6 at baud > 9600**) | Session log; `esp_esptool_baud_for_chip()` |
 
-**Safe while a run is active:** read `sessions.watch`, tail log files, `iotstack ps` (read-only). **Unsafe:** `git pull` on Sync, `iotstack kill` (unless asked), USB tests on the same `/dev/tty*`.
+**Safe while a run is active:** read `sessions.watch`, tail log files, `iotstack ps` (read-only). **Unsafe:** `git pull` on the canonical local repo, `iotstack kill` (unless asked), USB tests on the same `/dev/tty*`.
 
 ### Related guidance
 
