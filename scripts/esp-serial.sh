@@ -546,6 +546,7 @@ esp_esptool_chip_id() {
 
   err_file=$(mktemp)
   IOTSTACK_LAST_ESPTOOL_ERROR=""
+  local prompted=0
   for attempt in 1 2 3 4; do
     for baud in 115200 9600 57600; do
       # --after hard-reset: return to running firmware after probe (S3 status LED / USB stub).
@@ -561,6 +562,16 @@ esp_esptool_chip_id() {
       fi
     done
     [[ $rc -eq 0 ]] && break
+    # Native USB-Serial/JTAG auto-reset (XIAO ESP32-C6) is unreliable -- esptool's
+    # default-reset often can't pull the chip into download mode, so this loop would
+    # otherwise churn silently for minutes. After the first failed attempt on the
+    # active flash port, ask the human to press RESET as a last resort, then keep
+    # retrying (attempts 2-4) so the press is picked up.
+    if (( prompted == 0 )) && [[ "${IOTSTACK_FLASH_SERIAL_TTY:-}" == "$port" ]]; then
+      _esp_serial_log warn "[ACTION REQUIRED] No response from device on ${port} -- press the RESET button on the board now."
+      _esp_serial_log warn "  (XIAO ESP32-C6 USB auto-reset is unreliable. If it still won't connect: hold BOOT, tap RESET, release BOOT.)"
+      prompted=1
+    fi
     esp_serial_settle_tty "$port" 2
   done
   if [[ $rc -ne 0 && -n "${IOTSTACK_LAST_ESPTOOL_ERROR:-}" ]]; then
