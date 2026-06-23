@@ -27,22 +27,27 @@ Role -> chip mapping (from iotstack roles / YAML variant):
   esp32c6: bleproxy, mmwave, threadrouter, bootstrap, ledlightstrip-c6-thread
   esp32s3: ledlightstrip-s3-wifi, sendspinspeaker, silentnotify, matrixdisplay
 
-Test suites:
-  00-14  ESP32-C6 (bleproxy / bootstrap / mmwave reassign cycle)
+Test suites (regression gate -- hardware-validated builds only):
+  00-06  ESP32-C6 bleproxy: flash / verify / update (delta,force) / list / bootstrap list
+  10-14  ESP32-C6 boot-partition toggle + bootstrap flash/reassign
   15-16  Compile skip via iotstack flash (hit/miss, build_info.json config_hash)
-  20-29  ESP32-S3 (ledlightstrip-s3-wifi / silentnotify / matrixdisplay)
+
+  Cases for not-yet-hardware-validated builds (mmwave, ledlightstrip-c6-thread,
+  ledlightstrip-s3-wifi, silentnotify, matrixdisplay) were pruned. Re-add a build's
+  cases only once it is proven on hardware -- the suite is meant to stay a trusted
+  regression gate for validated builds, so a fresh agent can rely on green == no
+  regression. Pruned cases remain in git history to rewrite from.
 
 Examples:
   iotstack tests ports
   iotstack tests run
   iotstack tests run --iterations 3
   iotstack tests run 0
-  iotstack tests run 20-flash-ledlightstrip-s3-wifi
-  iotstack tests run 29-flash-matrixdisplay
+  iotstack tests run 00-flash-bleproxy
+  iotstack tests run 13-update-dry-run
   iotstack tests run 15-compile-cache-hit-bleproxy
   iotstack tests run 16-compile-cache-miss-external-component
-  iotstack tests run c6              # all cases (slug match -- use 0-14 individually)
-  iotstack tests run 0 20            # C6 flash + S3 flash only
+  iotstack tests run                # full validated-build suite, in order
 
 Layout:
   tests/cases/<slug>/run.sh                         test script
@@ -60,7 +65,7 @@ logging with IOTSTACK_TEST_LOG_ID=0. Quiet mode is off while logging.
 State: ~/.iotstack/artifacts/test-state.env (per-role MAC cache)
 Ports: ~/.iotstack/artifacts/serial-port-map.env (last scan)
 
-Overnight (C6 + S3 plugged in):
+Overnight (C6 plugged in -- suite is currently C6/bleproxy only):
   iotstack tests run --iterations 5 2>&1 | tee ~/iotstack-overnight.log
 
 Bootstrap firmware is compiled per chip variant (yamls/.iotstack-bootstrap-esp32c6.yaml,
