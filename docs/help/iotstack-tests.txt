@@ -24,20 +24,20 @@ Environment (~/.iotstack/.env):
   IOTSTACK_TEST_TTY_S3=/dev/ttyACM1   Optional override for ESP32-S3
 
 Role -> chip mapping (from iotstack roles / YAML variant):
-  esp32c6: bleproxy, mmwave, threadrouter, bootstrap
-  esp32s3: ledlightstrip, sendspinspeaker, silentnotify, matrixdisplay
+  esp32c6: bleproxy, mmwave, threadrouter, bootstrap, ledlightstrip-c6-thread
+  esp32s3: ledlightstrip-s3-wifi, sendspinspeaker, silentnotify, matrixdisplay
 
 Test suites:
   00-14  ESP32-C6 (bleproxy / bootstrap / mmwave reassign cycle)
   15-16  Compile skip via iotstack flash (hit/miss, build_info.json config_hash)
-  20-29  ESP32-S3 (ledlightstrip / silentnotify / matrixdisplay)
+  20-29  ESP32-S3 (ledlightstrip-s3-wifi / silentnotify / matrixdisplay)
 
 Examples:
   iotstack tests ports
   iotstack tests run
   iotstack tests run --iterations 3
   iotstack tests run 0
-  iotstack tests run 20-flash-ledlightstrip
+  iotstack tests run 20-flash-ledlightstrip-s3-wifi
   iotstack tests run 29-flash-matrixdisplay
   iotstack tests run 15-compile-cache-hit-bleproxy
   iotstack tests run 16-compile-cache-miss-external-component

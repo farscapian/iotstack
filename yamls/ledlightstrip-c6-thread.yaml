@@ -3,8 +3,8 @@
 
 substitutions:
   development_status: "dev"
-  device_role: "ledstrip"
-  friendly_name: "LED Light Strip"
+  device_role: "ledstrip-c6-thread"
+  friendly_name: "LED Light Strip C6 Thread"
   project_version: "0.0.0-dev"
   # LED strip hardware -- override these if your wiring or strip differs
   strip_data_pin: GPIO0   # = D0 on XIAO ESP32-C6 silkscreen (via 330 Ohm series resistor to DIN)
@@ -27,7 +27,7 @@ packages:
   strip_light: !include common/ledstrip_light.yaml       # shared SK6812 strip + effects
 
 esphome:
-  name: ledstrip
+  name: ledstrip-c6-thread
   friendly_name: ${friendly_name}
   project:
     name: "iotstack.${device_role}-${development_status}"

@@ -39,7 +39,7 @@ Detects people in a room and their distance using millimeter-wave radar. Useful 
 ### In-Development Projects
 
 - **SendSpin Speaker**: Multi-room synchronized audio. [Full documentation ->](docs/sendspinspeaker.md)
-- **LED Light Strip**: Addressable WS2812B LED strip control. [Full documentation ->](docs/ledlightstrip.md)
+- **LED Light Strip**: Addressable SK6812 RGBW LED strip control (C6/Thread and S3/WiFi variants). [Full documentation ->](docs/ledlightstrip.md)
 - **LED Matrix Display**: Text and animation display on LED matrices. [Development notes ->](docs/ledmatrixdisplay.md)
 
 ---
@@ -72,7 +72,8 @@ yamls/
 |--- bleproxy.yaml                    # BLE Proxy (WiFi)
 |--- threadrouter.yaml                # Thread Router (Thread mesh)
 |--- mmwave.yaml                      # Presence sensor (WiFi)
-|--- ledlightstrip.yaml               # LED strip controller (WiFi)
+|--- ledlightstrip-c6-thread.yaml     # LED strip controller (C6/Thread)
+|--- ledlightstrip-s3-wifi.yaml       # LED strip controller (S3/WiFi)
 |--- sendspin.yaml                    # Multi-room speaker (WiFi)
 `--- external_components/             # Custom ESPHome components
     |--- nvs_secrets/                 # Reads device credentials from NVS
@@ -121,7 +122,7 @@ Deploy devices in this order to build up your infrastructure:
 3. **Other devices** (presence sensors, LED strips, etc.)
    ```bash
    iotstack flash mmwave /dev/ttyACM0
-   iotstack flash ledlightstrip /dev/ttyACM0
+   iotstack flash ledlightstrip-c6-thread /dev/ttyACM0
    ```
 
 ### Quick Commands

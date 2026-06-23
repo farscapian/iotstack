@@ -1,12 +1,12 @@
 # SK6812 RGBW LED Strip -- WiFi end device (XIAO ESP32-S3, esp-idf).
-# S3 has no 802.15.4 radio, so this variant is WiFi (the C6 ledlightstrip.yaml
+# S3 has no 802.15.4 radio, so this variant is WiFi (ledlightstrip-c6-thread.yaml
 # is the Thread variant). Shares the strip + effects via common/ledstrip_light.yaml.
 # See docs/ledlightstrip.md for the (shared) wiring diagram and safety notes.
 
 substitutions:
   development_status: "dev"
-  device_role: "ledstrip-s3"
-  friendly_name: "LED Light Strip S3"
+  device_role: "ledstrip-s3-wifi"
+  friendly_name: "LED Light Strip S3 WiFi"
   project_version: "0.0.0-dev"
   boot_button_pin: GPIO0  # XIAO ESP32-S3 BOOT button
   # LED strip hardware -- override if your wiring or strip differs
@@ -30,7 +30,7 @@ packages:
   strip_light: !include common/ledstrip_light.yaml
 
 esphome:
-  name: ledstrip-s3
+  name: ledstrip-s3-wifi
   friendly_name: ${friendly_name}
   project:
     name: "iotstack.${device_role}-${development_status}"

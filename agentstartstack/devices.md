@@ -29,8 +29,8 @@ Both use esp-idf + esp32_rmt_led_strip:
 
 | Role | Board | Network | mDNS | Data pin |
 |------|-------|---------|------|----------|
-| `ledlightstrip` | XIAO ESP32-C6 | Thread (FTD) | `ledstrip-<mac>` | D0 = GPIO0 |
-| `ledlightstrip-s3` | XIAO ESP32-S3 | WiFi | `ledstrip-s3-<mac>` | D0 = GPIO1 |
+| `ledlightstrip-c6-thread` | XIAO ESP32-C6 | Thread (FTD) | `ledstrip-c6-thread-<mac>` | D0 = GPIO0 |
+| `ledlightstrip-s3-wifi` | XIAO ESP32-S3 | WiFi | `ledstrip-s3-wifi-<mac>` | D0 = GPIO1 |
 
 - Shared strip definition: `yamls/common/ledstrip_light.yaml` (both variants).
 - C6 external u.FL antenna via `yamls/common/xiao_c6_ext_antenna.yaml` (GPIO3/GPIO14); S3 has no antenna GPIO.

@@ -1,0 +1,31 @@
+iotstack ledlightstrip-c6-thread -- LED Light Strip (XIAO ESP32-C6, Thread)
+
+XIAO ESP32-C6 Thread addressable LED strip (SK6812 RGBW). [WARN] In development.
+Shares the strip + effects with the S3 variant via yamls/common/ledstrip_light.yaml.
+
+Config: yamls/ledlightstrip-c6-thread.yaml
+Chip: esp32c6
+Framework: esp-idf (esp32_rmt_led_strip)
+Network: Thread (FTD)
+Data pin: D0 = GPIO0
+
+Commands (shared help for flash, update, reassign, verify):
+
+  iotstack flash ledlightstrip-c6-thread /dev/ttyACM0
+  iotstack update ledlightstrip-c6-thread
+  iotstack update <MAC> ledlightstrip-c6-thread
+  iotstack reassign <MAC> ledlightstrip-c6-thread
+  iotstack verify ledlightstrip-c6-thread
+
+Examples:
+
+  iotstack flash ledlightstrip-c6-thread /dev/ttyACM0
+  iotstack update ledlightstrip-c6-thread --dry-run
+  iotstack reassign a1b2c3 ledlightstrip-c6-thread
+
+General command reference:
+
+  iotstack flash help
+  iotstack update help
+  iotstack reassign help
+  iotstack verify help

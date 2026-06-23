@@ -18,8 +18,8 @@ Both are roles in `scripts/roles.conf` and share the strip + effects via
 
 | Role | Board | Network | LED driver | Data pin |
 |------|-------|---------|------------|----------|
-| `ledlightstrip` | XIAO ESP32-C6 | Thread (FTD) | esp32_rmt_led_strip | D0 = GPIO0 |
-| `ledlightstrip-s3` | XIAO ESP32-S3 | WiFi | esp32_rmt_led_strip | D0 = GPIO1 |
+| `ledlightstrip-c6-thread` | XIAO ESP32-C6 | Thread (FTD) | esp32_rmt_led_strip | D0 = GPIO0 |
+| `ledlightstrip-s3-wifi` | XIAO ESP32-S3 | WiFi | esp32_rmt_led_strip | D0 = GPIO1 |
 
 Both run esp-idf with the native `esp32_rmt_led_strip` driver. (An earlier Arduino +
 `neopixelbus` S3 variant was dropped: ESPHome deprecated `neopixelbus` for ESP32 in
@@ -125,20 +125,20 @@ full strip.
 
 ## Network
 
-**C6 (`ledlightstrip`)** -- Thread end device (FTD). Joins the existing Thread mesh via the
+**C6 (`ledlightstrip-c6-thread`)** -- Thread end device (FTD). Joins the existing Thread mesh via the
 Thread Router device; Home Assistant reaches it through the border router over IPv6. No WiFi
 credentials needed. Antenna: the C6 uses the external u.FL antenna, selected by driving GPIO3
 LOW (power the RF switch) and GPIO14 HIGH (select external) in `esphome.on_boot` before the
 radio starts (factored into `yamls/common/xiao_c6_ext_antenna.yaml`). To use the onboard
 ceramic antenna instead, drop that package (onboard is the hardware default).
 
-**S3 (`ledlightstrip-s3`)** -- WiFi (the S3 has no Thread radio). Credentials come from NVS
+**S3 (`ledlightstrip-s3-wifi`)** -- WiFi (the S3 has no Thread radio). Credentials come from NVS
 like the other WiFi devices. The u.FL connector is wired directly; no antenna GPIO config.
 
 ## Configuration
 
-YAMLs: `yamls/ledlightstrip.yaml` (C6) and `yamls/ledlightstrip-s3.yaml` (S3). The shared
-strip definition lives in `yamls/common/ledstrip_light.yaml` (used by both).
+YAMLs: `yamls/ledlightstrip-c6-thread.yaml` (C6) and `yamls/ledlightstrip-s3-wifi.yaml` (S3).
+The shared strip definition lives in `yamls/common/ledstrip_light.yaml` (used by both).
 
 Tunable substitutions at the top of each board YAML:
 
