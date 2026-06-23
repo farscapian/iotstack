@@ -8,12 +8,11 @@ _YAML_INFO_LOADED=1
 
 yaml_device_info() {
   local yaml_file="$1"
-  local board="" variant="" network_type="" dev_status="" framework=""
+  local board="" variant="" network_type="" dev_status=""
 
   if [[ -f "$yaml_file" ]]; then
     board=$(grep -A5 '^esp32:' "$yaml_file" | grep -E '^\s*board:\s*' | head -1 | sed 's/.*board:\s*//; s/\s*$//')
     variant=$(grep -A5 '^esp32:' "$yaml_file" | grep -E '^\s*variant:\s*' | head -1 | sed 's/.*variant:\s*//; s/\s*$//')
-    framework=$(grep -A10 '^esp32:' "$yaml_file" | grep -A2 'framework:' | grep -E '^\s*type:\s*' | head -1 | sed 's/.*type:\s*//; s/\s*$//')
     dev_status=$(grep -E '^\s*development_status:\s*' "$yaml_file" | head -1 | sed 's/.*development_status:\s*//; s/"//g; s/\s*$//')
     if grep -q '^wifi:' "$yaml_file" 2>/dev/null; then
       network_type=wifi
@@ -22,8 +21,7 @@ yaml_device_info() {
     fi
   fi
 
-  # Field 5 (framework) appended for backward compatibility with f1-f4 consumers.
-  printf '%s|%s|%s|%s|%s' "$board" "$variant" "$network_type" "$dev_status" "$framework"
+  printf '%s|%s|%s|%s' "$board" "$variant" "$network_type" "$dev_status"
 }
 
 yaml_path_for_role() {

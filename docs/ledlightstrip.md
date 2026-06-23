@@ -13,18 +13,17 @@ hardware. Effects stability not confirmed.
 ## Variants
 
 Same strip and wiring; the board determines the network (the ESP32-S3 has no Thread radio).
-All three are roles in `scripts/roles.conf`:
+Both are roles in `scripts/roles.conf` and share the strip + effects via
+`yamls/common/ledstrip_light.yaml`:
 
-| Role | Board | Network | Framework | LED driver | Data pin |
-|------|-------|---------|-----------|------------|----------|
-| `ledlightstrip` | XIAO ESP32-C6 | Thread (FTD) | esp-idf | esp32_rmt_led_strip | D0 = GPIO0 |
-| `ledlightstrip-s3` | XIAO ESP32-S3 | WiFi | esp-idf | esp32_rmt_led_strip | D0 = GPIO1 |
-| `ledlightstrip-s3-arduino` | XIAO ESP32-S3 | WiFi | arduino | neopixelbus | D0 = GPIO1 |
+| Role | Board | Network | LED driver | Data pin |
+|------|-------|---------|------------|----------|
+| `ledlightstrip` | XIAO ESP32-C6 | Thread (FTD) | esp32_rmt_led_strip | D0 = GPIO0 |
+| `ledlightstrip-s3` | XIAO ESP32-S3 | WiFi | esp32_rmt_led_strip | D0 = GPIO1 |
 
-The two esp-idf variants share the strip + effects via `yamls/common/ledstrip_light.yaml`.
-The arduino variant is an A/B experiment: `neopixelbus` only builds under the Arduino
-framework (it fails under esp-idf), so it carries its own light block. `iotstack roles`
-shows the board/variant/framework/network for each.
+Both run esp-idf with the native `esp32_rmt_led_strip` driver. (An earlier Arduino +
+`neopixelbus` S3 variant was dropped: ESPHome deprecated `neopixelbus` for ESP32 in
+2026.6 and it won't build under ESP-IDF 6.)
 
 ## [WARN] SAFETY DISCLAIMER
 
@@ -133,15 +132,13 @@ LOW (power the RF switch) and GPIO14 HIGH (select external) in `esphome.on_boot`
 radio starts (factored into `yamls/common/xiao_c6_ext_antenna.yaml`). To use the onboard
 ceramic antenna instead, drop that package (onboard is the hardware default).
 
-**S3 (`ledlightstrip-s3`, `ledlightstrip-s3-arduino`)** -- WiFi (the S3 has no Thread radio).
-Credentials come from NVS like the other WiFi devices. The u.FL connector is wired directly;
-no antenna GPIO config.
+**S3 (`ledlightstrip-s3`)** -- WiFi (the S3 has no Thread radio). Credentials come from NVS
+like the other WiFi devices. The u.FL connector is wired directly; no antenna GPIO config.
 
 ## Configuration
 
-YAMLs: `yamls/ledlightstrip.yaml` (C6), `yamls/ledlightstrip-s3.yaml` (S3 esp-idf),
-`yamls/ledlightstrip-s3-arduino.yaml` (S3 arduino). The shared strip definition lives in
-`yamls/common/ledstrip_light.yaml` (used by the two esp-idf variants).
+YAMLs: `yamls/ledlightstrip.yaml` (C6) and `yamls/ledlightstrip-s3.yaml` (S3). The shared
+strip definition lives in `yamls/common/ledstrip_light.yaml` (used by both).
 
 Tunable substitutions at the top of each board YAML:
 
@@ -157,7 +154,7 @@ Tunable substitutions at the top of each board YAML:
 - [OK] Basic RGBW color control
 - [OK] Brightness adjustment
 - [WARN] Effects (experimental, stability not confirmed)
-- [WARN] None of the three variants (C6/Thread, S3/esp-idf, S3/arduino) tested on hardware
+- [WARN] Neither variant (C6/Thread, S3/WiFi) tested on hardware yet
 - [FAIL] Power management not optimized
 - [FAIL] Not tested with full-length high-current strips
 

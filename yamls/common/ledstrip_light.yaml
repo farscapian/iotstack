@@ -8,12 +8,10 @@
 #   strip_gamma       gamma_correct exponent
 #   strip_transition  default transition length
 #
-# esp32_rmt_led_strip (NOT neopixelbus): neopixelbus is Arduino-only and will
-# not build under esp-idf. is_rgbw: true drives the 4th (white) channel;
-# rgb_order is the RGB part only (SK6812 = GRB + W).
-#
-# The Arduino/neopixelbus S3 profile does NOT include this file -- that platform
-# uses different option keys, so it carries its own light block.
+# esp32_rmt_led_strip is the native esp-idf addressable-LED driver. (neopixelbus
+# is Arduino-only and was deprecated for ESP32 in ESPHome 2026.6 -- not used here.)
+# is_rgbw: true drives the 4th (white) channel; rgb_order is the RGB part only
+# (SK6812 = GRB + W).
 
 light:
   - platform: esp32_rmt_led_strip

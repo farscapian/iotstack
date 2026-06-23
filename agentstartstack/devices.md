@@ -24,16 +24,15 @@ Roles are listed in `scripts/roles.conf`. Examples:
 - Panel layout in NVS; see [gotchas.md](gotchas.md) (Matrix display panel layout)
 
 ### LED Light Strip (SK6812 RGBW, default 300 LEDs)
-Same strip + wiring across three board/network/framework variants (roles in `roles.conf`):
+Same strip + wiring across two board/network variants (roles in `roles.conf`).
+Both use esp-idf + esp32_rmt_led_strip:
 
-| Role | Board | Network | Framework | mDNS | Data pin |
-|------|-------|---------|-----------|------|----------|
-| `ledlightstrip` | XIAO ESP32-C6 | Thread (FTD) | esp-idf (esp32_rmt_led_strip) | `ledstrip-<mac>` | D0 = GPIO0 |
-| `ledlightstrip-s3` | XIAO ESP32-S3 | WiFi | esp-idf (esp32_rmt_led_strip) | `ledstrip-s3-<mac>` | D0 = GPIO1 |
-| `ledlightstrip-s3-arduino` | XIAO ESP32-S3 | WiFi | arduino (neopixelbus) | `ledstrip-s3-arduino-<mac>` | D0 = GPIO1 |
+| Role | Board | Network | mDNS | Data pin |
+|------|-------|---------|------|----------|
+| `ledlightstrip` | XIAO ESP32-C6 | Thread (FTD) | `ledstrip-<mac>` | D0 = GPIO0 |
+| `ledlightstrip-s3` | XIAO ESP32-S3 | WiFi | `ledstrip-s3-<mac>` | D0 = GPIO1 |
 
-- Shared strip definition: `yamls/common/ledstrip_light.yaml` (the two esp-idf variants).
+- Shared strip definition: `yamls/common/ledstrip_light.yaml` (both variants).
 - C6 external u.FL antenna via `yamls/common/xiao_c6_ext_antenna.yaml` (GPIO3/GPIO14); S3 has no antenna GPIO.
 - PSU: 5V 20A external supply; XIAO powered from same PSU (5V pin); 330 Ohm on data, 1000 uF at strip input.
-- `neopixelbus` is Arduino-only (fails under esp-idf); the arduino variant exists to A/B it against esp32_rmt_led_strip on S3.
 - See [docs/ledlightstrip.md](../docs/ledlightstrip.md) and [docs/led-light-strip-diagram.svg](../docs/led-light-strip-diagram.svg)
