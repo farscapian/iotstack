@@ -3,6 +3,15 @@
 
 Roles are listed in `scripts/roles.conf`. Examples:
 
+> **XIAO ESP32-C6 external antenna (REQUIRED when enabled):** the C6 roles
+> (bleproxy, threadrouter, mmwave, ledlightstrip-c6-thread) include
+> `yamls/common/xiao_c6_ext_antenna.yaml`, which selects the external u.FL
+> connector (GPIO3 LOW + GPIO14 HIGH at boot). A unit running such a build
+> **must have a u.FL pigtail attached** -- without it the board has no usable
+> antenna (observed -69 dBm onboard vs -42 dBm external; weak signal also breaks
+> mDNS, so `iotstack flash/update` can't discover the device). To run a C6 on
+> the onboard ceramic antenna instead, drop that package from its YAML.
+
 ### WiFi BLE Proxy
 - YAML: `yamls/bleproxy.yaml`
 - mDNS hostname: `bleproxy-<mac>` (e.g. `bleproxy-8238cc`)

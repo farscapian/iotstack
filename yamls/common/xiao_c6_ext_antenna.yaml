@@ -7,6 +7,12 @@
 # ceramic antenna is the hardware default; include this package only on C6
 # boards fitted with the external antenna.
 #
+# *** REQUIRED: the u.FL antenna MUST be physically attached. ***
+# This selects the external connector, so a board running this build WITHOUT a
+# pigtail plugged in has effectively no antenna -- it will associate weakly or
+# not at all (observed: -69 dBm onboard vs -42 dBm external; weak signal also
+# breaks mDNS discovery, so `iotstack flash/update` can't find the device).
+#
 # NOTE: do NOT include on XIAO ESP32-S3 -- that board has no RF switch GPIO
 # (the u.FL connector is wired directly; nothing to configure).
 #
