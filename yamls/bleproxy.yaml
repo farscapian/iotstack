@@ -2,7 +2,6 @@
 # ESPHome 2026.5.x compatible
 
 substitutions:
-  development_status: "prod"
   device_role: "bleproxy"
   friendly_name: "Bluetooth Proxy"
   project_version: "0.0.0-dev"
@@ -26,7 +25,7 @@ esphome:
   friendly_name: ${friendly_name}
   name_add_mac_suffix: true
   project:
-    name: "iotstack.${device_role}-${development_status}"
+    name: "iotstack.${device_role}"
     version: "${project_version}"
 
 esp32:

@@ -1,8 +1,8 @@
 substitutions:
-  development_status: "dev"
   device_role: "matrixdisplay"
   friendly_name: "Matrix Display"
   boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
+  heartbeat_interval: "10s"   # bootstrap-only aliveness beacon (see interval: below)
   # Adaptive brightness: HA sets "Room Illuminance" (lx); device maps linearly to pixel brightness.
   matrix_brightness_cap: "170"       # Max pixel brightness at matrix_illuminance_max_lx
   matrix_brightness_default: "85"    # Target brightness at matrix_illuminance_default_lx
@@ -28,7 +28,7 @@ esphome:
   name: matrixdisplay
   friendly_name: ${friendly_name}
   project:
-    name: "iotstack.${device_role}-${development_status}"
+    name: "iotstack.${device_role}"
     version: "${project_version}"
   name_add_mac_suffix: true
   on_boot:
@@ -218,5 +218,5 @@ text_sensor:
     entity_category: diagnostic
     update_interval: 60s
     lambda: |-
-      return std::to_string(id(matrix_display).get_display_width()) + "x" +
+      return "iotstack" + std::to_string(id(matrix_display).get_display_width()) + "x" +
              std::to_string(id(matrix_display).get_display_height());

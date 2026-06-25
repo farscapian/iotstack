@@ -4,7 +4,6 @@
 # See docs/ledlightstrip.md for the (shared) wiring diagram and safety notes.
 
 substitutions:
-  development_status: "dev"
   device_role: "ledstrip-s3-wifi"
   friendly_name: "LED Light Strip S3 WiFi"
   project_version: "0.0.0-dev"
@@ -33,7 +32,7 @@ esphome:
   name: ledstrip-s3-wifi
   friendly_name: ${friendly_name}
   project:
-    name: "iotstack.${device_role}-${development_status}"
+    name: "iotstack.${device_role}"
     version: "${project_version}"
   name_add_mac_suffix: true
 

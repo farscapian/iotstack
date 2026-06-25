@@ -438,13 +438,6 @@ configure_ufw() {
         return 0
     fi
 
-    local ufw_status
-    ufw_status=$(sudo ufw status | head -1)
-    if [[ "$ufw_status" != "Status: active" ]]; then
-        log "ufw is not active -- skipping firewall configuration."
-        return 0
-    fi
-
     log "Configuring UFW rules for OTBR..."
 
     # IPv6 forwarding: Thread (wpan0) <-> upstream interface

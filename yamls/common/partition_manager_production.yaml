@@ -1,5 +1,11 @@
 # Production-only partition controls. Includes switch_to_bootstrap so iotstack update
 # can move a running production device into bootstrap (ota_0) before OTA.
+
+# Default heartbeat cadence for the aliveness beacon below. An including device may
+# override it in its own substitutions: block (e.g. matrixdisplay sets "10s").
+substitutions:
+  heartbeat_interval: "10s"
+
 packages:
   partition_base: !include partition_manager_base.yaml
 
@@ -10,3 +16,21 @@ api:
     - service: switch_to_bootstrap
       then:
         - lambda: "id(partition_mgr).boot_bootstrap();"
+
+# Aliveness beacon for production devices. Lets `iotstack logs` confirm the device is
+# alive without a reboot; the free-heap reading also surfaces a
+# slow leak. Cadence is the heartbeat_interval substitution (default above).
+interval:
+  - interval: ${heartbeat_interval}
+    then:
+      - lambda: |-
+          ESP_LOGI("heartbeat", "This device is alive - up %us, free heap %u B",
+                   (unsigned) (millis() / 1000), (unsigned) esp_get_free_heap_size());
+
+logger:
+  level: DEBUG  # Enhanced logging to debug NVS issues
+  hardware_uart: USB_SERIAL_JTAG
+  logs:
+    nvs_secrets: DEBUG
+    wifi: DEBUG
+    api: DEBUG

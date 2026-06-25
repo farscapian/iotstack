@@ -1,5 +1,4 @@
 substitutions:
-  development_status: "dev"
   device_role: "sendspinspeaker"
   friendly_name: "SendSpin Speaker"
   boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
@@ -10,7 +9,7 @@ esphome:
   friendly_name: "${friendly_name}"
   name_add_mac_suffix: true
   project:
-    name: "iotstack.${device_role}-${development_status}"
+    name: "iotstack.${device_role}"
     version: "${project_version}"
 
 esp32:

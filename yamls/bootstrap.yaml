@@ -12,7 +12,6 @@
 # WARNING: Do NOT use this as production firmware!
 
 substitutions:
-  development_status: "prod"
   bootstrap_role: "bootstrap"  # overridden at render from IOTSTACK_BOOTSTRAP_ROLE
   device_role: "${bootstrap_role}"
   friendly_name: "Bootstrap Mode"  # overridden at render via iotstack_bootstrap_friendly_name
@@ -43,7 +42,7 @@ esphome:
   friendly_name: ${friendly_name}
   name_add_mac_suffix: true
   project:
-    name: "iotstack.${device_role}-${development_status}"
+    name: "iotstack.${device_role}"
     version: "${project_version}"
   includes:
     - common/mdns_remove.h
