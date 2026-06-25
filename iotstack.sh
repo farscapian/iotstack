@@ -3551,6 +3551,23 @@ _boot_partition_single() {
   _boot_partition_network "$1" "$2"
 }
 
+_boot_to_production_via_bootstrap() {
+  # Toggle a device (currently on bootstrap) back to its production partition
+  # WITHOUT re-OTAing. Used when the production slot already holds the matching
+  # image, so a full OTA would be wasted work. Non-fatal: returns 0 if the toggle
+  # was delivered, 1 otherwise, so callers can fall back to OTA. (Mirrors the
+  # bootstrap-host branch of _boot_partition_network, which err-exits on failure.)
+  local mac="$1"
+  local mac_lower host entity_id
+  mac_lower=$(echo "$mac" | tr '[:upper:]' '[:lower:]')
+  host="$(iotstack_bootstrap_hostname "$mac_lower")"
+  entity_id="button.${host//-/_}_toggle_boot_partition"
+  curl -s -X POST "http://${host}.local/api/services/button/press" \
+    -H "Content-Type: application/json" \
+    -d "{\"entity_id\": \"${entity_id}\"}" \
+    --max-time 5 >/dev/null 2>&1
+}
+
 _flash_matrix_layout_applicable() {
   # Matrix NVS layout options apply to matrixdisplay production flashes only.
   local device="$1"
@@ -3881,13 +3898,22 @@ _flash_matrix_layout_update_via_bootstrap_if_needed() {
   _flash_store_matrix_layout_pass "$device" "$want_cols" "$want_w" "$want_h"
 
   info "Step 3: Booting production firmware with updated NVS..."
-  local _layout_yaml
-  _layout_yaml=$(resolve_device "$device" false 2>/dev/null) || _layout_yaml=""
-  if [[ -n "$_layout_yaml" ]]; then
-    _flash_invoke_update "$device_mac" "$_layout_yaml" "$device" "$tty_device"
+  # This code path runs only when the on-flash production image already matched the
+  # build (FLASH_ASSESS_FLASH_CURRENT), so the production partition still holds the
+  # correct image -- re-OTAing it is wasted work. Toggle the boot partition back to
+  # production instead; fall back to OTA only if the toggle can't be delivered.
+  if _boot_to_production_via_bootstrap "$device_mac"; then
+    ok "Boot partition toggled to production (OTA skipped -- image already current)"
   else
-    warn "Could not resolve yaml for ${device} -- try: iotstack flash ${device} ${tty_device}"
-    return 1
+    warn "Boot-partition toggle unreachable -- falling back to production OTA"
+    local _layout_yaml
+    _layout_yaml=$(resolve_device "$device" false 2>/dev/null) || _layout_yaml=""
+    if [[ -n "$_layout_yaml" ]]; then
+      _flash_invoke_update "$device_mac" "$_layout_yaml" "$device" "$tty_device"
+    else
+      warn "Could not resolve yaml for ${device} -- try: iotstack flash ${device} ${tty_device}"
+      return 1
+    fi
   fi
 
   if _wait_for_production_online "$prod_hostname" 90; then
