@@ -14,7 +14,7 @@ Production firmware has **no OTA server** in YAML. Update/reassign/flash paths:
 
 `--erase` is a USB-only flag meaning "erase the entire flash chip before writing." It is only valid for `iotstack flash`.
 
-- **`update_devices.sh`** and **`iotstack update`** reject `--erase` with an immediate error — it has no meaning in an OTA-only context.
+- **`update_devices.sh`** and **`iotstack update`** reject `--erase` with an immediate error -- it has no meaning in an OTA-only context.
 - `iotstack flash` does NOT forward `--erase` to the internal `update_devices.sh --reassign` call for the production OTA step. The erase already happened at the USB bootstrap step.
 - `_flash_invoke_update` (the function that calls `update_devices.sh --reassign`) must not include `--erase` in its `update_args`.
 
@@ -44,7 +44,7 @@ During reassign OTA the discovered host is `bootstrap-<mac>`. Do **not** compare
 
 The flash success line (`ok "${HOSTNAME}: flash successful. (installed: ${hash_short})"`) uses `NEW_CONFIG_HASH` (the production firmware hash from `build_info.json`) -- **not** `DEVICE_HASHES[$HOSTNAME]` (the pre-flash mDNS hash of the bootstrap device). The pre-flash hash is the bootstrap's config_hash and would be misleading here. `NEW_CONFIG_HASH` is always set before the flash loop runs.
 
-After USB bootstrap flash, WiFi readiness is detected by probing `bootstrap-<mac>.local:3232` (`_wait_for_bootstrap_wifi_ready`), not by a serial log line. Default wait is **10s** (`_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC`) — sufficient only when bootstrap is already running; a **ROM boot loop** (repeating `ESP-ROM:esp32s3`, `entry 0x403c8914`, no `[nvs_secrets]` lines) means the app never started — do not blame WiFi timeout until serial shows bootstrap firmware booted.
+After USB bootstrap flash, WiFi readiness is detected by probing `bootstrap-<mac>.local:3232` (`_wait_for_bootstrap_wifi_ready`), not by a serial log line. Default wait is **10s** (`_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC`) -- sufficient only when bootstrap is already running; a **ROM boot loop** (repeating `ESP-ROM:esp32s3`, `entry 0x403c8914`, no `[nvs_secrets]` lines) means the app never started -- do not blame WiFi timeout until serial shows bootstrap firmware booted.
 
 ### `FIRMWARE_BIN` must use `${YAMLS_DIR}`, not `yamls/`
 
@@ -53,7 +53,7 @@ After USB bootstrap flash, WiFi readiness is detected by probing `bootstrap-<mac
 FIRMWARE_BIN="${YAMLS_DIR}/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"
 ```
 
-`YAMLS_DIR` is an absolute path exported from `config.sh`. **Never use a relative `yamls/` prefix** — if iotstack is invoked from any directory other than the project root, `FIRMWARE_BIN` resolves to a nonexistent path, `esphome upload --file ""` fails immediately with no visible error, and the OTA log directory is left empty.
+`YAMLS_DIR` is an absolute path exported from `config.sh`. **Never use a relative `yamls/` prefix** -- if iotstack is invoked from any directory other than the project root, `FIRMWARE_BIN` resolves to a nonexistent path, `esphome upload --file ""` fails immediately with no visible error, and the OTA log directory is left empty.
 
 ### Build cache sync between `iotstack flash` Step 1 and Step 5
 
@@ -63,10 +63,10 @@ FIRMWARE_BIN="${YAMLS_DIR}/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}
 
 ### Agent live-run watching (`sessions.watch`)
 
-Every `iotstack` invocation appends one TSV line to `~/.iotstack/logs/sessions.watch` (`IOTSTACK_SESSION_WATCH`). Agents should tail it for new runs, then tail the `session_log` and `serial_log` paths from that line. Full workflow: `workflow.md` § Watching live iotstack runs.
+Every `iotstack` invocation appends one TSV line to `~/.iotstack/logs/sessions.watch` (`IOTSTACK_SESSION_WATCH`). Agents should tail it for new runs, then tail the `session_log` and `serial_log` paths from that line. Full workflow: `workflow.md` section Watching live iotstack runs.
 
-- `iotstack ps` — process trees for active sessions + detached `serial-logs.py` / esptool helpers
-- `iotstack kill` — stop all of the above (SIGCONT stopped jobs, then SIGTERM/SIGKILL per process group)
+- `iotstack ps` -- process trees for active sessions + detached `serial-logs.py` / esptool helpers
+- `iotstack kill` -- stop all of the above (SIGCONT stopped jobs, then SIGTERM/SIGKILL per process group)
 
 ### esptool flash frequency (ESP32-S3 / S2)
 

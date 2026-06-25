@@ -11,7 +11,7 @@ ESP32 ESPHome device management. **Load topic files on demand -- do not read thi
 - New Grok session: run `scripts/init_grok_session.sh`; new Claude Code session: run `scripts/init_claude_session.sh` (see `.agentstartstack/agentstartstack/workflow.md`)
 - After changes: commit in session clone; human runs `nut` then `git push origin main` (or `nutup`). NEVER `git push origin` from agents (see `.agentstartstack/agentstartstack/nut.md`)
 - Never `nut` or `git pull` on the canonical local repo while `iotstack` is running
-- When the human runs `iotstack` on the canonical local repo: tail `~/.iotstack/logs/sessions.watch` (see `agentstartstack/workflow.md`)
+- When the human runs `iotstack` on the canonical local repo: tail `~/.iotstack/logs/sessions.watch` (see `docs/workflow.md`)
 
 ## Generic guidance (.agentstartstack submodule)
 
@@ -29,22 +29,22 @@ ESP32 ESPHome device management. **Load topic files on demand -- do not read thi
 
 | File | Load when |
 |------|-----------|
-| [agentstartstack/workflow.md](agentstartstack/workflow.md) | `sessions.watch`, live flash monitoring, tty guards |
-| [agentstartstack/configuration.md](agentstartstack/configuration.md) | `~/.iotstack/.env`, compilation cache flags |
-| [agentstartstack/architecture.md](agentstartstack/architecture.md) | mDNS discovery, compile cache, YAML, project version |
-| [agentstartstack/features.md](agentstartstack/features.md) | Update subsets, delta OTA, reassign, verify, HA |
-| [agentstartstack/cli.md](agentstartstack/cli.md) | `iotstack.sh`, `roles.conf`, command examples |
-| [agentstartstack/partitions.md](agentstartstack/partitions.md) | Bootstrap/production partition sizing |
-| [agentstartstack/implementation.md](agentstartstack/implementation.md) | Stdout redirect, temp files, logging paths |
-| [agentstartstack/gotchas.md](agentstartstack/gotchas.md) | Bootstrap OTA, `--erase`, mDNS TXT, matrix NVS |
-| [agentstartstack/pitfalls.md](agentstartstack/pitfalls.md) | Symptom -> cause -> fix lookup table |
-| [agentstartstack/devices.md](agentstartstack/devices.md) | Per-role hardware notes |
-| [agentstartstack/nvs-secrets.md](agentstartstack/nvs-secrets.md) | NVS namespace, WiFi/Thread from NVS, pass store |
-| [agentstartstack/security.md](agentstartstack/security.md) | OTA passwords, `pass insert` twice |
-| [agentstartstack/flash-encryption.md](agentstartstack/flash-encryption.md) | eFuses / flash encryption (TODO) |
-| [agentstartstack/testing.md](agentstartstack/testing.md) | Pre-handoff device testing checklist |
-| [agentstartstack/references.md](agentstartstack/references.md) | External docs and key source files |
+| [docs/workflow.md](docs/workflow.md) | `sessions.watch`, live flash monitoring, tty guards |
+| [docs/configuration.md](docs/configuration.md) | `~/.iotstack/.env`, compilation cache flags |
+| [docs/architecture.md](docs/architecture.md) | mDNS discovery, compile cache, YAML, project version |
+| [docs/features.md](docs/features.md) | Update subsets, delta OTA, reassign, verify, HA |
+| [docs/cli.md](docs/cli.md) | `iotstack.sh`, `roles.conf`, command examples |
+| [docs/partitions.md](docs/partitions.md) | Bootstrap/production partition sizing |
+| [docs/implementation.md](docs/implementation.md) | Stdout redirect, temp files, logging paths |
+| [docs/gotchas.md](docs/gotchas.md) | Bootstrap OTA, `--erase`, mDNS TXT, matrix NVS |
+| [docs/pitfalls.md](docs/pitfalls.md) | Symptom -> cause -> fix lookup table |
+| [docs/devices.md](docs/devices.md) | Per-role hardware notes |
+| [docs/nvs-secrets.md](docs/nvs-secrets.md) | NVS namespace, WiFi/Thread from NVS, pass store |
+| [docs/security.md](docs/security.md) | OTA passwords, `pass insert` twice |
+| [docs/flash-encryption.md](docs/flash-encryption.md) | eFuses / flash encryption (TODO) |
+| [docs/testing.md](docs/testing.md) | Pre-handoff device testing checklist |
+| [docs/references.md](docs/references.md) | External docs and key source files |
 
-Full catalog: [agentstartstack/README.md](agentstartstack/README.md).
+Full catalog: [docs/README.md](docs/README.md).
 
 Origin: `git@github.com:farscapian/iotstack.git`

@@ -18,6 +18,6 @@
 | Stale CLI behavior after fixes | Testing against unpulled `main` | `git pull origin main` on `~/Sync/mini_projects/iotstack` (or Grok clone behind Sync) |
 | ROM boot loop after USB flash (`entry 0x403c8914`, no app logs) | esptool flash params mismatched build `flash_args` (was hardcoded 40m) | Fixed: `esp_esptool_flash_params_for_build()`; re-flash with `--erase` on stale devices |
 | ROM boot loop, `rst:0xc`, `Saved PC` in app IRAM (~0x4037xxxx), no USB output | ESP32-S3 N16R8: OPI PSRAM shares MSPI clock; bootstrap built without `psram:` causes MSPI timing crash ~1s after first boot | Add `psram:` to bootstrap.yaml (handled by `bootstrap_render_yaml()` for esp32s3 only); recompile and re-flash with `--erase` |
-| Agent misses human's flash run | Not watching `sessions.watch` | Tail `~/.iotstack/logs/sessions.watch`; parse session/serial log paths — `workflow.md` |
+| Agent misses human's flash run | Not watching `sessions.watch` | Tail `~/.iotstack/logs/sessions.watch`; parse session/serial log paths -- `workflow.md` |
 | Hung flash holds `/dev/ttyACM0` | Detached `serial-logs.py` in separate session | `iotstack ps` then `iotstack kill` |
 | Multiple `[OK] NVS` lines in session log | Nested `write-nvs-secrets.sh` + parent `iotstack.sh` messages | One NVS write; see session log sources in `workflow.md` |

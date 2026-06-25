@@ -61,7 +61,7 @@ Bootstrap serial flash writes `bootloader.bin`, `partitions.bin`, **OTA init at 
 
 ### Session registry (agent monitoring)
 
-`create_log_watch_append()` writes one TSV line per invocation to `~/.iotstack/logs/sessions.watch` (`IOTSTACK_SESSION_WATCH`). Agents use it to discover new runs and tail `session_log` / `serial_log` columns. Details: `workflow.md` § Watching live iotstack runs.
+`create_log_watch_append()` writes one TSV line per invocation to `~/.iotstack/logs/sessions.watch` (`IOTSTACK_SESSION_WATCH`). Agents use it to discover new runs and tail `session_log` / `serial_log` columns. Details: `workflow.md` section Watching live iotstack runs.
 
 ### YAML Configuration
 - ESPHome devices are configured via YAML files in `yamls/` (one file per role, e.g. `bleproxy.yaml`, `matrixdisplay.yaml`)

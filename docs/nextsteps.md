@@ -19,7 +19,7 @@ Session init (in order):
      git submodule update --init --recursive --remote .agentstartstack
      git add .agentstartstack && rm .agentstartstack-bump
    and fold the bump into that commit (.agentstartstack/agentstartstack/workflow.md sec 4).
-3. Read agentstartstack/nextsteps.md (this file).
+3. Read docs/nextsteps.md (this file).
 
 Your focus: treat tests/cases/ as a regression gate for the hardware-validated
 builds. Workflow for any change you make:

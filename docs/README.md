@@ -1,4 +1,4 @@
-# agentstartstack (iotstack)
+# iotstack project docs
 
 Project-specific agent guidance. Generic workflow, nut, conventions, and security live in the **.agentstartstack** submodule.
 
