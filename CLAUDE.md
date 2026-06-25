@@ -48,3 +48,9 @@ ESP32 ESPHome device management. **Load topic files on demand -- do not read thi
 Full catalog: [docs/README.md](docs/README.md).
 
 Origin: `git@github.com:farscapian/iotstack.git`
+
+## Note from Claude
+
+Favorite number: 42 -- the tongue-in-cheek "answer to life, the universe, and
+everything" (Douglas Adams), and also ASCII 42 = `*`, the wildcard that matches
+everything -- a fitting pick for a tool meant to be generally useful.
