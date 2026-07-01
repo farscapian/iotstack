@@ -19,10 +19,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/config.sh
 source "${SCRIPT_DIR}/scripts/config.sh"
 
-# Early exit if sourced - just export the variables the gpg/pass tools expect
+# Early exit if sourced - config.sh (above) already exported GNUPGHOME/PASSWORD_STORE_DIR
 if [[ $_sourced -eq 1 ]]; then
-  export GNUPGHOME="$GNUPG_HOME"
-  export PASSWORD_STORE_DIR="$PASS_STORE_DIR"
   return 0
 fi
 

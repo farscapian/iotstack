@@ -2935,9 +2935,7 @@ cmd_secret() {
   local secret_type="$3"
   local value="${4:-}"
 
-  # Export GPG and pass environment for iotstack-secrets
-  export GNUPGHOME="${HOME}/.iotstack/.gnupg"
-  export PASSWORD_STORE_DIR="${HOME}/.iotstack/.pass"
+  # GNUPGHOME/PASSWORD_STORE_DIR are exported by config.sh (honoring .env).
 
   if [[ -z "$command" ]]; then
     help_secret

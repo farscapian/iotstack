@@ -45,6 +45,10 @@ export IOTSTACK_SESSION_WATCH="${IOTSTACK_SESSION_WATCH:-${LOGS_DIR}/sessions.wa
 export ARTIFACTS_DIR="${ARTIFACTS_DIR:-${IOTSTACK_HOME}/artifacts}"
 export PASS_STORE_DIR="${PASS_STORE_DIR:-${IOTSTACK_HOME}/.pass}"
 export GNUPG_HOME="${GNUPG_HOME:-${IOTSTACK_HOME}/.gnupg}"
+# Point gpg and pass at iotstack's isolated stores so users need not export these
+# in their shell rc. GNUPG_HOME/PASS_STORE_DIR above already honor .env overrides.
+export GNUPGHOME="$GNUPG_HOME"
+export PASSWORD_STORE_DIR="$PASS_STORE_DIR"
 
 export PARTITION_TABLE_CSV="${PARTITION_TABLE_CSV:-iotstack_partition_table.csv}"
 export PARTITION_TABLE="${PARTITION_TABLE:-${ARTIFACTS_DIR}/${PARTITION_TABLE_CSV}}"

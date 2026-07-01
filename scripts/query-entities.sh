@@ -22,10 +22,6 @@ if [[ -z "$DEVICE_NAME" && "$LIST_DEVICES" != "true" ]]; then
   exit 1
 fi
 
-# Export pass environment (from config.sh)
-export GNUPGHOME
-export PASSWORD_STORE_DIR
-
 err() { echo "ERROR: $*" >&2; exit 1; }
 warn() { echo "WARN: $*" >&2; }
 

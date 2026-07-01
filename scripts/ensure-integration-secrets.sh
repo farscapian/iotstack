@@ -14,9 +14,6 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/config.sh
 source "${_SCRIPT_DIR}/config.sh"
 
-export GNUPGHOME
-export PASSWORD_STORE_DIR
-
 PLACEHOLDER_VALUE="CONFIGURE_ME"
 
 # Avoid re-defining helpers when sourced multiple times.
