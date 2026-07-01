@@ -19,6 +19,8 @@ class NVSSecrets : public Component {
 
   void set_ota_nvs_key(const std::string &key) { ota_nvs_key_ = key; }
   void set_api_nvs_key(const std::string &key) { api_nvs_key_ = key; }
+  void set_update_api_nvs_key(const std::string &key) { update_api_nvs_key_ = key; }
+  void set_require_api_encryption(bool v) { require_api_encryption_ = v; }
 
   std::string get_wifi_ssid() const { return wifi_ssid_; }
   std::string get_wifi_password() const { return wifi_password_; }
@@ -45,6 +47,10 @@ class NVSSecrets : public Component {
  private:
   std::string ota_nvs_key_{"ota_password"};
   std::string api_nvs_key_{};
+  std::string update_api_nvs_key_{};
+  bool require_api_encryption_{false};
+  // Set true once apply_api_encryption_key_() successfully installs a PSK.
+  bool api_encryption_active_{false};
   std::string wifi_ssid_;
   std::string wifi_password_;
   std::string ota_password_;

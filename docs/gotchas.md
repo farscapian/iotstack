@@ -92,6 +92,12 @@ Network-first, USB-last:
 1. `update_nvs_secrets` on `bootstrap-<mac>.local` (production API for read/compare, bootstrap API for write)
 2. `write-nvs-secrets.sh` / esptool only when bootstrap is not yet on WiFi or API is down
 
+The bootstrap API write is **encrypted** (noise PSK = per-device `bootstrap_api_key`,
+written OOB over USB) and **fails closed**: no PSK -> no plaintext connection, so
+the caller falls back to USB. Firmware also refuses `update_nvs_secrets` without an
+active PSK (`require_api_encryption: true`). A keyless/erased device is USB-recover
+only. See [security.md](security.md) "Bootstrap API encryption".
+
 ### Color variables and `printf`
 
 `update_devices.sh` color vars must use ANSI-C quoting (`GRN=$'\033[0;32m'`). Single-quoted `'\033[...]'` stores a literal backslash; `echo -e` in `[OK]` lines still works but `printf '%s'` prints raw `\033[0;32m`.

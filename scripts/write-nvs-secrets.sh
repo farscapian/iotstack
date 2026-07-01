@@ -149,6 +149,21 @@ BOOTSTRAP_OTA_BASE=$(iotstack_bootstrap_pass_ota_read 2>/dev/null) \
   || BOOTSTRAP_OTA_BASE=$(_get_or_generate_role_ota_password "$(iotstack_bootstrap_pass_ota_path)" "$(iotstack_bootstrap_role)")
 BOOTSTRAP_OTA_PASSWORD=$(echo -n "${BOOTSTRAP_OTA_BASE}|${DEVICE_MAC}" | sha256sum | cut -c1-32)
 
+# -- Derive bootstrap device-specific API noise PSK -------------------------
+# The bootstrap API is encrypted (zero-trust LAN). This key is written to NVS
+# ONLY over USB (this path); it is NEVER sent over the API, so --print-api-json
+# below deliberately omits it. Same role-master|MAC derivation as production.
+BOOTSTRAP_API_BASE=$(pass show "$(iotstack_bootstrap_pass_api_path)" 2>/dev/null || echo "")
+if [[ -z "$BOOTSTRAP_API_BASE" ]]; then
+  info "Bootstrap API key not found for role: $(iotstack_bootstrap_role), generating..."
+  BOOTSTRAP_API_BASE=$(openssl rand -base64 32 | tr -d '\n')
+  { echo "$BOOTSTRAP_API_BASE"; echo "$BOOTSTRAP_API_BASE"; } | \
+    pass insert -f "$(iotstack_bootstrap_pass_api_path)" 2>/dev/null || \
+    err "Failed to store bootstrap API key in pass"
+  ok "Bootstrap API key generated and stored for role: $(iotstack_bootstrap_role)"
+fi
+BOOTSTRAP_API_KEY=$(echo -n "${BOOTSTRAP_API_BASE}|${DEVICE_MAC}" | sha256sum | cut -c1-64)
+
 # -- Derive production device-specific API key (if production role given) --
 PROD_API_KEY=""
 if [[ -n "$PRODUCTION_ROLE" ]]; then
@@ -237,6 +252,7 @@ info "Writing NVS partition to device..."
 
 export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
        BOOTSTRAP_OTA_PASSWORD="$BOOTSTRAP_OTA_PASSWORD" \
+       BOOTSTRAP_API_KEY="$BOOTSTRAP_API_KEY" \
        PROD_API_KEY="$PROD_API_KEY" \
        THREAD_TLV="$THREAD_TLV" DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE" \
        NVS_SIZE="$NVS_SIZE" WRITE_MATRIX_LAYOUT="$WRITE_MATRIX_LAYOUT" \
@@ -256,6 +272,7 @@ import sys
 wifi_ssid = os.environ['WIFI_SSID']
 wifi_password = os.environ['WIFI_PASSWORD']
 bootstrap_ota_password = os.environ['BOOTSTRAP_OTA_PASSWORD']
+bootstrap_api_key = os.environ.get('BOOTSTRAP_API_KEY', '')
 prod_api_key = os.environ.get('PROD_API_KEY', '')
 thread_tlv = os.environ.get('THREAD_TLV', '')
 production_role = os.environ.get('PRODUCTION_ROLE', '')
@@ -283,6 +300,10 @@ with open(nvs_csv_path, 'w') as f:
     f.write(f"wifi_password,data,string,{wifi_password}\n")
     # bootstrap reads this key for OTA authentication
     f.write(f"ota_password,data,string,{bootstrap_ota_password}\n")
+    # bootstrap reads this key as its API noise PSK (encrypted native API).
+    # Written ONLY over USB (out-of-band); never transmitted over the API.
+    if bootstrap_api_key:
+        f.write(f"bootstrap_api_key,data,string,{bootstrap_api_key}\n")
     if prod_api_key:
         f.write(f"prod_api_key,data,string,{prod_api_key}\n")
     if thread_tlv:

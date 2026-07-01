@@ -10,7 +10,8 @@
 | NVS key-value format | [OK] Working | Uses esp_idf_nvs_partition_gen; keys written under the **`iotstack` namespace** (see "NVS Namespace" pitfall below) |
 | OTA password from NVS | [OK] Working | nvs_secrets component loads and applies password |
 | WiFi credentials from NVS | [OK] Working | nvs_secrets reads SSID+password from NVS and applies them at runtime via `wifi::global_wifi_component->save_wifi_sta()` (see WiFi Credentials From NVS below) |
-| API encryption key | [OK] Stored | Safely written to NVS, awaiting API component support |
+| Production API key (`prod_api_key`) | [OK] Working | Per-device key from NVS applied at boot (`set_noise_psk`); used for HA API auth |
+| Bootstrap API key (`bootstrap_api_key`) | [OK] Working | Per-device noise PSK for the encrypted bootstrap API; written OOB over USB only (see [security.md](security.md) "Bootstrap API encryption"). Needs hardware validation. |
 | Flash encryption | [TODO] TODO | Planned for production hardening with eFuses |
 
 ## CRITICAL: NVS namespace row required

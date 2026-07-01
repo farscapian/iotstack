@@ -133,6 +133,11 @@ void NVSSecrets::apply_api_encryption_key_() {
 #ifdef USE_API_NOISE
   if (api_encryption_key_.empty()) {
     ESP_LOGD(TAG, "[NVS] No API encryption key in NVS");
+    if (require_api_encryption_) {
+      ESP_LOGE(TAG, "[NVS] API encryption REQUIRED but no key '%s' in NVS -- "
+                    "update_nvs_secrets will refuse. Recover via USB (write-nvs-secrets.sh).",
+               api_nvs_key_.c_str());
+    }
     return;
   }
   if (api_encryption_key_.size() != 64) {
@@ -162,6 +167,7 @@ void NVSSecrets::apply_api_encryption_key_() {
   // preferences). We always reload from iotstack NVS on every boot, so there
   // is no need to persist the key through ESPHome's separate preferences layer.
   api_server->set_noise_psk(psk);
+  api_encryption_active_ = true;
   ESP_LOGI(TAG, "[NVS] API encryption enabled (key loaded from '%s')", api_nvs_key_.c_str());
 #endif
 }
@@ -268,6 +274,14 @@ void NVSSecrets::update_secrets(const std::string &wifi_ssid,
                                 const std::string &matrix_panel_h,
                                 const std::string &device_role,
                                 const std::string &git_commit) {
+  // Zero-trust: an unencrypted (e.g. erased) device must not accept secrets over
+  // a plaintext LAN channel. When require_api_encryption_ is set and no noise PSK
+  // was applied at boot, refuse the write; recovery is USB-only.
+  if (require_api_encryption_ && !api_encryption_active_) {
+    ESP_LOGE(TAG, "[NVS-UPDATE] REFUSED: API encryption is required but no key is active. "
+                  "Recover this device over USB (write-nvs-secrets.sh).");
+    return;
+  }
   nvs_handle_t handle;
   esp_err_t err = nvs_open(NAMESPACE, NVS_READWRITE, &handle);
   if (err != ESP_OK) {
@@ -277,8 +291,11 @@ void NVSSecrets::update_secrets(const std::string &wifi_ssid,
   write_nvs_string(handle, "wifi_ssid",     wifi_ssid);
   write_nvs_string(handle, "wifi_password", wifi_password);
   write_nvs_string(handle, "ota_password",  ota_password);
-  if (!api_nvs_key_.empty())
-    write_nvs_string(handle, api_nvs_key_.c_str(), api_key);
+  // The incoming api_key is the production PSK being provisioned; it is written
+  // to update_api_nvs_key_ (typically "prod_api_key"), which is deliberately
+  // distinct from api_nvs_key_ so bootstrap never clobbers its own noise PSK.
+  if (!update_api_nvs_key_.empty())
+    write_nvs_string(handle, update_api_nvs_key_.c_str(), api_key);
   write_nvs_string(handle, "thread_tlv",    thread_tlv);
   write_nvs_u8_if_set(handle, "matrix_cols", matrix_cols);
   write_nvs_u16_if_set(handle, "matrix_panel_w", matrix_panel_w, 256);
@@ -302,6 +319,8 @@ void NVSSecrets::dump_config() {
   ESP_LOGCONFIG(TAG, "  OTA key '%s': %s", ota_nvs_key_.c_str(), ota_password_.empty() ? "(not set)" : "(loaded from NVS)");
   if (!api_nvs_key_.empty())
     ESP_LOGCONFIG(TAG, "  API key '%s': %s", api_nvs_key_.c_str(), api_encryption_key_.empty() ? "(not set)" : "(loaded from NVS)");
+  ESP_LOGCONFIG(TAG, "  API encryption required: %s (active: %s)",
+                require_api_encryption_ ? "yes" : "no", api_encryption_active_ ? "yes" : "no");
 #ifdef USE_OPENTHREAD
   ESP_LOGCONFIG(TAG, "  Thread TLV: %s", thread_tlv_.empty() ? "(not set)" : "(loaded from NVS)");
 #endif

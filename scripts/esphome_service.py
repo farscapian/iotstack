@@ -48,7 +48,12 @@ async def call_service(
     noise_psk: str | None = None,
 ) -> int:
     psk_attempts: list[str | None] = [noise_psk] if noise_psk else [None]
-    if noise_psk:
+    # Plaintext downgrade is a convenience for reading pre-encryption production
+    # firmware. It must NEVER apply to secret-bearing writes (bootstrap
+    # update_nvs_secrets), or a keyless/spoofed device would harvest every
+    # credential in cleartext. IOTSTACK_API_REQUIRE_NOISE=1 forbids the fallback.
+    require_noise = os.environ.get("IOTSTACK_API_REQUIRE_NOISE") == "1"
+    if noise_psk and not require_noise:
         psk_attempts.append(None)
 
     cli: APIClient | None = None

@@ -3623,24 +3623,52 @@ _flash_read_matrix_layout_from_device() {
 }
 
 # -- NVS update policy --------------------------------------------------------
-# Prefer bootstrap update_nvs_secrets over WiFi/API. USB (write-nvs-secrets.sh)
-# is used only when bootstrap is unreachable -- typical on first serial provision
-# before WiFi credentials exist in NVS, or when bootstrap lacks the API service.
+# Prefer bootstrap update_nvs_secrets over WiFi/API. The bootstrap API is
+# ENCRYPTED (noise PSK = per-device bootstrap_api_key); the tooling connects with
+# that PSK and never in plaintext. USB (write-nvs-secrets.sh) is used only when
+# the encrypted bootstrap API is unreachable -- typical on first serial provision
+# before WiFi/bootstrap_api_key exist in NVS, when bootstrap lacks the API
+# service, or when the device predates bootstrap encryption (USB reflash).
+
+_bootstrap_api_noise_psk_b64() {
+  # Base64 noise PSK for the encrypted bootstrap API (port 6053), derived from
+  # the per-device bootstrap_api_key. Non-zero (no output) when the role master
+  # secret is absent -- callers must not fall back to plaintext.
+  local mac="$1" hex
+  hex=$(iotstack_bootstrap_device_api_key "$mac") || return 1
+  [[ "$hex" =~ ^[0-9a-fA-F]{64}$ ]] || return 1
+  python3 -c "import binascii,base64,sys; print(base64.b64encode(binascii.unhexlify(sys.argv[1])).decode())" "$hex"
+}
 
 _call_bootstrap_api_service() {
-  # Invoke a native-API user service on bootstrap firmware (plaintext API, port 6053).
+  # Invoke a native-API user service on bootstrap firmware over the ENCRYPTED
+  # API (noise PSK = per-device bootstrap_api_key). Zero-trust: never connect in
+  # plaintext -- if the PSK cannot be derived, return failure so the caller falls
+  # back to USB provisioning (the trusted out-of-band channel).
   local device_mac="$1"
   local service="$2"
   local json_vars="${3:-}"
   local api_host="$(iotstack_bootstrap_hostname "$device_mac").local"
   local api_src="esphome:api:${service}"
+  local noise_psk
 
+  noise_psk=$(_bootstrap_api_noise_psk_b64 "$device_mac" 2>/dev/null) || noise_psk=""
+  if [[ -z "$noise_psk" ]]; then
+    warn "[$device_mac] no bootstrap API key in pass; refusing plaintext bootstrap API (use USB)"
+    return 1
+  fi
+
+  # IOTSTACK_API_REQUIRE_NOISE=1 forbids any plaintext downgrade: bootstrap calls
+  # carry secrets, so a failed encrypted handshake must fail closed (-> USB), not
+  # retry in cleartext.
   if create_log_child_output_piped; then
-    create_log_run "$api_src" "$SCRIPT_DIR/scripts/esphome-service.sh" \
+    IOTSTACK_API_NOISE_PSK="$noise_psk" IOTSTACK_API_REQUIRE_NOISE=1 \
+      create_log_run "$api_src" "$SCRIPT_DIR/scripts/esphome-service.sh" \
       "$api_host" "$service" "" "$json_vars"
     return $?
   fi
-  "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service" "" "$json_vars"
+  IOTSTACK_API_NOISE_PSK="$noise_psk" IOTSTACK_API_REQUIRE_NOISE=1 \
+    "$SCRIPT_DIR/scripts/esphome-service.sh" "$api_host" "$service" "" "$json_vars"
 }
 
 _nvs_secrets_api_json_payload() {

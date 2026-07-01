@@ -63,6 +63,24 @@ iotstack_bootstrap_pass_ota_read() {
   return 0
 }
 
+iotstack_bootstrap_pass_api_path() {
+  # Role master secret from which per-device bootstrap API PSKs are derived.
+  local role
+  role=$(iotstack_bootstrap_role)
+  printf 'iotstack/roles/%s/api_encryption_key\n' "$role"
+}
+
+iotstack_bootstrap_device_api_key() {
+  # Per-device bootstrap API noise PSK (64 hex): sha256(role_master | mac).
+  # Mirrors _derive_device_api_encryption_key for production. Returns non-zero
+  # (no output) when the role master secret is absent from pass -- callers must
+  # NOT fall back to a plaintext bootstrap connection.
+  local mac="$1" base
+  base=$(pass show "$(iotstack_bootstrap_pass_api_path)" 2>/dev/null) || return 1
+  [[ -z "$base" ]] && return 1
+  printf '%s' "$(echo -n "${base}|${mac}" | sha256sum | cut -c1-64)"
+}
+
 iotstack_bootstrap_friendly_name() {
   local role first
   role=$(iotstack_bootstrap_role)
