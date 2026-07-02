@@ -12,7 +12,7 @@ CONFIG_SCHEMA = cv.COMPONENT_SCHEMA.extend({
     cv.GenerateID(): cv.declare_id(NVSSecrets),
     cv.Optional("ota_nvs_key", default="ota_password"): cv.string,
     # NVS key holding THIS image's own API noise PSK, read at boot and applied
-    # via set_noise_psk (production: prod_api_key; bootstrap: bootstrap_api_key).
+    # via set_noise_psk (production: prod_api_key; bootstrap: boot_api_key).
     cv.Optional("api_nvs_key", default=""): cv.string,
     # NVS key that the update_nvs_secrets service writes the incoming api_key
     # payload into (bootstrap provisions production images with prod_api_key).

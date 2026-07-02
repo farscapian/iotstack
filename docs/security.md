@@ -43,7 +43,7 @@ encryption, a passive LAN sniffer captured every device + network credential in
 one reassign. The API is now noise-encrypted end to end, so those payloads are
 never exposed on the wire.
 
-**Key: `bootstrap_api_key` (per-device, out-of-band).**
+**Key: `boot_api_key` (per-device, out-of-band).**
 
 - Derivation mirrors the production API key: `sha256(<role master> | <mac>)`,
   where the role master lives in pass at
@@ -53,7 +53,7 @@ never exposed on the wire.
   flash time -- the trusted out-of-band channel. It is **never** included in the
   `update_nvs_secrets` API payload (`--print-api-json` deliberately omits it).
 - Applied at boot in `bootstrap.yaml` via `nvs_secrets` (`api_nvs_key:
-  bootstrap_api_key` -> `set_noise_psk`). `api: encryption: {}` enables noise
+  boot_api_key` -> `set_noise_psk`). `api: encryption: {}` enables noise
   support (`USE_API_NOISE`) with no key baked into the binary.
 
 **No plaintext fallback (fail closed).**
@@ -70,9 +70,9 @@ never exposed on the wire.
   clear.
 
 > Migration: devices flashed with a pre-encryption bootstrap image have no
-> `bootstrap_api_key` and serve a plaintext API. The tooling will not talk to
+> `boot_api_key` and serve a plaintext API. The tooling will not talk to
 > them over the API (encrypted handshake fails); reflash the bootstrap image over
-> USB (which writes `bootstrap_api_key`) to bring them onto the encrypted path.
+> USB (which writes `boot_api_key`) to bring them onto the encrypted path.
 
 > **Status:** implemented in firmware + tooling; **requires hardware validation**
 > before it is relied upon in the field (no ESP32 available at implementation

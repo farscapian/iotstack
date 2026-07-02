@@ -104,7 +104,7 @@ mdns:
 
 api:
   # Bootstrap API is encrypted (zero-trust LAN). The noise PSK is the per-device
-  # bootstrap_api_key, written to NVS out-of-band over USB at flash time and
+  # boot_api_key, written to NVS out-of-band over USB at flash time and
   # applied at boot by nvs_secrets (set_noise_psk). No key lives in the binary.
   # encryption: {} enables noise support (USE_API_NOISE) so the runtime PSK
   # applies; without an active key, update_nvs_secrets is refused (see
@@ -141,9 +141,9 @@ api:
 nvs_secrets:
   id: nvs
   # Read this image's own API noise PSK from NVS (written OOB over USB at flash).
-  api_nvs_key: bootstrap_api_key
+  api_nvs_key: boot_api_key
   # update_nvs_secrets provisions production images: persist the incoming api_key
-  # payload to prod_api_key (never to bootstrap_api_key).
+  # payload to prod_api_key (never to boot_api_key).
   update_api_nvs_key: prod_api_key
   # Refuse update_nvs_secrets unless the bootstrap PSK is active (no plaintext).
   require_api_encryption: true

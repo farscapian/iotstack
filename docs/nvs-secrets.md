@@ -11,7 +11,7 @@
 | OTA password from NVS | [OK] Working | nvs_secrets component loads and applies password |
 | WiFi credentials from NVS | [OK] Working | nvs_secrets reads SSID+password from NVS and applies them at runtime via `wifi::global_wifi_component->save_wifi_sta()` (see WiFi Credentials From NVS below) |
 | Production API key (`prod_api_key`) | [OK] Working | Per-device key from NVS applied at boot (`set_noise_psk`); used for HA API auth |
-| Bootstrap API key (`bootstrap_api_key`) | [OK] Working | Per-device noise PSK for the encrypted bootstrap API; written OOB over USB only (see [security.md](security.md) "Bootstrap API encryption"). Needs hardware validation. |
+| Bootstrap API key (`boot_api_key`) | [OK] Working | Per-device noise PSK for the encrypted bootstrap API; written OOB over USB only (see [security.md](security.md) "Bootstrap API encryption"). Needs hardware validation. |
 | Flash encryption | [TODO] TODO | Planned for production hardening with eFuses |
 
 ## CRITICAL: NVS namespace row required

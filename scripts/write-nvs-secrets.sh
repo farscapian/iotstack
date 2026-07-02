@@ -262,7 +262,10 @@ export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
 # Use ESP-IDF Python environment which has nvs_partition_gen installed
 ESP_IDF_PYTHON="${HOME}/.espressif/python_env/idf6.1_py3.14_env/bin/python3"
 
-# Generate NVS binary (store output to parse paths)
+# Generate NVS binary (store output to parse paths). Wrap in set +e so a
+# generator failure does not abort the script before we surface its error output
+# below (e.g. nvs_partition_gen rejects NVS key names longer than 15 chars).
+set +e
 python_output=$($ESP_IDF_PYTHON << 'NVSPYTHON'
 import os
 import subprocess
@@ -272,7 +275,7 @@ import sys
 wifi_ssid = os.environ['WIFI_SSID']
 wifi_password = os.environ['WIFI_PASSWORD']
 bootstrap_ota_password = os.environ['BOOTSTRAP_OTA_PASSWORD']
-bootstrap_api_key = os.environ.get('BOOTSTRAP_API_KEY', '')
+boot_api_key = os.environ.get('BOOTSTRAP_API_KEY', '')
 prod_api_key = os.environ.get('PROD_API_KEY', '')
 thread_tlv = os.environ.get('THREAD_TLV', '')
 production_role = os.environ.get('PRODUCTION_ROLE', '')
@@ -302,8 +305,8 @@ with open(nvs_csv_path, 'w') as f:
     f.write(f"ota_password,data,string,{bootstrap_ota_password}\n")
     # bootstrap reads this key as its API noise PSK (encrypted native API).
     # Written ONLY over USB (out-of-band); never transmitted over the API.
-    if bootstrap_api_key:
-        f.write(f"bootstrap_api_key,data,string,{bootstrap_api_key}\n")
+    if boot_api_key:
+        f.write(f"boot_api_key,data,string,{boot_api_key}\n")
     if prod_api_key:
         f.write(f"prod_api_key,data,string,{prod_api_key}\n")
     if thread_tlv:
@@ -344,6 +347,8 @@ print(f"NVS_BIN_PATH={nvs_bin_path}")
 print(f"NVS_CSV_PATH={nvs_csv_path}")
 NVSPYTHON
 )
+nvs_gen_rc=$?
+set -e
 
 # Show Python output (except the path lines)
 while IFS= read -r line; do
@@ -361,6 +366,9 @@ while IFS= read -r line; do
   fi
 done <<< "$python_output"
 
+if [[ "${nvs_gen_rc:-0}" -ne 0 ]]; then
+  err "NVS partition generation failed (exit ${nvs_gen_rc}); see nvs_partition_gen output above"
+fi
 if [[ -z "$NVS_BIN_PATH" ]] || [[ ! -f "$NVS_BIN_PATH" ]]; then
   err "NVS binary generation failed - file not found at: $NVS_BIN_PATH"
 fi

@@ -3624,15 +3624,15 @@ _flash_read_matrix_layout_from_device() {
 
 # -- NVS update policy --------------------------------------------------------
 # Prefer bootstrap update_nvs_secrets over WiFi/API. The bootstrap API is
-# ENCRYPTED (noise PSK = per-device bootstrap_api_key); the tooling connects with
+# ENCRYPTED (noise PSK = per-device boot_api_key); the tooling connects with
 # that PSK and never in plaintext. USB (write-nvs-secrets.sh) is used only when
 # the encrypted bootstrap API is unreachable -- typical on first serial provision
-# before WiFi/bootstrap_api_key exist in NVS, when bootstrap lacks the API
+# before WiFi/boot_api_key exist in NVS, when bootstrap lacks the API
 # service, or when the device predates bootstrap encryption (USB reflash).
 
 _bootstrap_api_noise_psk_b64() {
   # Base64 noise PSK for the encrypted bootstrap API (port 6053), derived from
-  # the per-device bootstrap_api_key. Non-zero (no output) when the role master
+  # the per-device boot_api_key. Non-zero (no output) when the role master
   # secret is absent -- callers must not fall back to plaintext.
   local mac="$1" hex
   hex=$(iotstack_bootstrap_device_api_key "$mac") || return 1
@@ -3642,7 +3642,7 @@ _bootstrap_api_noise_psk_b64() {
 
 _call_bootstrap_api_service() {
   # Invoke a native-API user service on bootstrap firmware over the ENCRYPTED
-  # API (noise PSK = per-device bootstrap_api_key). Zero-trust: never connect in
+  # API (noise PSK = per-device boot_api_key). Zero-trust: never connect in
   # plaintext -- if the PSK cannot be derived, return failure so the caller falls
   # back to USB provisioning (the trusted out-of-band channel).
   local device_mac="$1"
