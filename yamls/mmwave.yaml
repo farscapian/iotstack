@@ -48,7 +48,7 @@ esp32:
 # 1. Core services
 logger:
   hardware_uart: USB_SERIAL_JTAG
-  level: INFO
+  level: DEBUG
 
 # Custom NVS secrets component - reads production-specific secrets from NVS
 nvs_secrets:
