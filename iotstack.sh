@@ -5530,6 +5530,10 @@ main() {
   if [[ "$command" == "flash" && "${2:-}" != "help" ]]; then
     _flash_preflight_step_begin
     info "iotstack git commit (HEAD): $(iotstack_git_commit_short)"
+    # Surface the gpg/pass stores (paths, not secrets) so it's obvious which
+    # isolated iotstack stores pass will use for OTA/API/bootstrap credentials.
+    info "GNUPGHOME:          ${GNUPGHOME:-(unset)}"
+    info "PASSWORD_STORE_DIR: ${PASSWORD_STORE_DIR:-(unset)}"
   fi
 
   # Load environment file if it exists
