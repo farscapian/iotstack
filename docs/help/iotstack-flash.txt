@@ -4,16 +4,19 @@ USB/serial writes the partition table and bootstrap partition only. Production
 firmware is always delivered over OTA after the device boots into bootstrap.
 
 Usage:
-  iotstack flash <device> [tty-device] [options]
-  iotstack flash bootstrap [tty-device|role]
+  iotstack flash <device> [tty-device...] [options]
+  iotstack flash bootstrap [tty-device...|role]
 
 Arguments:
   <device>        Device role (e.g., bleproxy, mmwave, threadrouter)
   bootstrap        Flash bootstrap image via serial (partition table + bootstrap)
-  [tty-device]    Serial device (e.g., /dev/ttyACM0). Omitted: auto-pick
-                  from NVS device_role on USB ports, or the only port with
-                  a matching chip variant (e.g. matrixdisplay = esp32s3).
-                  New/unprovisioned devices need an explicit tty.
+  [tty-device...] One or more serial devices (e.g., /dev/ttyACM0). Multiple
+                  ports are flashed ONE AT A TIME (serially, never in parallel):
+                  each device completes its full bootstrap + OTA cycle before
+                  the next begins. Omitted: auto-pick from NVS device_role on
+                  USB ports, or the only port with a matching chip variant
+                  (e.g. matrixdisplay = esp32s3). New/unprovisioned devices
+                  need an explicit tty.
   [role]          Production role for dual-flash (e.g., mmwave, bleproxy)
 
 Options:
@@ -55,6 +58,8 @@ Examples:
   iotstack flash bootstrap mmwave                 # Dual: serial bootstrap + OTA mmwave
   iotstack flash bootstrap /dev/ttyUSB0           # Bootstrap serial only
   iotstack flash mmwave /dev/ttyACM0 --ota-only  # OTA production only
+  iotstack flash mmwave /dev/ttyACM0 /dev/ttyACM1 /dev/ttyACM2 --erase
+                                                 # 3 devices flashed serially, one at a time
   iotstack flash matrixdisplay help              # Role-specific flash options
   iotstack flash threadrouter                    # Auto-detect all USB devices
 

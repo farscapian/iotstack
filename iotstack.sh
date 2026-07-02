@@ -3924,12 +3924,50 @@ _flash_matrix_layout_update_via_bootstrap_if_needed() {
   return 2
 }
 
+_flash_serial_batch() {
+  # Flash a list of EXPLICIT tty devices one at a time (serially, never in
+  # parallel): each device runs its full flash cycle to completion before the
+  # next begins. Mirrors the auto-detect multi-device loop -- failures are
+  # collected and reported at the end rather than aborting the batch.
+  # Usage: _flash_serial_batch <label> <mode:production|bootstrap> <role> \
+  #          <skip_recovery> <tty>...
+  local label="$1" mode="$2" role="$3" skip_recovery="$4"
+  shift 4
+  local -a ttys=("$@")
+  local total=${#ttys[@]} idx=0 failed=0 t rc
+  info "Serial flash: ${total} device(s), one at a time (never in parallel)"
+  for t in "${ttys[@]}"; do
+    idx=$((idx + 1))
+    echo ""
+    info "===== Device ${idx}/${total}: ${label} on ${t} ====="
+    echo "========================================================"
+    rc=0
+    if [[ "$mode" == "bootstrap" ]]; then
+      _flash_recovery "$t" || rc=$?
+    else
+      _flash_production_smart "$role" "$t" "$skip_recovery" || rc=$?
+    fi
+    echo "========================================================"
+    if [[ $rc -eq 0 ]]; then
+      ok "Device ${idx}/${total} on ${t}: complete"
+    else
+      warn "Device ${idx}/${total} on ${t}: FAILED (rc=${rc})"
+      failed=$((failed + 1))
+    fi
+  done
+  if [[ $failed -gt 0 ]]; then
+    err "Serial flash: ${failed}/${total} device(s) failed"
+  fi
+  ok "Serial flash complete: ${total}/${total} device(s)"
+}
+
 cmd_flash() {
   _iotstack_command_help_if_requested flash "$@" && return 0
 
   export IOTSTACK_FLASH_SESSION_PID=$$
 
   local device="" tty_device_or_role="" skip_recovery=""
+  local -a tty_args=()
   export FLASH_ERASE=0
   export FLASH_ON_FLASH_VERIFY=0
   export MATRIX_COLS=""
@@ -3989,15 +4027,20 @@ cmd_flash() {
       *)
         if [[ -z "$device" ]]; then
           device="$1"
-        elif [[ -z "$tty_device_or_role" ]]; then
-          tty_device_or_role="$1"
         else
-          err "Unexpected flash argument: $1"
+          # All positionals after the role are tty devices (or, for the
+          # "flash bootstrap <role>" dual form, a single production role).
+          # Multiple ttys are flashed serially (see dispatch below).
+          tty_args+=("$1")
         fi
         shift
         ;;
     esac
   done
+
+  # First tty positional feeds the existing single-device paths (matrix check,
+  # bootstrap-vs-role detection, auto-resolve when omitted).
+  tty_device_or_role="${tty_args[0]:-}"
 
   if [[ -z "$device" ]]; then
     help_flash
@@ -4020,8 +4063,11 @@ cmd_flash() {
       # Dual-flash: bootstrap + production role
       local production_role="$tty_device_or_role"
       _flash_recovery_dual "$production_role"
+    elif [[ ${#tty_args[@]} -gt 1 ]]; then
+      # Multiple explicit ttys: flash bootstrap to each, one at a time.
+      _flash_serial_batch "bootstrap" bootstrap "" "" "${tty_args[@]}"
     else
-      # Single flash: bootstrap only
+      # Single flash: bootstrap only (auto-detect when tty omitted)
       _flash_recovery "$tty_device_or_role"
     fi
     return
@@ -4036,6 +4082,12 @@ cmd_flash() {
   fi
 
   # Production roles: serial = partition table + bootstrap only; production via OTA.
+  # Multiple explicit tty devices are flashed one at a time (serially), never in
+  # parallel -- each device completes its full bootstrap+OTA cycle before the next.
+  if [[ ${#tty_args[@]} -gt 1 ]]; then
+    _flash_serial_batch "$device" production "$device" "$skip_recovery" "${tty_args[@]}"
+    return
+  fi
   _flash_production_smart "$device" "$tty_device_or_role" "$skip_recovery"
 }
 
