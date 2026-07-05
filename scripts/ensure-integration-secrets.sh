@@ -68,14 +68,48 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     _ies_info "Invalidated iotstack/common/ha_token in pass (set to ${PLACEHOLDER_VALUE})"
   }
 
-  invalidate_ha_token_if_auth_failure() {
-    # Reset pass token to the setup placeholder when HA rejects authentication.
-    local output="$1"
-    if is_ha_token_auth_failure "$output"; then
+  verify_ha_websocket_or_reprompt() {
+    # Verify HA WebSocket auth with the current $HA_URL/$HA_TOKEN. On a rejected
+    # token, invalidate the stored one and prompt for a new token in-place rather
+    # than aborting -- the human simply pastes a fresh long-lived token and the
+    # flow continues. Non-auth failures (missing dependency, network, bad URL)
+    # still abort, since re-prompting for a token cannot fix them. On success,
+    # $HA_TOKEN holds the working token and HA_URL/HA_TOKEN are exported.
+    local max_attempts="${1:-3}"
+    local attempt=1
+    local test_output=""
+
+    while true; do
+      _ies_info "Testing Home Assistant WebSocket connection to ${HA_URL}..."
+      if test_output="$(test_ha_websocket "$HA_URL" "$HA_TOKEN" 2>&1)"; then
+        _ies_ok "Home Assistant connection verified (${test_output})"
+        export HA_URL HA_TOKEN
+        return 0
+      fi
+
+      echo "$test_output" >&2
+      if grep -qi "websocket-client is required" <<<"$test_output"; then
+        _ies_err "Home Assistant WebSocket dependency missing (see above)"
+      fi
+      # Network/URL/etc. -- a new token cannot help, so fail as before.
+      if ! is_ha_token_auth_failure "$test_output"; then
+        _ies_err "Cannot connect to Home Assistant. Check URL, token, and network access."
+      fi
+
+      # Rejected token: drop it from the store, then ask for a replacement.
       invalidate_ha_token
-      return 0
-    fi
-    return 1
+      if (( attempt >= max_attempts )); then
+        _ies_err "Home Assistant access token still invalid after ${max_attempts} attempt(s) -- iotstack/common/ha_token reset to ${PLACEHOLDER_VALUE}. Configure a new token and retry."
+      fi
+      _ies_warn "Home Assistant rejected the access token (attempt ${attempt}/${max_attempts}); enter a new long-lived access token."
+      HA_TOKEN="$(ensure_pass_secret \
+        "iotstack/common/ha_token" \
+        "Home Assistant long-lived access token" \
+        "true" \
+        "true")"
+      export HA_TOKEN
+      attempt=$((attempt + 1))
+    done
   }
 
   prompt_value() {
@@ -261,19 +295,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     validate_ha_url "$HA_URL"
 
     if [[ "$skip_test" != "true" ]]; then
-      _ies_info "Testing Home Assistant WebSocket connection to ${HA_URL}..."
-      local test_output=""
-      if ! test_output="$(test_ha_websocket "$HA_URL" "$HA_TOKEN" 2>&1)"; then
-        echo "$test_output" >&2
-        if grep -qi "websocket-client is required" <<<"$test_output"; then
-          _ies_err "Home Assistant WebSocket dependency missing (see above)"
-        fi
-        if invalidate_ha_token_if_auth_failure "$test_output"; then
-          _ies_err "Home Assistant access token is invalid -- iotstack/common/ha_token reset to ${PLACEHOLDER_VALUE}. Configure a new token and retry."
-        fi
-        _ies_err "Cannot connect to Home Assistant. Check URL, token, and network access."
-      fi
-      _ies_ok "Home Assistant connection verified (${test_output})"
+      verify_ha_websocket_or_reprompt
     fi
 
     export HA_URL HA_TOKEN
