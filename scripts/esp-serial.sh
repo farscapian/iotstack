@@ -350,21 +350,6 @@ esp_esptool_usb_jtag_chip() {
   esac
 }
 
-esp_esptool_boot_after_mode() {
-  # --after mode to reboot into freshly flashed firmware. On USB-Serial/JTAG
-  # chips (C6/H2/...) esptool's hard-reset toggles an emulated RTS line that
-  # often fails to boot the app (the physical RESET button works, the pulse does
-  # not); the RTC watchdog reset boots reliably there. UART-bridge / native-USB
-  # parts keep the classic hard-reset. This only affects post-write reboot, not
-  # download-mode entry (--before).
-  local chip="${1:-}"
-  if esp_esptool_usb_jtag_chip "$chip"; then
-    printf '%s\n' watchdog-reset
-  else
-    printf '%s\n' hard-reset
-  fi
-}
-
 esp_esptool_baud_for_chip() {
   # Flash/probe baud rate per chip family.
   # ESP32-C6 (XIAO): 9600 only -- higher rates corrupt large firmware transfers.

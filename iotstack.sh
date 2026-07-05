@@ -4342,9 +4342,17 @@ _flash_bootstrap_esptool_write_firmware() {
   local before_mode
   before_mode=$(esp_esptool_chained_before_mode "$esptool_chip")
 
-  # Booting the freshly written firmware: USB-Serial/JTAG chips (C6) do not
-  # reliably boot from esptool's RTS-pin hard-reset, so use their watchdog reset.
-  [[ "$after_reset" == "hard-reset" ]] && after_reset=$(esp_esptool_boot_after_mode "$esptool_chip")
+  # Booting the freshly written firmware on a USB-Serial/JTAG chip (C6): the
+  # inline RTS hard-reset from the flasher stub does not reliably start the app
+  # (and watchdog reset is unsupported on the C6). Write with no reset, then
+  # reboot via esp_esptool_hard_reset -- a separate default-reset/hard-reset
+  # cycle (with retries) that does boot these chips; it is the same reboot the
+  # non-erase NVS path uses successfully. Other chips keep the inline reset.
+  local reboot_via_helper=false
+  if [[ "$after_reset" == "hard-reset" ]] && esp_esptool_usb_jtag_chip "$esptool_chip"; then
+    after_reset=no-reset
+    reboot_via_helper=true
+  fi
 
   create_log_serial_capture_pause
   info "Writing firmware.bin (${esptool_chip}, ${esptool_baud} baud)..."
@@ -4357,6 +4365,11 @@ _flash_bootstrap_esptool_write_firmware() {
     || err "firmware.bin write failed"
   info "firmware.bin write completed in $((SECONDS - step_start))s"
   esptool_output="$create_log_esptool_output"
+  if [[ "$reboot_via_helper" == true ]]; then
+    info "Rebooting ${esptool_chip} into firmware..."
+    esp_esptool_hard_reset "$tty_device" "$esptool_chip" \
+      || warn "reboot into firmware may not have taken -- device might need a manual RESET press"
+  fi
   create_log_serial_capture_resume
 }
 
