@@ -20,6 +20,7 @@
 #include <openthread/thread.h>
 #include <openthread/ip6.h>
 #include <openthread/error.h>
+#include <openthread/srp_client.h>
 #include <cstdlib>
 #endif
 
@@ -28,6 +29,21 @@ namespace nvs_secrets {
 
 static const char* const TAG = "nvs_secrets";
 static const char* const NAMESPACE = "iotstack";  // Must match namespace row in write-nvs-secrets.sh CSV
+
+#ifdef USE_OPENTHREAD
+// SRP lease tuning (see apply_thread_dataset_). OpenThread's defaults -- lease 2h,
+// key-lease 14 DAYS -- mean that after a re-flash the device generates a NEW SRP
+// key while the OTBR still reserves this host name for the OLD key for up to 14
+// days. SRP registration is then refused ("Duplicated"), _esphomelib._tcp is
+// never re-advertised, and Home Assistant never discovers the device. A short
+// key-lease makes that stale name reservation self-expire within minutes, so a
+// re-flashed Thread device re-onboards on its own -- the same hands-off flow a
+// WiFi device gets. Kept >= the SRP renewal interval (~lease/2) so the reservation
+// never lapses while the device is online; mains-powered FTD routers can easily
+// afford the more frequent refresh. Tune here if a different window is wanted.
+static constexpr uint32_t SRP_LEASE_SECONDS = 15 * 60;      // 15 min
+static constexpr uint32_t SRP_KEY_LEASE_SECONDS = 15 * 60;  // 15 min
+#endif
 
 std::string NVSSecrets::read_nvs_string(const char* key) {
   nvs_handle_t nvs_handle;
@@ -219,6 +235,15 @@ void NVSSecrets::apply_thread_dataset_() {
   otIp6SetEnabled(inst, true);
   otThreadSetEnabled(inst, true);
   ESP_LOGI(TAG, "[NVS] Thread dataset applied; (re)attaching to the Thread network");
+
+  // Shrink the SRP lease/key-lease so a re-flashed device's stale name
+  // reservation on the OTBR clears in minutes instead of the 14-day default
+  // (see SRP_KEY_LEASE_SECONDS). Safe to call before the SRP client registers;
+  // the values are used on the next (re)registration triggered by this re-attach.
+  otSrpClientSetLeaseInterval(inst, SRP_LEASE_SECONDS);
+  otSrpClientSetKeyLeaseInterval(inst, SRP_KEY_LEASE_SECONDS);
+  ESP_LOGI(TAG, "[NVS] SRP lease=%us key-lease=%us (auto re-onboard after re-flash)",
+           (unsigned) SRP_LEASE_SECONDS, (unsigned) SRP_KEY_LEASE_SECONDS);
 #endif
 }
 
