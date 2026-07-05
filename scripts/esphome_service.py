@@ -24,11 +24,19 @@ logging.getLogger("aioesphomeapi").setLevel(logging.ERROR)
 from aioesphomeapi.core import EncryptionPlaintextAPIError
 
 _ERR_RED = "\033[0;31m"
+_WARN_YELLOW = "\033[0;33m"
 _ERR_RST = "\033[0m"
 
 
 def _eprint_error(msg: str) -> None:
     print(f"{_ERR_RED}[ERROR]{_ERR_RST} {msg}", file=sys.stderr)
+
+
+def _eprint_warn(msg: str) -> None:
+    # Connect failures are recoverable: the shell caller decides whether to
+    # abort (it emits its own [ERROR]) or fall back (e.g. USB). Reserve [ERROR]
+    # for the caller so it stays a reliable "we quit" signal.
+    print(f"{_WARN_YELLOW}[WARN]{_ERR_RST} {msg}", file=sys.stderr)
 
 
 def _plaintext_protocol_mismatch(exc: BaseException) -> bool:
@@ -79,10 +87,10 @@ async def call_service(
                         file=sys.stderr,
                     )
                 continue
-            _eprint_error(f"could not connect to {host}:6053: {exc}")
+            _eprint_warn(f"could not connect to {host}:6053: {exc}")
             return 1
     else:
-        _eprint_error(f"could not connect to {host}:6053")
+        _eprint_warn(f"could not connect to {host}:6053")
         return 1
     assert cli is not None
     try:
