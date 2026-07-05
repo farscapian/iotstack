@@ -76,7 +76,7 @@ All role YAMLs use a substitution variable injected before every `esphome compil
 
 ```yaml
 substitutions:
-  project_version: "0.0.0-dev"  # placeholder in source; overridden at compile time
+  project_version: "0.0.0"
 esphome:
   project:
     version: "${project_version}"

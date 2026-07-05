@@ -4,7 +4,7 @@
 substitutions:
   device_role: "ledstrip-c6-thread"
   friendly_name: "LED Light Strip C6 Thread"
-  project_version: "0.0.0-dev"
+  project_version: "0.0.0"
   # LED strip hardware -- override these if your wiring or strip differs
   strip_data_pin: GPIO0   # = D0 on XIAO ESP32-C6 silkscreen (via 330 Ohm series resistor to DIN)
   strip_num_leds: "300"

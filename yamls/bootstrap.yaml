@@ -23,7 +23,7 @@ substitutions:
   chip_flash_size: 4MB
   chip_framework: esp-idf
   boot_button_pin: GPIO9  # overridden per chip in .iotstack-bootstrap-<variant>.yaml
-  project_version: "0.0.0-dev"
+  project_version: "0.0.0"
 
 # External components (replaces deprecated custom_components folder)
 external_components:

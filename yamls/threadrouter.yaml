@@ -2,7 +2,7 @@
 substitutions:
   device_role: "threadrouter"
   friendly_name: "Thread Router"
-  project_version: "0.0.0-dev"
+  project_version: "0.0.0"
 
 esphome:
   name: ${device_role}
@@ -59,10 +59,9 @@ nvs_secrets:
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
 
-# 5. Logger
 logger:
-  baud_rate: 115200
-  # USB serial only; disable (baud_rate: 0) after initial setup if desired
+  level: DEBUG
+  hardware_uart: USB_SERIAL_JTAG
 
 # 8. Onboard LED -- XIAO ESP32-C6 GPIO15, active-low
 output:
@@ -110,5 +109,3 @@ text_sensor:
       name: "Thread RLOC16"
       entity_category: diagnostic
     # network_key: omitted -- exposes sensitive credentials
-
-# Buttons: "Restart" and "Toggle Boot Partition" come from partition_mgmt package.

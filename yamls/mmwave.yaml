@@ -3,7 +3,7 @@
 substitutions:
   device_role: "mmwave"
   friendly_name: "mmWave Presense Detector"
-  project_version: "0.0.0-dev"
+  project_version: "0.0.0"
 
 
 # External components (replaces deprecated custom_components folder)

@@ -6,7 +6,7 @@
 substitutions:
   device_role: "ledstrip-s3-wifi"
   friendly_name: "LED Light Strip S3 WiFi"
-  project_version: "0.0.0-dev"
+  project_version: "0.0.0"
   boot_button_pin: GPIO0  # XIAO ESP32-S3 BOOT button
   # LED strip hardware -- override if your wiring or strip differs
   strip_data_pin: GPIO1   # = D0 on XIAO ESP32-S3 silkscreen (via 330 Ohm series resistor to DIN)

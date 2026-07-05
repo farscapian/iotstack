@@ -4,7 +4,7 @@
 substitutions:
   device_role: "bleproxy"
   friendly_name: "Bluetooth Proxy"
-  project_version: "0.0.0-dev"
+  project_version: "0.0.0"
 
 
 # External components (replaces deprecated custom_components folder)
