@@ -1215,7 +1215,12 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
   if [[ -n "$CACHED_CONFIG_HASH" \
      && "$CACHED_YAML_SHA256" == "$YAML_SHA256" \
      && "$CACHED_ESPHOME_VER" == "$ESPHOME_VERSION" ]]; then
-    log "YAML unchanged, ESPHome ${ESPHOME_VERSION} -- skipping compilation."
+    # In reassign mode the image was already built/reported by the caller's
+    # Step 1 (iotstack flash); this is the OTA-upload phase, so don't re-announce
+    # a compilation decision here.
+    if [[ "$REASSIGN_MODE" != true ]]; then
+      log "YAML unchanged, ESPHome ${ESPHOME_VERSION} -- skipping compilation."
+    fi
     NEW_CONFIG_HASH=$(_resolve_build_config_hash "$YAML_NAME" "$CACHED_CONFIG_HASH")
     _sync_build_cache_config_hash "$NEW_CONFIG_HASH"
     log "Build config_hash: ${NEW_CONFIG_HASH}"
