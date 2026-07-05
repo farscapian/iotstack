@@ -239,5 +239,17 @@
       "Bash(git commit -m 'debug: Show pass insert output for config items *)",
       "Bash(git commit -m 'fix: Correct indentation and remove extra fi statement *)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}/.agentstartstack/scripts/claude-session-bootstrap.sh\"; [ -x \"$f\" ] && bash \"$f\" || true"
+          }
+        ]
+      }
+    ]
   }
 }
