@@ -4342,6 +4342,10 @@ _flash_bootstrap_esptool_write_firmware() {
   local before_mode
   before_mode=$(esp_esptool_chained_before_mode "$esptool_chip")
 
+  # Booting the freshly written firmware: USB-Serial/JTAG chips (C6) do not
+  # reliably boot from esptool's RTS-pin hard-reset, so use their watchdog reset.
+  [[ "$after_reset" == "hard-reset" ]] && after_reset=$(esp_esptool_boot_after_mode "$esptool_chip")
+
   create_log_serial_capture_pause
   info "Writing firmware.bin (${esptool_chip}, ${esptool_baud} baud)..."
   local step_start=$SECONDS
