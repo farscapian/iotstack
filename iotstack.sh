@@ -2070,19 +2070,22 @@ _ensure_device_on_bootstrap() {
     fi
   fi
 
-  if [[ "$switch_failed" == true && -n "$tty_device" ]]; then
-    info "[$mac] USB serial fallback -- refreshing bootstrap firmware on ${tty_device}..."
-    _flash_bootstrap_to_tty "$tty_device" "" "$production_role" || return 1
-    switch_failed=false
-    wait_timeout=90
+  if [[ "$switch_failed" == true ]]; then
+    if [[ -n "$tty_device" ]]; then
+      info "[$mac] USB serial fallback -- refreshing bootstrap firmware on ${tty_device}..."
+      _flash_bootstrap_to_tty "$tty_device" "" "$production_role" || return 1
+      switch_failed=false
+    else
+      # Nothing can move this device into bootstrap: it is not already there, the
+      # production API switch did not happen (see the warning above), and no USB
+      # port was given for a serial refresh. Waiting for bootstrap-$mac to appear
+      # would just stall for the timeout and then fail, so fail fast instead.
+      warn "[$mac] no path to bootstrap and no USB port given -- pass a /dev/tty* to force a serial bootstrap refresh"
+      return 1
+    fi
   fi
 
-  if [[ "$switch_failed" == true ]]; then
-    wait_timeout=30
-    info "[$mac] 2/4 waiting ${wait_timeout}s for bootstrap-$mac on the network..."
-  else
-    info "[$mac] 2/4 waiting for bootstrap-$mac on the network..."
-  fi
+  info "[$mac] 2/4 waiting for bootstrap-$mac on the network..."
   if ! _wait_for_device "$(iotstack_bootstrap_hostname "$mac")" "$wait_timeout"; then
     if [[ -n "$tty_device" ]]; then
       warn "[$mac] bootstrap-$mac did not appear -- use USB serial fallback"
