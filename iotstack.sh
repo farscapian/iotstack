@@ -1141,6 +1141,15 @@ _list_devices_collect_mdns_parallel() {
 
 _LIST_DEVICES_LIVE_TIMEOUT_SEC=2
 _BOOTSTRAP_WIFI_READY_TIMEOUT_SEC=10
+# The XIAO ESP32-C6 USB-Serial/JTAG auto-reset is unreliable: a single software
+# reset boots the freshly written app only ~half the time. On timeout, re-issue
+# the reset and re-check this many times before asking for a manual RESET. The
+# attempts are ~independent, so 10 retries (11 total tries) put the "needs a
+# manual RESET" probability well under 1% -- 0.5^11 ~= 0.05%, and even at 40%
+# per-try odds 0.6^11 ~= 0.36%.
+_BOOTSTRAP_REBOOT_RETRIES=10
+_BOOTSTRAP_REBOOT_RETRY_TIMEOUT_SEC=15
+_BOOTSTRAP_MANUAL_RESET_TIMEOUT_SEC=60
 
 _list_devices_bootstrap_live() {
   # Probe bootstrap OTA (3232) and API (6053) concurrently; either port means alive.
@@ -4170,36 +4179,56 @@ _flash_warn_start_serial_logs() {
   _iotstack_echo stderr "${YLW}[WARN]${RST} ${RED}${msg}${RST}"
 }
 
-_wait_for_bootstrap_wifi_ready() {
-  # Wait until bootstrap-<mac> accepts OTA (port 3232). Same probe iotstack
-  # flash uses before production upload -- avoids a fixed serial-timeout when
-  # the device is already on WiFi but does not emit a known console line.
-  # Usage: _wait_for_bootstrap_wifi_ready <mac_suffix> [timeout_seconds] [tty_device]
-  local device_mac="$1"
-  local timeout_s="${2:-$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}"
-  local tty_device="${3:-}"
-  local hostname
-  hostname=$(iotstack_bootstrap_hostname "$device_mac")
-  info "Waiting for ${hostname} on WiFi (OTA port 3232)..."
-  if _wait_for_ota_service "$hostname" "$timeout_s"; then
-    return 0
-  fi
-  _flash_warn_start_serial_logs "$tty_device"
-  return 1
-}
-
 _flash_bootstrap_await_wifi() {
-  # Wait for bootstrap OTA on WiFi; on timeout, warn if NVS was provisioned via USB.
+  # Wait for bootstrap OTA on WiFi after a serial flash. The XIAO ESP32-C6
+  # USB-Serial/JTAG auto-reset is unreliable (a single reset boots the app only
+  # ~half the time), so on timeout we re-issue the reset and re-check several
+  # times before asking for a manual RESET -- driving the manual-RESET
+  # probability under 1% (see _BOOTSTRAP_REBOOT_RETRIES). Only re-reset while the
+  # device has NOT appeared, and give each boot enough time to reach WiFi so a
+  # device that was about to come up is not knocked back into the bootloader.
   local device_mac="$1"
   local tty_device="$2"
-  if _wait_for_bootstrap_wifi_ready "$device_mac" "$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC" "$tty_device"; then
+  local hostname
+  hostname=$(iotstack_bootstrap_hostname "$device_mac")
+
+  info "Waiting for ${hostname} on WiFi (OTA port 3232)..."
+  if _wait_for_ota_service "$hostname" "$_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC"; then
     ok "Bootstrap OTA service reachable on WiFi"
     return 0
   fi
+
+  if [[ -n "$tty_device" ]]; then
+    local chip="${IOTSTACK_ESPTOOL_CHIP:-esp32c6}"
+    local attempt
+    # esptool needs exclusive access to the port; pause serial-log capture for
+    # the retry sequence (the device is not producing useful logs if it did not
+    # boot anyway).
+    create_log_serial_capture_pause
+    for attempt in $(seq 1 "$_BOOTSTRAP_REBOOT_RETRIES"); do
+      warn "${hostname} not on WiFi yet -- re-issuing reset (attempt ${attempt}/${_BOOTSTRAP_REBOOT_RETRIES})..."
+      esp_esptool_hard_reset "$tty_device" "$chip" || true
+      if _wait_for_ota_service "$hostname" "$_BOOTSTRAP_REBOOT_RETRY_TIMEOUT_SEC"; then
+        create_log_serial_capture_resume
+        ok "Bootstrap OTA service reachable on WiFi (after ${attempt} reset attempt(s))"
+        return 0
+      fi
+    done
+    warn "[ACTION REQUIRED] ${hostname} still not on WiFi after ${_BOOTSTRAP_REBOOT_RETRIES} auto-reset attempts -- press the RESET button on the board now."
+    warn "  (XIAO ESP32-C6 USB auto-reset is unreliable. If it still will not connect: hold BOOT, tap RESET, release BOOT.)"
+    if _wait_for_ota_service "$hostname" "$_BOOTSTRAP_MANUAL_RESET_TIMEOUT_SEC"; then
+      create_log_serial_capture_resume
+      ok "Bootstrap OTA service reachable on WiFi (after manual RESET)"
+      return 0
+    fi
+    create_log_serial_capture_resume
+  fi
+
+  _flash_warn_start_serial_logs "$tty_device"
   if [[ "${IOTSTACK_NVS_PROVISIONED_VIA_USB:-0}" == "1" && "${FLASH_ERASE:-0}" != "1" ]]; then
     warn "Bootstrap API unavailable -- writing NVS via USB on ${tty_device} (required on first provision)"
   fi
-  err "Bootstrap WiFi wait timed out (${_BOOTSTRAP_WIFI_READY_TIMEOUT_SEC}s) -- $(iotstack_bootstrap_hostname "$device_mac") OTA port 3232 not reachable"
+  err "Bootstrap WiFi wait timed out -- ${hostname} OTA port 3232 not reachable after ${_BOOTSTRAP_REBOOT_RETRIES} auto-reset attempts and a manual RESET prompt"
 }
 
 # User-facing deploy sub-messages (indented under the active flash step).
