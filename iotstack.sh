@@ -3296,8 +3296,13 @@ _ha_after_production_online() {
     [[ -z "$HA_URL" || -z "$HA_TOKEN" ]] && return 0
   fi
 
-  _ha_register_esphome_device "$prod_hostname" "$yaml_path"
-  _run_update_devices --ha-finalize "$prod_hostname" "$yaml_path"
+  # HA registration failure is non-fatal (device is flashed and running); only
+  # run ha-finalize when registration actually completed. Always return 0 so a
+  # failed/optional HA step never aborts the flash under set -e.
+  if _ha_register_esphome_device "$prod_hostname" "$yaml_path"; then
+    _run_update_devices --ha-finalize "$prod_hostname" "$yaml_path"
+  fi
+  return 0
 }
 
 _derive_device_api_encryption_key() {
@@ -3427,11 +3432,17 @@ _ha_register_esphome_device() {
   fi
 
   echo "$reg_out" >&2
+  # Registration failing is not fatal to the flash: the device is already
+  # flashed, running, and reachable -- only the optional HA auto-registration did
+  # not complete (e.g. a Thread device whose SRP service has not propagated to HA
+  # yet). Warn instead of err/exit so the flash finishes cleanly; the human can
+  # finish from the HA dashboard. Return non-zero so the caller skips ha-finalize.
   if invalidate_ha_token_if_auth_failure "$reg_out"; then
-    err "Home Assistant access token is invalid -- iotstack/common/ha_token reset to CONFIGURE_ME. Configure a new token and retry."
+    warn "Home Assistant access token is invalid -- iotstack/common/ha_token reset to CONFIGURE_ME. Configure a new token and re-run to register $hostname."
+    return 1
   fi
-  err "Home Assistant registration failed for $hostname
-Complete manually: ${HA_URL}/config/integrations/dashboard"
+  warn "Home Assistant registration for $hostname did not complete -- finish manually: ${HA_URL}/config/integrations/dashboard"
+  return 1
 }
 
 # -- Flash command: serial/USB flashing -------------------------------------
