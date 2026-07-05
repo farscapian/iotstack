@@ -2226,6 +2226,12 @@ _ota_via_bootstrap() {
     network_type=$(get_yaml_device_info "$yaml_file" | cut -d'|' -f3)
     if [[ "$network_type" == "thread" ]]; then
       ok "[$mac] OTA complete; Thread device rebooting as $post_ota_hostname (mesh, not WiFi mDNS)"
+      # Thread devices never reappear on WiFi mDNS, so there is no
+      # _wait_for_production_online gate here -- but HA registration still
+      # applies (HA reaches the device over Thread via a border router), so
+      # invoke it too. Honors PERFORM_HA_DEVICE_REGISTRATION like the WiFi path;
+      # a no-op when HA is unconfigured and registration is not required.
+      _ha_after_production_online "$yaml_file" "$post_ota_hostname"
     elif _wait_for_production_online "$post_ota_hostname" 90; then
       ok "[$mac] reassigned and back as $post_ota_hostname"
       _ha_after_production_online "$yaml_file" "$post_ota_hostname"
