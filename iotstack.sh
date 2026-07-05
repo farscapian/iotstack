@@ -3273,10 +3273,19 @@ _ha_after_production_online() {
   local yaml_path="$1"
   local prod_hostname="$2"
 
-  if ! _load_ha_credentials_optional; then
-    return 0
+  if [[ "${PERFORM_HA_DEVICE_REGISTRATION:-0}" == "1" ]]; then
+    # Registration is mandatory: prompt for and verify HA URL/token instead of
+    # silently skipping, so ha_token=CONFIGURE_ME triggers the token flow rather
+    # than a no-op. ensure_ha_integration re-prompts on a rejected token and
+    # aborts on unrecoverable failure -- correct when HA work is required.
+    # shellcheck source=scripts/ensure-integration-secrets.sh
+    source "${SCRIPT_DIR}/scripts/ensure-integration-secrets.sh"
+    ensure_ha_integration
+  else
+    # HA is an optional integration here; skip quietly when unconfigured.
+    _load_ha_credentials_optional || return 0
+    [[ -z "$HA_URL" || -z "$HA_TOKEN" ]] && return 0
   fi
-  [[ -z "$HA_URL" || -z "$HA_TOKEN" ]] && return 0
 
   _ha_register_esphome_device "$prod_hostname" "$yaml_path"
   _run_update_devices --ha-finalize "$prod_hostname" "$yaml_path"
