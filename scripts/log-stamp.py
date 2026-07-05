@@ -11,12 +11,27 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from datetime import datetime
+
+# ANSI escape sequences: CSI (colors, cursor moves, erase-line), OSC (title),
+# and lone Fe escapes. Stripped from the persisted log so it stays plain text;
+# the live console keeps its color (see main()).
+_ANSI_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\].*?(?:\x07|\x1b\\)|[@-Z\\-_])")
 
 
 def _timestamp() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _clean_for_log(line: str) -> str:
+    # Collapse carriage-return progress redraws (e.g. esptool's write meter, which
+    # emits every frame as "\r\x1b[K...") down to the final rendered frame, then
+    # strip ANSI. Returns "" for control-only input so it is dropped from the log.
+    if "\r" in line:
+        line = line.rsplit("\r", 1)[-1]
+    return _ANSI_RE.sub("", line).rstrip()
 
 
 def _stamp_log_line(source: str, line: str) -> str:
@@ -79,9 +94,10 @@ def main() -> int:
                 sys.stdout.write(_stamp_console_line(line) + "\n")
                 sys.stdout.flush()
             if log_f is not None:
-                stamped = _stamp_log_line(args.source, line) + "\n"
-                log_f.write(stamped)
-                log_f.flush()
+                cleaned = _clean_for_log(line)
+                if cleaned:
+                    log_f.write(_stamp_log_line(args.source, cleaned) + "\n")
+                    log_f.flush()
     finally:
         if log_f is not None:
             log_f.close()
