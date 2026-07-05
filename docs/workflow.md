@@ -1,6 +1,6 @@
 # iotstack Workflow (project-specific)
 
-> Generic session clone / nut workflow: see `.agentstartstack/agentstartstack/workflow.md`.
+> Generic session clone / `ass` workflow: see `.agentstartstack/docs/workflow.md`.
 > This file covers iotstack-only guards and live-run monitoring.
 
 ## Canonical paths (iotstack)
@@ -12,10 +12,10 @@
 
 Do **not** disrupt a flash, compile, update, or other long-running `iotstack` command the human started on the canonical local repo.
 
-### Before nut / local-sync
+### Before `ass sync` / local-sync
 
 ```bash
-# Any match means: do NOT nut yet
+# Any match means: do NOT ass sync yet
 pgrep -af '(/iotstack\.sh|/iotstack) ' || echo "no iotstack sessions"
 ```
 

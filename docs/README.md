@@ -1,6 +1,6 @@
 # iotstack project docs
 
-Project-specific agent guidance. Generic workflow, nut, conventions, and security live in the **.agentstartstack** submodule.
+Project-specific agent guidance. Generic workflow, `ass`, conventions, and security live in the **.agentstartstack** submodule.
 
 ## Session startup
 
@@ -18,6 +18,6 @@ Project-specific agent guidance. Generic workflow, nut, conventions, and securit
 | New shell script | `.agentstartstack/agentstartstack/conventions.md`, `code-quality.md`, `implementation.md` |
 | New device role | `cli.md`, `devices.md`, `architecture.md` |
 | CI / commit hygiene | `.agentstartstack/agentstartstack/workflow.md`, `code-quality.md`, `testing.md` |
-| Human local-sync handoff | `.agentstartstack/agentstartstack/nut.md`, `workflow.md` |
+| Human local-sync handoff | `.agentstartstack/docs/ass.md`, `workflow.md` |
 
 Append to the smallest applicable file. Update `CLAUDE.md` when adding a new file.

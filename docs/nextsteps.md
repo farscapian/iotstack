@@ -30,7 +30,7 @@ builds. Workflow for any change you make:
   - Only ADD/restore a build's test cases after that build is proven on real
     hardware (the human confirms). Never assert a build works without that.
 
-Work in the session clone, commit when a task is complete, let me run `nut`.
+Work in the session clone, commit when a task is complete, let me run `ass sync`.
 Never push to origin.
 ```
 
@@ -87,7 +87,7 @@ When the human validates one of these, that's the trigger to (re)write its cases
 ---
 
 ## Smaller follow-ups (lower priority)
-- `nutupyall` didn't flag this clone with `.agentstartstack-bump` -- check that its
-  `_nutupyall_session_clones` path pattern covers `~/.claude/worktrees/...`.
+- `ass sync all` didn't flag this clone with `.agentstartstack-bump` -- check that its
+  `agent_session_clones_list` path pattern covers `~/.claude/worktrees/...`.
 - IP-override for flash/update (`IOTSTACK_OTA_HOST`) -- deferred; `.local`/mDNS is
   baked into `_iotstack_tcp_open`, the avahi-browse discovery, and `esphome upload`.
