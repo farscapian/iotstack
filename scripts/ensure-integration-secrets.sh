@@ -68,6 +68,16 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     _ies_info "Invalidated iotstack/common/ha_token in pass (set to ${PLACEHOLDER_VALUE})"
   }
 
+  invalidate_ha_token_if_auth_failure() {
+    # If $1 (a failed command's output) shows Home Assistant rejected the token,
+    # invalidate the stored token and return 0; otherwise leave it and return 1.
+    # Lets callers reset a bad token while keeping a network/timeout failure benign.
+    local output="${1:-}"
+    is_ha_token_auth_failure "$output" || return 1
+    invalidate_ha_token
+    return 0
+  }
+
   verify_ha_websocket_or_reprompt() {
     # Verify HA WebSocket auth with the current $HA_URL/$HA_TOKEN. On a rejected
     # token, invalidate the stored one and prompt for a new token in-place rather
