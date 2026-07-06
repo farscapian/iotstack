@@ -134,6 +134,12 @@ def _ssl_context() -> ssl.SSLContext:
     return ctx
 
 
+# HA can take a while to connect to a just-rebooted device to advance the ESPHome
+# config flow; give each config-flow request a generous read timeout (on the scale
+# of the discovery poll) so a slow-but-working setup is not cut off at 30s.
+_CONFIG_FLOW_HTTP_TIMEOUT = 90
+
+
 def _http_config_flow_request(
     ha_url: str,
     token: str,
@@ -154,12 +160,23 @@ def _http_config_flow_request(
 
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=30, context=_ssl_context()) as resp:
+        with urllib.request.urlopen(
+            req, timeout=_CONFIG_FLOW_HTTP_TIMEOUT, context=_ssl_context()
+        ) as resp:
             body = resp.read().decode()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode(errors="replace")
         raise HAWebSocketError(
             f"Config flow HTTP {exc.code}: {detail or exc.reason}"
+        ) from exc
+    except TimeoutError as exc:
+        # A bare TimeoutError (not wrapped in URLError) is raised when the read
+        # times out -- typically HA taking too long to reach the just-rebooted
+        # device to complete the ESPHome config flow. Surface it cleanly so the
+        # caller logs a one-line reason instead of a traceback.
+        raise HAWebSocketError(
+            f"Config flow request timed out after {_CONFIG_FLOW_HTTP_TIMEOUT}s "
+            "(Home Assistant could not reach the device to finish setup)"
         ) from exc
     except urllib.error.URLError as exc:
         raise HAWebSocketError(f"Config flow HTTP request failed: {exc}") from exc

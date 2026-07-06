@@ -3370,7 +3370,14 @@ _ha_register_esphome_device() {
     return 0
   fi
 
-  echo "$reg_out" >&2
+  # Log the failure reason into the session log (ha_websocket.py prints a clean
+  # one-line "[error] ..." on failure) rather than only echoing to the console, so
+  # the log shows WHY registration did not complete.
+  if [[ -n "$reg_out" ]]; then
+    while IFS= read -r _reg_line; do
+      [[ -n "$_reg_line" ]] && warn "  ${_reg_line}"
+    done <<< "$reg_out"
+  fi
   # Registration failing is not fatal to the flash: the device is already
   # flashed, running, and reachable -- only the optional HA auto-registration did
   # not complete (e.g. a Thread device whose SRP service has not propagated to HA
