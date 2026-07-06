@@ -53,9 +53,8 @@ r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)'
 ### Logging Strategy
 - Compilation output goes to: `~/.iotstack/logs/<device>/<timestamp>.compile.log`
 - Flash logs per device: `~/.iotstack/logs/<device>/<timestamp>-<hash>/`
-- Per-device build cache: `~/.iotstack/logs/<device>.build.cache` (YAML SHA + ESPHome version + config_hash)
-- Global compilation cache: `~/.iotstack/compilation-cache.csv` (`image_hash` column; used by `smart_compile` / flash assessment)
-- Cache invalidated on YAML/common/external_components changes, new git tag, or ESPHome upgrade
+- Per-device build cache: `~/.iotstack/logs/<device>.build.cache` (`esphome_version` + `config_hash`; the sole build-identity key, shared by `smart_compile` and `update_devices.sh`)
+- Cache invalidated whenever `config_hash` changes: any YAML / `common/` / `external_components/` edit (the latter two via the `project_version` fingerprint), a new git tag, or an ESPHome upgrade
 
 ### Session log ordering (`create-log.sh`)
 

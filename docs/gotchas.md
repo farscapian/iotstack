@@ -57,7 +57,7 @@ FIRMWARE_BIN="${YAMLS_DIR}/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}
 
 ### Build cache sync between `iotstack flash` Step 1 and Step 5
 
-`iotstack flash` compiles both bootstrap and production in Step 1 via `smart_compile`. `update_devices.sh` (Step 5) has its own independent build cache at `~/.iotstack/logs/<device>.build.cache` (yaml_sha256 + esphome_version + config_hash). Without syncing them, Step 5 sees a cache miss and recompiles.
+`iotstack flash` compiles both bootstrap and production in Step 1 via `smart_compile`. `update_devices.sh` (Step 5) has its own independent build cache at `~/.iotstack/logs/<device>.build.cache` (`esphome_version` + `config_hash`). Without syncing them, Step 5 sees a cache miss and recompiles.
 
 `_flash_sync_update_devices_cache()` in `iotstack.sh` is called immediately after the production `smart_compile` in Step 1. It writes the same cache keys that `update_devices.sh` would write itself, giving Step 5 an instant cache hit. If you refactor the compile flow, ensure this sync call is preserved after production compilation.
 

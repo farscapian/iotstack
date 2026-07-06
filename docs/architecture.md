@@ -22,28 +22,31 @@ The `iotstack.sh` CLI tool provides a user-friendly wrapper around this script w
 
 ### Compilation Cache
 
-Cache stored at `~/.iotstack/compilation-cache.csv` (CSV format with headers):
+The single build-identity key is the ESPHome **`config_hash`**. `smart_compile`
+(`iotstack.sh`) and `update_devices.sh` share one implementation
+(`scripts/iotstack-version.sh`): a build is reused only when the current source's
+`config_hash` equals the built one (`build_info.json`) and `firmware.bin` exists;
+otherwise ESPHome recompiles. The per-device cache at
+`~/.iotstack/logs/<device>.build.cache` stores just `esphome_version` +
+`config_hash` (no YAML hash, no CSV).
 
-**Columns:**
-- `yaml_name`: YAML filename (e.g., `bleproxy.yaml`, `.iotstack-bootstrap-esp32c6.yaml`)
-- `yaml_sha`: last 10 hex chars of SHA256 over YAML + `yamls/external_components/` + `yamls/common/` + **current git tag** (cache key)
-- `binary_sha`: last 10 hex chars of SHA256 of compiled `firmware.bin`
-- `image_hash`: 8-char hex ESPHome image hash (ESPHome `config_hash`; primary runtime comparison key)
+`config_hash` is ESPHome's FNV-1a hash of the *resolved config* -- it does not see
+external-component C++ or `common/` includes on its own. So
+`iotstack_prepare_compile_yaml` folds a fingerprint of `external_components/` +
+`common/` into `project_version` as a fourth identifier
+(`<git-tag>.<sha>`, e.g. `v0.1.0.ab3523f1`). Net effect: `config_hash` moves on a
+change to any device YAML, package, `common/` include, `external_components/`
+source, or the git tag.
 
-Per-device build cache also at `~/.iotstack/logs/<device>.build.cache` (used by `update_devices.sh`).
+**Cache invalidation** (all reduce to a `config_hash` change):
+- Any change to a device YAML, a `common/` include, or an `external_components/`
+  source (the latter two via the `project_version` fingerprint)
+- New git tag (folded into `project_version`)
+- ESPHome version change
 
-**Cache invalidation:**
-- Changes to any device YAML, `external_components/`, or `common/` package
-- New git tag or commit (`iotstack_project_version` folded into `yaml_sha` via `scripts/iotstack-version.sh`)
-- ESPHome version change (`update_devices.sh` per-device cache)
-- Set `DISABLE_COMPILATION_CACHE=1` to force recompilation
-
-**Example cache contents:**
-```
-yaml_name,yaml_sha,binary_sha,image_hash
-bleproxy.yaml,a1b5f8e3e2c9,c4f3b1c7e2a8,1a25e0c8
-bootstrap.yaml,f9e3fc2375e6,cc50a183d757,3ea7c88a
-```
+There is no force/disable flag -- `config_hash` is complete, so a stale build is
+never reused (a docs-only commit that touches none of the above correctly does
+not recompile).
 
 ### Serial Flash Baud Rate (per chip)
 `esp_esptool_baud_for_chip()` in `scripts/esp-serial.sh` selects the rate:
@@ -86,9 +89,9 @@ esphome:
 - Latest annotated tag via `git describe --tags --abbrev=0` (e.g. `v0.1.0`)
 - Fallback `untagged` when no tags exist
 
-**Injection:** `iotstack_prepare_compile_yaml()` copies the source YAML to a temp file (`yamls/.temp-compile-<role>.yaml.<pid>`) and patches `project_version` with `sed`. Source YAMLs in git stay at `0.0.0-dev`; only compile-time copies get the real tag.
+**Injection:** `iotstack_prepare_compile_yaml()` copies the source YAML to a temp file (`yamls/.temp-compile-<role>.yaml.<pid>`) and patches `project_version` with `sed` to `<git-tag>.<source-fingerprint>` (e.g. `v0.1.0.ab3523f1`). Source YAMLs in git stay at `0.0.0`; only compile-time copies get the tag + fingerprint.
 
-**Cache invalidation:** compilation caches invalidate when the tag changes (tag is folded into the `yaml_sha` cache key). Commits that do not create a new tag do NOT trigger recompilation -- this is intentional. To force a rebuild, create a new tag or set `DISABLE_COMPILATION_CACHE=1`.
+**Cache invalidation:** the tag is injected into `project_version`, so a new tag changes `config_hash` and recompiles. Edits to `external_components/` or `common/` also recompile without a new tag -- their fingerprint is a fourth `project_version` identifier (`iotstack_source_fingerprint`). A commit that changes none of these (docs-only) does not recompile. See [Compilation Cache](#compilation-cache).
 
 **Gotcha:** compile-time copies must live under `yamls/` (e.g. `yamls/.temp-compile-matrixdisplay.yaml.<pid>`), not `/tmp`, because ESPHome resolves `!include common/...` relative to the YAML file path.
 
