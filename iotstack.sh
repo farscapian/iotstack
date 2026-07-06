@@ -4388,6 +4388,8 @@ _flash_prepare_builds() {
     ok "Build directory cleaned"
   fi
 
+  info "Project version: $(iotstack_project_version)"
+
   if [[ -n "$yaml_path" ]]; then
     device_name=$(basename "$yaml_path" .yaml)
     debug "Compile bootstrap + ${device_name} for ${variant} (USB chip verify deferred until after build)"

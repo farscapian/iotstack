@@ -76,11 +76,27 @@ iotstack_source_fingerprint() {
     | sha256sum | awk '{print substr($1,1,8)}'
 }
 
+iotstack_project_version() {
+  # The value injected into project_version at compile time: "<git-tag>.<source
+  # -fingerprint>" (e.g. v0.1.2.ab3523f1), or just "<git-tag>" if no local
+  # component/include sources exist. The tag is the firmware's reported version;
+  # the fingerprint (a fourth dotted identifier) makes config_hash react to
+  # external_components/ + common/ source edits that the tag alone would miss.
+  local git_tag src_fp
+  git_tag=$(iotstack_git_tag)
+  src_fp=$(iotstack_source_fingerprint)
+  if [[ -n "$src_fp" ]]; then
+    printf '%s.%s\n' "$git_tag" "$src_fp"
+  else
+    printf '%s\n' "$git_tag"
+  fi
+}
+
 iotstack_prepare_compile_yaml() {
   # Copy source YAML to a temp compile artifact (so rendered .iotstack-* files stay untouched).
   # Prints YAML path to compile.
   local src_yaml="$1"
-  local base compile_yaml
+  local base compile_yaml version
 
   [[ -f "$src_yaml" ]] || return 1
   base=$(basename "$src_yaml")
@@ -89,16 +105,9 @@ iotstack_prepare_compile_yaml() {
   compile_yaml="$(cd "$(dirname "$src_yaml")" && pwd)/.temp-compile-${base}.$$"
   cp "$src_yaml" "$compile_yaml"
 
-  # Inject "<git-tag>.<source-fingerprint>" into project_version on the temp copy
-  # only (source YAML stays unchanged -- no dirty git state), e.g. v0.1.0.ab3523f1.
-  # The tag lands in the firmware's reported version; the fingerprint (a fourth
-  # dotted identifier) makes config_hash react to external_components/ + common/
-  # source edits that the tag alone would miss.
-  local git_tag src_fp version
-  git_tag=$(iotstack_git_tag)
-  src_fp=$(iotstack_source_fingerprint)
-  version="$git_tag"
-  [[ -n "$src_fp" ]] && version="${git_tag}.${src_fp}"
+  # Inject the project version on the temp copy only (source YAML stays unchanged
+  # -- no dirty git state). See iotstack_project_version.
+  version=$(iotstack_project_version)
   sed -i "s/project_version: \"[^\"]*\"/project_version: \"${version}\"/" "$compile_yaml"
 
   printf '%s\n' "$compile_yaml"
