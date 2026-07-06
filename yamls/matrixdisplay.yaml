@@ -23,15 +23,11 @@ external_components:
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
+  esphome_base: !include common/esphome_base.yaml
   sntp_time: !include common/sntp_time.yaml
 
 esphome:
   name: matrixdisplay
-  friendly_name: ${friendly_name}
-  project:
-    name: "iotstack.${device_role}"
-    version: "${project_version}"
-  name_add_mac_suffix: true
   on_boot:
     - priority: 600
       then:

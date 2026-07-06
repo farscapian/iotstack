@@ -1,0 +1,11 @@
+# Shared esphome: core metadata, included by every role via packages: so it is
+# defined in one place. Each role still sets its own esphome.name inline -- it
+# varies (some roles shorten it to fit ESPHome's 31-char node-name limit once the
+# MAC suffix is appended) -- plus any role-specific keys (on_boot, includes).
+# ESPHome deep-merges this package's esphome: block with each role's inline one.
+esphome:
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: true
+  project:
+    name: "iotstack.${device_role}"
+    version: "${project_version}"

@@ -26,16 +26,12 @@ external_components:
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
+  esphome_base: !include common/esphome_base.yaml
   sntp_time: !include common/sntp_time.yaml
   strip_light: !include common/ledstrip_light.yaml
 
 esphome:
   name: ledstrip-s3-wifi
-  friendly_name: ${friendly_name}
-  project:
-    name: "iotstack.${device_role}"
-    version: "${project_version}"
-  name_add_mac_suffix: true
 
 esp32:
   board: seeed_xiao_esp32s3
