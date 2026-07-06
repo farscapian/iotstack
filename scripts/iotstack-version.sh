@@ -110,9 +110,85 @@ iotstack_cleanup_compile_yaml() {
   [[ -n "$compile_yaml" && "$compile_yaml" != "$src_yaml" ]] && rm -f "$compile_yaml"
 }
 
-iotstack_yaml_cache_sha() {
-  # SHA256 of the source YAML file (update_devices.sh per-device build cache key).
+# -- Compile skip (config_hash) -- shared by iotstack.sh and update_devices.sh --
+# ESPHome's config_hash is the single build-identity key: it reflects the resolved
+# YAML config plus the project_version source fingerprint (see above), so it moves
+# on any YAML, package, common/, external_components/, git-tag, or component-source
+# change. Compilation is skipped only when the current config_hash matches the
+# built one -- there is no separate yaml-hash key.
+
+_esphome_config_hash_hex() {
+  # Parse "0xabcdef12" from esphome config-hash stdout to 8-char lowercase hex.
+  local raw="${1,,}"
+  raw="${raw#0x}"
+  [[ "$raw" =~ ^[0-9a-f]{8}$ ]] || return 1
+  echo "$raw"
+}
+
+_esphome_config_hash_for_compile_yaml() {
+  # ESPHome config_hash for a prepared compile YAML.
+  local compile_yaml="$1"
+  local hash_raw
+  [[ -f "$compile_yaml" ]] || return 1
+  hash_raw=$("${ESPHOME_BIN:-esphome}" -q config-hash "$compile_yaml" 2>/dev/null | tail -1) || return 1
+  _esphome_config_hash_hex "$hash_raw"
+}
+
+_current_config_hash_for_yaml() {
+  # Current ESPHome config_hash for a source YAML (packages, external_components,
+  # common/, and the project_version fingerprint all fold in via the compile YAML).
   local yaml_file="$1"
+  local device_name="${2:-}"
+  local compile_yaml hash firmware_bin
   [[ -f "$yaml_file" ]] || return 1
-  sha256sum "$yaml_file" | awk '{print $1}'
+
+  # Bootstrap builds sync their partition table before hashing. Guarded so this
+  # works when sourced without iotstack.sh's bootstrap helpers (update_devices.sh).
+  if [[ -n "$device_name" ]] && declare -F _is_bootstrap_yaml &>/dev/null \
+      && _is_bootstrap_yaml "$yaml_file"; then
+    firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
+    if [[ -f "$firmware_bin" ]] && declare -F _sync_bootstrap_partition_table_from_build &>/dev/null; then
+      # Side-effect only; must not write to stdout (hash capture uses command substitution).
+      _sync_bootstrap_partition_table_from_build >/dev/null
+    fi
+  fi
+
+  compile_yaml=$(iotstack_prepare_compile_yaml "$yaml_file") || return 1
+  hash=$(_esphome_config_hash_for_compile_yaml "$compile_yaml") || hash=""
+  iotstack_cleanup_compile_yaml "$compile_yaml" "$yaml_file"
+  [[ -n "$hash" ]] && echo "$hash"
+}
+
+_config_hash_from_build_dir() {
+  # 8-char hex config_hash from ESPHome build_info.json.
+  local build_name="$1"
+  local build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
+  [[ -f "$build_info" ]] || return 1
+  python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
+}
+
+_compile_skip_device_name() {
+  local yaml_file="$1"
+  local device_name="${2:-}"
+  local resolved
+  if declare -F _is_bootstrap_yaml &>/dev/null && _is_bootstrap_yaml "$yaml_file"; then
+    resolved="${device_name:-$(iotstack_bootstrap_role)}"
+  else
+    resolved="${device_name:-$(basename "$yaml_file" .yaml)}"
+    [[ "$resolved" =~ ^\.temp-compile- ]] && resolved="${resolved#.temp-compile-}"
+  fi
+  echo "$resolved"
+}
+
+_build_matches_config_hash() {
+  # Returns 0 when an existing build matches the current esphome config-hash.
+  local yaml_file="$1"
+  local device_name="${2:-}"
+  local resolved_device current_hash built_hash firmware_bin
+  resolved_device=$(_compile_skip_device_name "$yaml_file" "$device_name")
+  firmware_bin="${YAMLS_DIR}/.esphome/build/${resolved_device}/.pioenvs/${resolved_device}/firmware.bin"
+  [[ -f "$firmware_bin" ]] || return 1
+  current_hash=$(_current_config_hash_for_yaml "$yaml_file" "$resolved_device") || return 1
+  built_hash=$(_config_hash_from_build_dir "$resolved_device" 2>/dev/null) || return 1
+  [[ -n "$current_hash" && -n "$built_hash" && "$current_hash" == "$built_hash" ]]
 }

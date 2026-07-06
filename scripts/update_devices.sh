@@ -83,20 +83,14 @@ warn() { echo -e "${YLW}[WARN]${RST}  $*"; }
 err()  { echo -e "${RED}[ERR]${RST}   $*" >&2; }
 dim()  { echo -e "${DIM}$*${RST}"; }
 
-_config_hash_from_build_info() {
-  local build_name="$1"
-  local build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
-  [[ -f "$build_info" ]] || return 1
-  python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
-}
-
 _resolve_build_config_hash() {
   # Authoritative build config_hash when compile is skipped (cache hit).
+  # _config_hash_from_build_dir is shared from iotstack-version.sh.
   local build_name="$1"
   local cached_hash="${2:-}"
   local hash
 
-  hash=$(_config_hash_from_build_info "$build_name" 2>/dev/null) || true
+  hash=$(_config_hash_from_build_dir "$build_name" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   [[ -n "$cached_hash" ]] && echo "$cached_hash"
 }
@@ -105,8 +99,8 @@ _sync_build_cache_config_hash() {
   local resolved_hash="$1"
   [[ -n "$resolved_hash" && "$resolved_hash" != "$CACHED_CONFIG_HASH" ]] || return 0
   mkdir -p "$(dirname "$CACHE_FILE")"
-  printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
-    "$YAML_SHA256" "$ESPHOME_VERSION" "$resolved_hash" > "$CACHE_FILE"
+  printf 'esphome_version=%s\nconfig_hash=%s\n' \
+    "$ESPHOME_VERSION" "$resolved_hash" > "$CACHE_FILE"
 }
 
 _compile_log_banner() {
@@ -1149,17 +1143,16 @@ PYEOF
 fi
 fi
 
-# -- Compile (with SHA256 cache to skip unnecessary builds) -------------------
-# Cache key: SHA256 of the ORIGINAL YAML file + ESPHome version.
-# If both match a prior successful build, skip compilation and reuse the
-# stored config_hash. Invalidated by any YAML edit or ESPHome upgrade.
-# Uses ORIGINAL_YAML_FILE to ignore temp file changes (OTA password embedding)
+# -- Compile (config_hash cache to skip unnecessary builds) -------------------
+# Compilation is skipped only when the current esphome config_hash (shared
+# _build_matches_config_hash) matches the built one and firmware.bin exists.
+# config_hash is the sole build-identity key -- it reflects the YAML, packages,
+# common/, external_components/, and the git tag (via the project_version source
+# fingerprint), so there is no separate yaml-hash key and no disable flag.
 CACHE_FILE="${BASE_LOG_DIR}/${YAML_NAME}.build.cache"
 
-YAML_SHA256=$(iotstack_yaml_cache_sha "$ORIGINAL_YAML_FILE")
 ESPHOME_VERSION=$("$ESPHOME_BIN" version 2>/dev/null | grep -o '[0-9][0-9]*\.[0-9.]*' | head -1)
 
-CACHED_YAML_SHA256=$(grep '^yaml_sha256='     "$CACHE_FILE" 2>/dev/null | cut -d= -f2 || true)
 CACHED_ESPHOME_VER=$(grep '^esphome_version=' "$CACHE_FILE" 2>/dev/null | cut -d= -f2 || true)
 CACHED_CONFIG_HASH=$(grep '^config_hash='     "$CACHE_FILE" 2>/dev/null | cut -d= -f2 || true)
 
@@ -1212,14 +1205,13 @@ PYEOF
 }
 
 if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
-  if [[ -n "$CACHED_CONFIG_HASH" \
-     && "$CACHED_YAML_SHA256" == "$YAML_SHA256" \
-     && "$CACHED_ESPHOME_VER" == "$ESPHOME_VERSION" ]]; then
+  if [[ "$CACHED_ESPHOME_VER" == "$ESPHOME_VERSION" ]] \
+     && _build_matches_config_hash "$ORIGINAL_YAML_FILE" "$YAML_NAME"; then
     # In reassign mode the image was already built/reported by the caller's
     # Step 1 (iotstack flash); this is the OTA-upload phase, so don't re-announce
     # a compilation decision here.
     if [[ "$REASSIGN_MODE" != true ]]; then
-      log "YAML unchanged, ESPHome ${ESPHOME_VERSION} -- skipping compilation."
+      log "config_hash unchanged, ESPHome ${ESPHOME_VERSION} -- skipping compilation."
     fi
     NEW_CONFIG_HASH=$(_resolve_build_config_hash "$YAML_NAME" "$CACHED_CONFIG_HASH")
     _sync_build_cache_config_hash "$NEW_CONFIG_HASH"
@@ -1235,8 +1227,8 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
           | tail -1 | sed 's/config_hash=0x//')
         COMPILED=true
         # Persist cache for next run
-        printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
-          "$YAML_SHA256" "$ESPHOME_VERSION" "$NEW_CONFIG_HASH" > "$CACHE_FILE"
+        printf 'esphome_version=%s\nconfig_hash=%s\n' \
+          "$ESPHOME_VERSION" "$NEW_CONFIG_HASH" > "$CACHE_FILE"
         setup_flash_logs "$NEW_CONFIG_HASH"
         if [[ -n "$NEW_CONFIG_HASH" ]]; then ok "Build config_hash: ${NEW_CONFIG_HASH}"; fi
       else
@@ -1252,8 +1244,8 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
         NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG" \
           | tail -1 | sed 's/config_hash=0x//')
         COMPILED=true
-        printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
-          "$YAML_SHA256" "$ESPHOME_VERSION" "$NEW_CONFIG_HASH" > "$CACHE_FILE"
+        printf 'esphome_version=%s\nconfig_hash=%s\n' \
+          "$ESPHOME_VERSION" "$NEW_CONFIG_HASH" > "$CACHE_FILE"
         setup_flash_logs "$NEW_CONFIG_HASH"
         if [[ -n "$NEW_CONFIG_HASH" ]]; then ok "Build config_hash: ${NEW_CONFIG_HASH}"; fi
       else

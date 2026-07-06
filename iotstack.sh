@@ -52,86 +52,16 @@ _print_table_rule() {
 }
 
 # -- Compile skip (config_hash) -----------------------------------------------
-# Skip esphome compile when `esphome config-hash` matches build_info.json and firmware.bin exists.
-
-_esphome_config_hash_hex() {
-  # Parse "0xabcdef12" from esphome config-hash stdout to 8-char lowercase hex.
-  local raw="${1,,}"
-  raw="${raw#0x}"
-  [[ "$raw" =~ ^[0-9a-f]{8}$ ]] || return 1
-  echo "$raw"
-}
-
-_esphome_config_hash_for_compile_yaml() {
-  # ESPHome config_hash for a prepared compile YAML.
-  local compile_yaml="$1"
-  local hash_raw hash
-  [[ -f "$compile_yaml" ]] || return 1
-  hash_raw=$(esphome -q config-hash "$compile_yaml" 2>/dev/null | tail -1) || return 1
-  _esphome_config_hash_hex "$hash_raw"
-}
-
-_current_config_hash_for_yaml() {
-  # Current ESPHome config_hash for a source YAML (includes packages, external_components, etc.).
-  local yaml_file="$1"
-  local device_name="${2:-}"
-  local compile_yaml hash firmware_bin
-  [[ -f "$yaml_file" ]] || return 1
-
-  if [[ -n "$device_name" ]] && _is_bootstrap_yaml "$yaml_file"; then
-    firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
-    if [[ -f "$firmware_bin" ]]; then
-      # Side-effect only; must not write to stdout (hash capture uses command substitution).
-      _sync_bootstrap_partition_table_from_build >/dev/null
-    fi
-  fi
-
-  compile_yaml=$(iotstack_prepare_compile_yaml "$yaml_file") || return 1
-  hash=$(_esphome_config_hash_for_compile_yaml "$compile_yaml") || hash=""
-  iotstack_cleanup_compile_yaml "$compile_yaml" "$yaml_file"
-  [[ -n "$hash" ]] && echo "$hash"
-}
-
-_config_hash_from_build_dir() {
-  # 8-char hex config_hash from ESPHome build_info.json.
-  local build_name="$1"
-  local build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
-  [[ -f "$build_info" ]] || return 1
-  python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
-}
-
-_compile_skip_device_name() {
-  local yaml_file="$1"
-  local device_name="${2:-}"
-  local resolved
-  if _is_bootstrap_yaml "$yaml_file"; then
-    resolved="${device_name:-$(iotstack_bootstrap_role)}"
-  else
-    resolved="${device_name:-$(basename "$yaml_file" .yaml)}"
-    [[ "$resolved" =~ ^\.temp-compile- ]] && resolved="${resolved#.temp-compile-}"
-  fi
-  echo "$resolved"
-}
-
-_build_matches_config_hash() {
-  # Returns 0 when an existing build matches the current esphome config-hash.
-  local yaml_file="$1"
-  local device_name="${2:-}"
-  local resolved_device current_hash built_hash firmware_bin
-  resolved_device=$(_compile_skip_device_name "$yaml_file" "$device_name")
-  firmware_bin="${YAMLS_DIR}/.esphome/build/${resolved_device}/.pioenvs/${resolved_device}/firmware.bin"
-  [[ -f "$firmware_bin" ]] || return 1
-  current_hash=$(_current_config_hash_for_yaml "$yaml_file" "$resolved_device") || return 1
-  built_hash=$(_config_hash_from_build_dir "$resolved_device" 2>/dev/null) || return 1
-  [[ -n "$current_hash" && -n "$built_hash" && "$current_hash" == "$built_hash" ]]
-}
+# Skip esphome compile when `esphome config-hash` matches build_info.json and
+# firmware.bin exists. The config_hash helpers (_current_config_hash_for_yaml,
+# _build_matches_config_hash, _config_hash_from_build_dir, ...) live in
+# scripts/iotstack-version.sh so iotstack.sh and update_devices.sh share the exact
+# same logic. Only the iotstack.sh-specific miss-reason logger stays here.
 
 _compile_skip_miss_reason() {
   local yaml_file="$1"
   local device_name="${2:-}"
   local yaml_name current_hash built_hash firmware_bin resolved_device
-
-  [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]] && { echo "compile skip disabled"; return 0; }
 
   yaml_name=$(iotstack_compilation_cache_yaml_name "$yaml_file")
   resolved_device=$(_compile_skip_device_name "$yaml_file" "$device_name")
@@ -361,22 +291,23 @@ _flash_sync_update_devices_cache() {
   local cache_file="${IOTSTACK_HOME}/logs/${yaml_name}.build.cache"
   local build_info="${YAMLS_DIR}/.esphome/build/${yaml_name}/build_info.json"
   [[ -f "$build_info" ]] || return 0
-  local yaml_sha256 esphome_version config_hash
-  yaml_sha256=$(sha256sum "$yaml_file" | awk '{print $1}') || return 0
+  local esphome_version config_hash
   esphome_version=$(esphome version 2>/dev/null | grep -o '[0-9][0-9]*\.[0-9.]*' | head -1) || return 0
   config_hash=$(python3 -c \
     "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" \
     "$build_info" 2>/dev/null) || return 0
   mkdir -p "$(dirname "$cache_file")"
-  printf 'yaml_sha256=%s\nesphome_version=%s\nconfig_hash=%s\n' \
-    "$yaml_sha256" "$esphome_version" "$config_hash" > "$cache_file"
+  printf 'esphome_version=%s\nconfig_hash=%s\n' \
+    "$esphome_version" "$config_hash" > "$cache_file"
   debug "Synced update_devices build cache for ${yaml_name}"
 }
 
 smart_compile() {
-  # Smart compilation that uses cache to skip rebuilds.
+  # Smart compilation that skips a rebuild when the current esphome config_hash
+  # already matches the built one. config_hash is the sole build-identity key
+  # (it reflects YAML + packages + common/ + external_components/ + git tag via
+  # the project_version fingerprint), so there is no force/disable escape hatch.
   # Usage: smart_compile <yaml_file> [device_name_for_logging]
-  # Environment variable: DISABLE_COMPILATION_CACHE=1 forces recompilation
   local yaml_file="$1"
   local device_name="${2:-unknown}"
 
@@ -387,8 +318,7 @@ smart_compile() {
 
   local firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
   local cached=0
-  [[ "${DISABLE_COMPILATION_CACHE:-0}" != "1" ]] && _build_matches_config_hash "$yaml_file" "$device_name" && cached=1
-  [[ "${DISABLE_COMPILATION_CACHE:-0}" == "1" ]] && debug "Compilation cache disabled (DISABLE_COMPILATION_CACHE=1)"
+  _build_matches_config_hash "$yaml_file" "$device_name" && cached=1
 
   # -- Non-bootstrap builds ----------------------------------------------------
   # Production firmware is OTA'd into the production partition and uses ESPHome's
