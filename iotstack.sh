@@ -4200,14 +4200,23 @@ _flash_bootstrap_await_wifi() {
 
   if [[ -n "$tty_device" ]]; then
     local chip="${IOTSTACK_ESPTOOL_CHIP:-esp32c6}"
-    local attempt
+    local attempt reset_tty
     # esptool needs exclusive access to the port; pause serial-log capture for
     # the retry sequence (the device is not producing useful logs if it did not
     # boot anyway).
     create_log_serial_capture_pause
     for attempt in $(seq 1 "$_BOOTSTRAP_REBOOT_RETRIES"); do
-      warn "${hostname} not on WiFi yet -- re-issuing reset (attempt ${attempt}/${_BOOTSTRAP_REBOOT_RETRIES})..."
-      esp_esptool_hard_reset "$tty_device" "$chip" || true
+      # The C6 re-enumerates on reset and can land on a different /dev/ttyACM*;
+      # resolve the stable by-id node so the reset is never sent to a stale port.
+      reset_tty=$(create_log_serial_stable_tty "$tty_device")
+      # Report whether the reset actually reached the device (esp_esptool_hard_reset
+      # returns non-zero if it could not connect) vs. reached it but did not boot --
+      # the two failure modes need different fixes, so do not swallow the result.
+      if esp_esptool_hard_reset "$reset_tty" "$chip"; then
+        info "${hostname} not on WiFi -- reset delivered on ${reset_tty} (attempt ${attempt}/${_BOOTSTRAP_REBOOT_RETRIES}); waiting..."
+      else
+        warn "${hostname} not on WiFi -- reset could NOT reach the device on ${reset_tty} (attempt ${attempt}/${_BOOTSTRAP_REBOOT_RETRIES})"
+      fi
       if _wait_for_ota_service "$hostname" "$_BOOTSTRAP_REBOOT_RETRY_TIMEOUT_SEC"; then
         create_log_serial_capture_resume
         ok "Bootstrap OTA service reachable on WiFi (after ${attempt} reset attempt(s))"
