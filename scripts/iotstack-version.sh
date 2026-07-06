@@ -59,6 +59,23 @@ iotstack_compilation_cache_yaml_name() {
   echo ".temp-compile-${base}"
 }
 
+iotstack_source_fingerprint() {
+  # Short hash of the local build inputs that ESPHome's config_hash does NOT see
+  # on its own: external_components/ (C++) and common/ (!include) source files.
+  # ESPHome's config_hash is a hash of the resolved YAML config only, so a change
+  # to a component .cpp or a shared include would not change it. Folding this
+  # fingerprint into project_version (see iotstack_prepare_compile_yaml) makes such
+  # a change flow into config_hash -> a rebuild + device-hash mismatch. Empty when
+  # neither dir exists (nothing to fold in).
+  local yamls_dir
+  yamls_dir="${YAMLS_DIR:-$(iotstack_git_root)/yamls}"
+  find "${yamls_dir}/external_components" "${yamls_dir}/common" -type f \
+    \( -name '*.h' -o -name '*.hpp' -o -name '*.cpp' -o -name '*.c' -o -name '*.cc' \
+       -o -name '*.yaml' -o -name '*.yml' -o -name '*.py' -o -name '*.json' \) \
+    -print0 2>/dev/null | LC_ALL=C sort -z | xargs -0 sha256sum 2>/dev/null \
+    | sha256sum | awk '{print substr($1,1,8)}'
+}
+
 iotstack_prepare_compile_yaml() {
   # Copy source YAML to a temp compile artifact (so rendered .iotstack-* files stay untouched).
   # Prints YAML path to compile.
@@ -72,11 +89,17 @@ iotstack_prepare_compile_yaml() {
   compile_yaml="$(cd "$(dirname "$src_yaml")" && pwd)/.temp-compile-${base}.$$"
   cp "$src_yaml" "$compile_yaml"
 
-  # Inject latest git tag into project_version so the flashed firmware reports it.
-  # Uses the temp copy only -- source YAML stays unchanged (no dirty git state).
-  local git_tag
+  # Inject "<git-tag>.<source-fingerprint>" into project_version on the temp copy
+  # only (source YAML stays unchanged -- no dirty git state), e.g. v0.1.0.ab3523f1.
+  # The tag lands in the firmware's reported version; the fingerprint (a fourth
+  # dotted identifier) makes config_hash react to external_components/ + common/
+  # source edits that the tag alone would miss.
+  local git_tag src_fp version
   git_tag=$(iotstack_git_tag)
-  sed -i "s/project_version: \"[^\"]*\"/project_version: \"${git_tag}\"/" "$compile_yaml"
+  src_fp=$(iotstack_source_fingerprint)
+  version="$git_tag"
+  [[ -n "$src_fp" ]] && version="${git_tag}.${src_fp}"
+  sed -i "s/project_version: \"[^\"]*\"/project_version: \"${version}\"/" "$compile_yaml"
 
   printf '%s\n' "$compile_yaml"
 }
