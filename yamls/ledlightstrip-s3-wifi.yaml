@@ -26,6 +26,7 @@ external_components:
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
+  sntp_time: !include common/sntp_time.yaml
   strip_light: !include common/ledstrip_light.yaml
 
 esphome:
@@ -57,10 +58,6 @@ api:
 
 logger:
   hardware_uart: USB_SERIAL_JTAG
-
-time:
-  - platform: sntp
-    id: device_time
 
 sensor:
   - platform: uptime

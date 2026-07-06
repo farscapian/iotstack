@@ -29,6 +29,7 @@ external_components:
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
+  sntp_time: !include common/sntp_time.yaml
 
 # 1. Core services
 logger:
@@ -41,10 +42,6 @@ nvs_secrets:
 
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
-
-time:
-  - platform: sntp
-    id: device_time
 
 # 2. WiFi -- power save disabled to keep audio stream stable
 # WiFi credentials are loaded from NVS by nvs_secrets component at startup

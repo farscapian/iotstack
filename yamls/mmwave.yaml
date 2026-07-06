@@ -17,6 +17,7 @@ external_components:
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
+  sntp_time: !include common/sntp_time.yaml
   ext_antenna: !include common/xiao_c6_ext_antenna.yaml
 
 esphome:
@@ -91,10 +92,6 @@ api:
               effect: "Strobe Red Yellow"
 
 # Status LED effects are controlled via the API / Home Assistant (light entity).
-
-time:
-  - platform: sntp
-    id: device_time
 
 # 2. WiFi networking
 # WiFi credentials are loaded from NVS by nvs_secrets component at startup

@@ -29,6 +29,7 @@ external_components:
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
+  sntp_time: !include common/sntp_time.yaml
 
 logger:
   hardware_uart: USB_SERIAL_JTAG

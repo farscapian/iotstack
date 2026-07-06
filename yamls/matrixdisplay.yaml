@@ -23,6 +23,7 @@ external_components:
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
+  sntp_time: !include common/sntp_time.yaml
 
 esphome:
   name: matrixdisplay

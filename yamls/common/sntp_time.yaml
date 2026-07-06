@@ -1,0 +1,6 @@
+# Shared SNTP time source, included by every device role via packages: so time
+# sync is configured identically everywhere. Exposes id: device_time for use in
+# lambdas / displays.
+time:
+  - platform: sntp
+    id: device_time

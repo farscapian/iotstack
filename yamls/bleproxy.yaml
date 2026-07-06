@@ -18,6 +18,7 @@ external_components:
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
+  sntp_time: !include common/sntp_time.yaml
   ext_antenna: !include common/xiao_c6_ext_antenna.yaml
 
 esphome:
