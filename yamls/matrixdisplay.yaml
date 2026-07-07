@@ -211,5 +211,5 @@ text_sensor:
     entity_category: diagnostic
     update_interval: 60s
     lambda: |-
-      return "iotstack" + std::to_string(id(matrix_display).get_display_width()) + "x" +
+      return std::to_string(id(matrix_display).get_display_width()) + "x" +
              std::to_string(id(matrix_display).get_display_height());
