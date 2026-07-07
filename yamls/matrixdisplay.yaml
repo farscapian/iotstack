@@ -61,11 +61,18 @@ api:
 logger:
   hardware_uart: USB_SERIAL_JTAG
 
+# Three sizes selectable at runtime via the "Text Size" select.
 font:
   - file: "gfonts://Roboto"
     id: font_small
+    size: 8
+  - file: "gfonts://Roboto"
+    id: font_medium
     size: 14
- 
+  - file: "gfonts://Roboto"
+    id: font_large
+    size: 20
+
 # Pin mapping below is for RGB Matrix Adapter Board (E) Rev 2.2 by Seengreat,
 # wired to a genuine ESP32-S3-DevKitC-1 module.
 #
@@ -82,6 +89,8 @@ display:
   # HUB75 panels cannot self-report; set via: iotstack flash ... --panel-count=2 etc.
   - platform: matrix_hub75
     id: matrix_display
+    # ~25 fps so horizontal scroll and flashing animate smoothly.
+    update_interval: 40ms
     panel_width: 64
     panel_height: 32
     max_layout_cols: 2
@@ -103,28 +112,113 @@ display:
     # e_pin omitted: your panel is 1/16 scan ("16S" on the panel label),
     # so the E row-select line isn't used.
     lambda: |-
-      // Clear each frame, then draw the HA-provided text; fall back to the
-      // panel size when no text has been set yet.
-      it.fill(Color(0, 0, 0));
-      if (id(display_text).state.empty()) {
-        it.printf(0, 8, id(font_small), "%ux%u", it.get_width(), it.get_height());
-      } else {
-        it.print(0, 8, id(font_small), id(display_text).state.c_str());
+      const int W = it.get_width();
+      const int H = it.get_height();
+      it.fill(Color(0, 0, 0));  // blank frame first (writer does not auto-clear)
+
+      // No text yet -> show the panel geometry (medium, white), no effects.
+      std::string text = id(display_text).state;
+      if (text.empty()) {
+        it.printf(0, H / 2, id(font_medium), TextAlign::CENTER_LEFT,
+                  "%dx%d", W, H);
+        return;
       }
 
-# Home Assistant examples:
-#   Set the displayed text:
-#     action: text.set_value
-#     target:
-#       entity_id: text.matrix_display_<mac>_display_text
-#     data:
-#       value: "{{ states('sensor.front_door') }}"
-#   Set brightness (HA computes the percentage from its own sensors/preference):
-#     action: number.set_value
-#     target:
-#       entity_id: number.matrix_display_<mac>_brightness
-#     data:
-#       value: 40
+      // Flash: blank the text for the second half of each interval (0 = steady).
+      float flash_s = id(flash_interval).state;
+      if (flash_s > 0.01f) {
+        float phase = fmodf(millis() / 1000.0f, flash_s);
+        if (phase >= flash_s * 0.5f) return;  // "off" half -> leave blank
+      }
+
+      // Font from the "Text Size" select.
+      auto *fnt = id(font_medium);
+      std::string sz = id(text_size).state;
+      if (sz == "small") fnt = id(font_small);
+      else if (sz == "large") fnt = id(font_large);
+
+      // Color = the RGB light's live color scaled by its brightness/on-state.
+      // (The panel "Brightness" number is a separate hardware-wide dimmer.)
+      auto cv = id(text_color).current_values;
+      float cs = cv.get_state() * cv.get_brightness();
+      Color col((uint8_t) lroundf(cv.get_red()   * cs * 255.0f),
+                (uint8_t) lroundf(cv.get_green() * cs * 255.0f),
+                (uint8_t) lroundf(cv.get_blue()  * cs * 255.0f));
+
+      // Measure the text on one line.
+      int bx, by, tw, th;
+      it.get_text_bounds(0, 0, text.c_str(), fnt, TextAlign::TOP_LEFT,
+                         &bx, &by, &tw, &th);
+
+      if (id(word_wrap).state) {
+        // Greedy word wrap: pack words into lines no wider than the panel.
+        int y = 0;
+        std::string line, word;
+        size_t i = 0;
+        while (true) {
+          bool end = (i >= text.size());
+          char c = end ? ' ' : text[i];
+          if (c == ' ' || c == '\n') {
+            if (!word.empty()) {
+              std::string cand = line.empty() ? word : line + " " + word;
+              int cbx, cby, cw, ch;
+              it.get_text_bounds(0, 0, cand.c_str(), fnt, TextAlign::TOP_LEFT,
+                                 &cbx, &cby, &cw, &ch);
+              if (cw > W && !line.empty()) {
+                it.print(0, y, fnt, col, TextAlign::TOP_LEFT, line.c_str());
+                y += th;
+                line = word;
+              } else {
+                line = cand;
+              }
+              word.clear();
+            }
+            if (c == '\n') {  // honor explicit newlines
+              it.print(0, y, fnt, col, TextAlign::TOP_LEFT, line.c_str());
+              y += th;
+              line.clear();
+            }
+          } else {
+            word += c;
+          }
+          if (end) break;
+          i++;
+        }
+        if (!line.empty())
+          it.print(0, y, fnt, col, TextAlign::TOP_LEFT, line.c_str());
+      } else if (tw <= W) {
+        // Fits on one line: vertically centered, left-aligned.
+        it.print(0, H / 2, fnt, col, TextAlign::CENTER_LEFT, text.c_str());
+      } else {
+        // Wider than the panel: scroll horizontally at scroll_speed px/s.
+        float speed = id(scroll_speed).state;
+        int gap = W;                 // blank gap before the text repeats
+        int span = tw + gap;
+        int off = 0;
+        if (speed > 0.0f)
+          off = (int) fmodf(millis() / 1000.0f * speed, (float) span);
+        it.print(-off, H / 2, fnt, col, TextAlign::CENTER_LEFT, text.c_str());
+        it.print(-off + span, H / 2, fnt, col, TextAlign::CENTER_LEFT,
+                 text.c_str());  // second copy for a seamless loop
+      }
+
+# Home Assistant controls (entity ids are number./text./select./switch./light.
+# matrix_display_<mac>_<slug>):
+#   Display Text   (text)    -- the string to show
+#   Brightness     (number)  -- 0-100% panel brightness (HA owns any dimming curve)
+#   Text Color     (light)   -- RGB color wheel for the text
+#   Text Size      (select)  -- small | medium | large
+#   Word Wrap      (switch)  -- on: wrap to multiple lines; off: scroll if too wide
+#   Flash Interval (number)  -- seconds per blink cycle; 0 = steady
+#   Scroll Speed   (number)  -- px/s when a single line is wider than the panel
+# Examples:
+#   action: text.set_value
+#   target: {entity_id: text.matrix_display_<mac>_display_text}
+#   data: {value: "{{ states('sensor.front_door') }}"}
+#
+#   action: light.turn_on
+#   target: {entity_id: light.matrix_display_<mac>_text_color}
+#   data: {rgb_color: [255, 136, 0]}
 script:
   - id: apply_brightness
     parameters:
@@ -171,6 +265,82 @@ number:
       - script.execute:
           id: apply_brightness
           percent: !lambda 'return x;'
+  - platform: template
+    name: "Flash Interval"
+    id: flash_interval
+    icon: "mdi:flash"
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    min_value: 0
+    max_value: 10
+    step: 0.1
+    unit_of_measurement: "s"
+    mode: box  # seconds per blink cycle; 0 = steady (no flashing)
+  - platform: template
+    name: "Scroll Speed"
+    id: scroll_speed
+    icon: "mdi:arrow-right-thin"
+    optimistic: true
+    restore_value: true
+    initial_value: 15
+    min_value: 0
+    max_value: 60
+    step: 1
+    unit_of_measurement: "px/s"
+    mode: box  # horizontal scroll rate when text is wider than the panel; 0 = static
+
+# RGB text color, exposed to HA as a color-wheel light. The template outputs are
+# no-op sinks -- the color is read live in the display lambda via current_values,
+# not driven onto any pin.
+output:
+  - platform: template
+    type: float
+    id: text_color_r
+    write_action: []
+  - platform: template
+    type: float
+    id: text_color_g
+    write_action: []
+  - platform: template
+    type: float
+    id: text_color_b
+    write_action: []
+
+light:
+  - platform: rgb
+    name: "Text Color"
+    id: text_color
+    red: text_color_r
+    green: text_color_g
+    blue: text_color_b
+    restore_mode: RESTORE_DEFAULT_ON  # defaults to white text on first boot
+    default_transition_length: 0s     # color changes apply instantly
+    gamma_correct: 0                   # linear -> lambda math stays predictable
+
+select:
+  - platform: template
+    name: "Text Size"
+    id: text_size
+    icon: "mdi:format-size"
+    optimistic: true
+    restore_value: true
+    options: ["small", "medium", "large"]
+    initial_option: "medium"
+    on_value:
+      - component.update: matrix_display
+
+switch:
+  - platform: template
+    name: "Word Wrap"
+    id: word_wrap
+    icon: "mdi:wrap"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    turn_on_action:
+      - component.update: matrix_display
+    turn_off_action:
+      - component.update: matrix_display
 
 sensor:
   - platform: template
