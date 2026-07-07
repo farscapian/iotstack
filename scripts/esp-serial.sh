@@ -554,8 +554,13 @@ esp_mac_suffix_resolve_timeout() {
 
 esp_esptool_chip_id() {
   # Run esptool chip-id with auto-reset. Tries 115200 then 9600 for detection.
+  # This is a detection primitive: it must auto-detect the chip, so it does NOT
+  # inherit IOTSTACK_ESPTOOL_CHIP (a role's expected variant). Passing that hint
+  # makes esptool refuse a genuine mismatch ("This chip is ESP32-C6, not
+  # ESP32-S3") instead of reporting the real chip. Callers that truly know the
+  # chip may still pass it explicitly as $2.
   local port="$1"
-  local chip_hint="${2:-${IOTSTACK_ESPTOOL_CHIP:-}}"
+  local chip_hint="${2:-}"
   local baud out resume_capture=0 rc=1 attempt
   local -a esptool_args err_file
 
