@@ -3,13 +3,12 @@ substitutions:
   friendly_name: "Matrix Display"
   boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
   heartbeat_interval: "10s"   # bootstrap-only aliveness beacon (see interval: below)
-  # Adaptive brightness: HA sets "Room Illuminance" (lx); device maps linearly to pixel brightness.
-  matrix_brightness_cap: "170"       # Max pixel brightness at matrix_illuminance_max_lx
-  matrix_brightness_default: "85"    # Target brightness at matrix_illuminance_default_lx
-  matrix_brightness_floor: "8"       # Pixel brightness at matrix_illuminance_min_lx (very dim)
-  matrix_illuminance_min_lx: "1"     # Below this -> floor brightness
-  matrix_illuminance_max_lx: "30"    # At/above this -> cap brightness
-  matrix_illuminance_default_lx: "14.8"  # HA default input -> matrix_brightness_default
+  # Brightness: HA sends a 0-100% level via the "Brightness" number; the device
+  # maps it linearly to pixel brightness. HA owns any adaptive/dimming curve --
+  # compute the percentage from its own sensors + user preference, then push it.
+  matrix_brightness_cap: "170"          # Pixel brightness (0-255) at 100% -- hardware safety ceiling
+  matrix_brightness_default_pct: "50"   # Startup brightness percentage (Brightness number initial_value)
+  matrix_brightness_boot: "85"          # Display brightness at power-on, before on_boot applies the %
   project_version: "0.0.0"
 
 # External components (replaces deprecated custom_components folder)
@@ -31,13 +30,9 @@ esphome:
   on_boot:
     - priority: 600
       then:
-        - if:
-            condition:
-              switch.is_on: adaptive_brightness
-            then:
-              - script.execute:
-                  id: apply_adaptive_brightness
-                  illuminance_lx: !lambda 'return id(room_illuminance).state;'
+        - script.execute:
+            id: apply_brightness
+            percent: !lambda 'return id(brightness_pct).state;'
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -91,7 +86,7 @@ display:
     panel_height: 32
     max_layout_cols: 2
     default_layout_cols: 1
-    brightness: ${matrix_brightness_default}
+    brightness: ${matrix_brightness_boot}
     r1_pin: GPIO18
     g1_pin: GPIO8
     b1_pin: GPIO17
@@ -108,74 +103,74 @@ display:
     # e_pin omitted: your panel is 1/16 scan ("16S" on the panel label),
     # so the E row-select line isn't used.
     lambda: |-
-      it.printf(0, 8, id(font_small), "%ux%u", it.get_width(), it.get_height());
+      // Clear each frame, then draw the HA-provided text; fall back to the
+      // panel size when no text has been set yet.
+      it.fill(Color(0, 0, 0));
+      if (id(display_text).state.empty()) {
+        it.printf(0, 8, id(font_small), "%ux%u", it.get_width(), it.get_height());
+      } else {
+        it.print(0, 8, id(font_small), id(display_text).state.c_str());
+      }
 
-# Home Assistant: push room illuminance from any sensor, e.g.
-#   action: number.set_value
-#   target:
-#     entity_id: number.matrix_display_<mac>_room_illuminance
-#   data:
-#     value: "{{ states('sensor.living_room_illuminance') | float(1) }}"
+# Home Assistant examples:
+#   Set the displayed text:
+#     action: text.set_value
+#     target:
+#       entity_id: text.matrix_display_<mac>_display_text
+#     data:
+#       value: "{{ states('sensor.front_door') }}"
+#   Set brightness (HA computes the percentage from its own sensors/preference):
+#     action: number.set_value
+#     target:
+#       entity_id: number.matrix_display_<mac>_brightness
+#     data:
+#       value: 40
 script:
-  - id: apply_adaptive_brightness
+  - id: apply_brightness
     parameters:
-      illuminance_lx: float
+      percent: float
     then:
-      - if:
-          condition:
-            switch.is_on: adaptive_brightness
-          then:
-            - lambda: |-
-                float lux = illuminance_lx;
-                const float min_lux = ${matrix_illuminance_min_lx};
-                const float max_lux = ${matrix_illuminance_max_lx};
-                const uint8_t cap = ${matrix_brightness_cap};
-                const uint8_t floor = ${matrix_brightness_floor};
-                uint8_t b;
-                if (lux <= min_lux) {
-                  b = floor;
-                } else if (lux >= max_lux) {
-                  b = cap;
-                } else {
-                  float t = (lux - min_lux) / (max_lux - min_lux);
-                  b = floor + (uint8_t) (t * (float) (cap - floor));
-                }
-                id(matrix_display).set_brightness(b);
-                id(pixel_brightness).publish_state(b);
+      - lambda: |-
+          // Map a 0-100% level to a 0-cap pixel brightness (cap is the hardware
+          // safety ceiling). HA is responsible for any adaptive dimming.
+          float p = percent;
+          if (p < 0.0f) p = 0.0f;
+          if (p > 100.0f) p = 100.0f;
+          const float cap = ${matrix_brightness_cap};
+          uint8_t b = (uint8_t) lroundf(p / 100.0f * cap);
+          id(matrix_display).set_brightness(b);
+          id(pixel_brightness).publish_state(b);
 
-switch:
+text:
   - platform: template
-    name: "Adaptive Brightness"
-    id: adaptive_brightness
-    icon: "mdi:brightness-auto"
+    name: "Display Text"
+    id: display_text
+    mode: text
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_ON
-    turn_on_action:
-      - script.execute:
-          id: apply_adaptive_brightness
-          illuminance_lx: !lambda 'return id(room_illuminance).state;'
-    turn_off_action:
-      - matrix_hub75.set_brightness:
-          id: matrix_display
-          brightness: ${matrix_brightness_cap}
+    restore_value: true
+    min_length: 0
+    max_length: 128
+    initial_value: ""
+    on_value:
+      # Redraw immediately so text changes are not delayed to the next update tick.
+      - component.update: matrix_display
 
 number:
   - platform: template
-    name: "Room Illuminance"
-    id: room_illuminance
+    name: "Brightness"
+    id: brightness_pct
     optimistic: true
     restore_value: true
-    initial_value: ${matrix_illuminance_default_lx}
+    initial_value: ${matrix_brightness_default_pct}
     min_value: 0
-    max_value: 100000
-    step: 0.1
-    unit_of_measurement: "lx"
-    device_class: illuminance
-    mode: box
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    mode: slider
     on_value:
       - script.execute:
-          id: apply_adaptive_brightness
-          illuminance_lx: !lambda 'return x;'
+          id: apply_brightness
+          percent: !lambda 'return x;'
 
 sensor:
   - platform: template
@@ -185,7 +180,8 @@ sensor:
     entity_category: diagnostic
     accuracy_decimals: 0
     update_interval: never
-    lambda: 'return ${matrix_brightness_default};'
+    # Actual applied pixel value; published by apply_brightness (0 until on_boot runs).
+    lambda: 'return 0;'
 
 text_sensor:
   - platform: template
