@@ -482,6 +482,27 @@ esp_mac_from_esptool_output() {
   printf '%s\n' "${mac: -6}"
 }
 
+esp_variant_from_esptool_output() {
+  # Echo esphome/esp-idf variant slug (esp32c6, esp32s3, ...) from esptool
+  # chip-id / write-flash output. Returns 1 when no chip line is recognized.
+  local out="$1"
+  if echo "$out" | grep -qi 'ESP32-C6'; then
+    printf '%s\n' esp32c6
+  elif echo "$out" | grep -qi 'ESP32-S3'; then
+    printf '%s\n' esp32s3
+  elif echo "$out" | grep -qi 'ESP32-C3'; then
+    printf '%s\n' esp32c3
+  elif echo "$out" | grep -qi 'ESP32-H2'; then
+    printf '%s\n' esp32h2
+  elif echo "$out" | grep -qi 'ESP32-S2'; then
+    printf '%s\n' esp32s2
+  elif echo "$out" | grep -qi 'ESP32'; then
+    printf '%s\n' esp32
+  else
+    return 1
+  fi
+}
+
 esp_mac_suffix_resolve() {
   # MAC suffix from esptool capture (write-flash) or chip-id probe on the port.
   local port="$1"
@@ -627,7 +648,7 @@ esp_detect_chip() {
   # Echo esphome/esp-idf variant slug: esp32c6, esp32s3, esp32, esp32c3, ...
   local port="$1"
   local chip_hint="${2:-}"
-  local out variant
+  local out
 
   [[ -e "$port" ]] || return 1
 
@@ -635,23 +656,7 @@ esp_detect_chip() {
     return 1
   fi
 
-  if echo "$out" | grep -qi 'ESP32-C6'; then
-    variant=esp32c6
-  elif echo "$out" | grep -qi 'ESP32-S3'; then
-    variant=esp32s3
-  elif echo "$out" | grep -qi 'ESP32-C3'; then
-    variant=esp32c3
-  elif echo "$out" | grep -qi 'ESP32-H2'; then
-    variant=esp32h2
-  elif echo "$out" | grep -qi 'ESP32-S2'; then
-    variant=esp32s2
-  elif echo "$out" | grep -qi 'ESP32'; then
-    variant=esp32
-  else
-    return 1
-  fi
-
-  printf '%s\n' "$variant"
+  esp_variant_from_esptool_output "$out"
 }
 
 esp_serial_load_map() {

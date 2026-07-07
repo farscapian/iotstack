@@ -4846,8 +4846,24 @@ _flash_production_smart() {
       _flash_step_begin "Assessing device"
       info "Port: ${tty_device}"
       # esptool chip-id needs exclusive TTY access; serial capture starts after MAC read.
+      # One chip-id read yields both the MAC suffix and the connected chip variant.
       info "Reading chip MAC via USB..."
-      device_mac=$(esp_mac_suffix_from_port "$tty_device" 2>/dev/null) || device_mac=""
+      local chipid_out=""
+      chipid_out=$(esp_esptool_chip_id "$tty_device" 2>/dev/null) || chipid_out=""
+      device_mac=$(esp_mac_from_esptool_output "$chipid_out" 2>/dev/null) || device_mac=""
+
+      # Fail fast on a chip/role mismatch (e.g. an ESP32-C6 on the port for an
+      # S3-only role): the role firmware is built for the wrong silicon and would
+      # never run. The auto-discovery path filters ttys by variant; an explicitly
+      # named tty bypasses that, so verify it here before any serial write.
+      local expected_variant="" connected_variant=""
+      expected_variant=$(yaml_variant_for_role "$device" 2>/dev/null) || expected_variant=""
+      connected_variant=$(esp_variant_from_esptool_output "$chipid_out" 2>/dev/null) || connected_variant=""
+      if [[ -n "$expected_variant" && -n "$connected_variant" \
+            && "$connected_variant" != "$expected_variant" ]]; then
+        err "Chip mismatch: ${tty_device} is a ${connected_variant}, but role '${device}' targets ${expected_variant}. Connect a ${expected_variant} board or check the port."
+      fi
+
       if [[ -n "$device_mac" ]]; then
         prod_hostname="${device}-${device_mac}"
         if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
