@@ -61,16 +61,35 @@ api:
 logger:
   hardware_uart: USB_SERIAL_JTAG
 
-# Three sizes selectable at runtime via the "Text Size" select.
+# Font face x size, chosen at runtime via the "Font" and "Text Size" selects.
+# 3 families (Roboto sans / Roboto Mono / Roboto Slab) x 3 sizes (8/14/20).
 font:
   - file: "gfonts://Roboto"
-    id: font_small
+    id: font_roboto_s
     size: 8
   - file: "gfonts://Roboto"
-    id: font_medium
+    id: font_roboto_m
     size: 14
   - file: "gfonts://Roboto"
-    id: font_large
+    id: font_roboto_l
+    size: 20
+  - file: "gfonts://Roboto+Mono"
+    id: font_mono_s
+    size: 8
+  - file: "gfonts://Roboto+Mono"
+    id: font_mono_m
+    size: 14
+  - file: "gfonts://Roboto+Mono"
+    id: font_mono_l
+    size: 20
+  - file: "gfonts://Roboto+Slab"
+    id: font_slab_s
+    size: 8
+  - file: "gfonts://Roboto+Slab"
+    id: font_slab_m
+    size: 14
+  - file: "gfonts://Roboto+Slab"
+    id: font_slab_l
     size: 20
 
 # Pin mapping below is for RGB Matrix Adapter Board (E) Rev 2.2 by Seengreat,
@@ -116,11 +135,24 @@ display:
       const int H = it.get_height();
       it.fill(Color(0, 0, 0));  // blank frame first (writer does not auto-clear)
 
-      // No text yet -> show the panel geometry (medium, white), no effects.
+      // Font = "Font" (family) x "Text Size".
+      std::string face = id(text_font).state;
+      std::string sz = id(text_size).state;
+      auto *fnt = id(font_roboto_m);
+      if (face == "mono")
+        fnt = (sz == "small") ? id(font_mono_s)
+            : (sz == "large") ? id(font_mono_l) : id(font_mono_m);
+      else if (face == "slab")
+        fnt = (sz == "small") ? id(font_slab_s)
+            : (sz == "large") ? id(font_slab_l) : id(font_slab_m);
+      else
+        fnt = (sz == "small") ? id(font_roboto_s)
+            : (sz == "large") ? id(font_roboto_l) : id(font_roboto_m);
+
+      // No text yet -> show the panel geometry (white), no effects.
       std::string text = id(display_text).state;
       if (text.empty()) {
-        it.printf(0, H / 2, id(font_medium), TextAlign::CENTER_LEFT,
-                  "%dx%d", W, H);
+        it.printf(0, H / 2, fnt, TextAlign::CENTER_LEFT, "%dx%d", W, H);
         return;
       }
 
@@ -131,28 +163,68 @@ display:
         if (phase >= flash_s * 0.5f) return;  // "off" half -> leave blank
       }
 
-      // Font from the "Text Size" select.
-      auto *fnt = id(font_medium);
-      std::string sz = id(text_size).state;
-      if (sz == "small") fnt = id(font_small);
-      else if (sz == "large") fnt = id(font_large);
+      // Gradient stops: each "Text Color N" light contributes a stop while it is
+      // on, in order 1..3. 0 -> nothing to draw; 1 -> solid; 2-3 -> gradient.
+      float sr[3], sg[3], sb[3];
+      int n = 0;
+      auto add_stop = [&](auto *ls) {
+        auto v = ls->current_values;
+        if (v.get_state() > 0.5f) {           // on/off (transitions are instant)
+          float s = v.get_brightness();        // per-stop intensity
+          sr[n] = v.get_red() * s; sg[n] = v.get_green() * s; sb[n] = v.get_blue() * s;
+          n++;
+        }
+      };
+      add_stop(id(text_color_1));
+      add_stop(id(text_color_2));
+      add_stop(id(text_color_3));
+      if (n == 0) return;                      // all color stops off -> blank
 
-      // Color = the RGB light's live color scaled by its brightness/on-state.
-      // (The panel "Brightness" number is a separate hardware-wide dimmer.)
-      auto cv = id(text_color).current_values;
-      float cs = cv.get_state() * cv.get_brightness();
-      Color col((uint8_t) lroundf(cv.get_red()   * cs * 255.0f),
-                (uint8_t) lroundf(cv.get_green() * cs * 255.0f),
-                (uint8_t) lroundf(cv.get_blue()  * cs * 255.0f));
+      // Color at t in [0,1] interpolated across the active stops.
+      auto grad = [&](float t) -> Color {
+        if (t < 0) t = 0;
+        if (t > 1) t = 1;
+        float pos = (n == 1) ? 0.0f : t * (float) (n - 1);
+        int i = (int) pos;
+        if (i > n - 1) i = n - 1;
+        int j = (i + 1 < n) ? i + 1 : i;
+        float f = pos - (float) i;
+        float r = sr[i] + (sr[j] - sr[i]) * f;
+        float g = sg[i] + (sg[j] - sg[i]) * f;
+        float b = sb[i] + (sb[j] - sb[i]) * f;
+        return Color((uint8_t) lroundf(r * 255.0f),
+                     (uint8_t) lroundf(g * 255.0f),
+                     (uint8_t) lroundf(b * 255.0f));
+      };
+      Color solid = grad(0.0f);
 
-      // Measure the text on one line.
+      // Draw one line. Solid color -> a single print; gradient (n>=2) -> per
+      // character, colored by its horizontal center across the line's width.
+      auto draw_line = [&](int x0, int y, const std::string &s, bool center_v) {
+        TextAlign al = center_v ? TextAlign::CENTER_LEFT : TextAlign::TOP_LEFT;
+        if (n == 1) { it.print(x0, y, fnt, solid, al, s.c_str()); return; }
+        int bx, by, lw, lh;
+        it.get_text_bounds(0, 0, s.c_str(), fnt, al, &bx, &by, &lw, &lh);
+        if (lw <= 0) { it.print(x0, y, fnt, solid, al, s.c_str()); return; }
+        int cx = 0;
+        for (size_t k = 0; k < s.size(); k++) {
+          char buf[2] = { s[k], 0 };           // ASCII-only content (project rule)
+          int cbx, cby, cw, chh;
+          it.get_text_bounds(0, 0, buf, fnt, al, &cbx, &cby, &cw, &chh);
+          float t = (cx + cw * 0.5f) / (float) lw;
+          it.print(x0 + cx, y, fnt, grad(t), al, buf);
+          cx += cw;
+        }
+      };
+
+      // Height of one line for this font.
       int bx, by, tw, th;
       it.get_text_bounds(0, 0, text.c_str(), fnt, TextAlign::TOP_LEFT,
                          &bx, &by, &tw, &th);
 
       if (id(word_wrap).state) {
-        // Greedy word wrap: pack words into lines no wider than the panel.
-        int y = 0;
+        // Greedy word wrap into lines no wider than the panel (honors '\n').
+        std::vector<std::string> lines;
         std::string line, word;
         size_t i = 0;
         while (true) {
@@ -161,63 +233,74 @@ display:
           if (c == ' ' || c == '\n') {
             if (!word.empty()) {
               std::string cand = line.empty() ? word : line + " " + word;
-              int cbx, cby, cw, ch;
+              int cbx, cby, cw, chh;
               it.get_text_bounds(0, 0, cand.c_str(), fnt, TextAlign::TOP_LEFT,
-                                 &cbx, &cby, &cw, &ch);
-              if (cw > W && !line.empty()) {
-                it.print(0, y, fnt, col, TextAlign::TOP_LEFT, line.c_str());
-                y += th;
-                line = word;
-              } else {
-                line = cand;
-              }
+                                 &cbx, &cby, &cw, &chh);
+              if (cw > W && !line.empty()) { lines.push_back(line); line = word; }
+              else line = cand;
               word.clear();
             }
-            if (c == '\n') {  // honor explicit newlines
-              it.print(0, y, fnt, col, TextAlign::TOP_LEFT, line.c_str());
-              y += th;
-              line.clear();
-            }
+            if (c == '\n') { lines.push_back(line); line.clear(); }
           } else {
             word += c;
           }
           if (end) break;
           i++;
         }
-        if (!line.empty())
-          it.print(0, y, fnt, col, TextAlign::TOP_LEFT, line.c_str());
+        if (!line.empty()) lines.push_back(line);
+
+        int total = (int) lines.size() * th;
+        float vspeed = id(vscroll_speed).state;
+        if (total > H && vspeed > 0.0f) {
+          // Too tall -> scroll vertically, drawing a second copy for a seamless loop.
+          int span = total + th;               // blank gap (one line) before repeat
+          int voff = (int) fmodf(millis() / 1000.0f * vspeed, (float) span);
+          for (int copy = 0; copy < 2; copy++) {
+            int base = -voff + copy * span;
+            for (size_t k = 0; k < lines.size(); k++)
+              draw_line(0, base + (int) k * th, lines[k], false);
+          }
+        } else {
+          // Fits (or vscroll off): vertically centered, top-aligned lines.
+          int y0 = (total < H) ? (H - total) / 2 : 0;
+          for (size_t k = 0; k < lines.size(); k++)
+            draw_line(0, y0 + (int) k * th, lines[k], false);
+        }
       } else if (tw <= W) {
         // Fits on one line: vertically centered, left-aligned.
-        it.print(0, H / 2, fnt, col, TextAlign::CENTER_LEFT, text.c_str());
+        draw_line(0, H / 2, text, true);
       } else {
-        // Wider than the panel: scroll horizontally at scroll_speed px/s.
-        float speed = id(scroll_speed).state;
-        int gap = W;                 // blank gap before the text repeats
-        int span = tw + gap;
+        // Wider than the panel: scroll horizontally at hscroll_speed px/s.
+        float speed = id(hscroll_speed).state;
+        int span = tw + W;                     // blank gap (panel width) before repeat
         int off = 0;
         if (speed > 0.0f)
           off = (int) fmodf(millis() / 1000.0f * speed, (float) span);
-        it.print(-off, H / 2, fnt, col, TextAlign::CENTER_LEFT, text.c_str());
-        it.print(-off + span, H / 2, fnt, col, TextAlign::CENTER_LEFT,
-                 text.c_str());  // second copy for a seamless loop
+        draw_line(-off, H / 2, text, true);
+        draw_line(-off + span, H / 2, text, true);  // second copy -> seamless loop
       }
 
 # Home Assistant controls (entity ids are number./text./select./switch./light.
 # matrix_display_<mac>_<slug>):
-#   Display Text   (text)    -- the string to show
-#   Brightness     (number)  -- 0-100% panel brightness (HA owns any dimming curve)
-#   Text Color     (light)   -- RGB color wheel for the text
-#   Text Size      (select)  -- small | medium | large
-#   Word Wrap      (switch)  -- on: wrap to multiple lines; off: scroll if too wide
-#   Flash Interval (number)  -- seconds per blink cycle; 0 = steady
-#   Scroll Speed   (number)  -- px/s when a single line is wider than the panel
+#   Display Text          (text)   -- the string to show
+#   Brightness            (number) -- 0-100% panel brightness (HA owns any dimming)
+#   Text Color 1/2/3      (light)  -- gradient stops: each on light adds a stop in
+#                                     order (1 on = solid; 2-3 on = gradient across
+#                                     the text). All off = blank.
+#   Font                  (select) -- roboto | mono | slab
+#   Text Size             (select) -- small | medium | large
+#   Word Wrap             (switch) -- on: wrap to lines; off: horizontal scroll if wide
+#   Flash Interval        (number) -- seconds per blink cycle; 0 = steady
+#   Horizontal Scroll Speed (number) -- px/s when a line is wider than the panel
+#   Vertical Scroll Speed   (number) -- px/s when wrapped text is taller than the
+#                                       panel (Word Wrap must be on)
 # Examples:
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_display_text}
 #   data: {value: "{{ states('sensor.front_door') }}"}
 #
 #   action: light.turn_on
-#   target: {entity_id: light.matrix_display_<mac>_text_color}
+#   target: {entity_id: light.matrix_display_<mac>_text_color_1}
 #   data: {rgb_color: [255, 136, 0]}
 script:
   - id: apply_brightness
@@ -278,8 +361,8 @@ number:
     unit_of_measurement: "s"
     mode: box  # seconds per blink cycle; 0 = steady (no flashing)
   - platform: template
-    name: "Scroll Speed"
-    id: scroll_speed
+    name: "Horizontal Scroll Speed"
+    id: hscroll_speed
     icon: "mdi:arrow-right-thin"
     optimistic: true
     restore_value: true
@@ -288,37 +371,104 @@ number:
     max_value: 60
     step: 1
     unit_of_measurement: "px/s"
-    mode: box  # horizontal scroll rate when text is wider than the panel; 0 = static
+    mode: box  # scroll rate when a single line is wider than the panel; 0 = static
+  - platform: template
+    name: "Vertical Scroll Speed"
+    id: vscroll_speed
+    icon: "mdi:arrow-down-thin"
+    optimistic: true
+    restore_value: true
+    initial_value: 8
+    min_value: 0
+    max_value: 60
+    step: 1
+    unit_of_measurement: "px/s"
+    # Only applies with Word Wrap on: scrolls when wrapped text is taller than the
+    # panel. 0 = static (tall text is clipped).
+    mode: box
 
-# RGB text color, exposed to HA as a color-wheel light. The template outputs are
-# no-op sinks -- the color is read live in the display lambda via current_values,
-# not driven onto any pin.
+# Text color as up to three gradient stops, each an HA color-wheel light. The
+# template outputs are no-op sinks -- colors are read live in the display lambda
+# via current_values, not driven onto any pin. Colors 2 and 3 default off, so the
+# out-of-box look is solid white (stop 1 only).
 output:
   - platform: template
     type: float
-    id: text_color_r
+    id: tc1_r
     write_action: []
   - platform: template
     type: float
-    id: text_color_g
+    id: tc1_g
     write_action: []
   - platform: template
     type: float
-    id: text_color_b
+    id: tc1_b
+    write_action: []
+  - platform: template
+    type: float
+    id: tc2_r
+    write_action: []
+  - platform: template
+    type: float
+    id: tc2_g
+    write_action: []
+  - platform: template
+    type: float
+    id: tc2_b
+    write_action: []
+  - platform: template
+    type: float
+    id: tc3_r
+    write_action: []
+  - platform: template
+    type: float
+    id: tc3_g
+    write_action: []
+  - platform: template
+    type: float
+    id: tc3_b
     write_action: []
 
 light:
   - platform: rgb
-    name: "Text Color"
-    id: text_color
-    red: text_color_r
-    green: text_color_g
-    blue: text_color_b
-    restore_mode: RESTORE_DEFAULT_ON  # defaults to white text on first boot
-    default_transition_length: 0s     # color changes apply instantly
-    gamma_correct: 0                   # linear -> lambda math stays predictable
+    name: "Text Color 1"
+    id: text_color_1
+    red: tc1_r
+    green: tc1_g
+    blue: tc1_b
+    restore_mode: RESTORE_DEFAULT_ON   # solid white text out of the box
+    default_transition_length: 0s      # color changes apply instantly
+    gamma_correct: 0                    # linear -> lambda math stays predictable
+  - platform: rgb
+    name: "Text Color 2"
+    id: text_color_2
+    red: tc2_r
+    green: tc2_g
+    blue: tc2_b
+    restore_mode: RESTORE_DEFAULT_OFF  # off -> not a gradient stop
+    default_transition_length: 0s
+    gamma_correct: 0
+  - platform: rgb
+    name: "Text Color 3"
+    id: text_color_3
+    red: tc3_r
+    green: tc3_g
+    blue: tc3_b
+    restore_mode: RESTORE_DEFAULT_OFF  # off -> not a gradient stop
+    default_transition_length: 0s
+    gamma_correct: 0
 
 select:
+  - platform: template
+    name: "Font"
+    id: text_font
+    icon: "mdi:format-font"
+    optimistic: true
+    restore_value: true
+    options: ["roboto", "mono", "slab"]
+    initial_option: "roboto"
+    on_value:
+      - component.update: matrix_display
   - platform: template
     name: "Text Size"
     id: text_size
