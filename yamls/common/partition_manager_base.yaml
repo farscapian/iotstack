@@ -12,6 +12,9 @@ button:
   - platform: template
     name: "Toggle Boot Partition"
     icon: "mdi:swap-horizontal"
+    # config: co-locate with the Restart button in HA's Configuration section
+    # (the restart button platform defaults to entity_category config).
+    entity_category: config
     on_press:
       then:
         - lambda: "id(partition_mgr).toggle_boot_partition();"
