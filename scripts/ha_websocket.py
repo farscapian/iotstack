@@ -227,10 +227,8 @@ def _find_esphome_flow(flows: list[dict[str, Any]], hostname: str) -> dict[str, 
     return None
 
 
-def _esphome_entry_exists(ha_url: str, token: str, hostname: str) -> bool:
-    target = _normalize_ha_host(hostname)
-    mac = _mac_suffix_from_hostname(target)
-
+def _find_esphome_entry_id(ha_url: str, token: str, hostname: str) -> str | None:
+    """Return the esphome config-entry id for a device, or None if not integrated."""
     entries = query(ha_url, token, "config_entries/get", {"domain": "esphome"}) or []
     for entry in entries:
         data = entry.get("data") or {}
@@ -240,7 +238,7 @@ def _esphome_entry_exists(ha_url: str, token: str, hostname: str) -> bool:
             str(entry.get("title", "")),
         ):
             if _ha_label_matches_hostname(field, hostname):
-                return True
+                return entry.get("entry_id")
 
     devices = query(ha_url, token, "config/device_registry/list") or []
     for device in devices:
@@ -250,9 +248,14 @@ def _esphome_entry_exists(ha_url: str, token: str, hostname: str) -> bool:
             if str(identifier_set[0]).lower() != "esphome":
                 continue
             if _ha_label_matches_hostname(str(identifier_set[1]), hostname):
-                return True
+                entry_ids = device.get("config_entries") or []
+                if entry_ids:
+                    return str(entry_ids[0])
+    return None
 
-    return False
+
+def _esphome_entry_exists(ha_url: str, token: str, hostname: str) -> bool:
+    return _find_esphome_entry_id(ha_url, token, hostname) is not None
 
 
 def _flow_input_for_step(step_id: str, noise_psk: str) -> dict[str, Any]:
@@ -267,6 +270,98 @@ def _flow_input_for_step(step_id: str, noise_psk: str) -> dict[str, Any]:
     raise HAWebSocketError(f"Unsupported ESPHome config-flow step: {step_id}")
 
 
+def _http_flow_start(
+    ha_url: str, token: str, payload: dict[str, Any]
+) -> dict[str, Any]:
+    """Start a new config/reconfigure flow via the flow index endpoint.
+
+    Passing an ``entry_id`` makes HA start the flow with source=reconfigure for
+    that entry (used to re-read a device after its config changed).
+    """
+    url = f"{ha_url.rstrip('/')}/api/config/config_entries/flow"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    req = urllib.request.Request(
+        url, data=json.dumps(payload).encode(), headers=headers, method="POST"
+    )
+    try:
+        with urllib.request.urlopen(
+            req, timeout=_CONFIG_FLOW_HTTP_TIMEOUT, context=_ssl_context()
+        ) as resp:
+            body = resp.read().decode()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode(errors="replace")
+        raise HAWebSocketError(
+            f"Config flow start HTTP {exc.code}: {detail or exc.reason}"
+        ) from exc
+    except TimeoutError as exc:
+        raise HAWebSocketError(
+            f"Config flow start timed out after {_CONFIG_FLOW_HTTP_TIMEOUT}s"
+        ) from exc
+    except urllib.error.URLError as exc:
+        raise HAWebSocketError(f"Config flow start request failed: {exc}") from exc
+    try:
+        return json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise HAWebSocketError(f"Invalid JSON from flow start: {body[:200]}") from exc
+
+
+def reconfigure_esphome_entry(
+    ha_url: str, token: str, entry_id: str, noise_psk: str
+) -> dict[str, Any]:
+    """Drive HA's reconfigure flow for an existing esphome entry.
+
+    Adding entities to a device (or a whole new platform, e.g. the first light)
+    is only guaranteed to surface in HA once the entry re-reads the device.
+    Reconfigure re-runs the config flow against the stored connection and, on
+    success, reloads the entry -- so the new entities appear. Terminates on an
+    ``abort`` with reason ``reconfigure_successful``.
+    """
+    result = _http_flow_start(
+        ha_url, token, {"handler": "esphome", "entry_id": entry_id}
+    )
+    flow_id = result.get("flow_id", "")
+    for _ in range(20):
+        step_type = result.get("type")
+        if step_type == "create_entry":
+            return {"status": "reconfigured"}
+        if step_type == "abort":
+            reason = result.get("reason", "unknown")
+            if reason in {
+                "reconfigure_successful",
+                "already_configured",
+                "already_configured_updates",
+                "already_configured_detailed",
+            }:
+                return {"status": "reconfigured", "reason": reason}
+            raise HAWebSocketError(f"ESPHome reconfigure aborted: {reason}")
+        if step_type == "form":
+            step_id = result.get("step_id", "")
+            try:
+                user_input = _flow_input_for_step(step_id, noise_psk)
+            except HAWebSocketError:
+                # Reconfigure steps we do not model (e.g. a bare confirm) take no
+                # input; submit empty rather than failing the whole reconfigure.
+                user_input = {}
+            result = _http_config_flow_request(
+                ha_url, token, flow_id, method="POST", user_input=user_input
+            )
+            continue
+        if step_type == "menu":
+            options = result.get("menu_options") or []
+            if not options:
+                raise HAWebSocketError("ESPHome reconfigure menu has no options")
+            result = _http_config_flow_request(
+                ha_url, token, flow_id, method="POST",
+                user_input={"next_step_id": options[0]},
+            )
+            continue
+        raise HAWebSocketError(f"Unexpected reconfigure response type: {step_type}")
+    raise HAWebSocketError("ESPHome reconfigure did not complete")
+
+
 def register_esphome_device(
     ha_url: str,
     token: str,
@@ -279,9 +374,22 @@ def register_esphome_device(
 
     Uses WebSocket (flow/progress, config_entries/get) to find the device and
     authenticated REST to advance config-flow steps (HA has no WS submit API).
+    When the device already has an entry (a re-flash), drive a reconfigure so HA
+    picks up any entities added since it was first integrated.
     """
-    if _esphome_entry_exists(ha_url, token, hostname):
-        return {"status": "already_registered", "hostname": hostname}
+    entry_id = _find_esphome_entry_id(ha_url, token, hostname)
+    if entry_id:
+        try:
+            reconfigure_esphome_entry(ha_url, token, entry_id, noise_psk)
+            return {"status": "reconfigured", "hostname": hostname}
+        except HAWebSocketError as exc:
+            # Best-effort: never fail a flash over reconfigure. HA already has the
+            # device, and new entities also surface on the next reconnect.
+            print(
+                f"[warn] reconfigure of {hostname} did not complete: {exc}",
+                file=sys.stderr,
+            )
+            return {"status": "already_registered", "hostname": hostname}
 
     deadline = time.time() + poll_timeout
     flow: dict[str, Any] | None = None
@@ -429,7 +537,11 @@ def _cmd_register_esphome(args: argparse.Namespace) -> None:
         args.noise_psk,
         poll_timeout=args.poll_timeout,
     )
-    if result.get("status") in {"already_registered", "already_configured"}:
+    status = result.get("status")
+    if status == "reconfigured":
+        print(f"[OK] Home Assistant reconfigured {args.hostname}")
+        return
+    if status in {"already_registered", "already_configured"}:
         print(f"[OK] Home Assistant already has {args.hostname}")
         return
     title = (result.get("result") or {}).get("title", args.hostname)
