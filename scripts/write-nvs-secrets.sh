@@ -195,11 +195,13 @@ fi
 
 # -- Matrix panel layout (matrix_hub75 reads these at boot) -------------------
 # Set via flash flags, env override, or pass per role:
-#   iotstack flash matrixdisplay /dev/ttyACM0 --panel-count=2 --matrix-panel-width=64 --matrix-panel-height=32
-#   MATRIX_COLS=2 iotstack flash matrixdisplay /dev/ttyACM0
-#   pass: iotstack/roles/matrixdisplay/matrix_{cols,panel_w,panel_h}
+#   iotstack flash matrixdisplay /dev/ttyACM0 --horizontal-panel-count=2 --vertical-panel-count=1 --matrix-panel-width=64 --matrix-panel-height=32
+#   MATRIX_COLS=2 MATRIX_ROWS=1 iotstack flash matrixdisplay /dev/ttyACM0
+#   pass: iotstack/roles/matrixdisplay/matrix_{cols,rows,panel_w,panel_h}
+# cols = panels side by side; rows = panels stacked top-to-bottom.
 WRITE_MATRIX_LAYOUT=0
 MATRIX_COLS="${MATRIX_COLS:-}"
+MATRIX_ROWS="${MATRIX_ROWS:-}"
 MATRIX_PANEL_W="${MATRIX_PANEL_W:-}"
 MATRIX_PANEL_H="${MATRIX_PANEL_H:-}"
 # Matrix layout keys are matrix-display only. Gate strictly on the role so stray
@@ -207,23 +209,28 @@ MATRIX_PANEL_H="${MATRIX_PANEL_H:-}"
 if [[ "$PRODUCTION_ROLE" == "matrixdisplay" ]]; then
   WRITE_MATRIX_LAYOUT=1
   [[ -z "$MATRIX_COLS" ]] && MATRIX_COLS=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_cols" 2>/dev/null || echo "")
+  [[ -z "$MATRIX_ROWS" ]] && MATRIX_ROWS=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_rows" 2>/dev/null || echo "")
   [[ -z "$MATRIX_PANEL_W" ]] && MATRIX_PANEL_W=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_panel_w" 2>/dev/null || echo "")
   [[ -z "$MATRIX_PANEL_H" ]] && MATRIX_PANEL_H=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_panel_h" 2>/dev/null || echo "")
   MATRIX_COLS="${MATRIX_COLS:-1}"
+  MATRIX_ROWS="${MATRIX_ROWS:-1}"
   MATRIX_PANEL_W="${MATRIX_PANEL_W:-64}"
   MATRIX_PANEL_H="${MATRIX_PANEL_H:-32}"
   if [[ "$MATRIX_COLS" != "1" && "$MATRIX_COLS" != "2" ]]; then
     err "MATRIX_COLS must be 1 or 2 (got: $MATRIX_COLS)"
   fi
-  info "Matrix layout NVS: ${MATRIX_COLS} panel(s), ${MATRIX_PANEL_W}x${MATRIX_PANEL_H} px each"
-elif [[ -n "$MATRIX_COLS" || -n "$MATRIX_PANEL_W" || -n "$MATRIX_PANEL_H" ]]; then
+  if [[ "$MATRIX_ROWS" != "1" && "$MATRIX_ROWS" != "2" ]]; then
+    err "MATRIX_ROWS must be 1 or 2 (got: $MATRIX_ROWS)"
+  fi
+  info "Matrix layout NVS: ${MATRIX_COLS}x${MATRIX_ROWS} panel(s) (HxV), ${MATRIX_PANEL_W}x${MATRIX_PANEL_H} px each"
+elif [[ -n "$MATRIX_COLS" || -n "$MATRIX_ROWS" || -n "$MATRIX_PANEL_W" || -n "$MATRIX_PANEL_H" ]]; then
   warn "Ignoring matrix layout flags -- role '${PRODUCTION_ROLE:-unknown}' is not a matrix display; matrix_* keys not written to NVS"
-  MATRIX_COLS="" MATRIX_PANEL_W="" MATRIX_PANEL_H=""
+  MATRIX_COLS="" MATRIX_ROWS="" MATRIX_PANEL_W="" MATRIX_PANEL_H=""
 fi
 
 if [[ "$PRINT_API_JSON" == "1" ]]; then
   export WIFI_SSID WIFI_PASSWORD BOOTSTRAP_OTA_PASSWORD PROD_API_KEY THREAD_TLV \
-         WRITE_MATRIX_LAYOUT MATRIX_COLS MATRIX_PANEL_W MATRIX_PANEL_H PRODUCTION_ROLE GIT_COMMIT
+         WRITE_MATRIX_LAYOUT MATRIX_COLS MATRIX_ROWS MATRIX_PANEL_W MATRIX_PANEL_H PRODUCTION_ROLE GIT_COMMIT
   python3 - <<'PY'
 import json, os
 
@@ -237,6 +244,7 @@ payload = {
 }
 if os.environ.get("WRITE_MATRIX_LAYOUT") == "1":
     payload["matrix_cols"] = os.environ.get("MATRIX_COLS", "1")
+    payload["matrix_rows"] = os.environ.get("MATRIX_ROWS", "1")
     payload["matrix_panel_w"] = os.environ.get("MATRIX_PANEL_W", "64")
     payload["matrix_panel_h"] = os.environ.get("MATRIX_PANEL_H", "32")
 prod_role = os.environ.get("PRODUCTION_ROLE", "")
@@ -256,7 +264,7 @@ export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
        PROD_API_KEY="$PROD_API_KEY" \
        THREAD_TLV="$THREAD_TLV" DEVICE_MAC="$DEVICE_MAC" TTY_DEVICE="$TTY_DEVICE" \
        NVS_SIZE="$NVS_SIZE" WRITE_MATRIX_LAYOUT="$WRITE_MATRIX_LAYOUT" \
-       MATRIX_COLS="${MATRIX_COLS:-}" MATRIX_PANEL_W="${MATRIX_PANEL_W:-}" MATRIX_PANEL_H="${MATRIX_PANEL_H:-}" \
+       MATRIX_COLS="${MATRIX_COLS:-}" MATRIX_ROWS="${MATRIX_ROWS:-}" MATRIX_PANEL_W="${MATRIX_PANEL_W:-}" MATRIX_PANEL_H="${MATRIX_PANEL_H:-}" \
        PRODUCTION_ROLE="${PRODUCTION_ROLE:-}" GIT_COMMIT="$GIT_COMMIT"
 
 # Use ESP-IDF Python environment which has nvs_partition_gen installed
@@ -282,6 +290,7 @@ production_role = os.environ.get('PRODUCTION_ROLE', '')
 git_commit = os.environ.get('GIT_COMMIT', '')
 write_matrix_layout = os.environ.get('WRITE_MATRIX_LAYOUT', '0') == '1'
 matrix_cols = os.environ.get('MATRIX_COLS', '1')
+matrix_rows = os.environ.get('MATRIX_ROWS', '1')
 matrix_panel_w = os.environ.get('MATRIX_PANEL_W', '64')
 matrix_panel_h = os.environ.get('MATRIX_PANEL_H', '32')
 device_mac = os.environ['DEVICE_MAC']
@@ -313,6 +322,7 @@ with open(nvs_csv_path, 'w') as f:
         f.write(f"thread_tlv,data,string,{thread_tlv}\n")
     if write_matrix_layout:
         f.write(f"matrix_cols,data,u8,{matrix_cols}\n")
+        f.write(f"matrix_rows,data,u8,{matrix_rows}\n")
         f.write(f"matrix_panel_w,data,u16,{matrix_panel_w}\n")
         f.write(f"matrix_panel_h,data,u16,{matrix_panel_h}\n")
     if production_role:

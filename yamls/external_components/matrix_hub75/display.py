@@ -34,6 +34,8 @@ CONF_PANEL_WIDTH = "panel_width"
 CONF_PANEL_HEIGHT = "panel_height"
 CONF_MAX_LAYOUT_COLS = "max_layout_cols"
 CONF_DEFAULT_LAYOUT_COLS = "default_layout_cols"
+CONF_MAX_LAYOUT_ROWS = "max_layout_rows"
+CONF_DEFAULT_LAYOUT_ROWS = "default_layout_rows"
 CONF_SCAN_WIRING = "scan_wiring"
 CONF_SHIFT_DRIVER = "shift_driver"
 CONF_LAYOUT = "layout"
@@ -144,6 +146,11 @@ def _validate_config(config: ConfigType) -> ConfigType:
             "default_layout_cols cannot exceed max_layout_cols",
             path=[CONF_DEFAULT_LAYOUT_COLS],
         )
+    if config.get(CONF_DEFAULT_LAYOUT_ROWS, 1) > config.get(CONF_MAX_LAYOUT_ROWS, 2):
+        raise cv.Invalid(
+            "default_layout_rows cannot exceed max_layout_rows",
+            path=[CONF_DEFAULT_LAYOUT_ROWS],
+        )
     return config
 
 
@@ -200,6 +207,10 @@ CONFIG_SCHEMA = cv.All(
             cv.Required(CONF_PANEL_HEIGHT): cv.positive_int,
             cv.Optional(CONF_MAX_LAYOUT_COLS, default=2): cv.int_range(min=1, max=2),
             cv.Optional(CONF_DEFAULT_LAYOUT_COLS, default=1): cv.int_range(
+                min=1, max=2
+            ),
+            cv.Optional(CONF_MAX_LAYOUT_ROWS, default=2): cv.int_range(min=1, max=2),
+            cv.Optional(CONF_DEFAULT_LAYOUT_ROWS, default=1): cv.int_range(
                 min=1, max=2
             ),
             cv.Optional(CONF_LAYOUT): cv.enum(PANEL_LAYOUTS, upper=True, space="_"),
@@ -318,6 +329,8 @@ async def to_code(config: ConfigType) -> None:
         ("panel_height", config[CONF_PANEL_HEIGHT]),
         ("max_layout_cols", config[CONF_MAX_LAYOUT_COLS]),
         ("default_layout_cols", config[CONF_DEFAULT_LAYOUT_COLS]),
+        ("max_layout_rows", config[CONF_MAX_LAYOUT_ROWS]),
+        ("default_layout_rows", config[CONF_DEFAULT_LAYOUT_ROWS]),
     ]
 
     if CONF_SCAN_WIRING in config:

@@ -39,6 +39,7 @@ class NVSSecrets : public Component {
                       const std::string &api_key,
                       const std::string &thread_tlv,
                       const std::string &matrix_cols = "",
+                      const std::string &matrix_rows = "",
                       const std::string &matrix_panel_w = "",
                       const std::string &matrix_panel_h = "",
                       const std::string &device_role = "",

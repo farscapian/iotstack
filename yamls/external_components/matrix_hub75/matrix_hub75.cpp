@@ -38,11 +38,15 @@ bool MatrixHub75Display::read_layout_from_nvs_() {
   }
 
   uint8_t cols = this->yaml_config_.default_layout_cols;
+  uint8_t rows = this->yaml_config_.default_layout_rows;
   uint16_t panel_w = this->yaml_config_.panel_width;
   uint16_t panel_h = this->yaml_config_.panel_height;
   bool found = false;
 
   if (nvs_get_u8(handle, "matrix_cols", &cols) == ESP_OK) {
+    found = true;
+  }
+  if (nvs_get_u8(handle, "matrix_rows", &rows) == ESP_OK) {
     found = true;
   }
   if (nvs_get_u16(handle, "matrix_panel_w", &panel_w) == ESP_OK) {
@@ -55,6 +59,7 @@ bool MatrixHub75Display::read_layout_from_nvs_() {
   nvs_close(handle);
 
   cols = std::max<uint8_t>(1, std::min<uint8_t>(cols, this->yaml_config_.max_layout_cols));
+  rows = std::max<uint8_t>(1, std::min<uint8_t>(rows, this->yaml_config_.max_layout_rows));
   if (panel_w < 8 || panel_w > 256) {
     ESP_LOGW(TAG, "Invalid NVS matrix_panel_w=%u; using YAML default %u", panel_w, this->yaml_config_.panel_width);
     panel_w = this->yaml_config_.panel_width;
@@ -65,17 +70,18 @@ bool MatrixHub75Display::read_layout_from_nvs_() {
   }
 
   this->active_layout_cols_ = cols;
+  this->active_layout_rows_ = rows;
   this->active_panel_width_ = panel_w;
   this->active_panel_height_ = panel_h;
 
   if (found) {
-    ESP_LOGI(TAG, "Matrix layout from NVS: %u panel(s) of %ux%u (%ux%u virtual)",
-             this->active_layout_cols_, this->active_panel_width_, this->active_panel_height_,
-             this->get_display_width(), this->get_display_height());
+    ESP_LOGI(TAG, "Matrix layout from NVS: %ux%u panel(s) of %ux%u (%ux%u virtual)",
+             this->active_layout_cols_, this->active_layout_rows_, this->active_panel_width_,
+             this->active_panel_height_, this->get_display_width(), this->get_display_height());
   } else {
-    ESP_LOGI(TAG, "Matrix layout defaults: %u panel(s) of %ux%u (%ux%u virtual)",
-             this->active_layout_cols_, this->active_panel_width_, this->active_panel_height_,
-             this->get_display_width(), this->get_display_height());
+    ESP_LOGI(TAG, "Matrix layout defaults: %ux%u panel(s) of %ux%u (%ux%u virtual)",
+             this->active_layout_cols_, this->active_layout_rows_, this->active_panel_width_,
+             this->active_panel_height_, this->get_display_width(), this->get_display_height());
   }
 
   return found;
@@ -87,7 +93,7 @@ Hub75Config MatrixHub75Display::build_hub75_config_() const {
   cfg.panel_height = this->active_panel_height_;
   cfg.scan_wiring = this->yaml_config_.scan_wiring;
   cfg.shift_driver = this->yaml_config_.shift_driver;
-  cfg.layout_rows = 1;
+  cfg.layout_rows = this->active_layout_rows_;
   cfg.layout_cols = this->active_layout_cols_;
   cfg.layout = this->yaml_config_.layout;
   cfg.rotation = this->yaml_config_.rotation;
@@ -121,10 +127,10 @@ void MatrixHub75Display::dump_config() {
 
   ESP_LOGCONFIG(TAG,
                 "  Panel: %ux%u pixels\n"
-                "  Layout: %ux%u panels (from NVS or defaults)\n"
+                "  Layout: %ux%u panels (cols x rows; from NVS or defaults)\n"
                 "  Virtual Display: %ux%u pixels",
-                this->active_panel_width_, this->active_panel_height_, 1, this->active_layout_cols_,
-                this->get_display_width(), this->get_display_height());
+                this->active_panel_width_, this->active_panel_height_, this->active_layout_cols_,
+                this->active_layout_rows_, this->get_display_width(), this->get_display_height());
 
   ESP_LOGCONFIG(TAG,
                 "  Scan Wiring: %d\n"

@@ -21,6 +21,8 @@ struct MatrixHub75YamlConfig {
   uint16_t panel_height{32};
   uint8_t max_layout_cols{2};
   uint8_t default_layout_cols{1};
+  uint8_t max_layout_rows{2};
+  uint8_t default_layout_rows{1};
   Hub75ScanWiring scan_wiring{Hub75ScanWiring::STANDARD_TWO_SCAN};
   Hub75ShiftDriver shift_driver{Hub75ShiftDriver::GENERIC};
   Hub75PanelLayout layout{Hub75PanelLayout::HORIZONTAL};
@@ -51,10 +53,11 @@ class MatrixHub75Display : public display::Display {
   void set_brightness(uint8_t brightness);
 
   uint8_t get_layout_cols() const { return this->active_layout_cols_; }
+  uint8_t get_layout_rows() const { return this->active_layout_rows_; }
   uint16_t get_panel_width() const { return this->active_panel_width_; }
   uint16_t get_panel_height() const { return this->active_panel_height_; }
   uint16_t get_display_width() const { return this->active_panel_width_ * this->active_layout_cols_; }
-  uint16_t get_display_height() const { return this->active_panel_height_; }
+  uint16_t get_display_height() const { return this->active_panel_height_ * this->active_layout_rows_; }
 
  protected:
   int get_width_internal() override { return this->driver_ != nullptr ? this->driver_->get_width() : 0; }
@@ -68,6 +71,7 @@ class MatrixHub75Display : public display::Display {
   Hub75Driver *driver_{nullptr};
 
   uint8_t active_layout_cols_{1};
+  uint8_t active_layout_rows_{1};
   uint16_t active_panel_width_{64};
   uint16_t active_panel_height_{32};
 

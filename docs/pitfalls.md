@@ -14,7 +14,7 @@
 | OTA success shows `hash: unknown` | Bootstrap host missing TXT (old firmware) or avahi browse miss | Reflash bootstrap so `_iotstack-bootstrap._tcp` carries `config_hash`; `_resolve_build_config_hash` fallback |
 | Slow bootstrap USB assess (~60s) | mDNS fast path skipped (device offline or old bootstrap without TXT) | Ensure bootstrap on WiFi; reflash bootstrap once to pick up mDNS TXT records |
 | Literal `\033[0;32m` in compile spinner | `printf` + single-quoted color vars | Use `$'\033[...]'` or `[INFO]` lines only |
-| `--panel-count=2` ignored when firmware current | Layout is NVS, not config_hash | Bootstrap NVS update path even when firmware matches |
+| `--horizontal-panel-count=2` ignored when firmware current | Layout is NVS, not config_hash | Bootstrap NVS update path even when firmware matches |
 | Stale CLI behavior after fixes | Testing against unpulled `main` | `git pull origin main` on `~/Sync/mini_projects/iotstack` (or Grok clone behind Sync) |
 | ROM boot loop after USB flash (`entry 0x403c8914`, no app logs) | esptool flash params mismatched build `flash_args` (was hardcoded 40m) | Fixed: `esp_esptool_flash_params_for_build()`; re-flash with `--erase` on stale devices |
 | ROM boot loop, `rst:0xc`, `Saved PC` in app IRAM (~0x4037xxxx), no USB output | ESP32-S3 N16R8: OPI PSRAM shares MSPI clock; bootstrap built without `psram:` causes MSPI timing crash ~1s after first boot | Add `psram:` to bootstrap.yaml (handled by `bootstrap_render_yaml()` for esp32s3 only); recompile and re-flash with `--erase` |

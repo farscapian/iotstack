@@ -80,9 +80,9 @@ Firmware builds record `--flash_mode`, `--flash_freq`, and `--flash_size` on the
 
 Panel count and dimensions live in **NVS**, not in firmware `config_hash`. A device can run current firmware but wrong panel layout.
 
-- CLI flags: `--panel-count`, `--panel-width`, `--panel-height` (flags -> pass store -> role defaults)
-- Runtime sensor: `panel_count` (legacy fallback: `matrix_panel_columns`)
-- **Preferred path:** switch to bootstrap -> `update_nvs_secrets` API with `matrix_cols`, `matrix_panel_w`, `matrix_panel_h`
+- CLI flags: `--horizontal-panel-count` (cols, side by side), `--vertical-panel-count` (rows, stacked), `--matrix-panel-width`, `--matrix-panel-height` (flags -> pass store -> role defaults). `--panel-count` is a deprecated alias for `--horizontal-panel-count`.
+- Runtime sensors: `panel_count` (cols), `panel_rows` (vertical; absent on pre-vertical firmware -> treated as 1); legacy cols fallback `matrix_panel_columns`
+- **Preferred path:** switch to bootstrap -> `update_nvs_secrets` API with `matrix_cols`, `matrix_rows`, `matrix_panel_w`, `matrix_panel_h`
 - **USB fallback:** `write-nvs-secrets.sh` only when bootstrap API unreachable (first provision)
 - Flash with current firmware but wrong layout: assessment reports NVS update action without recompiling
 

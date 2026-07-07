@@ -104,16 +104,19 @@ font:
 # (Rev 2.2 corresponds to the "V2.x" table on that page for the
 # ESP32-S3-DevKitC-1 wiring diagram.)
 display:
-  # matrix_hub75 reads panel count + dimensions from NVS at boot (see write-nvs-secrets.sh).
-  # HUB75 panels cannot self-report; set via: iotstack flash ... --panel-count=2 etc.
+  # matrix_hub75 reads panel layout + dimensions from NVS at boot (see write-nvs-secrets.sh).
+  # HUB75 panels cannot self-report; set via:
+  #   iotstack flash ... --horizontal-panel-count=2 --vertical-panel-count=1 etc.
   - platform: matrix_hub75
     id: matrix_display
     # ~25 fps so horizontal scroll and flashing animate smoothly.
     update_interval: 40ms
     panel_width: 64
     panel_height: 32
-    max_layout_cols: 2
+    max_layout_cols: 2       # panels side by side
     default_layout_cols: 1
+    max_layout_rows: 2       # panels stacked top-to-bottom
+    default_layout_rows: 1
     brightness: ${matrix_brightness_boot}
     r1_pin: GPIO18
     g1_pin: GPIO8
@@ -504,6 +507,9 @@ sensor:
     lambda: 'return 0;'
 
 text_sensor:
+  # object_id "panel_count" is the horizontal count and is also read by the CLI
+  # (esphome_text_sensors.py); keep the name slugging to panel_count. "Panel Rows"
+  # -> panel_rows is the vertical count.
   - platform: template
     name: "Panel Count"
     id: panel_count
@@ -511,6 +517,13 @@ text_sensor:
     update_interval: 60s
     lambda: |-
       return std::to_string(id(matrix_display).get_layout_cols());
+  - platform: template
+    name: "Panel Rows"
+    id: panel_rows
+    entity_category: diagnostic
+    update_interval: 60s
+    lambda: |-
+      return std::to_string(id(matrix_display).get_layout_rows());
   - platform: template
     name: "Matrix Panel Width"
     id: matrix_panel_width

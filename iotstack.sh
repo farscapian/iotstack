@@ -1907,20 +1907,20 @@ _flash_assess_device_on_flash_action() {
   if [[ "${FLASH_ERASE:-0}" == "1" && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     info "Action: erase flash (due to --erase), then install bootstrap via USB, then ${assess_role} via OTA."
   elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
-    local want_cols want_w want_h cur_cols cur_w cur_h
+    local want_cols want_rows want_w want_h cur_cols cur_rows cur_w cur_h
     if _flash_matrix_layout_applicable "$assess_role" ""; then
-      _flash_resolve_matrix_layout "$assess_role" want_cols want_w want_h
+      _flash_resolve_matrix_layout "$assess_role" want_cols want_rows want_w want_h
       if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$assess_role" \
-          cur_cols cur_w cur_h; then
-        info "Matrix layout (runtime): ${cur_cols} panel(s), ${cur_w}x${cur_h} px"
-        if [[ "$cur_cols" != "$want_cols" || "$cur_w" != "$want_w" || "$cur_h" != "$want_h" ]]; then
-          info "Matrix layout (target): ${want_cols} panel(s), ${want_w}x${want_h} px"
+          cur_cols cur_rows cur_w cur_h; then
+        info "Matrix layout (runtime): ${cur_cols}x${cur_rows} panel(s), ${cur_w}x${cur_h} px"
+        if [[ "$cur_cols" != "$want_cols" || "$cur_rows" != "$want_rows" || "$cur_w" != "$want_w" || "$cur_h" != "$want_h" ]]; then
+          info "Matrix layout (target): ${want_cols}x${want_rows} panel(s), ${want_w}x${want_h} px"
           info "Action: update matrix layout on device (firmware is current)"
         else
           info "Action: none required -- device is current"
         fi
       elif _flash_matrix_layout_flags_set; then
-        info "Matrix layout (target): ${want_cols} panel(s), ${want_w}x${want_h} px"
+        info "Matrix layout (target): ${want_cols}x${want_rows} panel(s), ${want_w}x${want_h} px"
         info "Action: update matrix layout on device (firmware is current)"
       else
         info "Action: none required -- device is current"
@@ -2061,6 +2061,7 @@ print(json.dumps({
     "api_key": "",
     "thread_tlv": "",
     "matrix_cols": "",
+    "matrix_rows": "",
     "matrix_panel_w": "",
     "matrix_panel_h": "",
     "device_role": os.environ["DEVICE_ROLE"],
@@ -3519,29 +3520,37 @@ _flash_matrix_layout_applicable() {
 }
 
 _flash_matrix_layout_flags_set() {
-  [[ -n "${MATRIX_COLS}${MATRIX_PANEL_W}${MATRIX_PANEL_H}" ]]
+  [[ -n "${MATRIX_COLS}${MATRIX_ROWS}${MATRIX_PANEL_W}${MATRIX_PANEL_H}" ]]
 }
 
 _flash_resolve_matrix_layout() {
   # Resolve target panel layout (flags -> pass -> defaults). Sets named refs.
+  # cols = horizontal panels (side by side); rows = vertical panels (stacked).
   local role="$1"
   local -n _cols_ref="$2"
-  local -n _w_ref="$3"
-  local -n _h_ref="$4"
+  local -n _rows_ref="$3"
+  local -n _w_ref="$4"
+  local -n _h_ref="$5"
 
   _cols_ref="${MATRIX_COLS:-}"
+  _rows_ref="${MATRIX_ROWS:-}"
   _w_ref="${MATRIX_PANEL_W:-}"
   _h_ref="${MATRIX_PANEL_H:-}"
   if [[ -n "$role" ]]; then
     [[ -z "$_cols_ref" ]] && _cols_ref=$(pass show "iotstack/roles/${role}/matrix_cols" 2>/dev/null || echo "")
+    [[ -z "$_rows_ref" ]] && _rows_ref=$(pass show "iotstack/roles/${role}/matrix_rows" 2>/dev/null || echo "")
     [[ -z "$_w_ref" ]] && _w_ref=$(pass show "iotstack/roles/${role}/matrix_panel_w" 2>/dev/null || echo "")
     [[ -z "$_h_ref" ]] && _h_ref=$(pass show "iotstack/roles/${role}/matrix_panel_h" 2>/dev/null || echo "")
   fi
   _cols_ref="${_cols_ref:-1}"
+  _rows_ref="${_rows_ref:-1}"
   _w_ref="${_w_ref:-64}"
   _h_ref="${_h_ref:-32}"
   if [[ "$_cols_ref" != "1" && "$_cols_ref" != "2" ]]; then
-    err "Panel count must be 1 or 2 (got: $_cols_ref)"
+    err "Horizontal panel count must be 1 or 2 (got: $_cols_ref)"
+  fi
+  if [[ "$_rows_ref" != "1" && "$_rows_ref" != "2" ]]; then
+    err "Vertical panel count must be 1 or 2 (got: $_rows_ref)"
   fi
 }
 
@@ -3551,14 +3560,15 @@ _flash_read_matrix_layout_from_device() {
   local mac="$2"
   local role="$3"
   local -n _cols_ref="$4"
-  local -n _w_ref="$5"
-  local -n _h_ref="$6"
+  local -n _rows_ref="$5"
+  local -n _w_ref="$6"
+  local -n _h_ref="$7"
   local api_host="${prod_hostname}.local"
   local noise_psk output line key val
 
-  _cols_ref="" _w_ref="" _h_ref=""
+  _cols_ref="" _rows_ref="" _w_ref="" _h_ref=""
   noise_psk=$(_device_api_noise_psk_b64 "$role" "$mac" 2>/dev/null) || true
-  local -a _layout_sensor_ids=(panel_count matrix_panel_width matrix_panel_height)
+  local -a _layout_sensor_ids=(panel_count panel_rows matrix_panel_width matrix_panel_height)
   if [[ -n "$noise_psk" ]]; then
     output=$(IOTSTACK_API_NOISE_PSK="$noise_psk" \
       "$SCRIPT_DIR/scripts/esphome_text_sensors.py" "$api_host" \
@@ -3574,10 +3584,15 @@ _flash_read_matrix_layout_from_device() {
     val="${line#*=}"
     case "$key" in
       panel_count) _cols_ref="$val" ;;
+      panel_rows) _rows_ref="$val" ;;
       matrix_panel_width) _w_ref="$val" ;;
       matrix_panel_height) _h_ref="$val" ;;
     esac
   done <<< "$output"
+
+  # Firmware predating vertical stacking has no panel_rows sensor -- treat as 1
+  # row so a layout comparison against a rows=1 target still matches.
+  [[ -z "$_rows_ref" ]] && _rows_ref="1"
 
   # Pre-rename firmware used object_id matrix_panel_columns for the same sensor.
   if [[ -z "$_cols_ref" ]]; then
@@ -3708,15 +3723,16 @@ _provision_device_nvs() {
 }
 
 _bootstrap_update_nvs_matrix_layout() {
-  # Partial update: matrix_cols / matrix_panel_w / matrix_panel_h only.
+  # Partial update: matrix_cols / matrix_rows / matrix_panel_w / matrix_panel_h only.
   local device_mac="$1"
   local cols="$2"
-  local w="$3"
-  local h="$4"
+  local rows="$3"
+  local w="$4"
+  local h="$5"
   local json_vars
 
   json_vars=$(
-    MATRIX_COLS="$cols" MATRIX_PANEL_W="$w" MATRIX_PANEL_H="$h" python3 - <<'PY'
+    MATRIX_COLS="$cols" MATRIX_ROWS="$rows" MATRIX_PANEL_W="$w" MATRIX_PANEL_H="$h" python3 - <<'PY'
 import json, os
 print(json.dumps({
     "wifi_ssid": "",
@@ -3725,6 +3741,7 @@ print(json.dumps({
     "api_key": "",
     "thread_tlv": "",
     "matrix_cols": os.environ["MATRIX_COLS"],
+    "matrix_rows": os.environ["MATRIX_ROWS"],
     "matrix_panel_w": os.environ["MATRIX_PANEL_W"],
     "matrix_panel_h": os.environ["MATRIX_PANEL_H"],
     "device_role": "",
@@ -3768,11 +3785,14 @@ _flash_write_nvs_secrets() {
 _flash_store_matrix_layout_pass() {
   local role="$1"
   local cols="$2"
-  local w="$3"
-  local h="$4"
+  local rows="$3"
+  local w="$4"
+  local h="$5"
 
   [[ "${MATRIX_COLS_EXPLICIT:-0}" == "1" ]] && \
     printf '%s' "$cols" | pass insert -f "iotstack/roles/${role}/matrix_cols" 2>/dev/null || true
+  [[ "${MATRIX_ROWS_EXPLICIT:-0}" == "1" ]] && \
+    printf '%s' "$rows" | pass insert -f "iotstack/roles/${role}/matrix_rows" 2>/dev/null || true
   [[ "${MATRIX_PANEL_W_EXPLICIT:-0}" == "1" ]] && \
     printf '%s' "$w" | pass insert -f "iotstack/roles/${role}/matrix_panel_w" 2>/dev/null || true
   [[ "${MATRIX_PANEL_H_EXPLICIT:-0}" == "1" ]] && \
@@ -3785,14 +3805,14 @@ _flash_matrix_layout_mismatch() {
   local device="$1"
   local device_mac="$2"
   local prod_hostname="$3"
-  local want_cols want_w want_h cur_cols cur_w cur_h
+  local want_cols want_rows want_w want_h cur_cols cur_rows cur_w cur_h
 
   _flash_matrix_layout_applicable "$device" "" || return 0
-  _flash_resolve_matrix_layout "$device" want_cols want_w want_h
+  _flash_resolve_matrix_layout "$device" want_cols want_rows want_w want_h
 
   if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
-      cur_cols cur_w cur_h; then
-    [[ "$cur_cols" == "$want_cols" && "$cur_w" == "$want_w" && "$cur_h" == "$want_h" ]] && return 0
+      cur_cols cur_rows cur_w cur_h; then
+    [[ "$cur_cols" == "$want_cols" && "$cur_rows" == "$want_rows" && "$cur_w" == "$want_w" && "$cur_h" == "$want_h" ]] && return 0
     return 1
   fi
 
@@ -3811,7 +3831,8 @@ _flash_matrix_layout_update_via_bootstrap_if_needed() {
   local tty_device="$2"
   local device_mac="$3"
   local prod_hostname="$4"
-  local want_cols want_w want_h cur_cols cur_w cur_h verify_cols verify_w verify_h
+  local want_cols want_rows want_w want_h cur_cols cur_rows cur_w cur_h
+  local verify_cols verify_rows verify_w verify_h
 
   # _flash_matrix_layout_mismatch returns 0 when no NVS update is needed (layouts
   # already match, OR this is not a matrix-display role) and 1 when an update is
@@ -3820,16 +3841,16 @@ _flash_matrix_layout_update_via_bootstrap_if_needed() {
   if _flash_matrix_layout_mismatch "$device" "$device_mac" "$prod_hostname"; then
     return 0
   fi
-  _flash_resolve_matrix_layout "$device" want_cols want_w want_h
+  _flash_resolve_matrix_layout "$device" want_cols want_rows want_w want_h
 
   if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
-      cur_cols cur_w cur_h; then
-    if [[ "$cur_cols" == "$want_cols" && "$cur_w" == "$want_w" && "$cur_h" == "$want_h" ]]; then
+      cur_cols cur_rows cur_w cur_h; then
+    if [[ "$cur_cols" == "$want_cols" && "$cur_rows" == "$want_rows" && "$cur_w" == "$want_w" && "$cur_h" == "$want_h" ]]; then
       return 0
     fi
-    info "Matrix layout mismatch: runtime ${cur_cols} panel(s) ${cur_w}x${cur_h} px -> target ${want_cols} panel(s) ${want_w}x${want_h} px"
+    info "Matrix layout mismatch: runtime ${cur_cols}x${cur_rows} panel(s) ${cur_w}x${cur_h} px -> target ${want_cols}x${want_rows} panel(s) ${want_w}x${want_h} px"
   else
-    info "Matrix layout: writing target ${want_cols} panel(s), ${want_w}x${want_h} px to NVS"
+    info "Matrix layout: writing target ${want_cols}x${want_rows} panel(s), ${want_w}x${want_h} px to NVS"
   fi
 
   info "Step 1: Preparing ${prod_hostname} for layout update..."
@@ -3852,19 +3873,19 @@ _flash_matrix_layout_update_via_bootstrap_if_needed() {
   fi
 
   info "Step 2: Updating matrix layout in NVS..."
-  if _bootstrap_update_nvs_matrix_layout "$device_mac" "$want_cols" "$want_w" "$want_h"; then
+  if _bootstrap_update_nvs_matrix_layout "$device_mac" "$want_cols" "$want_rows" "$want_w" "$want_h"; then
     ok "Matrix layout NVS updated via bootstrap API (device rebooting)"
     sleep 5
     _wait_for_device "$(iotstack_bootstrap_hostname "$device_mac")" 60 || true
   elif [[ -n "$tty_device" ]]; then
     warn "Bootstrap API unavailable -- writing matrix layout NVS via USB on ${tty_device}"
-    export MATRIX_COLS="$want_cols" MATRIX_PANEL_W="$want_w" MATRIX_PANEL_H="$want_h"
+    export MATRIX_COLS="$want_cols" MATRIX_ROWS="$want_rows" MATRIX_PANEL_W="$want_w" MATRIX_PANEL_H="$want_h"
     _flash_write_nvs_secrets_usb "$tty_device" "$device_mac" "$device"
   else
     err "Bootstrap API NVS update failed and no USB device was provided"
     return 1
   fi
-  _flash_store_matrix_layout_pass "$device" "$want_cols" "$want_w" "$want_h"
+  _flash_store_matrix_layout_pass "$device" "$want_cols" "$want_rows" "$want_w" "$want_h"
 
   info "Step 3: Booting production firmware with updated NVS..."
   # This code path runs only when the on-flash production image already matched the
@@ -3887,9 +3908,9 @@ _flash_matrix_layout_update_via_bootstrap_if_needed() {
 
   if _wait_for_production_online "$prod_hostname" 90; then
     if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
-        verify_cols verify_w verify_h \
-        && [[ "$verify_cols" == "$want_cols" && "$verify_w" == "$want_w" && "$verify_h" == "$want_h" ]]; then
-      ok "Matrix layout verified via API: ${verify_cols} panel(s), ${verify_w}x${verify_h} px"
+        verify_cols verify_rows verify_w verify_h \
+        && [[ "$verify_cols" == "$want_cols" && "$verify_rows" == "$want_rows" && "$verify_w" == "$want_w" && "$verify_h" == "$want_h" ]]; then
+      ok "Matrix layout verified via API: ${verify_cols}x${verify_rows} panel(s), ${verify_w}x${verify_h} px"
     else
       ok "Production firmware online -- matrix layout NVS written (re-query sensors if needed)"
     fi
@@ -3946,9 +3967,11 @@ cmd_flash() {
   export FLASH_ERASE=0
   export FLASH_ON_FLASH_VERIFY=0
   export MATRIX_COLS=""
+  export MATRIX_ROWS=""
   export MATRIX_PANEL_W=""
   export MATRIX_PANEL_H=""
   export MATRIX_COLS_EXPLICIT=0
+  export MATRIX_ROWS_EXPLICIT=0
   export MATRIX_PANEL_W_EXPLICIT=0
   export MATRIX_PANEL_H_EXPLICIT=0
 
@@ -3966,15 +3989,27 @@ cmd_flash() {
         export FLASH_ERASE=1
         shift
         ;;
-      --panel-count=*)
+      --horizontal-panel-count=*|--panel-count=*)
+        # --panel-count is the deprecated pre-vertical-stacking name.
         MATRIX_COLS="${1#*=}"
         MATRIX_COLS_EXPLICIT=1
         shift
         ;;
-      --panel-count)
-        [[ $# -lt 2 ]] && err "Missing value for --panel-count"
+      --horizontal-panel-count|--panel-count)
+        [[ $# -lt 2 ]] && err "Missing value for ${1}"
         MATRIX_COLS="$2"
         MATRIX_COLS_EXPLICIT=1
+        shift 2
+        ;;
+      --vertical-panel-count=*)
+        MATRIX_ROWS="${1#*=}"
+        MATRIX_ROWS_EXPLICIT=1
+        shift
+        ;;
+      --vertical-panel-count)
+        [[ $# -lt 2 ]] && err "Missing value for --vertical-panel-count"
+        MATRIX_ROWS="$2"
+        MATRIX_ROWS_EXPLICIT=1
         shift 2
         ;;
       --matrix-panel-width=*)
@@ -4022,10 +4057,11 @@ cmd_flash() {
     exit 1
   fi
 
-  if [[ -n "$MATRIX_COLS$MATRIX_PANEL_W$MATRIX_PANEL_H" ]]; then
+  if [[ -n "$MATRIX_COLS$MATRIX_ROWS$MATRIX_PANEL_W$MATRIX_PANEL_H" ]]; then
     if ! _flash_matrix_layout_applicable "$device" "$tty_device_or_role"; then
-      warn "Matrix layout options (--panel-count, --matrix-panel-width, --matrix-panel-height) apply only to matrixdisplay; ignoring"
+      warn "Matrix layout options (--horizontal-panel-count, --vertical-panel-count, --matrix-panel-width, --matrix-panel-height) apply only to matrixdisplay; ignoring"
       MATRIX_COLS=""
+      MATRIX_ROWS=""
       MATRIX_PANEL_W=""
       MATRIX_PANEL_H=""
     fi
@@ -4889,7 +4925,7 @@ _flash_production_smart() {
           FLASH_ASSESS_FLASH_CURRENT=0
           prod_hostname="${device}-${device_mac}"
         elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
-          local img_hash layout_rc=0 want_cols want_w want_h
+          local img_hash layout_rc=0 want_cols want_rows want_w want_h
           set +e
           _flash_matrix_layout_update_via_bootstrap_if_needed "$device" "$tty_device" "$device_mac" "$prod_hostname"
           layout_rc=$?
@@ -4897,10 +4933,10 @@ _flash_production_smart() {
           if [[ $layout_rc -eq 1 ]]; then
             err "Matrix layout NVS update failed"
           fi
-          _flash_resolve_matrix_layout "$device" want_cols want_w want_h
+          _flash_resolve_matrix_layout "$device" want_cols want_rows want_w want_h
           img_hash=$(_production_running_image_hash "$prod_hostname" "$tty_device" "$yaml_path")
           if [[ $layout_rc -eq 2 ]]; then
-            ok "Matrix layout updated on ${prod_hostname}: ${want_cols} panel(s), ${want_w}x${want_h} px (config_hash ${img_hash})"
+            ok "Matrix layout updated on ${prod_hostname}: ${want_cols}x${want_rows} panel(s), ${want_w}x${want_h} px (config_hash ${img_hash})"
           else
             ok "Device ${prod_hostname} already running current ${device} firmware (config_hash ${img_hash})"
           fi
@@ -4917,7 +4953,7 @@ _flash_production_smart() {
 
         if [[ "$try_network_ota" == true ]]; then
           if [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && "${FLASH_ERASE:-0}" != "1" ]]; then
-            local layout_rc=0 want_cols want_w want_h
+            local layout_rc=0 want_cols want_rows want_w want_h
             set +e
             _flash_matrix_layout_update_via_bootstrap_if_needed "$device" "$tty_device" "$device_mac" "$prod_hostname"
             layout_rc=$?
@@ -4926,8 +4962,8 @@ _flash_production_smart() {
               err "Matrix layout NVS update failed"
             fi
             if [[ $layout_rc -eq 2 ]]; then
-              _flash_resolve_matrix_layout "$device" want_cols want_w want_h
-              ok "Matrix layout updated on ${prod_hostname}: ${want_cols} panel(s), ${want_w}x${want_h} px"
+              _flash_resolve_matrix_layout "$device" want_cols want_rows want_w want_h
+              ok "Matrix layout updated on ${prod_hostname}: ${want_cols}x${want_rows} panel(s), ${want_w}x${want_h} px"
             else
               ok "Production firmware already current -- OTA skipped"
             fi
