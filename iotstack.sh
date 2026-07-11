@@ -480,6 +480,59 @@ _flash_preflight_step_begin() {
   _flash_step_begin_at 0 "Preflight checks"
 }
 
+# Cache of the single preflight USB chip-id probe, consumed by "Assessing device"
+# so the connected board is read only once (see _flash_preflight_affirm_platform).
+declare -g IOTSTACK_FLASH_PROBED_TTY=""
+declare -g IOTSTACK_FLASH_PROBED_VARIANT=""
+declare -g IOTSTACK_FLASH_PROBED_MAC=""
+declare -g IOTSTACK_FLASH_PROBED_CHIPID_OUT=""
+
+_flash_preflight_affirm_platform() {
+  # During Step 0, read the ESP32 on the named port once and report it, so the
+  # user sees which silicon is connected before the (slow) firmware build. When a
+  # role is given the build targets the role YAML's variant, so a wrong board here
+  # is caught and failed fast before building. The probe output is cached and
+  # reused by the later "Assessing device" MAC read -- no second esptool reset.
+  # Usage: _flash_preflight_affirm_platform <tty> [production_role]
+  local tty_device="$1"
+  local role="${2:-}"
+  local chipid_out variant mac board expected_variant
+
+  [[ -n "$tty_device" && -e "$tty_device" ]] || return 0
+
+  info "Identifying connected board on ${tty_device} via USB..."
+  chipid_out=$(esp_esptool_chip_id "$tty_device" 2>/dev/null) || chipid_out=""
+  variant=$(esp_variant_from_esptool_output "$chipid_out" 2>/dev/null) || variant=""
+  mac=$(esp_mac_from_esptool_output "$chipid_out" 2>/dev/null) || mac=""
+
+  if [[ -z "$variant" ]]; then
+    warn "Could not identify the board on ${tty_device} via USB; it will be re-probed during device assessment"
+    return 0
+  fi
+
+  board=$(bootstrap_chip_defaults "$variant" 2>/dev/null | cut -d'|' -f1) || board=""
+  if [[ -n "$board" ]]; then
+    info "Connected platform: ${variant} (${board}) on ${tty_device}"
+  else
+    info "Connected platform: ${variant} on ${tty_device}"
+  fi
+  [[ -n "$mac" ]] && info "Chip MAC suffix: ${mac}"
+
+  # Fail fast on a chip/role mismatch -- before spending minutes on the build.
+  if [[ -n "$role" ]]; then
+    expected_variant=$(yaml_variant_for_role "$role" 2>/dev/null) || expected_variant=""
+    if [[ -n "$expected_variant" && "$variant" != "$expected_variant" ]]; then
+      err "Chip mismatch: ${tty_device} is a ${variant}, but role '${role}' targets ${expected_variant}. Connect a ${expected_variant} board or check the port."
+    fi
+    [[ -n "$expected_variant" ]] && info "Role '${role}' targets ${expected_variant} -- match confirmed"
+  fi
+
+  IOTSTACK_FLASH_PROBED_TTY="$tty_device"
+  IOTSTACK_FLASH_PROBED_VARIANT="$variant"
+  IOTSTACK_FLASH_PROBED_MAC="$mac"
+  IOTSTACK_FLASH_PROBED_CHIPID_OUT="$chipid_out"
+}
+
 _flash_step_begin() {
   local title="$1"
   _flash_step_begin_at $((_IOTSTACK_FLASH_STEP_NUM + 1)) "$title"
@@ -4870,6 +4923,12 @@ _flash_production_smart() {
     esp_serial_wait_tty_free "$tty_device" 5 || true
     esp_serial_settle_tty "$tty_device" 2
 
+    # Step 0: read and affirm the connected ESP32 before the build; --ota-only
+    # never touches USB (device already running production), so skip the probe.
+    if [[ "$skip_recovery" != "--ota-only" ]]; then
+      _flash_preflight_affirm_platform "$tty_device" "$device"
+    fi
+
     _flash_step_begin "Build firmware"
     if [[ "$skip_recovery" == "--ota-only" ]]; then
       info "Scope: production OTA only (--ota-only; no serial flash)"
@@ -4885,18 +4944,29 @@ _flash_production_smart() {
       info "Port: ${tty_device}"
       # esptool chip-id needs exclusive TTY access; serial capture starts after MAC read.
       # One chip-id read yields both the MAC suffix and the connected chip variant.
-      info "Reading chip MAC via USB..."
-      local chipid_out=""
-      chipid_out=$(esp_esptool_chip_id "$tty_device" 2>/dev/null) || chipid_out=""
-      device_mac=$(esp_mac_from_esptool_output "$chipid_out" 2>/dev/null) || device_mac=""
+      # Reuse the Step 0 preflight probe when it covered this port (avoids a second
+      # esptool reset); fall back to a fresh read only if preflight could not probe.
+      local chipid_out="" connected_variant=""
+      if [[ "${IOTSTACK_FLASH_PROBED_TTY:-}" == "$tty_device" \
+            && -n "${IOTSTACK_FLASH_PROBED_CHIPID_OUT:-}" ]]; then
+        chipid_out="$IOTSTACK_FLASH_PROBED_CHIPID_OUT"
+        connected_variant="$IOTSTACK_FLASH_PROBED_VARIANT"
+        device_mac="$IOTSTACK_FLASH_PROBED_MAC"
+        debug "Reusing connected-board probe from preflight (${connected_variant}, MAC ${device_mac})"
+      else
+        info "Reading chip MAC via USB..."
+        chipid_out=$(esp_esptool_chip_id "$tty_device" 2>/dev/null) || chipid_out=""
+        device_mac=$(esp_mac_from_esptool_output "$chipid_out" 2>/dev/null) || device_mac=""
+        connected_variant=$(esp_variant_from_esptool_output "$chipid_out" 2>/dev/null) || connected_variant=""
+      fi
 
       # Fail fast on a chip/role mismatch (e.g. an ESP32-C6 on the port for an
       # S3-only role): the role firmware is built for the wrong silicon and would
-      # never run. The auto-discovery path filters ttys by variant; an explicitly
-      # named tty bypasses that, so verify it here before any serial write.
-      local expected_variant="" connected_variant=""
+      # never run. Preflight already verifies this for the probed port; the check
+      # stays here for the fallback path (an explicitly named tty bypasses the
+      # auto-discovery variant filter, so it must be verified before any write).
+      local expected_variant=""
       expected_variant=$(yaml_variant_for_role "$device" 2>/dev/null) || expected_variant=""
-      connected_variant=$(esp_variant_from_esptool_output "$chipid_out" 2>/dev/null) || connected_variant=""
       if [[ -n "$expected_variant" && -n "$connected_variant" \
             && "$connected_variant" != "$expected_variant" ]]; then
         err "Chip mismatch: ${tty_device} is a ${connected_variant}, but role '${device}' targets ${expected_variant}. Connect a ${expected_variant} board or check the port."
