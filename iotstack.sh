@@ -1035,19 +1035,21 @@ _list_devices_collect_mdns_parallel() {
   local -a browse_pids=()
   local pid
 
-  # -t dumps cached/browse list and exits; skip -r here (per-record resolve is slow).
-  # TCP liveness probes drop stale cache entries; TXT may be backfilled for live hosts.
+  # -t -r resolves TXT records (friendly_name/project/version/image hashes) and
+  # terminates after dumping the cache. -r alone would run until the timeout, so
+  # -t keeps it prompt; the timeout is only a guard against a stalled resolve.
+  # TCP liveness probes below drop any stale cache entries this returns.
   if [[ "$device_mode" != "bootstrap" ]]; then
     prod_raw=$(mktemp)
-    avahi-browse -t "_esphomelib._tcp" 2>/dev/null >"$prod_raw" &
+    timeout 8 avahi-browse -t -r "_esphomelib._tcp" 2>/dev/null >"$prod_raw" &
     browse_pids+=("$!")
     meta_raw=$(mktemp)
-    avahi-browse -t "$(iotstack_meta_mdns_service)" 2>/dev/null >"$meta_raw" &
+    timeout 8 avahi-browse -t -r "$(iotstack_meta_mdns_service)" 2>/dev/null >"$meta_raw" &
     browse_pids+=("$!")
   fi
   if [[ "$device_mode" != "production" ]]; then
     boot_raw=$(mktemp)
-    avahi-browse -t "$(iotstack_bootstrap_mdns_service)" 2>/dev/null >"$boot_raw" &
+    timeout 8 avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null >"$boot_raw" &
     browse_pids+=("$!")
   fi
 
@@ -5584,6 +5586,13 @@ main() {
 
   iotstack_parse_global_argv "$@"
   set -- "${IOTSTACK_ARGV[@]}"
+
+  # Shared per-invocation preamble (agentstartstack): on a dirty canonical repo it
+  # auto-commits the working tree so GIT HEAD documents the exact code that ran;
+  # strict no-op in an agent session clone. Sets $AGENTSTARTSTACK_CLI_HEAD (run
+  # provenance). This wiring line is permanently static -- policy lives upstream.
+  eval "$(AGENTSTARTSTACK_CLI_TOOL=iotstack \
+    "${PROJECT_ROOT}/.agentstartstack/scripts/cli-preamble.sh" "$PROJECT_ROOT")"
 
   local command="${1:-help}"
   create_log_setup "$command"

@@ -18,6 +18,13 @@ iotstack_git_commit_short() {
     echo "$IOTSTACK_GIT_COMMIT"
     return 0
   fi
+  # Prefer the CLI preamble's run-provenance SHA (agentstartstack): on a dirty
+  # canonical repo it auto-commits and exports the exact-code HEAD here, which
+  # stays correct even under undo mode where HEAD is peeled back on exit.
+  if [[ -n "${AGENTSTARTSTACK_CLI_HEAD:-}" ]]; then
+    echo "${AGENTSTARTSTACK_CLI_HEAD:0:7}"
+    return 0
+  fi
   local root commit
   root=$(iotstack_git_root)
   commit=$(git -C "$root" rev-parse --short=7 HEAD 2>/dev/null) || true
