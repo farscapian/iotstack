@@ -3,14 +3,22 @@
 
 Roles are listed in `scripts/roles.conf`. Examples:
 
-> **XIAO ESP32-C6 external antenna (REQUIRED when enabled):** the C6 roles
-> (bleproxy, threadrouter, mmwave, ledlightstrip-c6-thread) include
-> `yamls/common/xiao_c6_ext_antenna.yaml`, which selects the external u.FL
-> connector (GPIO3 LOW + GPIO14 HIGH at boot). A unit running such a build
-> **must have a u.FL pigtail attached** -- without it the board has no usable
-> antenna (observed -69 dBm onboard vs -42 dBm external; weak signal also breaks
-> mDNS, so `iotstack flash/update` can't discover the device). To run a C6 on
-> the onboard ceramic antenna instead, drop that package from its YAML.
+> **External u.FL antennas (all boards).** Every unit in this fleet runs an
+> external u.FL antenna. Only the C6 needs software to get there:
+>
+> - **XIAO ESP32-C6** -- RF passes through an FM8625H switch on GPIO3/GPIO14, so
+>   the C6 roles (bleproxy, threadrouter, mmwave, ledlightstrip-c6-thread)
+>   include `yamls/common/xiao_c6_ext_antenna.yaml` to select the u.FL connector
+>   (GPIO3 LOW + GPIO14 HIGH at boot). A unit running such a build **must have a
+>   u.FL pigtail attached** -- without it the board has no usable antenna
+>   (observed -69 dBm onboard vs -42 dBm external; weak signal also breaks mDNS,
+>   so `iotstack flash/update` can't discover the device). To fall back to the
+>   onboard ceramic antenna, drop that package from its YAML.
+> - **ESP32-S3 (XIAO S3 and DevKitC-1)** -- no RF-switch GPIO exists, so there is
+>   nothing to configure and no package to include. The antenna is fixed in
+>   hardware: the XIAO S3's u.FL is wired directly, and on the DevKitC-1 it is
+>   set by the module variant -- **WROOM-1U has the u.FL connector, plain
+>   WROOM-1 is PCB-trace only**. Order the -1U.
 
 ### WiFi BLE Proxy
 - YAML: `yamls/bleproxy.yaml`
@@ -53,6 +61,29 @@ a font glyph (`extras:` on each font, since no Roboto family ships U+20BF).
 To add an icon: drop the SVG/PNG in `yamls/images/`, add three `image:` entries
 (`_s`/`_m`/`_l`, sized 8/14/20 to match `Text Size`), then add a `case` to
 `icon_for()` and an entry to `ICON_TOKENS` in the display lambda.
+
+### SendSpin Speaker (synchronized multi-room audio)
+- YAML: `yamls/sendspinspeaker.yaml`
+- mDNS hostname: `sendspin-<mac>`
+- Board: ESP32-S3-DevKitC-1 **N16R8** (16MB flash + 8MB octal PSRAM), WROOM-1U module
+- DAC: PCM5102A -> 3.5mm AUX -> powered speaker
+
+| PCM5102A | ESP32-S3 | Notes |
+|----------|----------|-------|
+| BCK | GPIO4 | bit clock |
+| LCK | GPIO5 | left/right clock |
+| DIN | GPIO6 | data |
+| VCC / GND | 3.3V / GND | |
+| SCK | GND | internal clock mode (check the board's solder jumper) |
+
+- **PSRAM is the point of the R8 part.** It buys `task_stack_in_psram: true` plus
+  the full 1MB `buffer_size` default; a PSRAM-less chip has to shrink the buffer,
+  which is what makes audio drop out on network hiccups.
+- **Do not move the I2S pins to GPIO35/36/37** -- on an R8 module the octal PSRAM
+  consumes them. Also unavailable: GPIO0 (BOOT), GPIO19/20 (USB serial JTAG,
+  which carries the logger), GPIO26-32 (SPI flash).
+- Needs Music Assistant in HA, and port 8928 open between HA and the speaker.
+- See [docs/sendspinspeaker.md](sendspinspeaker.md)
 
 ### LED Light Strip (SK6812 RGBW, default 300 LEDs)
 Same strip + wiring across two board/network variants (roles in `roles.conf`).

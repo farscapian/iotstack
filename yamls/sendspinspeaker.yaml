@@ -1,18 +1,30 @@
 substitutions:
   device_role: "sendspinspeaker"
   friendly_name: "SendSpin Speaker"
-  boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
+  boot_button_pin: GPIO0  # ESP32-S3-DevKitC-1 BOOT button
   project_version: "0.0.0"
+  # I2S pins -> PCM5102A. Grouped here so a XIAO ESP32-S3 build can override
+  # them without touching the rest of the config.
+  i2s_bclk_pin: GPIO4
+  i2s_lrclk_pin: GPIO5
+  i2s_dout_pin: GPIO6
 
 esphome:
   name: "sendspin"
 
+# ESP32-S3-DevKitC-1 (N16R8): 16MB flash + 8MB octal PSRAM.
+# The R8 PSRAM is what makes this role work properly -- see the sendspin/
+# media_source sections below.
 esp32:
   board: esp32-s3-devkitc-1
   variant: esp32s3
-  flash_size: 4MB
+  flash_size: 16MB
   framework:
     type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
 
 external_components:
   - source:
@@ -21,6 +33,11 @@ external_components:
     components: [nvs_secrets, partition_manager]
 
 # Shared boot-button / restart / partition-toggle behavior (same on every device)
+#
+# No ext_antenna package: like the XIAO ESP32-S3, the DevKitC-1 has no RF-switch
+# GPIO. The antenna is fixed by the module variant -- an ESP32-S3-WROOM-1U is
+# REQUIRED here, since only the -1U carries the u.FL connector. (Only the XIAO
+# ESP32-C6 needs common/xiao_c6_ext_antenna.yaml to steer RF to u.FL.)
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml
@@ -48,45 +65,54 @@ wifi:
   power_save_mode: none
 
 # 3. Sendspin protocol hub
-# task_stack_in_psram: false is required on ESP32-C6 (no PSRAM).
+# Stream-handling task stack lives in PSRAM, freeing internal RAM for WiFi and
+# the audio pipeline. (Requires the psram: block above -- ESPHome rejects
+# task_stack_in_psram: true on a chip with no PSRAM configured.)
 
 sendspin:
   id: sendspin_hub
-  task_stack_in_psram: false
+  task_stack_in_psram: true
 
 # 4. I2S audio bus + speaker
 # -- PCM5102A -> 3.5mm AUX -> powered/Bluetooth speaker ---------------------
-#   PCM5102A    XIAO ESP32-C6
-#   BCK       -> GPIO3  (bit clock)
-#   LCK       -> GPIO4  (left/right clock)
-#   DIN       -> GPIO5  (data)
+#   PCM5102A    ESP32-S3-DevKitC-1
+#   BCK       -> GPIO4  (bit clock)
+#   LCK       -> GPIO5  (left/right clock)
+#   DIN       -> GPIO6  (data)
 #   VCC       -> 3.3V
 #   GND       -> GND
 #   SCK       -> GND    (internal clock mode -- check solder jumper on board)
 #   3.5mm out -> AUX cable -> speaker
+#
+# Pin choice: GPIO4/5/6 are free, non-strapping, and adjacent on the header.
+# Do NOT move these to GPIO35/36/37 -- on an R8 module those are consumed by the
+# octal PSRAM. Also unavailable: GPIO0 (BOOT), GPIO19/20 (USB serial JTAG, which
+# carries the logger above), GPIO26-32 (SPI flash).
 #
 # If your board's SCK jumper is NOT bridged to GND, uncomment i2s_mclk_pin.
 # ---------------------------------------------------------------------------
 
 i2s_audio:
   - id: i2s_bus
-    i2s_bclk_pin:  GPIO3
-    i2s_lrclk_pin: GPIO4
-    # i2s_mclk_pin: GPIO2   # only needed if SCK jumper is not tied to GND
+    i2s_bclk_pin:  ${i2s_bclk_pin}
+    i2s_lrclk_pin: ${i2s_lrclk_pin}
+    # i2s_mclk_pin: GPIO7   # only needed if SCK jumper is not tied to GND
 
 speaker:
   - platform: i2s_audio
     id: i2s_speaker
     i2s_audio_id: i2s_bus
     dac_type: external   # separate I2S DAC chip wired to dout/bclk/lrclk
-    i2s_dout_pin: GPIO5
+    i2s_dout_pin: ${i2s_dout_pin}
     sample_rate: 48000
     bits_per_sample: 16bit
     channel: stereo
 
 # 5. Media player + Sendspin source
-# buffer_size reduced from 1 MB default -- ESP32-C6 internal RAM only.
-# Increase initial_static_delay if audio glitches on network hiccups.
+# buffer_size is left at the 1 MB default: with 8 MB of PSRAM there is no reason
+# to shrink it (the old 250 KB value was a workaround for the PSRAM-less C6).
+# A deeper buffer is what rides out network hiccups without audible dropouts.
+# Increase initial_static_delay if audio still glitches on a congested network.
 
 media_player:
   - platform: speaker
@@ -100,7 +126,7 @@ media_source:
   - platform: sendspin
     sendspin_id: sendspin_hub
     sample_rate: 48000
-    buffer_size: 250000
+    task_stack_in_psram: true
     fixed_delay: 0ms
     initial_static_delay: 100ms
     static_delay_adjustable: true
