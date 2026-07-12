@@ -4,6 +4,11 @@ ESP32-S3 HUB75 LED matrix with adaptive brightness from Home Assistant room
 illuminance. Panel geometry is stored in NVS at flash time (panels cannot
 self-report wiring).
 
+Display content is set from Home Assistant (the "Display Text" entity), not from
+the CLI. It may contain inline icons: ":btc:" draws the full-color Bitcoin logo,
+and the Unicode BITCOIN SIGN (U+20BF) renders as a text glyph that follows the
+Text Color gradient. See docs/devices.md (Matrix Display) for how to add icons.
+
 Config: yamls/matrixdisplay.yaml
 Chip: esp32s3 (esp32-s3-devkitc-1)
 Network: WiFi

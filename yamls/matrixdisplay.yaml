@@ -73,34 +73,80 @@ logger:
 
 # Font face x size, chosen at runtime via the "Font" and "Text Size" selects.
 # 3 families (Roboto sans / Roboto Mono / Roboto Slab) x 3 sizes (8/14/20).
+#
+# extras: pulls U+20BF BITCOIN SIGN into every font. No Roboto family ships that
+# codepoint (FT_Get_Char_Index returns 0 for all three), so it is sourced from
+# Noto, which does. Naming it under glyphs: makes a missing glyph a hard build
+# error, so a bad font swap fails loudly instead of silently rendering nothing.
+# "\u20BF" is a YAML escape, so this file stays ASCII (project rule).
+#
+# The full-color Bitcoin roundel is a different thing: it cannot be a glyph (two
+# colors), so it is an image -- see the image: block and icon_for() in the lambda.
 font:
   - file: "gfonts://Roboto"
     id: font_roboto_s
     size: 8
+    extras: &btc_sign_sans
+      - file: "gfonts://Noto+Sans"
+        glyphs: ["\u20BF"]
   - file: "gfonts://Roboto"
     id: font_roboto_m
     size: 14
+    extras: *btc_sign_sans
   - file: "gfonts://Roboto"
     id: font_roboto_l
     size: 20
+    extras: *btc_sign_sans
   - file: "gfonts://Roboto+Mono"
     id: font_mono_s
     size: 8
+    extras: &btc_sign_mono
+      - file: "gfonts://Noto+Sans+Mono"
+        glyphs: ["\u20BF"]
   - file: "gfonts://Roboto+Mono"
     id: font_mono_m
     size: 14
+    extras: *btc_sign_mono
   - file: "gfonts://Roboto+Mono"
     id: font_mono_l
     size: 20
+    extras: *btc_sign_mono
   - file: "gfonts://Roboto+Slab"
     id: font_slab_s
     size: 8
+    extras: *btc_sign_sans
   - file: "gfonts://Roboto+Slab"
     id: font_slab_m
     size: 14
+    extras: *btc_sign_sans
   - file: "gfonts://Roboto+Slab"
     id: font_slab_l
     size: 20
+    extras: *btc_sign_sans
+
+# Inline icons, drawn as full-color images by the display lambda. Three sizes to
+# match the three "Text Size" steps, mirroring the fonts above. Source is the
+# public-domain Bitcoin logo (Wikimedia Commons, File:Bitcoin.svg); resvg
+# rasterizes it at build time, so there is no runtime SVG cost.
+#
+# To add an icon: drop the .svg/.png in yamls/images/, add three entries here
+# (_s/_m/_l), then add a case to icon_for() and a token to ICON_TOKENS below.
+image:
+  - file: images/bitcoin.svg
+    id: icon_btc_s
+    type: RGB565
+    transparency: alpha_channel
+    resize: 8x8
+  - file: images/bitcoin.svg
+    id: icon_btc_m
+    type: RGB565
+    transparency: alpha_channel
+    resize: 14x14
+  - file: images/bitcoin.svg
+    id: icon_btc_l
+    type: RGB565
+    transparency: alpha_channel
+    resize: 20x20
 
 # Pin mapping below is for RGB Matrix Adapter Board (E) Rev 2.2 by Seengreat,
 # wired to a genuine ESP32-S3-DevKitC-1 module.
@@ -162,11 +208,92 @@ display:
         fnt = (sz == "small") ? id(font_roboto_s)
             : (sz == "large") ? id(font_roboto_l) : id(font_roboto_m);
 
+      // --- Inline icons ------------------------------------------------------
+      // Text is walked as UTF-8 codepoints. A codepoint in the icon table renders
+      // as a full-color image; every other codepoint renders as a font glyph. So
+      // an icon sits in the text flow -- "BTC :btc: 100k" draws the roundel inline.
+      //
+      // ICON_TOKENS maps a typeable ASCII token to that codepoint, so the panel can
+      // be driven from HA without entering literal Unicode. Codepoints live in the
+      // Private Use Area (U+E000..), which is what it exists for.
+      static const struct { const char *tok; const char *cp; } ICON_TOKENS[] = {
+        { ":btc:", "\xEE\x80\x80" },   // U+E000 -- Bitcoin roundel (see the image: block)
+      };
+      const int ICON_PAD = 1;    // px of breathing room each side of an icon
+
+      // Image for an icon codepoint at the current Text Size; nullptr = not an icon.
+      auto icon_for = [&](uint32_t cp) -> esphome::image::Image * {
+        switch (cp) {
+          case 0xE000:
+            return (sz == "small") ? id(icon_btc_s)
+                 : (sz == "large") ? id(icon_btc_l) : id(icon_btc_m);
+          default:
+            return nullptr;
+        }
+      };
+
+      // Decode the codepoint at s[i], advancing i past it. A malformed byte eats one
+      // byte and yields U+FFFD, so bad input can never desync the walk or loop.
+      auto next_cp = [](const std::string &s, size_t &i) -> uint32_t {
+        uint8_t c = (uint8_t) s[i];
+        uint32_t cp;
+        int extra;
+        if (c < 0x80) { cp = c; extra = 0; }
+        else if ((c & 0xE0) == 0xC0) { cp = c & 0x1Fu; extra = 1; }
+        else if ((c & 0xF0) == 0xE0) { cp = c & 0x0Fu; extra = 2; }
+        else if ((c & 0xF8) == 0xF0) { cp = c & 0x07u; extra = 3; }
+        else { i++; return 0xFFFD; }
+        if (i + (size_t) extra >= s.size()) { i++; return 0xFFFD; }
+        for (int k = 1; k <= extra; k++) {
+          uint8_t cc = (uint8_t) s[i + (size_t) k];
+          if ((cc & 0xC0) != 0x80) { i++; return 0xFFFD; }
+          cp = (cp << 6) | (uint32_t) (cc & 0x3Fu);
+        }
+        i += (size_t) extra + 1;
+        return cp;
+      };
+
+      // Width of s in px, counting icons by their image width. Every width below
+      // goes through here, so wrap, scroll span and gradient all agree on one number.
+      auto measure = [&](const std::string &s) -> int {
+        int w = 0;
+        size_t i = 0;
+        while (i < s.size()) {
+          size_t start = i;
+          auto *ic = icon_for(next_cp(s, i));
+          if (ic != nullptr) { w += ic->get_width() + 2 * ICON_PAD; continue; }
+          int bx, by, cw, ch;
+          it.get_text_bounds(0, 0, s.substr(start, i - start).c_str(), fnt,
+                             TextAlign::TOP_LEFT, &bx, &by, &cw, &ch);
+          w += cw;
+        }
+        return w;
+      };
+
+      // Lets an ordinary all-text line keep the single-print fast path below.
+      auto has_icon = [&](const std::string &s) -> bool {
+        size_t i = 0;
+        while (i < s.size())
+          if (icon_for(next_cp(s, i)) != nullptr)
+            return true;
+        return false;
+      };
+
       // No text yet -> show the panel geometry (white), no effects.
       std::string text = id(display_text).state;
       if (text.empty()) {
         it.printf(0, H / 2, fnt, TextAlign::CENTER_LEFT, "%dx%d", W, H);
         return;
+      }
+
+      // ":btc:" -> U+E000, so the rest of the lambda only ever sees codepoints.
+      for (const auto &t : ICON_TOKENS) {
+        size_t at = 0;
+        size_t tlen = strlen(t.tok), clen = strlen(t.cp);
+        while ((at = text.find(t.tok, at)) != std::string::npos) {
+          text.replace(at, tlen, t.cp);
+          at += clen;
+        }
       }
 
       // Flash: blank the text for the second half of each interval (0 = steady).
@@ -211,29 +338,53 @@ display:
       };
       Color solid = grad(0.0f);
 
-      // Draw one line. Solid color -> a single print; gradient (n>=2) -> per
-      // character, colored by its horizontal center across the line's width.
+      // Draw one line: walk it a codepoint at a time, drawing icons as images and
+      // everything else as glyphs, each colored by its horizontal center across the
+      // line (the gradient). A solid-color line with no icons keeps its single print.
       auto draw_line = [&](int x0, int y, const std::string &s, bool center_v) {
         TextAlign al = center_v ? TextAlign::CENTER_LEFT : TextAlign::TOP_LEFT;
-        if (n == 1) { it.print(x0, y, fnt, solid, al, s.c_str()); return; }
-        int bx, by, lw, lh;
-        it.get_text_bounds(0, 0, s.c_str(), fnt, al, &bx, &by, &lw, &lh);
+        if (n == 1 && !has_icon(s)) { it.print(x0, y, fnt, solid, al, s.c_str()); return; }
+        int lw = measure(s);
         if (lw <= 0) { it.print(x0, y, fnt, solid, al, s.c_str()); return; }
         int cx = 0;
-        for (size_t k = 0; k < s.size(); k++) {
-          char buf[2] = { s[k], 0 };           // ASCII-only content (project rule)
+        size_t i = 0;
+        while (i < s.size()) {
+          size_t start = i;
+          auto *ic = icon_for(next_cp(s, i));
+          if (ic != nullptr) {
+            int iw = ic->get_width() + 2 * ICON_PAD;
+            float t = (cx + iw * 0.5f) / (float) lw;
+            // A color image ignores the color argument; a 1-bit icon would be tinted
+            // by the gradient here, exactly like text.
+            it.image(x0 + cx + ICON_PAD,
+                     center_v ? (y - ic->get_height() / 2) : y,
+                     ic, grad(t), Color::BLACK);
+            cx += iw;
+            continue;
+          }
+          std::string one = s.substr(start, i - start);   // one whole codepoint
           int cbx, cby, cw, chh;
-          it.get_text_bounds(0, 0, buf, fnt, al, &cbx, &cby, &cw, &chh);
+          it.get_text_bounds(0, 0, one.c_str(), fnt, al, &cbx, &cby, &cw, &chh);
           float t = (cx + cw * 0.5f) / (float) lw;
-          it.print(x0 + cx, y, fnt, grad(t), al, buf);
+          it.print(x0 + cx, y, fnt, grad(t), al, one.c_str());
           cx += cw;
         }
       };
 
-      // Height of one line for this font.
+      // Width (icon-aware) and height of one line for this font.
       int bx, by, tw, th;
       it.get_text_bounds(0, 0, text.c_str(), fnt, TextAlign::TOP_LEFT,
                          &bx, &by, &tw, &th);
+      tw = measure(text);
+      {
+        // An icon must not overflow its line: never let a line be shorter than one.
+        size_t i = 0;
+        while (i < text.size()) {
+          auto *ic = icon_for(next_cp(text, i));
+          if (ic != nullptr && ic->get_height() > th)
+            th = ic->get_height();
+        }
+      }
 
       if (id(word_wrap).state) {
         // Greedy word wrap into lines no wider than the panel (honors '\n').
@@ -246,10 +397,7 @@ display:
           if (c == ' ' || c == '\n') {
             if (!word.empty()) {
               std::string cand = line.empty() ? word : line + " " + word;
-              int cbx, cby, cw, chh;
-              it.get_text_bounds(0, 0, cand.c_str(), fnt, TextAlign::TOP_LEFT,
-                                 &cbx, &cby, &cw, &chh);
-              if (cw > W && !line.empty()) { lines.push_back(line); line = word; }
+              if (measure(cand) > W && !line.empty()) { lines.push_back(line); line = word; }
               else line = cand;
               word.clear();
             }
@@ -295,7 +443,10 @@ display:
 
 # Home Assistant controls (entity ids are number./text./select./switch./light.
 # matrix_display_<mac>_<slug>):
-#   Display Text          (text)   -- the string to show
+#   Display Text          (text)   -- the string to show. May contain inline icons:
+#                                     ":btc:" draws the full-color Bitcoin logo, and
+#                                     the Unicode BITCOIN SIGN (U+20BF) renders as a
+#                                     text glyph that follows the Text Color gradient.
 #   Brightness            (number) -- 0-100% panel brightness (HA owns any dimming)
 #   Brightness In (s)     (number) -- fade-up duration to a higher brightness (0 = instant)
 #   Brightness Out (s)    (number) -- fade-down duration to a lower brightness (0 = instant)
@@ -317,6 +468,12 @@ display:
 #   action: light.turn_on
 #   target: {entity_id: light.matrix_display_<mac>_text_color_1}
 #   data: {rgb_color: [255, 136, 0]}
+#
+#   # inline icon: text, roundel, text -- the icon sits in the text flow and
+#   # scales with Text Size
+#   action: text.set_value
+#   target: {entity_id: text.matrix_display_<mac>_display_text}
+#   data: {value: "BTC :btc: {{ states('sensor.btc_price') }}"}
 # Brightness fade state (pixel value 0-255). apply_brightness sets a new target;
 # the fade interval ramps bright_current toward it over "Brightness In"/"Out".
 globals:

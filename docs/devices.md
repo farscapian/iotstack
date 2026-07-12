@@ -31,6 +31,28 @@ Roles are listed in `scripts/roles.conf`. Examples:
 - YAML: `yamls/matrixdisplay.yaml`
 - Board: ESP32-S3-DevKitC-1, HUB75 panels
 - Panel layout in NVS; see [gotchas.md](gotchas.md) (Matrix display panel layout)
+- Content comes from the `Display Text` entity over the HA API (there is no CLI
+  knob for text). The display lambda walks it as UTF-8 codepoints, so it renders
+  inline icons as well as text:
+
+| Type in `Display Text` | Renders |
+|------------------------|---------|
+| `:btc:` | Full-color Bitcoin logo, inline, sized to `Text Size` |
+| U+20BF (BITCOIN SIGN) | Monochrome glyph; follows the `Text Color` gradient |
+
+`:btc:` is an ASCII token, so it can be typed or templated from HA without
+entering literal Unicode; the lambda expands it to a Private Use Area codepoint
+(U+E000) before rendering. Example: `BTC :btc: 100k`.
+
+Two mechanisms, because they are not interchangeable. A font glyph is one color
+by definition, so the two-tone roundel can only be an image; conversely an image
+does not scale with the font or take the gradient. Icons are images (`image:`
+block, rasterized from `yamls/images/*.svg` by resvg at build time); the sign is
+a font glyph (`extras:` on each font, since no Roboto family ships U+20BF).
+
+To add an icon: drop the SVG/PNG in `yamls/images/`, add three `image:` entries
+(`_s`/`_m`/`_l`, sized 8/14/20 to match `Text Size`), then add a `case` to
+`icon_for()` and an entry to `ICON_TOKENS` in the display lambda.
 
 ### LED Light Strip (SK6812 RGBW, default 300 LEDs)
 Same strip + wiring across two board/network variants (roles in `roles.conf`).
