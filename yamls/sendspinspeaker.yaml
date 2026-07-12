@@ -35,9 +35,9 @@ external_components:
 # Shared boot-button / restart / partition-toggle behavior (same on every device)
 #
 # No ext_antenna package: like the XIAO ESP32-S3, the DevKitC-1 has no RF-switch
-# GPIO. The antenna is fixed by the module variant -- an ESP32-S3-WROOM-1U is
-# REQUIRED here, since only the -1U carries the u.FL connector. (Only the XIAO
-# ESP32-C6 needs common/xiao_c6_ext_antenna.yaml to steer RF to u.FL.)
+# GPIO -- its u.FL connector is wired directly, so the external antenna needs no
+# config, just the pigtail. (Only the XIAO ESP32-C6 has an RF switch, and so is
+# the only board needing common/xiao_c6_ext_antenna.yaml to steer RF to u.FL.)
 packages:
   partition_mgmt: !include common/partition_manager.yaml
   boot_button: !include common/boot_button.yaml

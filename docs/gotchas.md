@@ -61,6 +61,36 @@ FIRMWARE_BIN="${YAMLS_DIR}/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}
 
 `_flash_sync_update_devices_cache()` in `iotstack.sh` is called immediately after the production `smart_compile` in Step 1. It writes the same cache keys that `update_devices.sh` would write itself, giving Step 5 an instant cache hit. If you refactor the compile flow, ensure this sync call is preserved after production compilation.
 
+### Build dir is named after `esphome.name`, NOT the role
+
+ESPHome writes its build to `.esphome/build/<esphome.name>/`, and roles are free to
+shorten that name to stay under ESPHome's 31-char node-name limit once
+`name_add_mac_suffix` appends the MAC. Three roles do:
+
+| Role (YAML basename) | `esphome.name` -> build dir |
+|----------------------|-----------------------------|
+| `sendspinspeaker` | `sendspin` |
+| `ledlightstrip-c6-thread` | `ledstrip-c6-thread` |
+| `ledlightstrip-s3-wifi` | `ledstrip-s3-wifi` |
+
+Anything that touches a **build dir or firmware path** must resolve the name with
+`_esphome_build_name_for_yaml()` (`scripts/iotstack-version.sh`) rather than using
+the YAML basename. Anything that touches the **build cache file**
+(`~/.iotstack/logs/<role>.build.cache`) stays keyed on the ROLE. They are different
+keys; conflating them is the bug below.
+
+Symptoms when this is wrong (all seen on `sendspinspeaker` before the fix):
+`_config_hash_from_build_dir` looks in a build dir that does not exist, so the
+config_hash can never match -- Step 1 reports `no build_info.json for <role>` on
+every run, `_flash_sync_update_devices_cache()` silently no-ops on its
+`[[ -f "$build_info" ]] || return 0` guard, and Step 5 recompiles from scratch. The
+result is two full compiles per flash, forever, with no self-healing.
+
+Worse, `update_devices.sh` used to fall back to *the most recently modified
+`firmware.ota.bin` anywhere under `.esphome/build/`* when its path missed. That
+fallback silently OTAs **another role's firmware** onto the device. It is gone --
+a missing firmware path is now a hard error before any device is touched.
+
 ### Agent live-run watching (`sessions.watch`)
 
 Every `iotstack` invocation appends one TSV line to `~/.iotstack/logs/sessions.watch` (`IOTSTACK_SESSION_WATCH`). Agents should tail it for new runs, then tail the `session_log` and `serial_log` paths from that line. Full workflow: `workflow.md` section Watching live iotstack runs.

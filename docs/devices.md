@@ -14,11 +14,9 @@ Roles are listed in `scripts/roles.conf`. Examples:
 >   (observed -69 dBm onboard vs -42 dBm external; weak signal also breaks mDNS,
 >   so `iotstack flash/update` can't discover the device). To fall back to the
 >   onboard ceramic antenna, drop that package from its YAML.
-> - **ESP32-S3 (XIAO S3 and DevKitC-1)** -- no RF-switch GPIO exists, so there is
->   nothing to configure and no package to include. The antenna is fixed in
->   hardware: the XIAO S3's u.FL is wired directly, and on the DevKitC-1 it is
->   set by the module variant -- **WROOM-1U has the u.FL connector, plain
->   WROOM-1 is PCB-trace only**. Order the -1U.
+> - **ESP32-S3 (XIAO S3 and DevKitC-1)** -- both expose a u.FL connector, and
+>   neither has an RF-switch GPIO, so there is nothing to configure and no
+>   package to include. Attach the pigtail and the external antenna is live.
 
 ### WiFi BLE Proxy
 - YAML: `yamls/bleproxy.yaml`
@@ -65,7 +63,7 @@ To add an icon: drop the SVG/PNG in `yamls/images/`, add three `image:` entries
 ### SendSpin Speaker (synchronized multi-room audio)
 - YAML: `yamls/sendspinspeaker.yaml`
 - mDNS hostname: `sendspin-<mac>`
-- Board: ESP32-S3-DevKitC-1 **N16R8** (16MB flash + 8MB octal PSRAM), WROOM-1U module
+- Board: ESP32-S3-DevKitC-1 **N16R8** (16MB flash + 8MB octal PSRAM); external u.FL antenna, no config needed
 - DAC: PCM5102A -> 3.5mm AUX -> powered speaker
 
 | PCM5102A | ESP32-S3 | Notes |

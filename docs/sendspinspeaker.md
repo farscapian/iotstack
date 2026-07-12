@@ -21,7 +21,7 @@ This device plays synchronized music across multiple rooms. You tell [Music Assi
 - ESP32-S3-DevKitC-1, **N16R8** variant (16MB flash + 8MB octal PSRAM)
 - PCM5102A DAC (sound card) module
 - Powered speaker or any speaker with an AUX (3.5mm) input
-- u.FL antenna pigtail (see Antenna below)
+- External u.FL antenna pigtail (see Antenna below)
 
 **Why the N16R8 specifically?** The PSRAM is not optional in spirit. SendSpin
 buffers a network audio stream, and with 8MB of PSRAM the stream task's stack and
@@ -54,7 +54,7 @@ The three I2S pins are defined as substitutions at the top of the YAML, so a dif
 
 ## Antenna
 
-Use the **ESP32-S3-WROOM-1U** module -- the "U" is the one with the u.FL connector; the plain WROOM-1 has only a PCB trace antenna.
+The board has a u.FL connector; attach the external antenna pigtail.
 
 Unlike the XIAO ESP32-C6, the S3 has **no RF-switch GPIO**, so there is nothing to configure in software and no antenna package to include. Attach the pigtail and you are done.
 

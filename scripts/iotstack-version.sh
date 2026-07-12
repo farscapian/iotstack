@@ -183,6 +183,57 @@ _config_hash_from_build_dir() {
   python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
 }
 
+_esphome_build_name_for_yaml() {
+  # ESPHome names its build dir after esphome.name, which is NOT always the YAML
+  # basename: a role may shorten it to stay under ESPHome's 31-char node-name
+  # limit once name_add_mac_suffix appends the MAC (sendspinspeaker -> "sendspin",
+  # ledlightstrip-s3-wifi -> "ledstrip-s3-wifi"). Every build-cache and firmware
+  # path keys off the build dir, so read it from the YAML rather than assuming.
+  # Falls back to the basename when esphome.name is absent or unresolvable.
+  local yaml_file="$1"
+  local fallback="${2:-}"
+  local name line key val
+
+  [[ -n "$fallback" ]] || fallback=$(basename "$yaml_file" .yaml)
+  [[ -f "$yaml_file" ]] || { printf '%s\n' "$fallback"; return 0; }
+
+  name=$(awk '
+    /^esphome:/            { inblock = 1; next }
+    inblock && /^[^ \t#]/  { exit }
+    inblock && $1 == "name:" {
+      $1 = ""
+      sub(/^[ \t]+/, "")
+      sub(/[ \t]*#.*$/, "")
+      sub(/[ \t]+$/, "")
+      print
+      exit
+    }
+  ' "$yaml_file")
+  name=${name//\"/}
+  name=${name//\'/}
+  [[ -n "$name" ]] || { printf '%s\n' "$fallback"; return 0; }
+
+  # Expand ${substitutions} from the same file (roles commonly use ${device_role}).
+  if [[ "$name" == *'${'* ]]; then
+    while IFS= read -r line; do
+      key=${line%%:*}
+      key=${key//[[:space:]]/}
+      val=${line#*:}
+      val=${val%%#*}
+      val=${val//\"/}
+      val=${val//\'/}
+      val=${val#"${val%%[![:space:]]*}"}
+      val=${val%"${val##*[![:space:]]}"}
+      [[ -n "$key" ]] && name=${name//\$\{$key\}/$val}
+    done < <(awk '/^substitutions:/ { f = 1; next } f && /^[^ \t#]/ { exit } f && /:/ { print }' "$yaml_file")
+  fi
+
+  # Any unresolved ${...} means we guessed wrong -- prefer the basename over a
+  # path that would silently miss the build dir.
+  [[ -n "$name" && "$name" != *'${'* ]] || { printf '%s\n' "$fallback"; return 0; }
+  printf '%s\n' "$name"
+}
+
 _compile_skip_device_name() {
   local yaml_file="$1"
   local device_name="${2:-}"
@@ -192,6 +243,8 @@ _compile_skip_device_name() {
   else
     resolved="${device_name:-$(basename "$yaml_file" .yaml)}"
     [[ "$resolved" =~ ^\.temp-compile- ]] && resolved="${resolved#.temp-compile-}"
+    # The caller passes a ROLE name; the build dir is keyed on esphome.name.
+    resolved=$(_esphome_build_name_for_yaml "$yaml_file" "$resolved")
   fi
   echo "$resolved"
 }

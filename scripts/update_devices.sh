@@ -811,6 +811,9 @@ fi
 # Use original YAML file for cache key (before any temp file creation)
 # This ensures cache is consistent across reassign runs with different OTA passwords
 YAML_NAME="$(basename "${ORIGINAL_YAML_FILE%.yaml}")"
+# Build dir / firmware paths key on esphome.name, which differs from the role for
+# roles that shorten it (sendspinspeaker -> sendspin). Cache file stays role-keyed.
+BUILD_NAME="$(_esphome_build_name_for_yaml "$ORIGINAL_YAML_FILE" "$YAML_NAME")"
 BASE_LOG_DIR="${HOME}/.iotstack/logs"
 LOG_ROOT="${BASE_LOG_DIR}/${YAML_NAME}"
 RUN_TS="$(date '+%Y%m%d_%H%M%S')"
@@ -1213,7 +1216,7 @@ if [[ "$UPGRADE_DELTA" == true || "$VERIFY" == true ]]; then
     if [[ "$REASSIGN_MODE" != true ]]; then
       log "config_hash unchanged, ESPHome ${ESPHOME_VERSION} -- skipping compilation."
     fi
-    NEW_CONFIG_HASH=$(_resolve_build_config_hash "$YAML_NAME" "$CACHED_CONFIG_HASH")
+    NEW_CONFIG_HASH=$(_resolve_build_config_hash "$BUILD_NAME" "$CACHED_CONFIG_HASH")
     _sync_build_cache_config_hash "$NEW_CONFIG_HASH"
     log "Build config_hash: ${NEW_CONFIG_HASH}"
     COMPILED=true
@@ -1400,7 +1403,7 @@ if [[ "$COMPILED" == false ]]; then
     NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG_FILE" \
       | tail -1 | sed 's/config_hash=0x//')
     [[ -z "$NEW_CONFIG_HASH" ]] && \
-      NEW_CONFIG_HASH=$(_resolve_build_config_hash "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
+      NEW_CONFIG_HASH=$(_resolve_build_config_hash "$BUILD_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
     [[ -n "$NEW_CONFIG_HASH" ]] && COMPILED=true
   else
     COMPILE_LOG=$(mktemp)
@@ -1411,7 +1414,7 @@ if [[ "$COMPILED" == false ]]; then
       NEW_CONFIG_HASH=$(grep -o 'config_hash=0x[0-9a-f]*' "$COMPILE_LOG" \
         | tail -1 | sed 's/config_hash=0x//')
       [[ -z "$NEW_CONFIG_HASH" ]] && \
-        NEW_CONFIG_HASH=$(_resolve_build_config_hash "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
+        NEW_CONFIG_HASH=$(_resolve_build_config_hash "$BUILD_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
     else
       err "Compilation failed:"
       echo
@@ -1441,6 +1444,25 @@ fi
 # -- Parallel flash -----------------------------------------------------------
 # Note: USB devices are NOT flashed here. Use 'iotstack flash' for serial flashing.
 
+# ESPHome creates: <YAMLS_DIR>/.esphome/build/<esphome.name>/.pioenvs/<esphome.name>/firmware.ota.bin
+# BUILD_NAME is esphome.name resolved from the ORIGINAL YAML (not the temp file,
+# whose basename is mangled: .temp-api-key-713092.threadrouter.yaml). It is not
+# always the role name -- sendspinspeaker builds into "sendspin".
+# Use YAMLS_DIR (absolute) so this works regardless of the caller's CWD.
+DEVICE_NAME="$BUILD_NAME"
+FIRMWARE_BIN="${YAMLS_DIR}/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"
+
+# Resolved once: it is the same image for every host in FLASH_LIST. There is no
+# fallback on purpose -- this used to fall back to the most recently modified
+# firmware.ota.bin anywhere under .esphome/build/, which silently OTAs ANOTHER
+# ROLE'S FIRMWARE onto the device whenever the path is wrong. Fail loudly, before
+# any device is touched.
+if [[ ! -f "$FIRMWARE_BIN" ]]; then
+  err "Firmware not found for ${YAML_NAME}: ${FIRMWARE_BIN}"
+  err "  (expected build dir '${BUILD_NAME}' from esphome.name in ${ORIGINAL_YAML_FILE})"
+  exit 1
+fi
+
 slot_count=0
 
 for HOSTNAME in "${FLASH_LIST[@]}"; do
@@ -1450,22 +1472,6 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
   done
 
   FQDN="${HOSTNAME}.local"
-
-  # Extract device name from ORIGINAL YAML filename (not temp file)
-  # IMPORTANT: Use ORIGINAL_YAML_FILE because YAML_FILE might be a temp file with OTA password
-  # Temp files are like: .temp-api-key-713092.threadrouter.yaml (wrong basename)
-  # Original files are like: threadrouter.yaml (correct basename)
-  DEVICE_NAME=$(basename "$ORIGINAL_YAML_FILE" .yaml)
-
-  # Find the actual firmware binary by searching the build directory
-  # ESPHome creates: <YAMLS_DIR>/.esphome/build/<name>/.pioenvs/<name>/firmware.ota.bin
-  # Use YAMLS_DIR (absolute) so this works regardless of the caller's CWD.
-  FIRMWARE_BIN="${YAMLS_DIR}/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"
-
-  # Fallback: search for most recently created firmware.ota.bin (in case name has variables)
-  if [[ ! -f "$FIRMWARE_BIN" ]]; then
-    FIRMWARE_BIN=$(find "${YAMLS_DIR}/.esphome/build" -name "firmware.ota.bin" -type f -print0 2>/dev/null | xargs -0 ls -t 2>/dev/null | head -1)
-  fi
 
   (
     # Run upload with 30-second timeout (fail fast if auth fails)
@@ -1565,7 +1571,7 @@ for HOSTNAME in "${FLASH_LIST[@]}"; do
     # Show the hash of what was installed (build hash), not the pre-flash device hash.
     hash="$NEW_CONFIG_HASH"
     if [[ -z "$hash" ]]; then
-      hash=$(_resolve_build_config_hash "$YAML_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
+      hash=$(_resolve_build_config_hash "$BUILD_NAME" "$CACHED_CONFIG_HASH" 2>/dev/null || true)
     fi
     [[ -z "$hash" ]] && hash="unknown"
     hash_short="${hash:0:8}"

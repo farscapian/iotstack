@@ -286,10 +286,13 @@ _smart_compile_cache_miss_notice() {
 _flash_sync_update_devices_cache() {
   # After smart_compile, write update_devices.sh's build cache so --reassign skips recompile.
   local yaml_file="$1"
-  local yaml_name
+  local yaml_name build_name
   yaml_name=$(basename "$yaml_file" .yaml)
+  # Cache file is keyed on the ROLE (update_devices.sh reads <role>.build.cache),
+  # but the build dir is keyed on esphome.name -- they differ for some roles.
+  build_name=$(_esphome_build_name_for_yaml "$yaml_file" "$yaml_name")
   local cache_file="${IOTSTACK_HOME}/logs/${yaml_name}.build.cache"
-  local build_info="${YAMLS_DIR}/.esphome/build/${yaml_name}/build_info.json"
+  local build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
   [[ -f "$build_info" ]] || return 0
   local esphome_version config_hash
   esphome_version=$(esphome version 2>/dev/null | grep -o '[0-9][0-9]*\.[0-9.]*' | head -1) || return 0
@@ -1800,9 +1803,10 @@ _production_reachable_now() {
 _build_image_hash_for_yaml() {
   # image_hash for comparing device mDNS against the compiled build (8-char hex).
   local yaml_path="$1"
-  local yaml_name cache_file hash latest_log
+  local yaml_name build_name cache_file hash latest_log
   yaml_name=$(basename "$yaml_path" .yaml)
-  hash=$(_config_hash_from_build_dir "$yaml_name" 2>/dev/null) || true
+  build_name=$(_esphome_build_name_for_yaml "$yaml_path" "$yaml_name")
+  hash=$(_config_hash_from_build_dir "$build_name" 2>/dev/null) || true
   [[ -n "$hash" ]] && { echo "$hash"; return 0; }
   cache_file="${HOME}/.iotstack/logs/${yaml_name}/${yaml_name}.build.cache"
   if [[ -f "$cache_file" ]]; then
