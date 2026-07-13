@@ -26,9 +26,14 @@ Examples:
 
 Notes:
   - Serial streaming needs no YAML and works on a bricked/bootstrap device.
-  - Network streaming uses 'esphome logs' under the hood (ESPHome API).
-  - The device's API encryption key lives in NVS, not in the YAML, so iotstack
-    derives it (pass + MAC) into a temporary config for the duration of the
-    stream. Without it the firmware refuses the connection.
+  - Network streaming talks the ESPHome native API (same output as
+    'esphome logs', and it reconnects, so you can tail a device across a reboot).
+  - The device's API encryption key lives in NVS, not in the YAML, so the
+    firmware refuses an unauthenticated connection. iotstack derives the key
+    (pass + MAC) and passes it to the log stream in the environment -- it is
+    never written to disk. 'esphome logs' can only read a key from a config
+    file, which is why iotstack streams over aioesphomeapi instead.
+  - Crash backtraces are not decoded here (that needs the PlatformIO build
+    artifacts) -- run 'esphome logs' directly for that.
   - Multiple devices are prefixed like '[bleproxy-1a7cfc] ...' and interleaved.
   - Press Ctrl-C to stop.

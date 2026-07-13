@@ -70,6 +70,22 @@ succeeding is not proof the slot changed: confirm with `iotstack devices`.
 Use `iotstack set-boot` instead when you want to name the target partition
 explicitly rather than toggle.
 
+### Streaming device logs
+
+`iotstack logs [-f] <device>|<role>|<tty>` streams live logs. Name one device
+(`iotstack logs -f bleproxy-8dfcac`) or a role (every device in it, interleaved
+and prefixed).
+
+Network streaming does NOT shell out to `esphome logs`. The device's API
+encryption key is applied at boot from NVS and is not in the YAML, so ESPHome
+refuses an unauthenticated connection -- and the ESPHome CLI can only take a key
+from a config file on disk. iotstack derives the key (pass + MAC) and hands it to
+`scripts/esphome_logs.py` in `IOTSTACK_API_NOISE_PSK`, so the key is never
+written to disk. The stream itself goes through the same `aioesphomeapi`
+`log_runner.async_run` + `parse_log_message` that `esphome logs` uses internally,
+so output and reconnect behaviour are identical. Crash backtraces are not decoded
+(that needs the PlatformIO build artifacts) -- use `esphome logs` for that.
+
 ### Session logging and live monitoring
 
 | Command / file | Purpose |

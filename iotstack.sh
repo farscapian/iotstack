@@ -5524,20 +5524,11 @@ verify_wifi_credentials() {
   fi
 }
 
-_LOGS_TEMP_YAMLS=()
 _LOGS_JOB_PIDS=()
 
-_logs_cleanup_temp_yamls() {
-  local f
-  for f in ${_LOGS_TEMP_YAMLS[@]+"${_LOGS_TEMP_YAMLS[@]}"}; do
-    [[ -n "$f" ]] && rm -f "$f"
-  done
-  _LOGS_TEMP_YAMLS=()
-}
-
 _logs_stop_jobs() {
-  # Stop the log streams. Each job is a subshell wrapping 'esphome logs | sed',
-  # so signalling the subshell alone leaves esphome orphaned and still streaming
+  # Stop the log streams. Each job is a subshell wrapping 'logger | sed', so
+  # signalling the subshell alone leaves the logger orphaned and still streaming
   # (which is what 'jobs -p | xargs kill' used to do): kill its children first.
   local pid
   for pid in ${_LOGS_JOB_PIDS[@]+"${_LOGS_JOB_PIDS[@]}"}; do
@@ -5548,44 +5539,17 @@ _logs_stop_jobs() {
   _LOGS_JOB_PIDS=()
 }
 
-_logs_cleanup() {
-  _logs_stop_jobs
-  _logs_cleanup_temp_yamls
-}
-
-_logs_yaml_for_device() {
-  # Config for 'esphome logs' against ONE device. Sets the named out-var.
-  # Usage: _logs_yaml_for_device <role> <mac> <out_var>
-  #
-  # The API encryption key is not in the YAML -- nvs_secrets applies it at boot
-  # from NVS -- so plain 'esphome logs <role>.yaml' is refused by the firmware
-  # with RequiresEncryptionAPIError. Wrap the role YAML in a temp config that
-  # carries this device's key (derived from pass + MAC, as everywhere else).
-  # Same idea as create_ota_upload_yaml injecting the OTA password, and it must
-  # live under yamls/ so the role YAML's own '!include common/...' still
-  # resolves. mktemp gives 0600, and the file is removed when the stream ends.
-  local role="$1"
-  local mac="$2"
-  local -n out_ref="$3"
-  local psk temp_yaml
-
+_logs_device_psk() {
+  # Base64 API key for one device, or empty when it cannot be derived.
+  # Usage: _logs_device_psk <role> <mac>
+  local role="$1" mac="$2" psk
   if [[ "$role" == "$(iotstack_bootstrap_role)" ]]; then
     psk=$(_bootstrap_api_noise_psk_b64 "$mac" 2>/dev/null) || psk=""
   else
     psk=$(_device_api_noise_psk_b64 "$role" "$mac" 2>/dev/null) || psk=""
   fi
-
-  if [[ -z "$psk" ]]; then
-    warn "[$mac] no API encryption key derivable for role '$role'; trying without one"
-    out_ref="${YAMLS_DIR}/${role}.yaml"
-    return 0
-  fi
-
-  temp_yaml=$(mktemp "${YAMLS_DIR}/.temp-api-key-XXXXXX.${role}.yaml") || return 1
-  _LOGS_TEMP_YAMLS+=("$temp_yaml")
-  printf 'packages:\n  base: !include %s.yaml\napi:\n  encryption:\n    key: "%s"\n' \
-    "$role" "$psk" > "$temp_yaml"
-  out_ref="$temp_yaml"
+  [[ -z "$psk" ]] && warn "[$mac] no API encryption key derivable for role '$role'; trying without one"
+  printf '%s' "$psk"
 }
 
 cmd_logs() {
@@ -5671,26 +5635,29 @@ cmd_logs() {
     [[ ${#macs[@]} -eq 0 ]] && err "No '$role' devices found on the network."
   fi
 
-  # Each device needs its OWN config: the API encryption key is per device. Stop
-  # the streams and delete the temp configs on any exit -- they hold a secret,
-  # and an un-killed esphome keeps streaming after we are gone.
-  trap '_logs_cleanup' INT TERM EXIT
+  # An un-killed logger keeps streaming after we are gone: stop the jobs on exit.
+  trap '_logs_stop_jobs' INT TERM EXIT
   local mac rc=0
 
+  # The device API key goes to the logger in the environment, never to a file:
+  # 'esphome logs' can only read a key from a config file on disk, so iotstack
+  # streams via aioesphomeapi (scripts/esphome_logs.py) instead. Same output.
+  local logger="${SCRIPT_DIR}/scripts/esphome-logs.sh"
+
   # Single device: stream it directly. (Not exec: that would replace the shell,
-  # so the trap would never run and the key would stay on disk.)
+  # so the trap would never run and the logger could outlive us.)
   if [[ ${#macs[@]} -eq 1 ]]; then
-    local single_yaml="" single_host
+    local single_host
     single_host="$(_device_hostname "$role" "${macs[0]}")"
-    _logs_yaml_for_device "$role" "${macs[0]}" single_yaml || err "Could not prepare logs config for ${macs[0]}"
-    # Not fatal, and not a hard check: 'esphome logs' retries until the device
+    # Not fatal, and not a hard check: the logger retries until the device
     # answers, which is what you want while tailing one through a reboot. But
     # say so, or a typo'd MAC just looks like a hung command.
     if ! _production_api_reachable "$single_host" 2 2>/dev/null; then
       warn "${single_host} is not answering right now -- waiting for it to appear (Ctrl-C to stop)"
     fi
     info "Streaming logs from ${single_host} (Ctrl-C to stop)..."
-    esphome logs "$single_yaml" --device "${single_host}.local" &
+    IOTSTACK_API_NOISE_PSK="$(_logs_device_psk "$role" "${macs[0]}")" \
+      "$logger" "${single_host}.local" &
     _LOGS_JOB_PIDS=("$!")
     wait "$!" || rc=$?
     return "$rc"
@@ -5699,12 +5666,12 @@ cmd_logs() {
   # Multiple devices: run a logger per device in parallel, prefix each line with
   # the device name, and interleave to one stream.
   info "Streaming logs from ${#macs[@]} '$role' devices, interleaved (Ctrl-C to stop)..."
-  local device_yaml=""
+  local host
   for mac in "${macs[@]}"; do
-    _logs_yaml_for_device "$role" "$mac" device_yaml || continue
+    host="$(_device_hostname "$role" "$mac")"
     (
-      PYTHONUNBUFFERED=1 esphome logs "$device_yaml" --device "$(_device_hostname "$role" "$mac").local" 2>&1 \
-        | stdbuf -oL sed "s/^/[$(_device_hostname "$role" "$mac")] /"
+      IOTSTACK_API_NOISE_PSK="$(_logs_device_psk "$role" "$mac")" \
+        "$logger" "${host}.local" 2>&1 | stdbuf -oL sed "s/^/[${host}] /"
     ) &
     _LOGS_JOB_PIDS+=("$!")
   done
