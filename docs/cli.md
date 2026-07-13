@@ -37,7 +37,38 @@ iotstack reassign 8dfcac 0f4df4 mmwave
 
 # Or use direct YAML path
 iotstack update yamls/custom.yaml
+
+# Restart devices: one device, a whole role, or the fleet
+iotstack restart bleproxy-8dfcac
+iotstack restart bleproxy
+iotstack restart all
+
+# Restart into the OTHER boot partition (production <-> bootstrap)
+iotstack restart bleproxy-8dfcac --next
+iotstack restart all --next
 ```
+
+### Restarting devices
+
+`iotstack restart <device>|<role>|all [--next]` reboots live devices over the
+ESPHome native API. It presses buttons that every image already ships (see
+`yamls/common/partition_manager_base.yaml`), so it needs no firmware change and
+no USB cable -- only that the device is on the network.
+
+| Target | Meaning |
+|--------|---------|
+| `bleproxy-8dfcac` | One device (`<role>-<mac>`, or `bootstrap-<mac>` when it is booted into bootstrap) |
+| `bleproxy` | Every live device currently running that role |
+| `all` | Every live device, across all roles |
+
+Without `--next` the device reboots into the partition it is already running
+(the `Restart` button). With `--next` it presses `Toggle Boot Partition`, which
+validates the alternate slot, switches to it, and reboots itself -- so a
+production device comes back on bootstrap and vice versa. If the target slot
+holds no valid image the firmware logs a warning and stays put, so the press
+succeeding is not proof the slot changed: confirm with `iotstack devices`.
+Use `iotstack set-boot` instead when you want to name the target partition
+explicitly rather than toggle.
 
 ### Session logging and live monitoring
 

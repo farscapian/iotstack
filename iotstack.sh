@@ -853,6 +853,10 @@ help_devices() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-devices.txt"
 }
 
+help_restart() {
+  cat "${SCRIPT_DIR}/docs/help/iotstack-restart.txt"
+}
+
 help_roles() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-roles.txt"
 }
@@ -900,6 +904,7 @@ _iotstack_command_help_if_requested() {
       update)   help_update ;;
       reassign) help_reassign ;;
       verify)   help_verify ;;
+      restart)  help_restart ;;
       *)        return 1 ;;
     esac
   fi
@@ -3611,6 +3616,233 @@ _boot_to_production_via_bootstrap() {
     --max-time 5 >/dev/null 2>&1
 }
 
+# -- Restart command: reboot devices, optionally into the other partition ----
+# Both buttons ship in every image (common/partition_manager_base.yaml), so a
+# restart needs no firmware change: "restart" reboots in place, and
+# "toggle_boot_partition" validates the alternate slot, switches to it, and
+# reboots -- it does the reboot itself, so --next is one press, not two.
+_RESTART_BUTTON_IN_PLACE="restart"
+_RESTART_BUTTON_NEXT="toggle_boot_partition"
+
+_restart_role_for_node() {
+  # Map an mDNS node name back to its roles.conf role. These differ whenever a
+  # role's esphome.name is not the role name (see _device_node_name), and the
+  # API key in pass is filed under the ROLE -- so deriving the role by chopping
+  # the MAC off the hostname would look up the wrong secret.
+  local node="$1" role
+  while IFS='=' read -r role _yaml; do
+    [[ -z "$role" || "$role" =~ ^[[:space:]]*# ]] && continue
+    if [[ "$(_device_node_name "$role")" == "$node" ]]; then
+      printf '%s\n' "$role"
+      return 0
+    fi
+  done < "$ROLES_CONF"
+  return 1
+}
+
+_restart_live_hosts() {
+  # Live device hostnames, one per line -- the same set 'iotstack devices'
+  # shows: production plus bootstrap-booted, with a bootstrap row dropped when
+  # the same MAC is also live on production (stale mDNS cache entry).
+  local data merged live
+  data=$(mktemp)
+  merged="${data}.merged"
+  live="${data}.live"
+  # shellcheck disable=SC2064
+  trap "rm -f '$data' '$merged' '$live'" RETURN
+
+  _list_devices_collect_mdns_parallel "$data" all
+  _list_devices_merge_by_mac "$data" "$merged"
+  _list_devices_filter_live_hosts "$merged" "$live"
+
+  local hostname bootstrap_prefix
+  bootstrap_prefix="$(iotstack_bootstrap_role)-"
+  declare -A production_macs=()
+  while IFS='|' read -r hostname _; do
+    [[ -z "$hostname" || "$hostname" == "${bootstrap_prefix}"* ]] && continue
+    production_macs["${hostname##*-}"]=1
+  done < "$live"
+
+  while IFS='|' read -r hostname _; do
+    [[ -z "$hostname" ]] && continue
+    if [[ "$hostname" == "${bootstrap_prefix}"* && -n "${production_macs[${hostname##*-}]:-}" ]]; then
+      continue
+    fi
+    printf '%s\n' "$hostname"
+  done < "$live" | sort -u
+}
+
+_restart_press_button() {
+  # Press a button entity on a live device over the ESPHome native API.
+  # Usage: _restart_press_button <hostname> <object_id>
+  local hostname="$1"
+  local object_id="$2"
+  local mac="${hostname##*-}"
+  local api_host="${hostname}.local"
+  local api_src="esphome:button:${object_id}"
+  local noise_psk role
+
+  if [[ "$hostname" == "$(iotstack_bootstrap_role)-"* ]]; then
+    # Zero-trust on bootstrap, as everywhere else: encrypted API or nothing.
+    if ! noise_psk=$(_bootstrap_api_noise_psk_b64 "$mac" 2>/dev/null); then
+      warn "[$mac] no bootstrap API key derivable for ${hostname}; cannot press '${object_id}'"
+      return 1
+    fi
+    if create_log_child_output_piped; then
+      IOTSTACK_API_NOISE_PSK="$noise_psk" IOTSTACK_API_REQUIRE_NOISE=1 \
+        create_log_run "$api_src" "$SCRIPT_DIR/scripts/esphome-button.sh" "$api_host" "$object_id"
+      return $?
+    fi
+    IOTSTACK_API_NOISE_PSK="$noise_psk" IOTSTACK_API_REQUIRE_NOISE=1 \
+      "$SCRIPT_DIR/scripts/esphome-button.sh" "$api_host" "$object_id"
+    return $?
+  fi
+
+  role=$(_restart_role_for_node "${hostname%-"$mac"}") || role="${hostname%-"$mac"}"
+  noise_psk=$(_device_api_noise_psk_b64 "$role" "$mac" 2>/dev/null) || noise_psk=""
+  if [[ -z "$noise_psk" ]]; then
+    warn "[$mac] no API encryption key in pass for role ${role}; trying plaintext API"
+  fi
+  if create_log_child_output_piped; then
+    IOTSTACK_API_NOISE_PSK="$noise_psk" \
+      create_log_run "$api_src" "$SCRIPT_DIR/scripts/esphome-button.sh" "$api_host" "$object_id"
+    return $?
+  fi
+  IOTSTACK_API_NOISE_PSK="$noise_psk" \
+    "$SCRIPT_DIR/scripts/esphome-button.sh" "$api_host" "$object_id"
+}
+
+_restart_resolve_targets() {
+  # Resolve a restart target into live hostnames. Sets the named array ref.
+  # Usage: _restart_resolve_targets <target> <hosts_array_name>
+  local target="$1"
+  local -n hosts_ref="$2"
+  local bootstrap_role host node
+  bootstrap_role="$(iotstack_bootstrap_role)"
+  hosts_ref=()
+
+  local -a live=()
+  mapfile -t live < <(_restart_live_hosts)
+  [[ ${#live[@]} -eq 0 ]] && err "No devices found on the network. Run 'iotstack devices'."
+
+  if [[ "$target" == "all" ]]; then
+    hosts_ref=("${live[@]}")
+    return 0
+  fi
+
+  # <role|node>-<mac>: a single device.
+  if [[ "$target" =~ ^(.+)-([0-9a-fA-F]{6})$ ]]; then
+    local want_node="${BASH_REMATCH[1]}" want_mac want_host
+    want_mac=$(echo "${BASH_REMATCH[2]}" | tr '[:upper:]' '[:lower:]')
+    # Accept the role name as typed; the host on the wire carries the node name.
+    if is_valid_role "$want_node"; then
+      want_node=$(_device_node_name "$want_node")
+    fi
+    want_host="${want_node}-${want_mac}"
+    for host in "${live[@]}"; do
+      if [[ "$host" == "$want_host" ]]; then
+        hosts_ref=("$host")
+        return 0
+      fi
+    done
+    # The MAC is up, but on the other slot -- say so instead of "not found".
+    for host in "${live[@]}"; do
+      if [[ "$host" == "${bootstrap_role}-${want_mac}" ]]; then
+        err "Device ${want_mac} is online but booted into bootstrap (${host}), not ${want_host}.
+  Restart it as-is:            iotstack restart ${host}
+  Boot it into production:     iotstack restart ${host} --next"
+      fi
+    done
+    err "Device not found on the network: ${want_host}. Run 'iotstack devices'."
+  fi
+
+  # A role (or the bootstrap role): every live device currently running it.
+  if [[ "$target" == "$bootstrap_role" ]]; then
+    node="$bootstrap_role"
+  elif is_valid_role "$target"; then
+    node=$(_device_node_name "$target")
+  else
+    local available
+    available=$(list_roles_from_conf | tr '\n' ' ' | sed 's/ $//')
+    err "Unknown target: '$target'
+Give a role (${available}), a device (<role>-<mac>), or 'all'."
+  fi
+  for host in "${live[@]}"; do
+    [[ "$host" == "${node}-"* ]] && hosts_ref+=("$host")
+  done
+  [[ ${#hosts_ref[@]} -eq 0 ]] && err "No '${target}' devices found on the network."
+  return 0
+}
+
+cmd_restart() {
+  _iotstack_command_help_if_requested restart "$@" && return 0
+
+  local target="" next=false
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --next)
+        next=true
+        shift
+        ;;
+      -*)
+        err "Unknown option: $1"
+        ;;
+      *)
+        [[ -n "$target" ]] && err "Only one target may be given (got '$target' and '$1')"
+        target="$1"
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "$target" ]]; then
+    help_restart
+    exit 1
+  fi
+
+  local -a hosts=()
+  _restart_resolve_targets "$target" hosts
+
+  local button="$_RESTART_BUTTON_IN_PLACE" action="Restarting"
+  if [[ "$next" == true ]]; then
+    button="$_RESTART_BUTTON_NEXT"
+    action="Restarting into the other partition"
+  fi
+
+  info "${action}: ${#hosts[@]} device(s)"
+  confirm_multi_device ${#hosts[@]} "$(printf '%s\n  ' "${hosts[@]}")"
+
+  local host failed=0 pressed=0
+  for host in "${hosts[@]}"; do
+    info "  ${host}..."
+    if _restart_press_button "$host" "$button"; then
+      pressed=$((pressed + 1))
+      if [[ "$next" == true ]]; then
+        # toggle_boot_partition refuses to switch when the alternate slot holds
+        # no valid image: it logs and stays put, so the press "succeeding" is
+        # not proof the slot changed. Confirm with 'iotstack devices'.
+        ok "    Reboot into the other partition requested"
+      else
+        ok "    Restart requested"
+      fi
+    else
+      failed=$((failed + 1))
+      warn "    Could not reach ${host} on the native API"
+    fi
+  done
+
+  echo
+  if [[ $failed -eq 0 ]]; then
+    ok "${pressed} device(s) rebooting"
+    if [[ "$next" == true ]]; then
+      info "Devices only switch slots if the target slot holds a valid image; confirm with 'iotstack devices'"
+    fi
+    return 0
+  fi
+  warn "${pressed} device(s) rebooting, ${failed} unreachable"
+  return 1
+}
+
 _flash_matrix_layout_applicable() {
   # Matrix NVS layout options apply to matrixdisplay production flashes only.
   local device="$1"
@@ -5832,6 +6064,10 @@ main() {
       shift
       cmd_set_boot "$@"
       ;;
+    restart)
+      shift
+      cmd_restart "$@"
+      ;;
     matter)
       shift
       cmd_matter "$@"
@@ -5885,6 +6121,7 @@ main() {
           roles)            help_roles ;;
           flash)            help_flash ;;
           logs)             help_logs ;;
+          restart)          help_restart ;;
           set-boot)         cmd_set_boot help ;;
           matter)           help_matter "${3:-}" ;;
           otbr)             help_otbr ;;

@@ -1,0 +1,40 @@
+iotstack restart -- Reboot devices, optionally into their other partition
+
+Reboots live devices over the ESPHome native API by pressing the buttons every
+image already ships (Restart, Toggle Boot Partition). No firmware change and no
+USB cable required -- the device just has to be on the network.
+
+By default the device reboots into the partition it is already running. With
+--next it switches to the OTHER partition first: a production device comes back
+on bootstrap, and a bootstrap device comes back on production.
+
+Usage:
+  iotstack restart <device>|<role>|all [--next]
+
+Arguments:
+  <device>   A single device, as <role>-<mac> (e.g. bleproxy-8dfcac) or
+             bootstrap-<mac> for a device currently booted into bootstrap
+  <role>     Every live device currently running that role (e.g. bleproxy)
+  all        Every live device, across all roles
+
+Options:
+  --next     Switch to the other boot partition, then reboot into it
+
+Examples:
+  iotstack restart bleproxy-8dfcac          # Reboot one device in place
+  iotstack restart bleproxy-8dfcac --next   # Reboot it into the other partition
+  iotstack restart bleproxy                 # Reboot every live bleproxy
+  iotstack restart all                      # Reboot the whole fleet
+  iotstack restart all --next               # Boot the whole fleet to the other slot
+  iotstack restart bootstrap-8dfcac --next  # Send a bootstrap device to production
+
+Notes:
+  - Devices are matched against what is live on the network right now, the same
+    set 'iotstack devices' shows. A device that is offline is reported, not
+    silently skipped.
+  - --next only switches if the target partition holds a valid image. If it does
+    not, the firmware logs a warning and stays where it is, so the device simply
+    reboots in place. Confirm the result with 'iotstack devices'.
+  - Restarting more than one device asks for confirmation first.
+  - Related: 'iotstack set-boot <mac> <bootstrap|production>' names the target
+    partition explicitly instead of toggling.

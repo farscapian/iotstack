@@ -12,6 +12,8 @@ Commands:
   verify              Check if devices match the current build hash
   verify-flash        Compare on-device flash checksums to build artifacts (USB)
   flash               Flash device via serial/USB (for bricked devices)
+  restart             Reboot device(s) by device, role, or all; --next reboots
+                      into the other boot partition
   logs                Stream device logs (serial, or over the network by role)
   query               Query Home Assistant device and entity registry
   devices             Show discovered ESPHome devices on network (production
