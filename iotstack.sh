@@ -3624,7 +3624,7 @@ _boot_to_production_via_bootstrap() {
 _RESTART_BUTTON_IN_PLACE="restart"
 _RESTART_BUTTON_NEXT="toggle_boot_partition"
 
-_restart_role_for_node() {
+_role_for_node() {
   # Map an mDNS node name back to its roles.conf role. These differ whenever a
   # role's esphome.name is not the role name (see _device_node_name), and the
   # API key in pass is filed under the ROLE -- so deriving the role by chopping
@@ -3698,7 +3698,7 @@ _restart_press_button() {
     return $?
   fi
 
-  role=$(_restart_role_for_node "${hostname%-"$mac"}") || role="${hostname%-"$mac"}"
+  role=$(_role_for_node "${hostname%-"$mac"}") || role="${hostname%-"$mac"}"
   noise_psk=$(_device_api_noise_psk_b64 "$role" "$mac" 2>/dev/null) || noise_psk=""
   if [[ -z "$noise_psk" ]]; then
     warn "[$mac] no API encryption key in pass for role ${role}; trying plaintext API"
@@ -5524,11 +5524,76 @@ verify_wifi_credentials() {
   fi
 }
 
+_LOGS_TEMP_YAMLS=()
+_LOGS_JOB_PIDS=()
+
+_logs_cleanup_temp_yamls() {
+  local f
+  for f in ${_LOGS_TEMP_YAMLS[@]+"${_LOGS_TEMP_YAMLS[@]}"}; do
+    [[ -n "$f" ]] && rm -f "$f"
+  done
+  _LOGS_TEMP_YAMLS=()
+}
+
+_logs_stop_jobs() {
+  # Stop the log streams. Each job is a subshell wrapping 'esphome logs | sed',
+  # so signalling the subshell alone leaves esphome orphaned and still streaming
+  # (which is what 'jobs -p | xargs kill' used to do): kill its children first.
+  local pid
+  for pid in ${_LOGS_JOB_PIDS[@]+"${_LOGS_JOB_PIDS[@]}"}; do
+    [[ -z "$pid" ]] && continue
+    pkill -TERM -P "$pid" 2>/dev/null || true
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  _LOGS_JOB_PIDS=()
+}
+
+_logs_cleanup() {
+  _logs_stop_jobs
+  _logs_cleanup_temp_yamls
+}
+
+_logs_yaml_for_device() {
+  # Config for 'esphome logs' against ONE device. Sets the named out-var.
+  # Usage: _logs_yaml_for_device <role> <mac> <out_var>
+  #
+  # The API encryption key is not in the YAML -- nvs_secrets applies it at boot
+  # from NVS -- so plain 'esphome logs <role>.yaml' is refused by the firmware
+  # with RequiresEncryptionAPIError. Wrap the role YAML in a temp config that
+  # carries this device's key (derived from pass + MAC, as everywhere else).
+  # Same idea as create_ota_upload_yaml injecting the OTA password, and it must
+  # live under yamls/ so the role YAML's own '!include common/...' still
+  # resolves. mktemp gives 0600, and the file is removed when the stream ends.
+  local role="$1"
+  local mac="$2"
+  local -n out_ref="$3"
+  local psk temp_yaml
+
+  if [[ "$role" == "$(iotstack_bootstrap_role)" ]]; then
+    psk=$(_bootstrap_api_noise_psk_b64 "$mac" 2>/dev/null) || psk=""
+  else
+    psk=$(_device_api_noise_psk_b64 "$role" "$mac" 2>/dev/null) || psk=""
+  fi
+
+  if [[ -z "$psk" ]]; then
+    warn "[$mac] no API encryption key derivable for role '$role'; trying without one"
+    out_ref="${YAMLS_DIR}/${role}.yaml"
+    return 0
+  fi
+
+  temp_yaml=$(mktemp "${YAMLS_DIR}/.temp-api-key-XXXXXX.${role}.yaml") || return 1
+  _LOGS_TEMP_YAMLS+=("$temp_yaml")
+  printf 'packages:\n  base: !include %s.yaml\napi:\n  encryption:\n    key: "%s"\n' \
+    "$role" "$psk" > "$temp_yaml"
+  out_ref="$temp_yaml"
+}
+
 cmd_logs() {
   # Stream device logs.
-  #   iotstack logs [-f] /dev/ttyACM0     -> raw serial (no YAML needed)
-  #   iotstack logs [-f] <role>           -> all <role> devices, interleaved
-  #   iotstack logs [-f] <mac> <role>     -> one device via the network API
+  #   iotstack logs [-f] /dev/ttyACM0        -> raw serial (no YAML needed)
+  #   iotstack logs [-f] <role>              -> all <role> devices, interleaved
+  #   iotstack logs [-f] <role>-<mac>        -> one device via the network API
+  #   iotstack logs [-f] <mac> <role>        -> same, in the older arg order
   # Logs are inherently a live stream; -f/--follow is accepted for familiarity.
   if [[ "${1:-}" == "help" ]]; then
     help_logs
@@ -5569,42 +5634,79 @@ cmd_logs() {
   fi
 
   # -- Network: [mac ...] <role> via esphome logs --
+  # A single '<role>-<mac>' / '<node>-<mac>' / 'bootstrap-<mac>' token names one
+  # device (the name 'iotstack devices' shows). Rewrite it into the '<mac> <role>'
+  # form the rest of this path already takes.
+  local bootstrap_role
+  bootstrap_role="$(iotstack_bootstrap_role)"
+  if [[ ${#pos[@]} -eq 1 && "${pos[0]}" =~ ^(.+)-([0-9a-fA-F]{6})$ ]]; then
+    local dev_name="${BASH_REMATCH[1]}" dev_mac dev_role
+    dev_mac=$(echo "${BASH_REMATCH[2]}" | tr '[:upper:]' '[:lower:]')
+    if is_valid_role "$dev_name" || [[ "$dev_name" == "$bootstrap_role" ]]; then
+      pos=("$dev_mac" "$dev_name")
+    elif dev_role=$(_role_for_node "$dev_name" 2>/dev/null); then
+      pos=("$dev_mac" "$dev_role")
+    fi
+  fi
+
   local role="${pos[-1]}"
   local -a macs=("${pos[@]:0:${#pos[@]}-1}")
-  if ! is_valid_role "$role"; then
-    err "Unknown role: '$role' (give a defined role, or a /dev/... serial device)"
+  if [[ "$role" != "$bootstrap_role" ]] && ! is_valid_role "$role"; then
+    err "Unknown device or role: '$role' (give <role>-<mac>, a role, or a /dev/... serial device)"
   fi
   local yaml_file="${YAMLS_DIR}/${role}.yaml"
   [[ -f "$yaml_file" ]] || err "YAML not found for role '$role': $yaml_file"
 
   # No MACs given: discover every <esphome.name>-<mac> on the network (the node
-  # name, not the role -- see _device_node_name).
+  # name, not the role -- see _device_node_name). Bootstrap-booted devices
+  # advertise their own service, not _esphomelib._tcp.
   if [[ ${#macs[@]} -eq 0 ]]; then
-    local line node
+    local line node mdns_service="_esphomelib._tcp"
     node=$(_device_node_name "$role")
+    [[ "$role" == "$bootstrap_role" ]] && mdns_service="$(iotstack_bootstrap_mdns_service)"
     while IFS= read -r line; do
       [[ "$line" =~ ${node}-([0-9a-f]{6}) ]] && macs+=("${BASH_REMATCH[1]}")
-    done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+    done < <(avahi-browse -t -r "$mdns_service" 2>/dev/null)
     [[ ${#macs[@]} -gt 0 ]] && mapfile -t macs < <(printf '%s\n' "${macs[@]}" | sort -u)
     [[ ${#macs[@]} -eq 0 ]] && err "No '$role' devices found on the network."
   fi
 
-  # Single device: stream directly
+  # Each device needs its OWN config: the API encryption key is per device. Stop
+  # the streams and delete the temp configs on any exit -- they hold a secret,
+  # and an un-killed esphome keeps streaming after we are gone.
+  trap '_logs_cleanup' INT TERM EXIT
+  local mac rc=0
+
+  # Single device: stream it directly. (Not exec: that would replace the shell,
+  # so the trap would never run and the key would stay on disk.)
   if [[ ${#macs[@]} -eq 1 ]]; then
-    info "Streaming logs from $(_device_hostname "$role" "${macs[0]}") (Ctrl-C to stop)..."
-    exec esphome logs "$yaml_file" --device "$(_device_hostname "$role" "${macs[0]}").local"
+    local single_yaml="" single_host
+    single_host="$(_device_hostname "$role" "${macs[0]}")"
+    _logs_yaml_for_device "$role" "${macs[0]}" single_yaml || err "Could not prepare logs config for ${macs[0]}"
+    # Not fatal, and not a hard check: 'esphome logs' retries until the device
+    # answers, which is what you want while tailing one through a reboot. But
+    # say so, or a typo'd MAC just looks like a hung command.
+    if ! _production_api_reachable "$single_host" 2 2>/dev/null; then
+      warn "${single_host} is not answering right now -- waiting for it to appear (Ctrl-C to stop)"
+    fi
+    info "Streaming logs from ${single_host} (Ctrl-C to stop)..."
+    esphome logs "$single_yaml" --device "${single_host}.local" &
+    _LOGS_JOB_PIDS=("$!")
+    wait "$!" || rc=$?
+    return "$rc"
   fi
 
   # Multiple devices: run a logger per device in parallel, prefix each line with
   # the device name, and interleave to one stream.
   info "Streaming logs from ${#macs[@]} '$role' devices, interleaved (Ctrl-C to stop)..."
-  trap 'jobs -p | xargs -r kill 2>/dev/null' INT TERM EXIT
-  local mac
+  local device_yaml=""
   for mac in "${macs[@]}"; do
+    _logs_yaml_for_device "$role" "$mac" device_yaml || continue
     (
-      PYTHONUNBUFFERED=1 esphome logs "$yaml_file" --device "$(_device_hostname "$role" "$mac").local" 2>&1 \
+      PYTHONUNBUFFERED=1 esphome logs "$device_yaml" --device "$(_device_hostname "$role" "$mac").local" 2>&1 \
         | stdbuf -oL sed "s/^/[$(_device_hostname "$role" "$mac")] /"
     ) &
+    _LOGS_JOB_PIDS+=("$!")
   done
   wait
 }

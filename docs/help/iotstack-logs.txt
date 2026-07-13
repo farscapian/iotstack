@@ -1,28 +1,34 @@
 iotstack logs -- Stream device logs (serial or over the network)
 
 Streams live logs from a serial port or from ESPHome devices over the network.
-Pass a role to tail one device or all devices in that role, with lines prefixed
-by device name.
+Name one device to tail it, or a role to tail every device in that role with
+lines prefixed by device name.
 
 Usage:
   iotstack logs [-f] <tty-device>
+  iotstack logs [-f] <device>
   iotstack logs [-f] [<MAC>] <role>
 
 Arguments:
   <tty-device>  Serial device (e.g., /dev/ttyACM0) -- raw stream, no YAML
+  <device>      One device by name (e.g., bleproxy-8dfcac), as 'iotstack devices'
+                shows it; bootstrap-<mac> for a device booted into bootstrap
   <role>        Device role (e.g., bleproxy) -- streams over the network
   [<MAC>]       MAC suffix for one device; omit for ALL devices in the role
   [-f]          Accepted for familiarity; logs always follow (live stream)
 
 Examples:
-  iotstack logs /dev/ttyACM0     # Raw serial logs (no YAML needed)
-  iotstack logs -f /dev/ttyACM0  # Same (logs always follow)
-  iotstack logs bleproxy         # All bleproxy devices, interleaved
-  iotstack logs 1a7cfc bleproxy  # One bleproxy device over the network
+  iotstack logs /dev/ttyACM0        # Raw serial logs (no YAML needed)
+  iotstack logs -f /dev/ttyACM0     # Same (logs always follow)
+  iotstack logs -f bleproxy-8dfcac  # One device by name
+  iotstack logs bleproxy            # All bleproxy devices, interleaved
+  iotstack logs 1a7cfc bleproxy     # One device, older <MAC> <role> arg order
 
 Notes:
   - Serial streaming needs no YAML and works on a bricked/bootstrap device.
   - Network streaming uses 'esphome logs' under the hood (ESPHome API).
+  - The device's API encryption key lives in NVS, not in the YAML, so iotstack
+    derives it (pass + MAC) into a temporary config for the duration of the
+    stream. Without it the firmware refuses the connection.
   - Multiple devices are prefixed like '[bleproxy-1a7cfc] ...' and interleaved.
   - Press Ctrl-C to stop.
-
