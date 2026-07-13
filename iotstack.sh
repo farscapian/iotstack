@@ -283,6 +283,26 @@ _smart_compile_cache_miss_notice() {
   info "Compilation cache miss -- ${firmware_kind} firmware (${device_name}): ${reason}"
 }
 
+_device_hostname() {
+  # mDNS hostname for a role + MAC suffix. ESPHome derives the node name from
+  # esphome.name (plus name_add_mac_suffix), NOT from the role, and some roles
+  # shorten it: sendspinspeaker advertises as "sendspin-<mac>", not
+  # "sendspinspeaker-<mac>". Building "<role>-<mac>" here means waiting forever
+  # for a host that never appears -- and since HA registration only runs inside
+  # the success branch of _wait_for_production_online, it also silently skips HA.
+  # Usage: _device_hostname <role> <mac_suffix>
+  local role="$1"
+  local mac="$2"
+  local yaml node
+  yaml=$(resolve_device "$role" false 2>/dev/null) || yaml=""
+  if [[ -n "$yaml" ]]; then
+    node=$(_esphome_build_name_for_yaml "$yaml" "$role")
+  else
+    node="$role"
+  fi
+  printf '%s-%s\n' "$node" "$mac"
+}
+
 _flash_sync_update_devices_cache() {
   # After smart_compile, write update_devices.sh's build cache so --reassign skips recompile.
   local yaml_file="$1"
@@ -2288,7 +2308,7 @@ _reassign_devices_via_bootstrap() {
       dev_pwd=$(_bootstrap_device_ota_password "$mac") || err "Could not derive bootstrap OTA password for $mac"
       echo "  OTA Password: (derived from bootstrap role secret)"
     fi
-    if ! _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "${target_role}-${mac}" "${ota_update_args[@]}"; then
+    if ! _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "$(_device_hostname "$target_role" "$mac")" "${ota_update_args[@]}"; then
       failed=$((failed + 1))
     fi
   done
@@ -2372,9 +2392,9 @@ _update_via_bootstrap() {
     echo ""
     dev_pwd=$(echo -n "${fs_secret}|${mac}" | sha256sum | cut -c1-32)
     if [[ -n "$tty_device" ]]; then
-      _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "${role}-${mac}" "$tty_device" "${ota_update_args[@]}" \
+      _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "$(_device_hostname "$role" "$mac")" "$tty_device" "${ota_update_args[@]}" \
         || failed=$((failed + 1))
-    elif ! _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "${role}-${mac}" "${ota_update_args[@]}"; then
+    elif ! _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "$(_device_hostname "$role" "$mac")" "${ota_update_args[@]}"; then
       failed=$((failed + 1))
     fi
   done
@@ -3068,7 +3088,7 @@ cmd_rotate_secrets() {
 
   for mac in "${mac_suffixes[@]}"; do
     dev_pwd=$(_bootstrap_device_ota_password "$mac") || err "Could not derive bootstrap OTA password for $mac"
-    if _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "${role}-${mac}"; then
+    if _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "$(_device_hostname "$role" "$mac")"; then
       success_count=$((success_count + 1))
     else
       fail_count=$((fail_count + 1))
@@ -3531,7 +3551,7 @@ _boot_partition_network() {
   local role
   while IFS='=' read -r role _yaml; do
     [[ -z "$role" || "$role" =~ ^[[:space:]]*# ]] && continue
-    hosts+=("${role}-${mac_lower}")
+    hosts+=("$(_device_hostname "$role" "$mac_lower")")
   done < "$ROLES_CONF"
 
   for host in "${hosts[@]}"; do
@@ -4983,7 +5003,7 @@ _flash_production_smart() {
       fi
 
       if [[ -n "$device_mac" ]]; then
-        prod_hostname="${device}-${device_mac}"
+        prod_hostname="$(_device_hostname "$device" "$device_mac")"
         if [[ "${FLASH_ERASE:-0}" == "1" ]]; then
           info "MAC suffix: ${device_mac}"
           info "Action: erase flash (due to --erase), then install bootstrap via USB, then ${device} via OTA."
@@ -5005,7 +5025,7 @@ _flash_production_smart() {
           fi
           FLASH_ASSESS_PROD_ONLINE=0
           FLASH_ASSESS_FLASH_CURRENT=0
-          prod_hostname="${device}-${device_mac}"
+          prod_hostname="$(_device_hostname "$device" "$device_mac")"
         elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
           local img_hash layout_rc=0 want_cols want_rows want_w want_h
           set +e
@@ -5122,7 +5142,7 @@ _flash_production_smart() {
     if [[ -n "$device_mac" ]]; then
       _flash_ota_step_begin
       device_mac=$(echo "$device_mac" | tr -d '[:space:]')
-      local prod_hostname="${device}-${device_mac}"
+      local prod_hostname="$(_device_hostname "$device" "$device_mac")"
 
       # Device may boot production while bootstrap partition on flash is unchanged
       # (skip-serial path). Never wait for bootstrap OTA in that case.
@@ -5315,8 +5335,8 @@ cmd_logs() {
 
   # Single device: stream directly
   if [[ ${#macs[@]} -eq 1 ]]; then
-    info "Streaming logs from ${role}-${macs[0]} (Ctrl-C to stop)..."
-    exec esphome logs "$yaml_file" --device "${role}-${macs[0]}.local"
+    info "Streaming logs from $(_device_hostname "$role" "${macs[0]}") (Ctrl-C to stop)..."
+    exec esphome logs "$yaml_file" --device "$(_device_hostname "$role" "${macs[0]}").local"
   fi
 
   # Multiple devices: run a logger per device in parallel, prefix each line with
@@ -5326,8 +5346,8 @@ cmd_logs() {
   local mac
   for mac in "${macs[@]}"; do
     (
-      PYTHONUNBUFFERED=1 esphome logs "$yaml_file" --device "${role}-${mac}.local" 2>&1 \
-        | stdbuf -oL sed "s/^/[${role}-${mac}] /"
+      PYTHONUNBUFFERED=1 esphome logs "$yaml_file" --device "$(_device_hostname "$role" "$mac").local" 2>&1 \
+        | stdbuf -oL sed "s/^/[$(_device_hostname "$role" "$mac")] /"
     ) &
   done
   wait
