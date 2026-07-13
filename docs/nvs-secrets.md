@@ -41,6 +41,37 @@ python3 -m esptool --chip esp32c6 --port /dev/ttyACM0 --baud 921600 \
 # If keys are in ns_index 0 with no namespace-def entry, the namespace row is missing.
 ```
 
+## Image hashes in the shared namespace
+
+`iotstack` is the one namespace BOTH partitions read and write (the `matrix`
+namespace, by contrast, is production-owned). The `partition_manager` component
+uses that to make each device report the config_hash of both its slots, whichever
+partition it is currently booted from:
+
+| Key | Written by | Value |
+|-----|-----------|-------|
+| `img_hash_bs` | the bootstrap image, on boot | 8-hex ESPHome config_hash of the bootstrap slot |
+| `img_tok_bs` | the bootstrap image, on boot | first 8 bytes of that image's `app_elf_sha256`, hex |
+| `img_hash_prod` | the production image, on boot | 8-hex config_hash of the production slot |
+| `img_tok_prod` | the production image, on boot | first 8 bytes of that image's `app_elf_sha256`, hex |
+
+Each running image is authoritative about itself: it writes its own hash plus a
+token identifying which image that hash came from. For the OTHER slot it reads
+the stored pair -- but only trusts the hash when the stored token still matches
+the `app_elf_sha256` in that slot's app descriptor (a header read, not a scan).
+A slot that was re-flashed since fails the token check, so the hash is recovered
+by scanning the partition image and the fresh pair is cached; the expensive scan
+therefore runs at most once per image. Writes are skipped when the value is
+unchanged, so a steady-state boot does not touch flash.
+
+Both values are published in mDNS TXT as `bootstrap_image_hash` and
+`production_image_hash` (see `yamls/common/iotstack_mdns_meta.yaml`), which is
+what fills the two hash columns in `iotstack devices`.
+
+Re-provisioning NVS over USB (`write-nvs-secrets.sh` rewrites the whole partition)
+clears these keys; they are rebuilt on the next boot of each slot, so no recovery
+step is needed.
+
 ### WiFi Credentials From NVS ([OK] Solved)
 
 The earlier limitation -- "ESPHome's WiFi component can't take credentials at runtime" -- is **solved**. The trick is the public WiFi API plus correct setup ordering:

@@ -161,9 +161,11 @@ query_ha_ws() {
   # Replace token in command
   cmd="${cmd//\$HA_TOKEN/$HA_TOKEN}"
 
-  # Send command and capture response (with timeout)
+  # Send command and capture response (with timeout). -B: a registry reply is
+  # bigger than websocat's default 64KB buffer, which would split it across raw
+  # newlines mid-string and leave jq with unparseable JSON.
   timeout "$timeout" bash -c "
-    (echo '$cmd'; sleep 1) | websocat '$WS_URL' 2>/dev/null
+    (echo '$cmd'; sleep 1) | websocat -B '$IOTSTACK_WEBSOCAT_BUFFER_BYTES' '$WS_URL' 2>/dev/null
   "
 }
 
@@ -179,7 +181,7 @@ if [[ "$LIST_DEVICES" == "true" ]]; then
     sleep 0.5
     echo "$device_cmd"
     sleep 2
-  } | websocat -n "$WS_URL" 2>/dev/null)
+  } | websocat -B "$IOTSTACK_WEBSOCAT_BUFFER_BYTES" -n "$WS_URL" 2>/dev/null)
 
   echo "[DEBUG] WebSocket response:" >&2
   echo "$ws_response" | jq '.' >&2
@@ -198,7 +200,7 @@ else
     sleep 0.5
     echo "$device_cmd"
     sleep 2
-  } | sed "s|\$HA_TOKEN|$HA_TOKEN|g" | websocat -n "$WS_URL" 2>/dev/null | \
+  } | sed "s|\$HA_TOKEN|$HA_TOKEN|g" | websocat -B "$IOTSTACK_WEBSOCAT_BUFFER_BYTES" -n "$WS_URL" 2>/dev/null | \
     jq -r --arg name "$DEVICE_NAME" '.result[] | select(.name | ascii_downcase | contains($name | ascii_downcase)) | .id' | head -1)
 
   if [[ -z "$device_id" ]]; then
@@ -215,7 +217,7 @@ else
     sleep 0.5
     echo "$entity_cmd"
     sleep 2
-  } | sed "s|\$HA_TOKEN|$HA_TOKEN|g" | websocat -n "$WS_URL" 2>/dev/null | \
+  } | sed "s|\$HA_TOKEN|$HA_TOKEN|g" | websocat -B "$IOTSTACK_WEBSOCAT_BUFFER_BYTES" -n "$WS_URL" 2>/dev/null | \
     jq --arg dev_id "$device_id" '[.result[] | select(.device_id == $dev_id)] | sort_by(.platform)'
 fi
 

@@ -20,14 +20,17 @@ Options:
   --production  Show only production devices (_esphomelib._tcp)
   --bootstrap   Show only bootstrap/recovery devices (_iotstack-bootstrap._tcp)
 
-  With no partition flag, both production and bootstrap are listed. Bootstrap
-  rows are omitted when the same MAC already appears on live production.
-  Role filters apply to production devices only; bootstrap hosts are always
-  included when listing both partitions (if they pass the TCP liveness check).
+  With no partition flag, both production and bootstrap are listed, with the
+  bootstrap-booted devices first. Bootstrap rows are omitted when the same MAC
+  already appears on live production. Role filters apply to production devices
+  only; bootstrap hosts are always included when listing both partitions (if
+  they pass the TCP liveness check).
 
-  Image hashes: devices advertise bootstrap_image_hash and production_image_hash
-  in mDNS TXT (_iotstack-bootstrap._tcp, _iotstack-meta._tcp, and config_hash on
-  _esphomelib._tcp). iotstack devices shows both columns per device.
+  Image hashes: each device stores the config_hash of both its slots in the
+  shared iotstack NVS namespace and advertises them as bootstrap_image_hash and
+  production_image_hash in mDNS TXT (_iotstack-bootstrap._tcp, _iotstack-meta._tcp,
+  and config_hash on _esphomelib._tcp). Every row shows both columns, whichever
+  partition the device is currently booted from.
 
 Examples:
   iotstack devices                      # Production + bootstrap (default)
@@ -38,6 +41,4 @@ Examples:
   iotstack devices other                # Non-role production + any bootstrap
   iotstack devices --id                 # Unique MAC suffixes (prod + bootstrap)
   iotstack devices --production --id    # Production device IDs only
-
-Backward compatibility:
-  iotstack bootstrap                    # Same as: iotstack devices --bootstrap
+  iotstack devices --bootstrap --id     # Bootstrap device IDs only (for scripts)

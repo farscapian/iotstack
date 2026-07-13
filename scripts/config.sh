@@ -80,6 +80,12 @@ export CLEAN_BUILD_DIRECTORY="${CLEAN_BUILD_DIRECTORY:-0}"
 # 1: complete ESPHome discovery via WebSocket + device api_encryption_key from pass
 export PERFORM_HA_DEVICE_REGISTRATION="${PERFORM_HA_DEVICE_REGISTRATION:-0}"
 
+# websocat buffer for Home Assistant WebSocket replies. A message larger than the
+# buffer (default 65536) is emitted as several newline-separated chunks, which
+# splits a JSON string mid-value and makes jq fail on the whole reply -- a device
+# registry of a few hundred devices already exceeds 64KB.
+export IOTSTACK_WEBSOCAT_BUFFER_BYTES="${IOTSTACK_WEBSOCAT_BUFFER_BYTES:-16777216}"
+
 # Ensure directories exist
 mkdir -p "$IOTSTACK_HOME" "$LOGS_DIR" "$ARTIFACTS_DIR" "$PASS_STORE_DIR" 2>/dev/null || true
 

@@ -27,6 +27,9 @@ class PartitionManager : public Component {
   void boot_bootstrap();
 
   // 8-char lowercase hex ESPHome config_hash values for mDNS TXT records.
+  // Both slots are known on either partition: each image records its own hash in
+  // the shared "iotstack" NVS namespace, so the running image reads the other
+  // slot's hash instead of only being able to describe itself.
   std::string get_bootstrap_image_hash() const { return bootstrap_image_hash_; }
   std::string get_production_image_hash() const { return production_image_hash_; }
 

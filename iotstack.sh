@@ -747,7 +747,7 @@ list_device_names() {
 }
 
 # Query Home Assistant for device areas via WebSocket
-# Returns JSON with device_name -> area_name mapping
+# Returns a JSON object keyed by MAC suffix, hostname, and device name -> area name
 get_ha_device_areas() {
   _load_ha_credentials_optional || return 1
 
@@ -759,33 +759,40 @@ get_ha_device_areas() {
   ws_url="${ws_url//https:/wss:}"
   ws_url="${ws_url}/api/websocket"
 
-  # Query device registry and area registry via WebSocket (with timeout)
-  timeout 5 bash -c "{
+  # Query device registry and area registry via WebSocket (with timeout).
+  # -B: the device registry is far larger than websocat's default 64KB buffer,
+  # which would chop the reply into newline-separated chunks and break the JSON.
+  timeout 10 bash -c "{
     echo '{\"type\": \"auth\", \"access_token\": \"'$ha_token'\"}'
     sleep 0.5
     echo '{\"id\": 1, \"type\": \"config/device_registry/list\"}'
     sleep 0.5
     echo '{\"id\": 2, \"type\": \"config/area_registry/list\"}'
     sleep 2
-  } | websocat -n '$ws_url' 2>/dev/null" | jq -s '
+  } | websocat -B '$IOTSTACK_WEBSOCAT_BUFFER_BYTES' -n '$ws_url' 2>/dev/null" | jq -s '
     # Handle case where responses might not be in expected order
     map(select(.result != null)) |
     # Find device and area registries
     (map(select(.id == 1) | .result) | .[0] // []) as $devices |
     (map(select(.id == 2) | .result) | .[0] // []) as $areas |
     # Build area lookup map (area_id -> name)
-    ($areas | map({(.id): .name}) | add // {}) as $area_map |
-    # Map device names to area (handle multiple formats)
-    ($devices | map(
-      .name as $name |
-      ($name | sub("-[0-9a-fA-F]{6}$"; "")) as $name_base |
-      ($name | capture("(?<suffix>[0-9a-fA-F]{6})$") | .suffix // "") as $mac_suffix |
-      {
-        ($name): ($area_map[.area_id] // "-"),
-        ($name_base): ($area_map[.area_id] // "-")
-      } +
-      if ($mac_suffix != "") then {($mac_suffix): ($area_map[.area_id] // "-")} else {} end
-    ) | add // {})
+    ($areas | map({(.area_id): .name}) | add // {}) as $area_map |
+    # Only devices with an area contribute keys: a device without one would
+    # otherwise map a shared name (e.g. the Music Assistant twin of a speaker)
+    # to "-" and shadow the ESPHome device that does have an area.
+    ($devices
+      | map(select(.area_id != null and ($area_map[.area_id] != null)))
+      | map(
+          $area_map[.area_id] as $area |
+          # ESPHome devices carry no identifiers; the MAC in .connections is the
+          # only stable key, and HA names them "<Area> <Friendly Name>".
+          ([.connections[]? | select(.[0] == "mac") | .[1] | ascii_downcase | gsub(":"; "")
+            | select(length >= 6) | .[length - 6:]]) as $macs |
+          ([.name, .name_by_user] | map(select(. != null and . != ""))) as $names |
+          ($names | map(sub("[ -][0-9a-fA-F]{6}$"; ""))) as $name_bases |
+          (($macs + $names + $name_bases) | map({(.): $area}) | add // {})
+        )
+      | add // {})
   ' 2>/dev/null || echo '{}'
 }
 
@@ -844,10 +851,6 @@ help_verify_flash() {
 
 help_devices() {
   cat "${SCRIPT_DIR}/docs/help/iotstack-devices.txt"
-}
-
-help_bootstrap() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-bootstrap.txt"
 }
 
 help_roles() {
@@ -1265,6 +1268,19 @@ _list_devices_row_matches_filter() {
   [[ "$project" == *"$filter_role"* ]]
 }
 
+_list_devices_sort_bootstrap_first() {
+  # Sort rows alphabetically, but with bootstrap-booted hosts ahead of production.
+  local input="$1"
+  local output="$2"
+  local bootstrap_prefix
+  bootstrap_prefix="$(iotstack_bootstrap_role)-"
+
+  awk -v prefix="$bootstrap_prefix" -F'|' \
+    'index($1, prefix) == 1 { print "0|" $0; next } { print "1|" $0 }' "$input" \
+    | sort -u -t'|' -k1,1 -k2 \
+    | cut -d'|' -f2- >"$output"
+}
+
 list_devices() {
   local output_format="${1:-text}"
   local filter_role="${2:-}"
@@ -1275,13 +1291,13 @@ list_devices() {
   local device_data
   device_data=$(mktemp)
   # shellcheck disable=SC2064
-  trap "rm -f '$device_data' '${device_data}.merged' '${device_data}.sorted' '${device_data}.live'" RETURN
+  trap "rm -f '$device_data' '${device_data}.merged' '${device_data}.sorted' '${device_data}.live' '${device_data}.ha'" RETURN
 
   _list_devices_collect_mdns_parallel "$device_data" "$device_mode"
 
   # Merge supplemental _iotstack-meta rows and duplicate service records by MAC.
   _list_devices_merge_by_mac "$device_data" "${device_data}.merged"
-  sort -u "${device_data}.merged" > "${device_data}.sorted"
+  _list_devices_sort_bootstrap_first "${device_data}.merged" "${device_data}.sorted"
   _list_devices_filter_live_hosts "${device_data}.sorted" "${device_data}.live"
   mv "${device_data}.live" "${device_data}.sorted"
 
@@ -1295,15 +1311,17 @@ list_devices() {
     done < "${device_data}.sorted"
   fi
 
-  # Try to get Home Assistant area info (only for production devices).
+  # Try to get Home Assistant area info. Bootstrap-booted rows resolve too: the
+  # area map is keyed by MAC suffix, which is the same on either partition.
   # Normalize to a single JSON object: get_ha_device_areas can emit more than
   # one document (e.g. an empty "{}" plus a fallback "{}"), and a multi-doc
   # input makes the per-row `jq -r` lookups emit one line per document -- which
   # would put an embedded newline into the area value and break table rows.
   local ha_areas="{}"
-  if [[ "$device_mode" != "bootstrap" ]] && [[ -s "${device_data}.sorted" ]]; then
-    if get_ha_device_areas > /tmp/ha_areas.json 2>/dev/null; then
-      ha_areas=$(jq -cs 'reduce .[] as $o ({}; . * $o)' /tmp/ha_areas.json 2>/dev/null || echo '{}')
+  if [[ -s "${device_data}.sorted" ]]; then
+    local ha_areas_raw="${device_data}.ha"
+    if get_ha_device_areas > "$ha_areas_raw" 2>/dev/null; then
+      ha_areas=$(jq -cs 'reduce .[] as $o ({}; . * $o)' "$ha_areas_raw" 2>/dev/null || echo '{}')
       [[ -z "$ha_areas" ]] && ha_areas="{}"
     fi
   fi
@@ -1370,7 +1388,7 @@ list_devices() {
       _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
       id="${hostname##*-}"
       # Try to get area from HA (match by full hostname or base name)
-      area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
+      area=$(echo "$ha_areas" | jq -r ".[\"$id\"] // .[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
       [[ -z "$area" ]] && area="-"
       [[ -z "$bootstrap_hash" ]] && bootstrap_hash="-"
       [[ -z "$production_hash" ]] && production_hash="-"
@@ -1380,7 +1398,7 @@ list_devices() {
     while IFS='|' read -r hostname friendly project version bootstrap_hash production_hash; do
       _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
       id="${hostname##*-}"
-      area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // empty" 2>/dev/null)
+      area=$(echo "$ha_areas" | jq -r ".[\"$id\"] // .[\"$hostname\"] // .[\"$friendly\"] // empty" 2>/dev/null)
       jq -nc \
         --arg id "$id" \
         --arg device "$hostname" \
@@ -1428,7 +1446,7 @@ list_devices() {
       _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
       found=$((found + 1))
       id="${hostname##*-}"
-      area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
+      area=$(echo "$ha_areas" | jq -r ".[\"$id\"] // .[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
       [[ -z "$area" ]] && area="-"
       [[ -z "$bootstrap_hash" ]] && bootstrap_hash="-"
       [[ -z "$production_hash" ]] && production_hash="-"
@@ -1475,7 +1493,7 @@ list_devices() {
         _list_devices_row_matches_filter "$hostname" "$project" "$filter_role" "$device_mode" production_macs || continue
         id="${hostname##*-}"
         # Try to get area from HA (match by full hostname or base name)
-        area=$(echo "$ha_areas" | jq -r ".[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
+        area=$(echo "$ha_areas" | jq -r ".[\"$id\"] // .[\"$hostname\"] // .[\"$friendly\"] // \"-\"" 2>/dev/null)
         [[ -z "$area" ]] && area="-"
         [[ -z "$bootstrap_hash" ]] && bootstrap_hash="-"
         [[ -z "$production_hash" ]] && production_hash="-"
@@ -2837,16 +2855,9 @@ cmd_list() {
         shift
         ;;
       help)
-        # Support `iotstack devices help` / `iotstack bootstrap help` / `iotstack roles help`
+        # Support `iotstack devices help` / `iotstack roles help`
         case "$subcommand" in
           roles) help_roles ;;
-          devices)
-            if [[ "$device_mode" == "bootstrap" ]]; then
-              help_bootstrap
-            else
-              help_devices
-            fi
-            ;;
           *) help_devices ;;
         esac
         return 0
@@ -5793,14 +5804,6 @@ main() {
       shift
       cmd_list devices "$@"
       ;;
-    bootstrap)
-      shift
-      if [[ "${1:-}" == "help" ]]; then
-        help_bootstrap
-      else
-        cmd_list devices --bootstrap "$@"
-      fi
-      ;;
     roles)
       shift
       cmd_list roles "$@"
@@ -5879,7 +5882,6 @@ main() {
           verify-flash)     help_verify_flash ;;
           reassign)         help_reassign ;;
           devices)          help_devices ;;
-          bootstrap)         help_bootstrap ;;
           roles)            help_roles ;;
           flash)            help_flash ;;
           logs)             help_logs ;;
