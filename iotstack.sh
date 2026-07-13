@@ -4093,6 +4093,12 @@ cmd_flash() {
         MATRIX_PANEL_H_EXPLICIT=1
         shift 2
         ;;
+      -*)
+        # Without this, a mistyped flag falls through to the positional case below
+        # and is collected as a TTY path: 'flash <role> /dev/ttyACM0 -erase' silently
+        # ran WITHOUT erasing, treating "-erase" as a second serial port.
+        err "Unknown option for 'iotstack flash': $1 (see 'iotstack flash help')"
+        ;;
       *)
         if [[ -z "$device" ]]; then
           device="$1"
