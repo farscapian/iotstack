@@ -27,10 +27,23 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
   RST=$'\033[0m'
 
   # Namespaced so sourcing from iotstack.sh does not clobber its logging helpers.
-  _ies_err()  { echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
-  _ies_ok()   { echo -e "${GRN}[OK]${RST} $*" >&2; }
-  _ies_info() { echo -e "${BLU}[INFO]${RST} $*" >&2; }
-  _ies_warn() { echo -e "${YLW}[WARN]${RST} $*" >&2; }
+  #
+  # _ies_log mirrors each line into the session log. Without it these helpers echo
+  # only to the terminal, so the ENTIRE Home Assistant flow -- connection test,
+  # "rejected the access token", token prompts, invalidation -- left no trace in
+  # the session log and carried no timestamp. _iotstack_log_plain writes the
+  # timestamped log line only (console output stays the echo below), and is absent
+  # when this script runs standalone, hence the guard.
+  _ies_log() {
+    local tag="$1"
+    shift
+    declare -F _iotstack_log_plain &>/dev/null || return 0
+    _iotstack_log_plain "$tag" "$@"
+  }
+  _ies_err()  { _ies_log "ERROR" "$*"; echo -e "${RED}[ERROR]${RST} $*" >&2; exit 1; }
+  _ies_ok()   { _ies_log "OK"    "$*"; echo -e "${GRN}[OK]${RST} $*" >&2; }
+  _ies_info() { _ies_log "INFO"  "$*"; echo -e "${BLU}[INFO]${RST} $*" >&2; }
+  _ies_warn() { _ies_log "WARN"  "$*"; echo -e "${YLW}[WARN]${RST} $*" >&2; }
 
   is_unconfigured() {
     local value="${1:-}"
@@ -126,6 +139,11 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     local prompt_text="$1"
     local is_secret="${2:-false}"
     local value=""
+
+    # Record that a prompt happened (never the value) -- an interactive prompt is
+    # otherwise invisible in the session log, which is what made a double-prompt
+    # impossible to diagnose after the fact.
+    _ies_log "INFO" "Prompting for credential: ${prompt_text}"
 
     echo "" >&2
     echo -ne "${YLW}[PROMPT]${RST} ${prompt_text}: " >&2
