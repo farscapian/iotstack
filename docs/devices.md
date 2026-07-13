@@ -71,15 +71,21 @@ To add an icon: drop the SVG/PNG in `yamls/images/`, add three `image:` entries
 | BCK | GPIO4 | bit clock |
 | LCK | GPIO5 | left/right clock |
 | DIN | GPIO6 | data |
-| VCC / GND | 3.3V / GND | |
+| VIN / GND | 5V / GND | module has its own 3.3V LDO; 3.3V into VIN runs it in dropout |
 | SCK | GND | internal clock mode (check the board's solder jumper) |
 
+- **Back-side jumpers: FLT=L, DEMP=L, XSMT=H, FMT=L.** XSMT low is soft-mute --
+  the device boots, logs and streams while playing nothing. Meter it first.
 - **PSRAM is the point of the R8 part.** It buys `task_stack_in_psram: true` plus
   the full 1MB `buffer_size` default; a PSRAM-less chip has to shrink the buffer,
   which is what makes audio drop out on network hiccups.
+- **Leave PSRAM speed at the 40MHz default.** `speed: 80MHz` boot-loops this board
+  (`rst:0xc`, no ESPHome output); see [pitfalls.md](pitfalls.md).
 - **Do not move the I2S pins to GPIO35/36/37** -- on an R8 module the octal PSRAM
   consumes them. Also unavailable: GPIO0 (BOOT), GPIO19/20 (USB serial JTAG,
   which carries the logger), GPIO26-32 (SPI flash).
+- **Two USB-C ports:** either flashes, but the logger is `USB_SERIAL_JTAG`, so logs
+  only come out of the native USB port, not the COM/UART one.
 - Needs Music Assistant in HA, and port 8928 open between HA and the speaker.
 - See [docs/sendspin.md](sendspin.md)
 

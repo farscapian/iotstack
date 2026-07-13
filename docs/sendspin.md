@@ -35,7 +35,7 @@ buffer is exactly what turns a brief network hiccup into an audible dropout.
 
 | PCM5102A | ESP32-S3 | Purpose |
 |---|---|---|
-| VCC | 3.3V | Power |
+| VIN | 5V | Power (labelled `VIN` on the purple module) |
 | GND | GND | Ground |
 | BCK | GPIO4 | Audio timing (bit clock) |
 | LCK | GPIO5 | Audio timing (left/right clock) |
@@ -44,11 +44,26 @@ buffer is exactly what turns a brief network hiccup into an audible dropout.
 
 Then plug the 3.5mm output from the DAC into your speaker.
 
+**Note on power:** feed `VIN` from the board's **5V** pin, not 3.3V. The module carries its own 3.3V regulator and expects the higher input; 3.3V into `VIN` leaves that regulator with no headroom.
+
 **Note on SCK:** Most PCM5102A modules come with SCK already wired to GND (which is correct). If yours doesn't, uncomment the `i2s_mclk_pin` line in the YAML config.
+
+**Module jumpers:** the purple GY-PCM5102 / CJMCU board has four solder pads on the back. They want to be:
+
+| Jumper | Setting | Meaning |
+|---|---|---|
+| FLT | L | Normal filter roll-off |
+| DEMP | L | De-emphasis off |
+| XSMT | H | **Un-muted.** Low here is soft-mute -- the board logs perfectly and plays silence |
+| FMT | L | I2S format |
+
+Check XSMT with a meter before you go hunting for a bug in the YAML.
 
 **Pins you cannot use on this board:**
 - **GPIO35, GPIO36, GPIO37** -- consumed by the octal PSRAM on any R8 module. This is the easy trap to fall into, because they look free on the pinout diagram.
 - GPIO0 (BOOT button), GPIO19/20 (USB serial JTAG -- the logger runs over it), GPIO26-32 (SPI flash).
+
+**Which USB port:** the DevKitC-1 has two USB-C ports. Either can flash the board, but the logger is configured as `USB_SERIAL_JTAG`, so log output only appears on the **native USB** port. Flash from the COM/UART port and you get a working device with a silent monitor.
 
 The three I2S pins are defined as substitutions at the top of the YAML, so a different board (for example the XIAO ESP32-S3) only needs those three values changed.
 

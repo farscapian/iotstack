@@ -82,19 +82,29 @@ sendspin:
 
 # 4. I2S audio bus + speaker
 # -- PCM5102A -> 3.5mm AUX -> powered/Bluetooth speaker ---------------------
-#   PCM5102A    ESP32-S3-DevKitC-1
-#   BCK       -> GPIO4  (bit clock)
-#   LCK       -> GPIO5  (left/right clock)
-#   DIN       -> GPIO6  (data)
-#   VCC       -> 3.3V
-#   GND       -> GND
-#   SCK       -> GND    (internal clock mode -- check solder jumper on board)
-#   3.5mm out -> AUX cable -> speaker
+#   PCM5102A       ESP32-S3-DevKitC-1
+#   BCK          -> GPIO4  (bit clock)
+#   LCK          -> GPIO5  (left/right clock)
+#   DIN          -> GPIO6  (data)
+#   VIN          -> 5V     (the module's own LDO makes the 3.3V rail; feeding
+#                           VIN 3.3V runs that LDO in dropout)
+#   GND          -> GND
+#   SCK          -> GND    (internal clock mode -- check solder jumper on board)
+#   3.5mm out    -> AUX cable -> speaker
+#
+# Module jumpers (solder pads on the back of the purple GY-PCM5102 / CJMCU board):
+#   FLT=L  DEMP=L  XSMT=H  FMT=L
+# XSMT is the one that bites: pulled low it is soft-mute, i.e. a config that logs
+# fine and plays silence. Meter it before blaming the YAML.
 #
 # Pin choice: GPIO4/5/6 are free, non-strapping, and adjacent on the header.
 # Do NOT move these to GPIO35/36/37 -- on an R8 module those are consumed by the
 # octal PSRAM. Also unavailable: GPIO0 (BOOT), GPIO19/20 (USB serial JTAG, which
 # carries the logger above), GPIO26-32 (SPI flash).
+#
+# USB port: the DevKitC-1 has two. Either one can flash, but the logger above is
+# USB_SERIAL_JTAG, so logs only come out of the native USB port -- flashing from
+# the COM/UART port gets you a working board and a silent monitor.
 #
 # If your board's SCK jumper is NOT bridged to GND, uncomment i2s_mclk_pin.
 # ---------------------------------------------------------------------------
