@@ -70,11 +70,15 @@ Uses `update_devices.sh --verify`. Discovery and mismatch reporting must use `in
 - Verifies entity ID consistency across all discovered devices
 - Device naming (`name_by_user` in the device registry):
   - No area assigned in HA: `<rolename>` (hostname minus the MAC suffix) -- the status quo
-  - Area assigned in HA: `<Area> <rolename>` (still no MAC suffix), e.g. area `Office` +
-    role `c6-wifi-mmwave` -> `Office c6-wifi-mmwave`. Entity IDs are regenerated from
-    that name, so they pick up the area prefix too.
+  - Area assigned in HA: `<Area> <friendly_name>` (no MAC suffix), e.g. area `Office` +
+    `friendly_name: "SendSpin Speaker"` -> `Office SendSpin Speaker`. Entity IDs are
+    regenerated from that name, so they pick up the area prefix too.
   - The area is read from HA, never written: assign it in the HA UI and the next
     flash/reassign/entity update adopts it.
+  - Device matching is by the MAC in the registry's `connections` (ESPHome devices have
+    NO `identifiers`), scoped to devices owned by an `esphome` config entry. Do not match
+    on the MAC alone: other integrations (Music Assistant) create their own device for the
+    same hardware with the MAC inside their identifier, and would be renamed by mistake.
 - Commands used:
   - `config/entity_registry/list` -- get all entities
   - `config/area_registry/list` -- resolve a device's `area_id` to its area name
