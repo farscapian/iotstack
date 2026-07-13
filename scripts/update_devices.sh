@@ -312,7 +312,7 @@ run_ha_production_finalize() {
     return 0
   fi
 
-  recreate_entity_ids "$HA_URL" "$HA_TOKEN" "$prod_hostname"
+  recreate_entity_ids "$HA_URL" "$HA_TOKEN" "$prod_hostname" "$yaml_file"
 
   local consistency_output
   consistency_output=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$yaml_file" "$prod_hostname" 2>&1)
@@ -458,6 +458,7 @@ recreate_entity_ids() {
   local ha_url="$1"
   local ha_token="$2"
   local hostnames="$3"  # space-separated list of device hostnames
+  local yaml_file="${4:-}"  # optional: source of friendly_name for area-prefixed naming
 
   if [[ -z "$ha_url" || -z "$ha_token" || -z "$hostnames" ]]; then
     return 0
@@ -468,14 +469,21 @@ recreate_entity_ids() {
     return 0
   fi
 
+  local friendly_name=""
+  if [[ -n "$yaml_file" && -f "$yaml_file" ]]; then
+    friendly_name=$(yaml_friendly_name_from_file "$yaml_file") || friendly_name=""
+  fi
+
   ok "Updating device names and entity IDs..."
 
-  HA_URL="$ha_url" HA_TOKEN="$ha_token" HOSTNAMES="$hostnames" python3 - <<'PYEOF'
+  HA_URL="$ha_url" HA_TOKEN="$ha_token" HOSTNAMES="$hostnames" \
+    FRIENDLY_NAME="$friendly_name" python3 - <<'PYEOF'
 import json, os, sys, ssl, re, websocket
 
 ha_url = os.environ['HA_URL'].rstrip('/')
 token = os.environ['HA_TOKEN']
 hostnames = os.environ['HOSTNAMES'].strip().split()
+friendly_name = os.environ.get('FRIENDLY_NAME', '').strip()
 
 # Extract MAC suffixes from hostnames
 mac_suffixes = set()
@@ -556,8 +564,8 @@ except Exception:
     ws.close()
     sys.exit(0)
 
-# Get area registry so an already-registered device that the human has placed in
-# an area is named "<Area> <role>" instead of the bare role name.
+# Get area registry so an already-registered device the human has placed in an
+# area is named "<Area> <Friendly Name>" instead of the bare role name.
 area_names = {}
 try:
     msg_id += 1
@@ -576,6 +584,28 @@ try:
 except Exception:
     area_names = {}
 
+# Config entries owned by the esphome integration. Renaming is restricted to
+# these: other integrations (e.g. Music Assistant) mint their own device for the
+# same speaker, with the MAC embedded in *their* identifier -- matching on the
+# MAC alone would rename their device instead of ours.
+esphome_entry_ids = set()
+try:
+    msg_id += 1
+    ws.send(json.dumps({
+        'id': msg_id,
+        'type': 'config_entries/get',
+        'domain': 'esphome'
+    }))
+
+    entries_msg = json.loads(ws.recv())
+    if entries_msg.get('success'):
+        for entry in entries_msg.get('result', []):
+            entry_id = entry.get('entry_id')
+            if entry_id:
+                esphome_entry_ids.add(entry_id)
+except Exception:
+    esphome_entry_ids = set()
+
 # Build hostname map from hostname list
 hostname_map = {}
 for hostname in hostnames:
@@ -584,31 +614,65 @@ for hostname in hostnames:
         mac = m.group(1).lower()
         hostname_map[mac] = hostname
 
-# Find and update devices by MAC, extracting new names from hostnames
-updated_devices = []
-for device in all_devices:
-    device_id = device.get('id')
-    if not device_id:
-        continue
 
-    # Check if device has a MAC identifier matching our devices
-    identifiers = device.get('identifiers', [])
-    for identifier_set in identifiers:
+def device_is_esphome(device):
+    if esphome_entry_ids.intersection(device.get('config_entries') or []):
+        return True
+    for identifier_set in device.get('identifiers') or []:
+        if isinstance(identifier_set, (list, tuple)) and identifier_set:
+            if str(identifier_set[0]).lower() == 'esphome':
+                return True
+    return False
+
+
+def device_mac_suffixes(device):
+    # ESPHome devices carry the MAC in connections [["mac", "e0:72:a1:d5:e4:10"]]
+    # and often have no identifiers at all, so connections is the primary key.
+    suffixes = set()
+    for conn in device.get('connections') or []:
+        if not isinstance(conn, (list, tuple)) or len(conn) < 2:
+            continue
+        if str(conn[0]).lower() != 'mac':
+            continue
+        compact = re.sub(r'[^0-9a-f]', '', str(conn[1]).lower())
+        if len(compact) >= 6:
+            suffixes.add(compact[-6:])
+    for identifier_set in device.get('identifiers') or []:
         if not isinstance(identifier_set, (list, tuple)):
             continue
         for identifier in identifier_set:
             if not isinstance(identifier, str):
                 continue
-            # Check if this identifier contains a MAC we're looking for
-            for mac, hostname in hostname_map.items():
-                if mac in identifier.lower():
-                    # Extract role name from hostname (e.g., "c6-wifi-mmwave" from "c6-wifi-mmwave-199f38")
-                    # Keep only the part before the last dash followed by MAC
-                    role = hostname.rsplit('-', 1)[0] if '-' in hostname else hostname
-                    area = area_names.get(device.get('area_id') or '')
-                    new_name = f'{area} {role}' if area else role
-                    updated_devices.append((device_id, hostname, new_name))
-                    break
+            m = re.search(r'([0-9a-f]{6})$', identifier.lower())
+            if m:
+                suffixes.add(m.group(1))
+    return suffixes
+
+
+# Find and update ESPHome devices by MAC, naming them from the area + friendly name
+updated_devices = []
+for device in all_devices:
+    device_id = device.get('id')
+    if not device_id or not device_is_esphome(device):
+        continue
+
+    for mac in device_mac_suffixes(device):
+        hostname = hostname_map.get(mac)
+        if not hostname:
+            continue
+
+        # Role name from hostname (e.g. "sendspin" from "sendspin-d5e410")
+        role = hostname.rsplit('-', 1)[0] if '-' in hostname else hostname
+        area = area_names.get(device.get('area_id') or '')
+        if area:
+            # Already registered and placed in an area: "<Area> <Friendly Name>",
+            # no MAC suffix (e.g. "Office SendSpin Speaker").
+            new_name = f'{area} {friendly_name or role}'
+        else:
+            # No area: status quo -- the bare role name.
+            new_name = role
+        updated_devices.append((device_id, hostname, new_name))
+        break
 
 # Update device names in registry (this triggers HA to regenerate entity IDs)
 for device_id, hostname, new_name in updated_devices:
@@ -627,7 +691,11 @@ for device_id, hostname, new_name in updated_devices:
     except Exception:
         pass
 
-# Find entities for entity ID updates
+# Find entities for entity ID updates. Match on device_id: once a device is named
+# "<Area> <Friendly Name>" its regenerated entity IDs no longer carry the MAC, so
+# a MAC-only match would never find them again (the MAC match stays as a fallback
+# for entities HA has not re-slugged yet).
+renamed_device_ids = {device_id for device_id, _, _ in updated_devices}
 entity_ids_to_update = []
 for entity in all_entities:
     entity_id = entity.get('entity_id', '').lower()
@@ -635,6 +703,10 @@ for entity in all_entities:
 
     # Skip entities that don't belong to ESPHome
     if platform != 'esphome':
+        continue
+
+    if entity.get('device_id') in renamed_device_ids:
+        entity_ids_to_update.append(entity.get('entity_id'))
         continue
 
     for mac in mac_suffixes:
@@ -1644,7 +1716,7 @@ if [[ "$REASSIGN_MODE" != true ]]; then
     else
       ENTITIES_TO_UPDATE="$(printf '%s ' "${OK_LIST[@]}")"
     fi
-    recreate_entity_ids "$HA_URL" "$HA_TOKEN" "$ENTITIES_TO_UPDATE"
+    recreate_entity_ids "$HA_URL" "$HA_TOKEN" "$ENTITIES_TO_UPDATE" "$YAML_FILE"
   fi
 
   CONSISTENCY_OUTPUT=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$YAML_FILE" "$HOSTNAMES" 2>&1)
