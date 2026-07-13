@@ -67,7 +67,7 @@ NOT validated (no tests until they are):
 - `ledlightstrip-c6-thread` -- never flashed; the esp-idf + esp32_rmt_led_strip +
   Thread + SK6812 RGBW path is the biggest unknown.
 - `ledlightstrip-s3-wifi` -- never flashed; also unverified 8MB S3 partitioning.
-- mmwave / threadrouter / silentnotify / sendspinspeaker / matrixdisplay -- not
+- mmwave / threadrouter / silentnotify / sendspin / matrixdisplay -- not
   flashed this session (regression risk from the shared-package + rename changes).
 
 When the human validates one of these, that's the trigger to (re)write its cases.

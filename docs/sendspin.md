@@ -66,7 +66,7 @@ Make sure your home network allows port **8928** communication between Home Assi
 
 ## Configuration
 
-See `yamls/sendspinspeaker.yaml` for the full configuration.
+See `yamls/sendspin.yaml` for the full configuration.
 
 ## Known Limitations
 

@@ -61,7 +61,7 @@ To add an icon: drop the SVG/PNG in `yamls/images/`, add three `image:` entries
 `icon_for()` and an entry to `ICON_TOKENS` in the display lambda.
 
 ### SendSpin Speaker (synchronized multi-room audio)
-- YAML: `yamls/sendspinspeaker.yaml`
+- YAML: `yamls/sendspin.yaml`
 - mDNS hostname: `sendspin-<mac>`
 - Board: ESP32-S3-DevKitC-1 **N16R8** (16MB flash + 8MB octal PSRAM); external u.FL antenna, no config needed
 - DAC: PCM5102A -> 3.5mm AUX -> powered speaker
@@ -81,7 +81,7 @@ To add an icon: drop the SVG/PNG in `yamls/images/`, add three `image:` entries
   consumes them. Also unavailable: GPIO0 (BOOT), GPIO19/20 (USB serial JTAG,
   which carries the logger), GPIO26-32 (SPI flash).
 - Needs Music Assistant in HA, and port 8928 open between HA and the speaker.
-- See [docs/sendspinspeaker.md](sendspinspeaker.md)
+- See [docs/sendspin.md](sendspin.md)
 
 ### LED Light Strip (SK6812 RGBW, default 300 LEDs)
 Same strip + wiring across two board/network variants (roles in `roles.conf`).

@@ -65,13 +65,17 @@ FIRMWARE_BIN="${YAMLS_DIR}/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}
 
 ESPHome writes its build to `.esphome/build/<esphome.name>/`, and roles are free to
 shorten that name to stay under ESPHome's 31-char node-name limit once
-`name_add_mac_suffix` appends the MAC. Three roles do:
+`name_add_mac_suffix` appends the MAC. Two roles still do:
 
 | Role (YAML basename) | `esphome.name` -> build dir |
 |----------------------|-----------------------------|
-| `sendspinspeaker` | `sendspin` |
 | `ledlightstrip-c6-thread` | `ledstrip-c6-thread` |
 | `ledlightstrip-s3-wifi` | `ledstrip-s3-wifi` |
+
+Keeping role == `esphome.name` avoids the whole class of bug, which is why the
+`sendspinspeaker` role was renamed to `sendspin` (its `esphome.name`). Prefer that
+when adding a role. The resolver below still exists because the `ledlightstrip`
+roles cannot do it -- their names would exceed the 31-char limit.
 
 Anything that touches a **build dir or firmware path** must resolve the name with
 `_esphome_build_name_for_yaml()` (`scripts/iotstack-version.sh`) rather than using
@@ -79,7 +83,7 @@ the YAML basename. Anything that touches the **build cache file**
 (`~/.iotstack/logs/<role>.build.cache`) stays keyed on the ROLE. They are different
 keys; conflating them is the bug below.
 
-Symptoms when this is wrong (all seen on `sendspinspeaker` before the fix):
+Symptoms when this is wrong (all seen on `sendspin` before the fix):
 `_config_hash_from_build_dir` looks in a build dir that does not exist, so the
 config_hash can never match -- Step 1 reports `no build_info.json for <role>` on
 every run, `_flash_sync_update_devices_cache()` silently no-ops on its

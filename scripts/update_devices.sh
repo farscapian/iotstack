@@ -834,7 +834,8 @@ fi
 # This ensures cache is consistent across reassign runs with different OTA passwords
 YAML_NAME="$(basename "${ORIGINAL_YAML_FILE%.yaml}")"
 # Build dir / firmware paths key on esphome.name, which differs from the role for
-# roles that shorten it (sendspinspeaker -> sendspin). Cache file stays role-keyed.
+# roles that shorten it (ledlightstrip-s3-wifi -> ledstrip-s3-wifi). Cache file
+# stays role-keyed.
 BUILD_NAME="$(_esphome_build_name_for_yaml "$ORIGINAL_YAML_FILE" "$YAML_NAME")"
 BASE_LOG_DIR="${HOME}/.iotstack/logs"
 LOG_ROOT="${BASE_LOG_DIR}/${YAML_NAME}"
@@ -1469,7 +1470,7 @@ fi
 # ESPHome creates: <YAMLS_DIR>/.esphome/build/<esphome.name>/.pioenvs/<esphome.name>/firmware.ota.bin
 # BUILD_NAME is esphome.name resolved from the ORIGINAL YAML (not the temp file,
 # whose basename is mangled: .temp-api-key-713092.threadrouter.yaml). It is not
-# always the role name -- sendspinspeaker builds into "sendspin".
+# always the role name -- sendspin builds into "sendspin".
 # Use YAMLS_DIR (absolute) so this works regardless of the caller's CWD.
 DEVICE_NAME="$BUILD_NAME"
 FIRMWARE_BIN="${YAMLS_DIR}/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"

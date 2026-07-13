@@ -25,7 +25,7 @@ Environment (~/.iotstack/.env):
 
 Role -> chip mapping (from iotstack roles / YAML variant):
   esp32c6: bleproxy, mmwave, threadrouter, bootstrap, ledlightstrip-c6-thread
-  esp32s3: ledlightstrip-s3-wifi, sendspinspeaker, silentnotify, matrixdisplay
+  esp32s3: ledlightstrip-s3-wifi, sendspin, silentnotify, matrixdisplay
 
 Test suites (regression gate -- hardware-validated builds only):
   00-06  ESP32-C6 bleproxy: flash / verify / update (delta,force) / list / bootstrap list

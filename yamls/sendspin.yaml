@@ -1,5 +1,5 @@
 substitutions:
-  device_role: "sendspinspeaker"
+  device_role: "sendspin"
   friendly_name: "SendSpin Speaker"
   boot_button_pin: GPIO0  # ESP32-S3-DevKitC-1 BOOT button
   project_version: "0.0.0"
@@ -10,7 +10,10 @@ substitutions:
   i2s_dout_pin: GPIO6
 
 esphome:
-  name: "sendspin"
+  # Role == esphome.name, so the build dir, the mDNS host (sendspin-<mac>) and the
+  # role all agree. Keep it that way; a shortened name here is what made the
+  # tooling look for build dirs and hosts that never existed.
+  name: "${device_role}"
 
 # ESP32-S3-DevKitC-1 (N16R8): 16MB flash + 8MB octal PSRAM.
 # The R8 PSRAM is what makes this role work properly -- see the sendspin/

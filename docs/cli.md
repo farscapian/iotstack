@@ -11,7 +11,7 @@ Device roles are defined in `scripts/roles.conf`. Network type (WiFi or Thread) 
 ```
 bleproxy=yamls/bleproxy.yaml
 mmwave=yamls/mmwave.yaml
-sendspinspeaker=yamls/sendspinspeaker.yaml
+sendspin=yamls/sendspin.yaml
 ledlightstrip-c6-thread=yamls/ledlightstrip-c6-thread.yaml
 ledlightstrip-s3-wifi=yamls/ledlightstrip-s3-wifi.yaml
 threadrouter=yamls/threadrouter.yaml

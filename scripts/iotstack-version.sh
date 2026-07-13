@@ -186,9 +186,9 @@ _config_hash_from_build_dir() {
 _esphome_build_name_for_yaml() {
   # ESPHome names its build dir after esphome.name, which is NOT always the YAML
   # basename: a role may shorten it to stay under ESPHome's 31-char node-name
-  # limit once name_add_mac_suffix appends the MAC (sendspinspeaker -> "sendspin",
-  # ledlightstrip-s3-wifi -> "ledstrip-s3-wifi"). Every build-cache and firmware
-  # path keys off the build dir, so read it from the YAML rather than assuming.
+  # limit once name_add_mac_suffix appends the MAC (ledlightstrip-s3-wifi ->
+  # "ledstrip-s3-wifi"). Every build-cache and firmware path keys off the build
+  # dir, so read it from the YAML rather than assuming.
   # Falls back to the basename when esphome.name is absent or unresolvable.
   local yaml_file="$1"
   local fallback="${2:-}"

@@ -38,7 +38,7 @@ Detects people in a room and their distance using millimeter-wave radar. Useful 
 
 ### In-Development Projects
 
-- **SendSpin Speaker**: Multi-room synchronized audio. [Full documentation ->](docs/sendspinspeaker.md)
+- **SendSpin Speaker**: Multi-room synchronized audio. [Full documentation ->](docs/sendspin.md)
 - **LED Light Strip**: Addressable SK6812 RGBW LED strip control (C6/Thread and S3/WiFi variants). [Full documentation ->](docs/ledlightstrip.md)
 - **LED Matrix Display**: Text and animation display on LED matrices. [Development notes ->](docs/ledmatrixdisplay.md)
 

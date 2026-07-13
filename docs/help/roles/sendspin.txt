@@ -1,0 +1,28 @@
+iotstack sendspin -- SendSpin Speaker
+
+ESP32-S3 WiFi audio / notification speaker device.
+
+Config: yamls/sendspin.yaml
+Chip: esp32s3
+Network: WiFi
+
+Commands (shared help for flash, update, reassign, verify):
+
+  iotstack flash sendspin /dev/ttyACM0
+  iotstack update sendspin
+  iotstack update <MAC> sendspin
+  iotstack reassign <MAC> sendspin
+  iotstack verify sendspin
+
+Examples:
+
+  iotstack flash sendspin /dev/ttyACM0
+  iotstack update sendspin --dry-run
+
+General command reference:
+
+  iotstack flash help
+  iotstack update help
+  iotstack reassign help
+  iotstack verify help
+
