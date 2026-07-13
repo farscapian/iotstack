@@ -22,9 +22,13 @@ esp32:
   framework:
     type: esp-idf
 
+# Leave speed at the ESPHome default (40MHz). Setting `speed: 80MHz` here boot-looped
+# this board: ROM bootloader restarting on rst:0xc (RTC_SW_CPU_RST) with no ESPHome
+# output at all, i.e. a panic in early PSRAM init. `mode: octal` is correct and proven
+# (bootstrap.yaml and matrixdisplay.yaml run it on this same S3 DevKitC), so do not
+# "optimize" the speed up without a device to test on.
 psram:
   mode: octal
-  speed: 80MHz
 
 external_components:
   - source:
