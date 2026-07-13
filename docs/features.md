@@ -68,8 +68,17 @@ Uses `update_devices.sh --verify`. Discovery and mismatch reporting must use `in
 - Recreates entity IDs after reassignment to reflect new device configuration
 - Filters updates to ESPHome platform only (`platform == 'esphome'`)
 - Verifies entity ID consistency across all discovered devices
+- Device naming (`name_by_user` in the device registry):
+  - No area assigned in HA: `<rolename>` (hostname minus the MAC suffix) -- the status quo
+  - Area assigned in HA: `<Area> <rolename>` (still no MAC suffix), e.g. area `Office` +
+    role `c6-wifi-mmwave` -> `Office c6-wifi-mmwave`. Entity IDs are regenerated from
+    that name, so they pick up the area prefix too.
+  - The area is read from HA, never written: assign it in the HA UI and the next
+    flash/reassign/entity update adopts it.
 - Commands used:
   - `config/entity_registry/list` -- get all entities
+  - `config/area_registry/list` -- resolve a device's `area_id` to its area name
+  - `config/device_registry/update` -- set the device `name_by_user`
   - `config/entity_registry/get_automatic_entity_ids` -- compute new IDs for given device_name
   - `config/entity_registry/update` -- update entity ID
 - Entity ID security: only updates entities with `platform == 'esphome'`, preventing accidental updates to beacon trackers, iBeacon integrations, etc.

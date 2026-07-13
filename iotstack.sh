@@ -283,24 +283,32 @@ _smart_compile_cache_miss_notice() {
   info "Compilation cache miss -- ${firmware_kind} firmware (${device_name}): ${reason}"
 }
 
+_device_node_name() {
+  # ESPHome node name for a role -- the mDNS hostname prefix before the MAC
+  # suffix. ESPHome derives it from esphome.name (plus name_add_mac_suffix), NOT
+  # from the role, and a role may shorten it to fit the 31-char node-name limit.
+  # Use this anywhere an mDNS name is built OR matched; "<role>-<mac>" is wrong
+  # for any role whose esphome.name differs (see docs/gotchas.md).
+  # Usage: _device_node_name <role>
+  local role="$1"
+  local yaml
+  yaml=$(resolve_device "$role" false 2>/dev/null) || yaml=""
+  if [[ -n "$yaml" ]]; then
+    _esphome_build_name_for_yaml "$yaml" "$role"
+  else
+    printf '%s\n' "$role"
+  fi
+}
+
 _device_hostname() {
-  # mDNS hostname for a role + MAC suffix. ESPHome derives the node name from
-  # esphome.name (plus name_add_mac_suffix), NOT from the role, and some roles
-  # shorten it: sendspinspeaker advertises as "sendspin-<mac>", not
-  # "sendspinspeaker-<mac>". Building "<role>-<mac>" here means waiting forever
-  # for a host that never appears -- and since HA registration only runs inside
-  # the success branch of _wait_for_production_online, it also silently skips HA.
+  # mDNS hostname for a role + MAC suffix: <esphome.name>-<mac>.
+  # Building "<role>-<mac>" instead means waiting forever for a host that never
+  # appears -- and since HA registration only runs inside the success branch of
+  # _wait_for_production_online, it also silently skips HA registration.
   # Usage: _device_hostname <role> <mac_suffix>
   local role="$1"
   local mac="$2"
-  local yaml node
-  yaml=$(resolve_device "$role" false 2>/dev/null) || yaml=""
-  if [[ -n "$yaml" ]]; then
-    node=$(_esphome_build_name_for_yaml "$yaml" "$role")
-  else
-    node="$role"
-  fi
-  printf '%s-%s\n' "$node" "$mac"
+  printf '%s-%s\n' "$(_device_node_name "$role")" "$mac"
 }
 
 _flash_sync_update_devices_cache() {
@@ -2369,9 +2377,12 @@ _update_via_bootstrap() {
   if [[ ${#want_macs[@]} -gt 0 ]]; then
     macs=("${want_macs[@]}")
   else
-    local line
+    local line node
+    # Match the ESPHome node name, not the role -- they differ for roles that
+    # shorten esphome.name, and matching "<role>-<mac>" finds nothing at all.
+    node=$(_device_node_name "$role")
     while IFS= read -r line; do
-      if [[ "$line" =~ ${role}-([0-9a-f]{6}) ]]; then
+      if [[ "$line" =~ ${node}-([0-9a-f]{6}) ]]; then
         macs+=("${BASH_REMATCH[1]}")
       fi
     done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
@@ -5323,11 +5334,13 @@ cmd_logs() {
   local yaml_file="${YAMLS_DIR}/${role}.yaml"
   [[ -f "$yaml_file" ]] || err "YAML not found for role '$role': $yaml_file"
 
-  # No MACs given: discover every <role>-<mac> on the network
+  # No MACs given: discover every <esphome.name>-<mac> on the network (the node
+  # name, not the role -- see _device_node_name).
   if [[ ${#macs[@]} -eq 0 ]]; then
-    local line
+    local line node
+    node=$(_device_node_name "$role")
     while IFS= read -r line; do
-      [[ "$line" =~ ${role}-([0-9a-f]{6}) ]] && macs+=("${BASH_REMATCH[1]}")
+      [[ "$line" =~ ${node}-([0-9a-f]{6}) ]] && macs+=("${BASH_REMATCH[1]}")
     done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
     [[ ${#macs[@]} -gt 0 ]] && mapfile -t macs < <(printf '%s\n' "${macs[@]}" | sort -u)
     [[ ${#macs[@]} -eq 0 ]] && err "No '$role' devices found on the network."

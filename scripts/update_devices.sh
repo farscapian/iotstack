@@ -556,6 +556,26 @@ except Exception:
     ws.close()
     sys.exit(0)
 
+# Get area registry so an already-registered device that the human has placed in
+# an area is named "<Area> <role>" instead of the bare role name.
+area_names = {}
+try:
+    msg_id += 1
+    ws.send(json.dumps({
+        'id': msg_id,
+        'type': 'config/area_registry/list'
+    }))
+
+    areas_msg = json.loads(ws.recv())
+    if areas_msg.get('success'):
+        for area in areas_msg.get('result', []):
+            area_id = area.get('area_id')
+            name = (area.get('name') or '').strip()
+            if area_id and name:
+                area_names[area_id] = name
+except Exception:
+    area_names = {}
+
 # Build hostname map from hostname list
 hostname_map = {}
 for hostname in hostnames:
@@ -582,9 +602,11 @@ for device in all_devices:
             # Check if this identifier contains a MAC we're looking for
             for mac, hostname in hostname_map.items():
                 if mac in identifier.lower():
-                    # Extract new device name from hostname (e.g., "c6-wifi-mmwave" from "c6-wifi-mmwave-199f38")
+                    # Extract role name from hostname (e.g., "c6-wifi-mmwave" from "c6-wifi-mmwave-199f38")
                     # Keep only the part before the last dash followed by MAC
-                    new_name = hostname.rsplit('-', 1)[0] if '-' in hostname else hostname
+                    role = hostname.rsplit('-', 1)[0] if '-' in hostname else hostname
+                    area = area_names.get(device.get('area_id') or '')
+                    new_name = f'{area} {role}' if area else role
                     updated_devices.append((device_id, hostname, new_name))
                     break
 
