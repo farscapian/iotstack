@@ -14,6 +14,7 @@ Project-specific agent guidance. Generic workflow, `ass`, conventions, and secur
 | Flash / serial / TTY | `workflow.md`, `gotchas.md`, `pitfalls.md` |
 | Human started a flash / watch logs | `workflow.md` (sessions.watch) |
 | OTA / update / reassign | `architecture.md`, `features.md`, `gotchas.md` |
+| Auto-fallback / rollback to bootstrap | `boot-fallback.md`, `partitions.md`, `gotchas.md` |
 | NVS / secrets / WiFi | `nvs-secrets.md`, `security.md` |
 | New shell script | `.agentstartstack/agentstartstack/conventions.md`, `code-quality.md`, `implementation.md` |
 | New device role | `cli.md`, `devices.md`, `architecture.md` |

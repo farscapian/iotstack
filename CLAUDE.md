@@ -35,6 +35,7 @@ ESP32 ESPHome device management. **Load topic files on demand -- do not read thi
 | [docs/features.md](docs/features.md) | Update subsets, delta OTA, reassign, verify, HA |
 | [docs/cli.md](docs/cli.md) | `iotstack.sh`, `roles.conf`, command examples |
 | [docs/partitions.md](docs/partitions.md) | Bootstrap/production partition sizing |
+| [docs/boot-fallback.md](docs/boot-fallback.md) | Auto-fallback to bootstrap: rollback + boot-health watchdog (design/TODO) |
 | [docs/implementation.md](docs/implementation.md) | Stdout redirect, temp files, logging paths |
 | [docs/gotchas.md](docs/gotchas.md) | Bootstrap OTA, `--erase`, mDNS TXT, matrix NVS |
 | [docs/pitfalls.md](docs/pitfalls.md) | Symptom -> cause -> fix lookup table |
