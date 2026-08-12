@@ -67,12 +67,15 @@ ESPHOME_VENV="${ESPHOME_HOME}/venv"
 ESPHOME_BIN="${ESPHOME_VENV}/bin/esphome"
 
 if [[ ! -x "${ESPHOME_VENV}/bin/python3" ]]; then
-  python3 -m venv "$ESPHOME_VENV"
+  # python3 -m venv exits non-zero (under set -e, kills the script) when
+  # ensurepip fails, even though it still creates bin/python3. Don't let
+  # that failure escape here -- the pip check below detects and recovers.
+  python3 -m venv "$ESPHOME_VENV" || true
   ok "Created esphome virtualenv: $ESPHOME_VENV"
 fi
 
-# python3 -m venv can silently produce a venv with no pip if the distro's
-# venv package (e.g. python3.14-venv) isn't installed. Detect and fix that.
+# python3 -m venv can produce a venv with no pip if the distro's venv
+# package (e.g. python3.14-venv) isn't installed. Detect and fix that.
 if [[ ! -x "${ESPHOME_VENV}/bin/pip" ]]; then
   warn "esphome venv is missing pip -- ensurepip was unavailable"
   PY_VENV_PKG="python$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')-venv"
