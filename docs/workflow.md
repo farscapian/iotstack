@@ -1,6 +1,6 @@
 # iotstack Workflow (project-specific)
 
-> Generic session clone / `ass` workflow: see `.agentstartstack/docs/workflow.md`.
+> Generic session clone / `ask` workflow: see `.agentstack/docs/workflow.md`.
 > This file covers iotstack-only guards and live-run monitoring.
 
 ## Canonical paths (iotstack)
@@ -12,10 +12,10 @@
 
 Do **not** disrupt a flash, compile, update, or other long-running `iotstack` command the human started on the canonical local repo.
 
-### Before `ass sync` / local-sync
+### Before `ask sync` / local-sync
 
 ```bash
-# Any match means: do NOT ass sync yet
+# Any match means: do NOT ask sync yet
 pgrep -af '(/iotstack\.sh|/iotstack) ' || echo "no iotstack sessions"
 ```
 
@@ -149,4 +149,4 @@ Baud rate issues with ESP32 flash corruption:
 - [FAIL] Bad: Try 460800 -> 115200 -> 57600 (hours of testing)
 - [OK] Good: Research "ESP32 firmware corruption baud rate" -> find 9600 standard (minutes)
 
-See `.agentstartstack/agentstartstack/workflow.md` for general research-first guidance.
+See `.agentstack/docs/workflow.md` for general research-first guidance.

@@ -6012,12 +6012,12 @@ main() {
   iotstack_parse_global_argv "$@"
   set -- "${IOTSTACK_ARGV[@]}"
 
-  # Shared per-invocation preamble (agentstartstack): on a dirty canonical repo it
+  # Shared per-invocation preamble (agentstack): on a dirty canonical repo it
   # auto-commits the working tree so GIT HEAD documents the exact code that ran;
-  # strict no-op in an agent session clone. Sets $AGENTSTARTSTACK_CLI_HEAD (run
+  # strict no-op in an agent session clone. Sets $AGENTSTACK_CLI_HEAD (run
   # provenance). This wiring line is permanently static -- policy lives upstream.
-  eval "$(AGENTSTARTSTACK_CLI_TOOL=iotstack \
-    "${PROJECT_ROOT}/.agentstartstack/scripts/cli-preamble.sh" "$PROJECT_ROOT")"
+  eval "$(AGENTSTACK_CLI_TOOL=iotstack \
+    "${PROJECT_ROOT}/.agentstack/scripts/cli-preamble.sh" "$PROJECT_ROOT")"
 
   local command="${1:-help}"
   create_log_setup "$command"

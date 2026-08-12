@@ -1,6 +1,6 @@
 # Security (iotstack-specific)
 
-> Generic rules (never echo secrets, env hygiene): see `.agentstartstack/agentstartstack/security.md`.
+> Generic rules (never echo secrets, env hygiene): see `.agentstack/docs/security.md`.
 
 ## OTA password handling
 

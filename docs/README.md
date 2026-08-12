@@ -1,6 +1,6 @@
 # iotstack project docs
 
-Project-specific agent guidance. Generic workflow, `ass`, conventions, and security live in the **.agentstartstack** submodule.
+Project-specific agent guidance. Generic workflow, `ask`, conventions, and security live in the **.agentstack** submodule.
 
 ## Session startup
 
@@ -16,9 +16,9 @@ Project-specific agent guidance. Generic workflow, `ass`, conventions, and secur
 | OTA / update / reassign | `architecture.md`, `features.md`, `gotchas.md` |
 | Auto-fallback / rollback to bootstrap | `boot-fallback.md`, `partitions.md`, `gotchas.md` |
 | NVS / secrets / WiFi | `nvs-secrets.md`, `security.md` |
-| New shell script | `.agentstartstack/agentstartstack/conventions.md`, `code-quality.md`, `implementation.md` |
+| New shell script | `.agentstack/docs/conventions.md`, `code-quality.md`, `implementation.md` |
 | New device role | `cli.md`, `devices.md`, `architecture.md` |
-| CI / commit hygiene | `.agentstartstack/agentstartstack/workflow.md`, `code-quality.md`, `testing.md` |
-| Human local-sync handoff | `.agentstartstack/docs/ass.md`, `workflow.md` |
+| CI / commit hygiene | `.agentstack/docs/workflow.md`, `code-quality.md`, `testing.md` |
+| Human local-sync handoff | `.agentstack/docs/ask.md`, `workflow.md` |
 
 Append to the smallest applicable file. Update `CLAUDE.md` when adding a new file.

@@ -14,11 +14,11 @@ Read CLAUDE.md (project index -- load topic files on demand, don't read them all
 Session init (in order):
 1. Run: scripts/init_claude_session.sh   (aligns this clone to the canonical local
    repo; work in the clone only, never edit the canonical repo directly).
-2. Check the FILESYSTEM (not `git status`) for a watch file:  ls .agentstartstack-bump
+2. Check the FILESYSTEM (not `git status`) for a watch file:  ls .agentstack-bump
    If present, before your first commit run:
-     git submodule update --init --recursive --remote .agentstartstack
-     git add .agentstartstack && rm .agentstartstack-bump
-   and fold the bump into that commit (.agentstartstack/agentstartstack/workflow.md sec 4).
+     git submodule update --init --recursive --remote .agentstack
+     git add .agentstack && rm .agentstack-bump
+   and fold the bump into that commit (.agentstack/docs/workflow.md sec 4).
 3. Read docs/nextsteps.md (this file).
 
 Your focus: treat tests/cases/ as a regression gate for the hardware-validated
@@ -30,7 +30,7 @@ builds. Workflow for any change you make:
   - Only ADD/restore a build's test cases after that build is proven on real
     hardware (the human confirms). Never assert a build works without that.
 
-Work in the session clone, commit when a task is complete, let me run `ass sync`.
+Work in the session clone, commit when a task is complete, let me run `ask sync`.
 Never push to origin.
 ```
 
@@ -87,7 +87,7 @@ When the human validates one of these, that's the trigger to (re)write its cases
 ---
 
 ## Smaller follow-ups (lower priority)
-- `ass sync all` didn't flag this clone with `.agentstartstack-bump` -- check that its
+- `ask sync all` didn't flag this clone with `.agentstack-bump` -- check that its
   `agent_session_clones_list` path pattern covers `~/.claude/worktrees/...`.
 - IP-override for flash/update (`IOTSTACK_OTA_HOST`) -- deferred; `.local`/mDNS is
   baked into `_iotstack_tcp_open`, the avahi-browse discovery, and `esphome upload`.
