@@ -195,8 +195,8 @@ display:
       it.fill(Color(0, 0, 0));  // blank frame first (writer does not auto-clear)
 
       // Font = "Font" (family) x "Text Size".
-      std::string face = id(text_font).state;
-      std::string sz = id(text_size).state;
+      std::string face = id(text_font).current_option().str();
+      std::string sz = id(text_size).current_option().str();
       auto *fnt = id(font_roboto_m);
       if (face == "mono")
         fnt = (sz == "small") ? id(font_mono_s)
