@@ -207,6 +207,7 @@ _esphome_compile() {
   compile_yaml=$(iotstack_prepare_compile_yaml "$yaml_file") || return 1
   compile_log=$(mktemp)
   info "Compiling $(basename "$compile_yaml")..."
+  debug "esphome compilation command: esphome compile ${compile_yaml}"
   if iotstack_compilation_output_enabled; then
     local -a compile_tee_targets=("$compile_log")
     [[ -e /dev/tty && -w /dev/tty ]] && compile_tee_targets+=("/dev/tty")
