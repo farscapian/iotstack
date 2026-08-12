@@ -1539,13 +1539,13 @@ fi
 # -- Parallel flash -----------------------------------------------------------
 # Note: USB devices are NOT flashed here. Use 'iotstack flash' for serial flashing.
 
-# ESPHome creates: <YAMLS_DIR>/.esphome/build/<esphome.name>/.pioenvs/<esphome.name>/firmware.ota.bin
 # BUILD_NAME is esphome.name resolved from the ORIGINAL YAML (not the temp file,
 # whose basename is mangled: .temp-api-key-713092.threadrouter.yaml). It is not
 # always the role name -- sendspin builds into "sendspin".
-# Use YAMLS_DIR (absolute) so this works regardless of the caller's CWD.
+# iotstack_build_ota_bin() resolves the OTA image path (single source of truth
+# for ESPHome's build-artifact layout; see scripts/iotstack-version.sh).
 DEVICE_NAME="$BUILD_NAME"
-FIRMWARE_BIN="${YAMLS_DIR}/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"
+FIRMWARE_BIN=$(iotstack_build_ota_bin "$DEVICE_NAME")
 
 # Resolved once: it is the same image for every host in FLASH_LIST. There is no
 # fallback on purpose -- this used to fall back to the most recently modified

@@ -30,8 +30,8 @@ Usage: generate-partitions.sh <recovery.bin> <production.bin> [--output <path>]
 Examples:
   # Generate partition table from compiled binaries
   ./scripts/generate-partitions.sh \
-    .esphome/build/recovery/.pioenvs/recovery/firmware.bin \
-    .esphome/build/bleproxy/.pioenvs/bleproxy/firmware.bin
+    .esphome/build/recovery/build/recovery.bin \
+    .esphome/build/bleproxy/build/bleproxy.bin
 
   # Save to custom path
   ./scripts/generate-partitions.sh \

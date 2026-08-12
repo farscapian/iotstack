@@ -136,10 +136,11 @@ flash_mdns_config_hash_for_hostname() {
   return 1
 }
 
-flash_build_image_hash_from_build_dir() {
+flash_build_image_hash_for_build_name() {
   # 8-char hex image hash from ESPHome build_info.json (ESPHome field: config_hash).
-  local build_dir="$1"
-  local build_info="${build_dir}/build_info.json"
+  local build_name="$1"
+  local build_info
+  build_info=$(iotstack_build_info_json "$build_name")
   [[ -f "$build_info" ]] || return 1
   python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
 }
@@ -147,12 +148,12 @@ flash_build_image_hash_from_build_dir() {
 flash_bootstrap_matches_build_via_mdns() {
   # Return 0 when bootstrap-<mac> advertises the same config_hash as the local build.
   local device_mac="$1"
-  local build_dir="$2"
+  local build_name="$2"
   local bootstrap_hostname build_hash runtime_hash attempt
 
   [[ -n "$device_mac" ]] || return 1
   bootstrap_hostname="$(iotstack_bootstrap_hostname "$device_mac")"
-  build_hash=$(flash_build_image_hash_from_build_dir "$build_dir" 2>/dev/null) || return 1
+  build_hash=$(flash_build_image_hash_for_build_name "$build_name" 2>/dev/null) || return 1
   [[ -n "$build_hash" ]] || return 1
 
   for attempt in 1 2 3; do
@@ -168,12 +169,12 @@ flash_bootstrap_matches_build_via_mdns() {
 
 flash_assess_bootstrap_device() {
   # Compare local bootstrap build with device flash. Sets assessment globals.
-  # Usage: flash_assess_bootstrap_device <tty> <chip> <build_dir> <bootstrap_offset> [device_mac]
+  # Usage: flash_assess_bootstrap_device <tty> <chip> <build_name> <bootstrap_offset> [device_mac]
   # Sets: FLASH_ASSESS_PARTITION_MATCH, FLASH_ASSESS_BOOTSTRAP_MATCH,
   #       FLASH_ASSESS_NEED_ERASE, FLASH_ASSESS_SKIP_SERIAL
   local tty_device="$1"
   local esptool_chip="$2"
-  local build_dir="$3"
+  local build_name="$3"
   local bootstrap_offset="$4"
   local device_mac="${5:-}"
 
@@ -187,7 +188,7 @@ flash_assess_bootstrap_device() {
     return 0
   fi
 
-  if [[ -n "$device_mac" ]] && flash_bootstrap_matches_build_via_mdns "$device_mac" "$build_dir"; then
+  if [[ -n "$device_mac" ]] && flash_bootstrap_matches_build_via_mdns "$device_mac" "$build_name"; then
     FLASH_ASSESS_PARTITION_MATCH=1
     FLASH_ASSESS_BOOTSTRAP_MATCH=1
     FLASH_ASSESS_NEED_ERASE=0
@@ -196,8 +197,9 @@ flash_assess_bootstrap_device() {
     return 0
   fi
 
-  local partition_file="${build_dir}/partitions.bin"
-  local firmware_file="${build_dir}/firmware.bin"
+  local partition_file firmware_file
+  partition_file=$(iotstack_build_partition_table_bin "$build_name")
+  firmware_file=$(iotstack_build_firmware_bin "$build_name")
 
   if flash_region_matches_device "$tty_device" "$esptool_chip" "0x8000" "$partition_file"; then
     FLASH_ASSESS_PARTITION_MATCH=1
@@ -214,4 +216,18 @@ flash_assess_bootstrap_device() {
     FLASH_ASSESS_NEED_ERASE=1
     FLASH_ASSESS_SKIP_SERIAL=0
   fi
+}
+
+flash_production_matches_device() {
+  # Return 0 when the on-device production partition matches the local build
+  # (single-region MD5 compare of the production app image -- production never
+  # owns the partition table, so unlike bootstrap there is nothing else to check).
+  # Usage: flash_production_matches_device <tty> <chip> <build_name> <offset>
+  local tty_device="$1"
+  local esptool_chip="$2"
+  local build_name="$3"
+  local offset="$4"
+  local firmware_file
+  firmware_file=$(iotstack_build_firmware_bin "$build_name")
+  flash_region_matches_device "$tty_device" "$esptool_chip" "$offset" "$firmware_file"
 }

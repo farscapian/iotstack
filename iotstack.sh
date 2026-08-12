@@ -82,7 +82,7 @@ _compile_skip_miss_reason() {
     return 0
   fi
 
-  firmware_bin="${YAMLS_DIR}/.esphome/build/${resolved_device}/.pioenvs/${resolved_device}/firmware.bin"
+  firmware_bin=$(iotstack_build_firmware_bin "$resolved_device")
   if [[ ! -f "$firmware_bin" ]]; then
     echo "${yaml_name} config_hash matched but firmware.bin missing"
     return 0
@@ -158,7 +158,8 @@ _partition_table_bootstrap_size() {
 }
 
 _sync_bootstrap_partition_table_from_build() {
-  local build_csv="${YAMLS_DIR}/.esphome/build/$(iotstack_bootstrap_role)/partitions.csv"
+  local build_csv
+  build_csv=$(iotstack_build_partitions_csv "$(iotstack_bootstrap_role)")
   if [[ -f "$build_csv" ]] && grep -qE '^production,' "$build_csv" 2>/dev/null; then
     cp "$build_csv" "$PARTITION_TABLE"
     _ensure_partition_table_symlink "$PARTITION_TABLE"
@@ -252,7 +253,8 @@ _smart_compile_mark_done() {
 _smart_compile_repeat_satisfied() {
   local yaml_file="$1"
   local device_name="$2"
-  local firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
+  local firmware_bin
+  firmware_bin=$(iotstack_build_firmware_bin "$device_name")
   debug "Build already prepared for $(iotstack_compilation_cache_yaml_name "$yaml_file")"
   if _is_bootstrap_yaml "$yaml_file"; then
     _sync_bootstrap_partition_table_from_build \
@@ -348,7 +350,8 @@ smart_compile() {
     return 0
   fi
 
-  local firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
+  local firmware_bin
+  firmware_bin=$(iotstack_build_firmware_bin "$device_name")
   local cached=0
   _build_matches_config_hash "$yaml_file" "$device_name" && cached=1
 
@@ -411,7 +414,7 @@ smart_compile() {
   fs_size=$(_bootstrap_part_size "$firmware_bin")
   fw_bytes=$(stat -c%s "$firmware_bin" 2>/dev/null || echo "?")
   info "Bootstrap firmware ${fw_bytes} bytes -> bootstrap partition ${fs_size}"
-  partitions_bin="${YAMLS_DIR}/.esphome/build/$(iotstack_bootstrap_role)/.pioenvs/$(iotstack_bootstrap_role)/partitions.bin"
+  partitions_bin=$(iotstack_build_partition_table_bin "$(iotstack_bootstrap_role)")
 
   if _hex_sizes_equal "$fs_size" "$IOTSTACK_BOOTSTRAP_PART_SIZE" && [[ -f "$partitions_bin" ]]; then
     _sync_bootstrap_partition_table_from_build
@@ -1682,14 +1685,13 @@ _flash_production_firmware_current() {
   # Return 0 when production partition on serial matches the compiled build.
   local tty_device="$1"
   local yaml_path="$2"
-  local build_name build_dir production_offset chip
+  local build_name production_offset chip
 
   build_name=$(basename "$yaml_path" .yaml)
-  build_dir="${YAMLS_DIR}/.esphome/build/${build_name}/.pioenvs/${build_name}"
   production_offset=$(flash_partition_offset production 2>/dev/null) || return 1
-  [[ -n "$production_offset" && -d "$build_dir" ]] || return 1
+  [[ -n "$production_offset" && -d "$(iotstack_build_output_dir "$build_name")" ]] || return 1
   chip=$(esp_detect_chip "$tty_device" 2>/dev/null) || return 1
-  flash_production_matches_device "$tty_device" "$chip" "$build_dir" "$production_offset"
+  flash_production_matches_device "$tty_device" "$chip" "$build_name" "$production_offset"
 }
 
 _flash_invoke_update() {
@@ -1776,8 +1778,8 @@ _flash_production_partition_paths() {
   local yaml_path="$1"
   local build_name
   build_name=$(basename "$yaml_path" .yaml)
-  _FLASH_PROD_BUILD_DIR="${YAMLS_DIR}/.esphome/build/${build_name}/.pioenvs/${build_name}"
-  _FLASH_PROD_FIRMWARE="${_FLASH_PROD_BUILD_DIR}/firmware.bin"
+  _FLASH_PROD_BUILD_DIR=$(iotstack_build_output_dir "$build_name")
+  _FLASH_PROD_FIRMWARE=$(iotstack_build_firmware_bin "$build_name")
   _FLASH_PROD_OFFSET=$(flash_partition_offset production 2>/dev/null) || _FLASH_PROD_OFFSET=""
   if [[ -n "$_FLASH_PROD_OFFSET" ]]; then
     local _part_csv
@@ -1810,8 +1812,8 @@ _flash_production_image_hash_on_device() {
 _flash_bootstrap_image_hash_on_device() {
   # First 8 hex chars of the bootstrap-partition MD5 read from serial flash.
   local tty_device="$1"
-  local build_dir="${YAMLS_DIR}/.esphome/build/$(iotstack_bootstrap_role)/.pioenvs/$(iotstack_bootstrap_role)"
-  local firmware_file="${build_dir}/firmware.bin"
+  local firmware_file
+  firmware_file=$(iotstack_build_firmware_bin "$(iotstack_bootstrap_role)")
   local bootstrap_offset chip file_size md5
   bootstrap_offset=$(flash_partition_offset bootstrap 2>/dev/null) || bootstrap_offset=""
   [[ -f "$firmware_file" && -n "$bootstrap_offset" ]] || return 1
@@ -4598,6 +4600,12 @@ _flash_bootstrap_esptool() {
   esp_esptool_flash_params_for_build "$build_dir" flash_mode flash_freq flash_size
   debug "esptool write-flash params: mode=${flash_mode} freq=${flash_freq} size=${flash_size}"
 
+  local bootstrap_role bootloader_bin partitions_bin firmware_bin
+  bootstrap_role=$(iotstack_bootstrap_role)
+  bootloader_bin=$(iotstack_build_bootloader_bin "$bootstrap_role")
+  partitions_bin=$(iotstack_build_partition_table_bin "$bootstrap_role")
+  firmware_bin=$(iotstack_build_firmware_bin "$bootstrap_role")
+
   local esptool_src="esptool:${esptool_chip}"
 
   create_log_serial_capture_pause
@@ -4647,26 +4655,26 @@ _flash_bootstrap_esptool() {
 
   if esp_esptool_usb_cdc_chip "$esptool_chip"; then
     # USB CDC (S3/S2): batch layout images -- chained no-reset reconnects fail.
-    local -a batch_args=(0x0 "$build_dir/bootloader.bin" 0x8000 "$build_dir/partitions.bin")
+    local -a batch_args=(0x0 "$bootloader_bin" 0x8000 "$partitions_bin")
     local batch_label="bootloader.bin, partitions.bin"
     if [[ -n "$ota_init_bin" ]]; then
       batch_args+=(0xd000 "$ota_init_bin")
       batch_label+=", ${ota_init_label}"
     fi
     if [[ "$include_firmware" == "1" ]]; then
-      batch_args+=("$bootstrap_offset" "$build_dir/firmware.bin")
+      batch_args+=("$bootstrap_offset" "$firmware_bin")
       batch_label+=", firmware.bin"
     fi
     _flash_esptool_write_step "$batch_label" default-reset "${batch_args[@]}"
     [[ "$include_firmware" == "1" ]] && esptool_output="$create_log_esptool_output"
   else
-    _flash_esptool_write_step "bootloader.bin" default-reset 0x0 "$build_dir/bootloader.bin"
-    _flash_esptool_write_step "partitions.bin" no-reset 0x8000 "$build_dir/partitions.bin"
+    _flash_esptool_write_step "bootloader.bin" default-reset 0x0 "$bootloader_bin"
+    _flash_esptool_write_step "partitions.bin" no-reset 0x8000 "$partitions_bin"
     if [[ -n "$ota_init_bin" ]]; then
       _flash_esptool_write_step "$ota_init_label" no-reset 0xd000 "$ota_init_bin"
     fi
     if [[ "$include_firmware" == "1" ]]; then
-      _flash_esptool_write_step "firmware.bin" no-reset "$bootstrap_offset" "$build_dir/firmware.bin"
+      _flash_esptool_write_step "firmware.bin" no-reset "$bootstrap_offset" "$firmware_bin"
       esptool_output="$create_log_esptool_output"
     fi
   fi
@@ -4693,6 +4701,8 @@ _flash_bootstrap_esptool_write_firmware() {
   esptool_baud=$(esp_esptool_baud_for_chip "$esptool_chip")
   esp_esptool_flash_params_for_build "$build_dir" flash_mode flash_freq flash_size
   debug "esptool firmware write params: mode=${flash_mode} freq=${flash_freq} size=${flash_size}"
+  local firmware_bin
+  firmware_bin=$(iotstack_build_firmware_bin "$(iotstack_bootstrap_role)")
   local esptool_src="esptool:${esptool_chip}"
   local -a esptool_base_args=(
     --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud"
@@ -4723,7 +4733,7 @@ _flash_bootstrap_esptool_write_firmware() {
     "${esptool_base_args[@]}" \
     --before "$before_mode" --after "$after_reset" \
     "${write_flash_opts[@]}" \
-    "$bootstrap_offset" "$build_dir/firmware.bin" \
+    "$bootstrap_offset" "$firmware_bin" \
     || err "firmware.bin write failed"
   info "firmware.bin write completed in $((SECONDS - step_start))s"
   esptool_output="$create_log_esptool_output"
@@ -4836,8 +4846,7 @@ _flash_bootstrap_to_tty() {
   iotstack_register_yaml_cleanup_trap
   build_name="bootstrap"
 
-  local build_dir_early="${YAMLS_DIR}/.esphome/build/${build_name}/.pioenvs/${build_name}"
-  if [[ ! -f "${build_dir_early}/firmware.bin" ]]; then
+  if [[ ! -f "$(iotstack_build_firmware_bin "$build_name")" ]]; then
     debug "Bootstrap firmware not pre-built -- compiling for ${variant}"
     smart_compile "$bootstrap_yaml" "$build_name" || return 1
   fi
@@ -4854,7 +4863,8 @@ _flash_bootstrap_to_tty() {
     flash_log="$flash_log_dir/$(date +%Y%m%d_%H%M%S)-${variant}-$(basename "$tty_device").log"
   fi
 
-  local build_dir="$YAMLS_DIR/.esphome/build/${build_name}/.pioenvs/${build_name}"
+  local build_dir
+  build_dir=$(iotstack_build_output_dir "$build_name")
   [[ ! -d "$build_dir" ]] && err "Build directory not found: $build_dir"
 
   local bootstrap_offset
@@ -4864,7 +4874,7 @@ _flash_bootstrap_to_tty() {
   local esptool_chip="${IOTSTACK_ESPTOOL_CHIP:-$variant}"
   local device_mac=""
   device_mac=$(esp_mac_suffix_from_port "$tty_device" 2>/dev/null) || device_mac=""
-  flash_assess_bootstrap_device "$tty_device" "$esptool_chip" "$build_dir" "$bootstrap_offset" "$device_mac"
+  flash_assess_bootstrap_device "$tty_device" "$esptool_chip" "$build_name" "$bootstrap_offset" "$device_mac"
 
   _flash_serial_log_setup "$tty_device" "$variant"
   _check_serial_port_in_use "$tty_device"
@@ -5422,7 +5432,7 @@ _flash_production_smart() {
       local production_build_name production_build_dir production_offset skip_update=0
       production_build_name=$(basename "$yaml_path" .yaml)
       debug "Using pre-built production firmware (${production_build_name})"
-      production_build_dir="${YAMLS_DIR}/.esphome/build/${production_build_name}/.pioenvs/${production_build_name}"
+      production_build_dir=$(iotstack_build_output_dir "$production_build_name")
       production_offset=$(awk -F',' '/^production[[:space:]]*,/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $4); print $4}' "$PARTITION_TABLE" | head -1)
 
       if [[ "${FLASH_ON_FLASH_VERIFY:-0}" == "1" && -n "$production_offset" && -d "$production_build_dir" ]]; then
@@ -5430,7 +5440,7 @@ _flash_production_smart() {
         [[ -z "$prod_chip" ]] && prod_chip=$(esp_detect_chip "$tty_device" 2>/dev/null) || true
         info "Reading on-flash production partition via USB (assessment only)..."
         if [[ -n "$prod_chip" ]] && flash_production_matches_device \
-            "$tty_device" "$prod_chip" "$production_build_dir" "$production_offset"; then
+            "$tty_device" "$prod_chip" "$production_build_name" "$production_offset"; then
           ok "Production partition matches build -- iotstack update skipped"
           skip_update=1
         fi

@@ -9,7 +9,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # Source centralized configuration
 # shellcheck source=scripts/config.sh
@@ -45,7 +44,7 @@ fi
 info "Using esptool chip: $ESPTOOL_CHIP (port: $TTY_DEVICE)"
 
 # Build directory
-BUILD_DIR="${PROJECT_DIR}/yamls/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}"
+BUILD_DIR=$(iotstack_build_output_dir "$DEVICE_NAME")
 [[ ! -d "$BUILD_DIR" ]] && err "Build directory not found: $BUILD_DIR"
 
 info "Verifying flash checksums for: $DEVICE_NAME"
@@ -70,19 +69,21 @@ bootstrap_offset=$(awk -F',' -v label="${_bootstrap_part_label}" '
 
 declare -a offsets
 declare -a files
+declare -a source_files
 
-# Define what to verify (offset, file, actual file size - no padding)
+# Define what to verify (offset, label, source file - actual file size, no padding)
 # Note: partitions.bin is dynamically generated and already verified by esptool,
 # so we only verify bootloader and firmware
 offsets=(0x0 "$bootstrap_offset")
 files=(bootloader.bin firmware.bin)
+source_files=("$(iotstack_build_bootloader_bin "$DEVICE_NAME")" "$(iotstack_build_firmware_bin "$DEVICE_NAME")")
 
 # Verify each region
 failed=0
 for i in {0..1}; do
   offset="${offsets[$i]}"
   file="${files[$i]}"
-  source_file="${BUILD_DIR}/${file}"
+  source_file="${source_files[$i]}"
 
   if [[ ! -f "$source_file" ]]; then
     warn "Skipping $file (not found)"
@@ -101,7 +102,6 @@ for i in {0..1}; do
 
   info "Verifying $file at offset $offset (size: $file_size bytes)..."
 
-  local esptool_baud
   esptool_baud=$(esp_esptool_baud_for_chip "$ESPTOOL_CHIP")
   if python3 -m esptool --chip "$ESPTOOL_CHIP" --port "$TTY_DEVICE" --baud "$esptool_baud" --before default-reset \
     read-flash "$offset" "$read_size" "$read_file" >/dev/null 2>&1; then

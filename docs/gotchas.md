@@ -50,10 +50,37 @@ After USB bootstrap flash, WiFi readiness is detected by probing `bootstrap-<mac
 
 `update_devices.sh` resolves the OTA binary as:
 ```bash
-FIRMWARE_BIN="${YAMLS_DIR}/.esphome/build/${DEVICE_NAME}/.pioenvs/${DEVICE_NAME}/firmware.ota.bin"
+FIRMWARE_BIN=$(iotstack_build_ota_bin "$DEVICE_NAME")
 ```
 
-`YAMLS_DIR` is an absolute path exported from `config.sh`. **Never use a relative `yamls/` prefix** -- if iotstack is invoked from any directory other than the project root, `FIRMWARE_BIN` resolves to a nonexistent path, `esphome upload --file ""` fails immediately with no visible error, and the OTA log directory is left empty.
+`iotstack_build_ota_bin()` (`scripts/iotstack-version.sh`) builds off `YAMLS_DIR`, an absolute path exported from `config.sh`. **Never use a relative `yamls/` prefix** -- if iotstack is invoked from any directory other than the project root, `FIRMWARE_BIN` resolves to a nonexistent path, `esphome upload --file ""` fails immediately with no visible error, and the OTA log directory is left empty.
+
+### ESPHome build-artifact layout (post-2026.7): use `iotstack_build_*`, never hardcode the path
+
+ESPHome 2026.7 dropped the PlatformIO build backend in favor of driving ESP-IDF
+(CMake+Ninja) directly. Binaries moved from the old
+`.esphome/build/<name>/.pioenvs/<name>/` layout to `.esphome/build/<name>/build/`,
+and some were renamed/nested along the way:
+
+| Artifact | Old (`.pioenvs`) | New |
+|----------|-------------------|-----|
+| App image | `.pioenvs/<name>/firmware.bin` | `build/<name>.bin` |
+| OTA image | `.pioenvs/<name>/firmware.ota.bin` | `build/firmware.ota.bin` |
+| Bootloader | `.pioenvs/<name>/bootloader.bin` | `build/bootloader/bootloader.bin` |
+| Partition table | `.pioenvs/<name>/partitions.bin` | `build/partition_table/partition-table.bin` |
+| Flash params | `.pioenvs/<name>/flash_args` | `build/flash_args` |
+| `build_info.json` / `partitions.csv` | (build_name root, unchanged) | (build_name root, unchanged) |
+
+Every script asks `scripts/iotstack-version.sh` for one of these paths
+(`iotstack_build_root`, `iotstack_build_output_dir`, `iotstack_build_info_json`,
+`iotstack_build_partitions_csv`, `iotstack_build_firmware_bin`,
+`iotstack_build_ota_bin`, `iotstack_build_bootloader_bin`,
+`iotstack_build_partition_table_bin`) instead of constructing it -- that file is
+the only place that encodes the layout. Hardcoding `.pioenvs` anywhere makes
+`_build_matches_config_hash` unable to find `firmware.bin`, so the compile-skip
+cache reports "config_hash matched but firmware.bin missing" and recompiles
+bootstrap and production on every single `iotstack flash`, forever, even though
+nothing changed.
 
 ### Build cache sync between `iotstack flash` Step 1 and Step 5
 
@@ -104,7 +131,7 @@ Every `iotstack` invocation appends one TSV line to `~/.iotstack/logs/sessions.w
 
 ### esptool flash frequency (ESP32-S3 / S2)
 
-Firmware builds record `--flash_mode`, `--flash_freq`, and `--flash_size` on the first line of `.pioenvs/<name>/flash_args`. Bootstrap USB writes must match (e.g. **80m** on ESP32-S3 DevKit). `esp_esptool_flash_params_for_build()` in `scripts/esp-serial.sh` parses `flash_args` / `flash_project_args`; a past hardcoded **40m** mismatch caused **ROM boot loops** after hash-verified writes. See `pitfalls.md`.
+Firmware builds record `--flash_mode`, `--flash_freq`, and `--flash_size` on the first line of `build/flash_args` (see build-layout gotcha above). Bootstrap USB writes must match (e.g. **80m** on ESP32-S3 DevKit). `esp_esptool_flash_params_for_build()` in `scripts/esp-serial.sh` parses `flash_args` / `flash_project_args` from whatever build dir it is given (`iotstack_build_output_dir`); a past hardcoded **40m** fallback mismatch caused **ROM boot loops** after hash-verified writes. See `pitfalls.md`.
 
 ### OTA init partition at `0xd000`
 

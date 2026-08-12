@@ -134,6 +134,54 @@ iotstack_cleanup_compile_yaml() {
   [[ -n "$compile_yaml" && "$compile_yaml" != "$src_yaml" ]] && rm -f "$compile_yaml"
 }
 
+# -- Build artifact paths -- single source of truth for the on-disk layout ---
+# ESPHome 2026.7+ dropped the PlatformIO build backend in favor of driving
+# ESP-IDF (CMake+Ninja) directly. Binaries moved from the old
+# .esphome/build/<name>/.pioenvs/<name>/ layout to .esphome/build/<name>/build/,
+# and some were renamed/nested along the way (firmware.bin -> <name>.bin,
+# partitions.bin -> partition_table/partition-table.bin, bootloader.bin ->
+# bootloader/bootloader.bin). build_info.json and partitions.csv were never
+# under .pioenvs -- they stay directly under .esphome/build/<name>/.
+# Every script that needs one of these paths calls a function here instead of
+# constructing the path itself -- if ESPHome's layout changes again, this is
+# the only place to fix.
+
+iotstack_build_root() {
+  # Usage: iotstack_build_root <build_name>
+  printf '%s/.esphome/build/%s\n' "${YAMLS_DIR}" "$1"
+}
+
+iotstack_build_output_dir() {
+  # Directory holding compiled binaries, flash_args, bootloader/, partition_table/.
+  printf '%s/build\n' "$(iotstack_build_root "$1")"
+}
+
+iotstack_build_info_json() {
+  printf '%s/build_info.json\n' "$(iotstack_build_root "$1")"
+}
+
+iotstack_build_partitions_csv() {
+  printf '%s/partitions.csv\n' "$(iotstack_build_root "$1")"
+}
+
+iotstack_build_firmware_bin() {
+  # App image for USB write / on-flash comparison. Named after the build
+  # (esphome.name), not "firmware.bin" -- that name is reserved for the OTA image.
+  printf '%s/%s.bin\n' "$(iotstack_build_output_dir "$1")" "$1"
+}
+
+iotstack_build_ota_bin() {
+  printf '%s/firmware.ota.bin\n' "$(iotstack_build_output_dir "$1")"
+}
+
+iotstack_build_bootloader_bin() {
+  printf '%s/bootloader/bootloader.bin\n' "$(iotstack_build_output_dir "$1")"
+}
+
+iotstack_build_partition_table_bin() {
+  printf '%s/partition_table/partition-table.bin\n' "$(iotstack_build_output_dir "$1")"
+}
+
 # -- Compile skip (config_hash) -- shared by iotstack.sh and update_devices.sh --
 # ESPHome's config_hash is the single build-identity key: it reflects the resolved
 # YAML config plus the project_version source fingerprint (see above), so it moves
@@ -170,7 +218,7 @@ _current_config_hash_for_yaml() {
   # works when sourced without iotstack.sh's bootstrap helpers (update_devices.sh).
   if [[ -n "$device_name" ]] && declare -F _is_bootstrap_yaml &>/dev/null \
       && _is_bootstrap_yaml "$yaml_file"; then
-    firmware_bin="${YAMLS_DIR}/.esphome/build/${device_name}/.pioenvs/${device_name}/firmware.bin"
+    firmware_bin=$(iotstack_build_firmware_bin "$device_name")
     if [[ -f "$firmware_bin" ]] && declare -F _sync_bootstrap_partition_table_from_build &>/dev/null; then
       # Side-effect only; must not write to stdout (hash capture uses command substitution).
       _sync_bootstrap_partition_table_from_build >/dev/null
@@ -186,7 +234,8 @@ _current_config_hash_for_yaml() {
 _config_hash_from_build_dir() {
   # 8-char hex config_hash from ESPHome build_info.json.
   local build_name="$1"
-  local build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
+  local build_info
+  build_info=$(iotstack_build_info_json "$build_name")
   [[ -f "$build_info" ]] || return 1
   python3 -c "import json,sys; print(format(json.load(open(sys.argv[1]))['config_hash'], '08x'))" "$build_info"
 }
@@ -263,7 +312,7 @@ _build_matches_config_hash() {
   local device_name="${2:-}"
   local resolved_device current_hash built_hash firmware_bin
   resolved_device=$(_compile_skip_device_name "$yaml_file" "$device_name")
-  firmware_bin="${YAMLS_DIR}/.esphome/build/${resolved_device}/.pioenvs/${resolved_device}/firmware.bin"
+  firmware_bin=$(iotstack_build_firmware_bin "$resolved_device")
   [[ -f "$firmware_bin" ]] || return 1
   current_hash=$(_current_config_hash_for_yaml "$yaml_file" "$resolved_device") || return 1
   built_hash=$(_config_hash_from_build_dir "$resolved_device" 2>/dev/null) || return 1
