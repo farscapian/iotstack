@@ -71,6 +71,23 @@ if [[ ! -x "${ESPHOME_VENV}/bin/python3" ]]; then
   ok "Created esphome virtualenv: $ESPHOME_VENV"
 fi
 
+# python3 -m venv can silently produce a venv with no pip if the distro's
+# venv package (e.g. python3.14-venv) isn't installed. Detect and fix that.
+if [[ ! -x "${ESPHOME_VENV}/bin/pip" ]]; then
+  warn "esphome venv is missing pip -- ensurepip was unavailable"
+  PY_VENV_PKG="python$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')-venv"
+  if command -v apt &>/dev/null; then
+    echo "Installing ${PY_VENV_PKG}..."
+    sudo apt update && sudo apt install -y "$PY_VENV_PKG"
+    rm -rf "$ESPHOME_VENV"
+    python3 -m venv "$ESPHOME_VENV"
+    ok "Recreated esphome virtualenv: $ESPHOME_VENV"
+  fi
+  if [[ ! -x "${ESPHOME_VENV}/bin/pip" ]]; then
+    err "esphome venv has no pip. Install manually: sudo apt install ${PY_VENV_PKG}"
+  fi
+fi
+
 "${ESPHOME_VENV}/bin/pip" install --upgrade pip >/dev/null
 "${ESPHOME_VENV}/bin/pip" install --upgrade esphome
 
