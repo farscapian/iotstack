@@ -72,6 +72,16 @@ export IOTSTACK_BOOTSTRAP_MARGIN="${IOTSTACK_BOOTSTRAP_MARGIN:-0x10000}"        
 # ESPHome build directories (for verification scripts)
 export ESPHOME_BUILD_DIR="${ESPHOME_BUILD_DIR:-${YAMLS_DIR}/.esphome/build}"
 
+# setup.sh installs esphome into an isolated venv, not a symlinked binary, so
+# `esphome` on PATH depends on the user's shell rc sourcing the venv. Fall back
+# to the known venv location so iotstack.sh's bare `esphome` calls (compile,
+# logs, matter commission) work even when the interactive shell's PATH doesn't
+# already resolve it.
+ESPHOME_VENV_BIN="${HOME}/.local/esphome/venv/bin"
+if [[ -x "${ESPHOME_VENV_BIN}/esphome" ]] && ! command -v esphome &>/dev/null; then
+  export PATH="${ESPHOME_VENV_BIN}:${PATH}"
+fi
+
 # Build behavior flags -- allow user override via environment variable or .env file
 export CLEAN_BUILD_DIRECTORY="${CLEAN_BUILD_DIRECTORY:-0}"
 
