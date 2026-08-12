@@ -51,6 +51,29 @@ if [[ ! -x "$IOTSTACK_SCRIPT" ]]; then
   err "iotstack.sh is not executable. Run: chmod +x $IOTSTACK_SCRIPT"
 fi
 
+# -- Dialout Group Membership (required for /dev/ttyACM* access) -----------
+echo
+echo "========================================================"
+echo "Checking dialout group membership"
+echo "========================================================"
+echo
+
+if id -nG "$USER" | tr ' ' '\n' | grep -qx dialout; then
+  ok "User $USER is already a member of the dialout group"
+else
+  warn "User $USER is not a member of the dialout group (required for /dev/ttyACM* access)"
+  read -p "Add $USER to the dialout group now? (y/N) " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    sudo usermod -aG dialout "$USER"
+    ok "Added $USER to the dialout group"
+    warn "Log out and back in (or run: newgrp dialout) for the group change to take effect"
+  else
+    dim "Skipping -- flashing over /dev/ttyACM* will fail with a permissions error until you run:"
+    echo "  sudo usermod -aG dialout \$USER"
+  fi
+fi
+
 # -- ESPHome Installation ---------------------------------------------------
 echo
 echo "========================================================"
