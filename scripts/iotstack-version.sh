@@ -43,19 +43,19 @@ iotstack_git_tag() {
 
 iotstack_compilation_cache_yaml_name() {
   # Stable compile-skip dedup key for a YAML path.
-  # Production roles compile via yamls/.temp-compile-<role>.yaml.<unique>; dedup uses
-  # the suffix-less compile artifact name. Bootstrap uses .iotstack-bootstrap-* keys.
+  # Production roles compile via yamls/.temp-compile-<role>.<unique>.yaml; dedup uses
+  # the token-less compile artifact name. Bootstrap uses .iotstack-bootstrap-* keys.
   local yaml_file="$1"
   local base
 
   [[ -n "$yaml_file" ]] || return 1
   base=$(basename "$yaml_file")
 
-  if [[ "$base" =~ ^\.temp-compile-(\.iotstack-.+\.yaml)(\.[A-Za-z0-9]+)*$ ]]; then
-    echo "${BASH_REMATCH[1]}"
+  if [[ "$base" =~ ^\.temp-compile-(.+)\.[A-Za-z0-9]{6}\.yaml$ ]]; then
+    echo "${BASH_REMATCH[1]}.yaml"
     return 0
   fi
-  if [[ "$base" =~ ^(\.temp-compile-.+\.yaml)(\.[A-Za-z0-9]+)+$ ]]; then
+  if [[ "$base" =~ ^\.temp-compile-(.+\.yaml)$ ]]; then
     echo "${BASH_REMATCH[1]}"
     return 0
   fi
@@ -103,10 +103,11 @@ iotstack_prepare_compile_yaml() {
   # Copy source YAML to a temp compile artifact (so rendered .iotstack-* files stay untouched).
   # Prints YAML path to compile.
   local src_yaml="$1"
-  local base dir compile_yaml version
+  local base base_noext dir compile_yaml version
 
   [[ -f "$src_yaml" ]] || return 1
   base=$(basename "$src_yaml")
+  base_noext="${base%.yaml}"
   dir="$(cd "$(dirname "$src_yaml")" && pwd)"
 
   # Must live under yamls/ (same dir as source) so !include common/... resolves.
@@ -114,7 +115,9 @@ iotstack_prepare_compile_yaml() {
   # while the config_hash check prepares a copy and deletes it when done. Naming
   # these off the pid alone made them the same path, so the hash check deleted the
   # caller's YAML mid-run and the compile died with "No such file or directory".
-  compile_yaml=$(mktemp "${dir}/.temp-compile-${base}.XXXXXX") || return 1
+  # The uniqueness token goes before the .yaml extension (not after) so the
+  # compile artifact itself still parses as YAML by name (editors, esphome, etc).
+  compile_yaml=$(mktemp --suffix=.yaml "${dir}/.temp-compile-${base_noext}.XXXXXX") || return 1
   cp "$src_yaml" "$compile_yaml"
 
   # Inject the project version on the temp copy only (source YAML stays unchanged
