@@ -51,6 +51,32 @@ if [[ ! -x "$IOTSTACK_SCRIPT" ]]; then
   err "iotstack.sh is not executable. Run: chmod +x $IOTSTACK_SCRIPT"
 fi
 
+# -- ESPHome Installation ---------------------------------------------------
+echo
+echo "========================================================"
+echo "Installing ESPHome"
+echo "========================================================"
+echo
+
+if ! command -v python3 &>/dev/null; then
+  err "python3 is required to install esphome"
+fi
+
+ESPHOME_HOME="${HOME}/.local/esphome"
+ESPHOME_VENV="${ESPHOME_HOME}/venv"
+ESPHOME_BIN="${ESPHOME_VENV}/bin/esphome"
+
+if [[ ! -x "${ESPHOME_VENV}/bin/python3" ]]; then
+  python3 -m venv "$ESPHOME_VENV"
+  ok "Created esphome virtualenv: $ESPHOME_VENV"
+fi
+
+"${ESPHOME_VENV}/bin/pip" install --upgrade pip >/dev/null
+"${ESPHOME_VENV}/bin/pip" install --upgrade esphome
+
+ESPHOME_VERSION=$("$ESPHOME_BIN" version 2>/dev/null | head -1 || echo "unknown")
+ok "Installed esphome: ${ESPHOME_VERSION}"
+
 # Git pre-commit hook: shellcheck on staged .sh files
 if git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   chmod +x "${SCRIPT_DIR}/.githooks/pre-commit" "${SCRIPT_DIR}/scripts/shellcheck-staged.sh"
