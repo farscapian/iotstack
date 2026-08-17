@@ -5496,16 +5496,21 @@ verify_wifi_credentials() {
   local wifi_ssid=""
   local wifi_password=""
 
-  # Check pass store for WiFi SSID
-  if pass show iotstack/common/wifi_ssid >/dev/null 2>&1; then
-    wifi_ssid=$(pass show iotstack/common/wifi_ssid 2>/dev/null)
+  # Check pass store for WiFi SSID. An entry that exists but is empty or the
+  # CONFIGURE_ME placeholder (e.g. pre-seeded by setup.sh) must be treated as
+  # missing here -- otherwise it slips past this early check and is only
+  # caught deep inside write-nvs-secrets.sh, after compile/erase/flash has
+  # already run (see _get_or_prompt_credential in scripts/write-nvs-secrets.sh,
+  # which applies this same emptiness/placeholder check).
+  wifi_ssid=$(pass show iotstack/common/wifi_ssid 2>/dev/null || echo "")
+  if [[ -n "$wifi_ssid" && "$wifi_ssid" != "CONFIGURE_ME" ]]; then
     has_ssid=true
     debug "Found WiFi SSID in pass store"
   fi
 
-  # Check pass store for WiFi password
-  if pass show iotstack/common/wifi_password >/dev/null 2>&1; then
-    wifi_password=$(pass show iotstack/common/wifi_password 2>/dev/null)
+  # Check pass store for WiFi password (same emptiness/placeholder check)
+  wifi_password=$(pass show iotstack/common/wifi_password 2>/dev/null || echo "")
+  if [[ -n "$wifi_password" && "$wifi_password" != "CONFIGURE_ME" ]]; then
     has_password=true
     debug "Found WiFi password in pass store"
   fi
