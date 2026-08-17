@@ -267,8 +267,24 @@ export WIFI_SSID="$WIFI_SSID" WIFI_PASSWORD="$WIFI_PASSWORD" \
        MATRIX_COLS="${MATRIX_COLS:-}" MATRIX_ROWS="${MATRIX_ROWS:-}" MATRIX_PANEL_W="${MATRIX_PANEL_W:-}" MATRIX_PANEL_H="${MATRIX_PANEL_H:-}" \
        PRODUCTION_ROLE="${PRODUCTION_ROLE:-}" GIT_COMMIT="$GIT_COMMIT"
 
-# Use ESP-IDF Python environment which has nvs_partition_gen installed
-ESP_IDF_PYTHON="${HOME}/.espressif/python_env/idf6.1_py3.14_env/bin/python3"
+# Use the esphome venv's Python (setup.sh installs esp_idf_nvs_partition_gen
+# there, alongside esptool). Deliberately NOT the ESP-IDF toolchain's own
+# python_env under ~/.espressif -- that only exists after a real (non-cached)
+# ESP-IDF compile has run idf_tools.py, which needs its own internet access.
+# The esphome venv is already a hard requirement for this whole tool, so this
+# path lets NVS writes work fully offline.
+esphome_py=""
+if command -v esphome >/dev/null 2>&1; then
+  esphome_py=$(head -1 "$(command -v esphome)" | sed 's/^#!//')
+fi
+[[ -x "$esphome_py" ]] || esphome_py="${HOME}/.local/esphome/venv/bin/python3"
+if [[ ! -x "$esphome_py" ]]; then
+  err "esphome venv python not found (expected ${HOME}/.local/esphome/venv/bin/python3) -- rerun setup.sh"
+fi
+if ! "$esphome_py" -c "import esp_idf_nvs_partition_gen" 2>/dev/null; then
+  err "esp_idf_nvs_partition_gen not installed in the esphome venv -- rerun setup.sh to install it"
+fi
+ESP_IDF_PYTHON="$esphome_py"
 
 # Generate NVS binary (store output to parse paths). Wrap in set +e so a
 # generator failure does not abort the script before we surface its error output
@@ -337,9 +353,8 @@ nvs_bin_path = f"/tmp/nvs_{device_mac}.bin"
 
 print(f"[OK] Generating NVS partition binary using esp_idf_nvs_partition_gen")
 
-idf_python = os.path.expanduser('~/.espressif/python_env/idf6.1_py3.14_env/bin/python3')
 result = subprocess.run([
-    idf_python, '-m', 'esp_idf_nvs_partition_gen', 'generate',
+    sys.executable, '-m', 'esp_idf_nvs_partition_gen', 'generate',
     nvs_csv_path,        # input CSV file
     nvs_bin_path,        # output binary file
     f'0x{nvs_size:x}',   # partition size in bytes (dynamically read from partition table)

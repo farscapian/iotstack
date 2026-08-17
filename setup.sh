@@ -120,6 +120,16 @@ fi
 ESPHOME_VERSION=$("$ESPHOME_BIN" version 2>/dev/null | head -1 || echo "unknown")
 ok "Installed esphome: ${ESPHOME_VERSION}"
 
+# esp-idf-nvs-partition-gen: standalone PyPI package (not part of the esphome
+# dependency tree). write-nvs-secrets.sh needs it to build the NVS partition
+# it writes to devices over USB. Installed here, into the same venv esptool
+# already lives in, so NVS writes work without ever needing the separate
+# ESP-IDF toolchain download (idf_tools.py, python_env under ~/.espressif) --
+# that download only happens on a real (non-cached) ESP-IDF compile and
+# requires its own internet access at that time.
+"${ESPHOME_VENV}/bin/pip" install --upgrade esp-idf-nvs-partition-gen >/dev/null
+ok "Installed esp-idf-nvs-partition-gen (for offline NVS partition writes)"
+
 # Git pre-commit hook: shellcheck on staged .sh files
 if git -C "$SCRIPT_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   chmod +x "${SCRIPT_DIR}/.githooks/pre-commit" "${SCRIPT_DIR}/scripts/shellcheck-staged.sh"

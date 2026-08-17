@@ -21,3 +21,4 @@
 | Agent misses human's flash run | Not watching `sessions.watch` | Tail `~/.iotstack/logs/sessions.watch`; parse session/serial log paths -- `workflow.md` |
 | Hung flash holds `/dev/ttyACM0` | Detached `serial-logs.py` in separate session | `iotstack ps` then `iotstack kill` |
 | Multiple `[OK] NVS` lines in session log | Nested `write-nvs-secrets.sh` + parent `iotstack.sh` messages | One NVS write; see session log sources in `workflow.md` |
+| NVS write fails: `.espressif/python_env/idf.../python3: No such file or directory` | `write-nvs-secrets.sh` used to hardcode the ESP-IDF toolchain's own venv, which only exists after a real (non-cached) ESP-IDF compile has run `idf_tools.py` -- and that needs internet | Fixed: uses the esphome venv (`~/.local/esphome/venv`) instead, which `setup.sh` now also installs `esp-idf-nvs-partition-gen` into; works fully offline. If you still hit this, rerun `setup.sh` |
