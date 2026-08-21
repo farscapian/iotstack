@@ -609,6 +609,20 @@ warn() { [[ $QUIET -eq 0 ]] && { _iotstack_log_plain "WARN" "$@"; _iotstack_echo
 info() { [[ $QUIET -eq 0 ]] && { _iotstack_log_plain "INFO" "$@"; _iotstack_echo stdout "${BLU}[INFO]${RST} $*"; }; return 0; }
 debug() { [[ $VERBOSE -eq 1 && $QUIET -eq 0 ]] && { _iotstack_log_plain "DEBUG" "$@"; _iotstack_echo stderr "${DIM}[DEBUG]${RST} $*"; }; return 0; }
 
+_IOTSTACK_INTERRUPTED=0
+_iotstack_handle_interrupt() {
+  # Guard against re-entry: the TERM we send below to our own process group
+  # loops back into this same handler.
+  [[ "$_IOTSTACK_INTERRUPTED" == "1" ]] && exit 130
+  _IOTSTACK_INTERRUPTED=1
+  echo "" >&2
+  warn "Interrupted -- stopping iotstack and any child processes..."
+  local pgid
+  pgid=$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')
+  [[ -n "$pgid" ]] && kill -TERM -"$pgid" 2>/dev/null
+  exit 130
+}
+
 _run_update_devices() {
   if create_log_child_output_piped; then
     create_log_run "update_devices.sh" bash "$UPDATE_SCRIPT" "$@"
@@ -6021,6 +6035,12 @@ cmd_tests() {
 }
 
 main() {
+  # Explicit trap: guarantees Ctrl+C / SIGTERM stop this invocation and its
+  # children promptly even if SIGINT's disposition was inherited as ignored
+  # (e.g. from a backgrounding wrapper) -- flash's bootstrap WiFi retry loop
+  # can otherwise block for minutes with no way to interrupt it.
+  trap '_iotstack_handle_interrupt' INT TERM
+
   local invocation_cmd="iotstack" arg
   for arg in "$@"; do
     invocation_cmd+=" $(printf '%q' "$arg")"
