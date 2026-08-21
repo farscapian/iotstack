@@ -1,8 +1,9 @@
 iotstack clean -- Clean iotstack caches and runtime artifacts
 
 Removes iotstack session logs and runtime artifacts under
-~/.iotstack/. Does not delete ESPHome build output (yamls/.esphome/ or anything
-under ~/.esphome/) or PlatformIO's shared cache (~/.platformio/.cache/). Safe to
+~/.iotstack/. Does not delete ESPHome build output (yamls/.iotstack/.esphome/
+or anything under ~/.esphome/) or PlatformIO's shared cache
+(~/.platformio/.cache/). Safe to
 rerun; it never deletes source YAMLs. Use when you need to clear iotstack caches
 or reclaim log/artifact disk space. The partition table CSV is regenerated on the
 next compile after artifacts are removed.
@@ -15,7 +16,7 @@ Removes:
     .temp-ota-upload-*, and related gitignored runtime copies)
 
 Preserves:
-  - ESPHome project build output (yamls/.esphome/)
+  - ESPHome project build output (yamls/.iotstack/.esphome/)
   - ESPHome user data (~/.esphome/)
   - PlatformIO cache (~/.platformio/.cache/)
 

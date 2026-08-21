@@ -69,8 +69,14 @@ export IOTSTACK_BOOTSTRAP_PART_SIZE="${IOTSTACK_BOOTSTRAP_PART_SIZE:-0xe0000}"  
 export IOTSTACK_BOOTSTRAP_PART_SIZE_GENEROUS="${IOTSTACK_BOOTSTRAP_PART_SIZE_GENEROUS:-0x180000}"  # pass-1 fallback if tight table fails
 export IOTSTACK_BOOTSTRAP_MARGIN="${IOTSTACK_BOOTSTRAP_MARGIN:-0x10000}"         # headroom above firmware (64KB)
 
-# ESPHome build directories (for verification scripts)
-export ESPHOME_BUILD_DIR="${ESPHOME_BUILD_DIR:-${YAMLS_DIR}/.esphome/build}"
+# Redirect ESPHome's own data dir (build cache, fonts, per-device storage
+# json) through the existing yamls/.iotstack symlink instead of letting it
+# default to yamls/.esphome -- keeps ESPHome's output under the centralized
+# iotstack home without a second dedicated symlink. ESPHome reads this env
+# var itself (see esphome.core.EsphomeCore.data_dir), so exporting it here is
+# enough for every `esphome` invocation in this codebase to pick it up.
+export ESPHOME_DATA_DIR="${ESPHOME_DATA_DIR:-${YAMLS_DIR}/.iotstack/.esphome}"
+export ESPHOME_BUILD_DIR="${ESPHOME_BUILD_DIR:-${ESPHOME_DATA_DIR}/build}"
 
 # setup.sh installs esphome into an isolated venv, not a symlinked binary, so
 # `esphome` on PATH depends on the user's shell rc sourcing the venv. Fall back

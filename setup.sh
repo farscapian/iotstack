@@ -179,34 +179,25 @@ else
   dim "yamls/.iotstack already exists"
 fi
 
-# Create symlink from yamls/.esphome -> ~/.iotstack/.esphome so ESPHome's
-# build cache lives under the centralized iotstack home.
-ESPHOME_LINK_IN_YAMLS="${SCRIPT_DIR}/yamls/.esphome"
-ESPHOME_HOME="${IOTSTACK_HOME}/.esphome"
-
-if [[ -L "$ESPHOME_LINK_IN_YAMLS" ]]; then
-  # Remove old symlink if it exists
-  rm -f "$ESPHOME_LINK_IN_YAMLS"
-fi
-
-if [[ -d "$ESPHOME_LINK_IN_YAMLS" ]]; then
-  # Real build cache from before the symlink existed -- migrate it instead
-  # of discarding it, unless a cache is already there.
+# ESPHome's build cache is redirected via ESPHOME_DATA_DIR (see config.sh) to
+# live under yamls/.iotstack/.esphome -- through the symlink above, not a
+# second dedicated one. Clean up any leftover yamls/.esphome from before that
+# redirect existed.
+ESPHOME_LEGACY_IN_YAMLS="${SCRIPT_DIR}/yamls/.esphome"
+if [[ -L "$ESPHOME_LEGACY_IN_YAMLS" ]]; then
+  # Obsolete symlink from an earlier approach; the real data already lives
+  # under $IOTSTACK_HOME/.esphome (reachable via yamls/.iotstack/.esphome).
+  rm -f "$ESPHOME_LEGACY_IN_YAMLS"
+elif [[ -d "$ESPHOME_LEGACY_IN_YAMLS" ]]; then
+  # Real build cache predating any redirect -- migrate instead of discarding.
+  ESPHOME_HOME="${IOTSTACK_HOME}/.esphome"
   mkdir -p "$(dirname "$ESPHOME_HOME")"
   if [[ ! -e "$ESPHOME_HOME" ]]; then
-    mv "$ESPHOME_LINK_IN_YAMLS" "$ESPHOME_HOME"
+    mv "$ESPHOME_LEGACY_IN_YAMLS" "$ESPHOME_HOME"
     ok "Migrated existing yamls/.esphome build cache to $ESPHOME_HOME"
   else
-    rm -rf "$ESPHOME_LINK_IN_YAMLS"
+    rm -rf "$ESPHOME_LEGACY_IN_YAMLS"
   fi
-fi
-
-if [[ ! -e "$ESPHOME_LINK_IN_YAMLS" ]]; then
-  mkdir -p "$ESPHOME_HOME"
-  ln -s "$ESPHOME_HOME" "$ESPHOME_LINK_IN_YAMLS"
-  ok "Created symlink: yamls/.esphome -> $ESPHOME_HOME"
-else
-  dim "yamls/.esphome already exists"
 fi
 
 # Create ~/.local/bin if needed

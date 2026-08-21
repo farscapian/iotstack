@@ -242,7 +242,7 @@ test_run_step() {
 
 test_build_info_path() {
   local build_name="$1"
-  printf '%s/.esphome/build/%s/build_info.json' "$YAMLS_DIR" "$build_name"
+  printf '%s/%s/build_info.json' "$ESPHOME_BUILD_DIR" "$build_name"
 }
 
 test_build_config_hash() {

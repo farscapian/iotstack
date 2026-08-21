@@ -69,7 +69,7 @@ Overnight (C6 plugged in -- suite is currently C6/bleproxy only):
   iotstack tests run --iterations 5 2>&1 | tee ~/iotstack-overnight.log
 
 Bootstrap firmware is compiled per chip variant (yamls/.iotstack-bootstrap-esp32c6.yaml,
-etc.) with separate build directories under yamls/.esphome/build/.
+etc.) with separate build directories under yamls/.iotstack/.esphome/build/.
 `iotstack flash` detects the chip on each /dev/ttyACM* port and substitutes the
 matching profile before compile.
 

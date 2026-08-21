@@ -1,8 +1,13 @@
 # Runtime-generated symlinks into ~/.iotstack (machine-specific absolute
 # paths; recreated by setup.sh / iotstack.sh -- must not be committed)
 /.iotstack
-/.esphome
 /iotstack_partition_table.csv
 /.iotstack-*-*.yaml
 /.temp-ota-upload-*.yaml
 /.temp-compile-*.yaml
+
+# Defensive: ESPHome's build cache is redirected under yamls/.iotstack/ via
+# ESPHOME_DATA_DIR (see scripts/config.sh), so this directory should never
+# be created here -- but ignore it in case ESPHOME_DATA_DIR isn't honored by
+# some invocation.
+/.esphome/

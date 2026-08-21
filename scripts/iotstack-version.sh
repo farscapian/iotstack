@@ -148,7 +148,7 @@ iotstack_cleanup_compile_yaml() {
 
 iotstack_build_root() {
   # Usage: iotstack_build_root <build_name>
-  printf '%s/.esphome/build/%s\n' "${YAMLS_DIR}" "$1"
+  printf '%s/%s\n' "${ESPHOME_BUILD_DIR}" "$1"
 }
 
 iotstack_build_output_dir() {

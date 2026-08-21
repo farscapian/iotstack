@@ -25,7 +25,7 @@ flash_partition_table_csv_for_device() {
   local bootstrap_role build_name bootstrap_csv
   bootstrap_role=$(iotstack_bootstrap_role)
   build_name="$bootstrap_role"
-  bootstrap_csv="${YAMLS_DIR}/.esphome/build/${build_name}/partitions.csv"
+  bootstrap_csv=$(iotstack_build_partitions_csv "$build_name")
   if [[ -f "$bootstrap_csv" ]] && grep -qE '^production,' "$bootstrap_csv" 2>/dev/null; then
     printf '%s\n' "$bootstrap_csv"
     return 0

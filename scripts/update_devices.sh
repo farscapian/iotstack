@@ -1549,7 +1549,7 @@ FIRMWARE_BIN=$(iotstack_build_ota_bin "$DEVICE_NAME")
 
 # Resolved once: it is the same image for every host in FLASH_LIST. There is no
 # fallback on purpose -- this used to fall back to the most recently modified
-# firmware.ota.bin anywhere under .esphome/build/, which silently OTAs ANOTHER
+# firmware.ota.bin anywhere under .iotstack/.esphome/build/, which silently OTAs ANOTHER
 # ROLE'S FIRMWARE onto the device whenever the path is wrong. Fail loudly, before
 # any device is touched.
 if [[ ! -f "$FIRMWARE_BIN" ]]; then

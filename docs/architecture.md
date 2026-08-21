@@ -23,9 +23,13 @@ The `iotstack.sh` CLI tool provides a user-friendly wrapper around this script w
 ### Compilation Cache
 
 ESPHome writes its own build output (fonts, `.esphome/build/<role>/`) to
-`yamls/.esphome/`, which `setup.sh` / `iotstack.sh` symlink to
-`~/.iotstack/.esphome/` so it lives with the rest of the centralized iotstack
-state instead of inside the repo checkout.
+whatever `ESPHOME_DATA_DIR` points at. `config.sh` sets it to
+`yamls/.iotstack/.esphome` -- through the existing `yamls/.iotstack` symlink
+to `~/.iotstack`, not a second dedicated symlink -- so it lives with the rest
+of the centralized iotstack state instead of inside the repo checkout. Every
+script that needs a build-artifact path calls the `iotstack_build_*()`
+helpers in `scripts/iotstack-version.sh` rather than constructing it, so this
+is the only place that would need to change if the layout moves again.
 
 The single build-identity key is the ESPHome **`config_hash`**. `smart_compile`
 (`iotstack.sh`) and `update_devices.sh` share one implementation

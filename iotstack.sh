@@ -323,7 +323,8 @@ _flash_sync_update_devices_cache() {
   # but the build dir is keyed on esphome.name -- they differ for some roles.
   build_name=$(_esphome_build_name_for_yaml "$yaml_file" "$yaml_name")
   local cache_file="${IOTSTACK_HOME}/logs/${yaml_name}.build.cache"
-  local build_info="${YAMLS_DIR}/.esphome/build/${build_name}/build_info.json"
+  local build_info
+  build_info="$(iotstack_build_info_json "$build_name")"
   [[ -f "$build_info" ]] || return 0
   local esphome_version config_hash
   esphome_version=$(esphome version 2>/dev/null | grep -o '[0-9][0-9]*\.[0-9.]*' | head -1) || return 0
@@ -6083,29 +6084,25 @@ main() {
     debug "Restored .iotstack symlink: $iotstack_link -> $iotstack_home"
   fi
 
-  # Ensure symlink from yamls/.esphome -> ~/.iotstack/.esphome exists, so
-  # ESPHome's build cache (fonts, .esphome/build/<role>/) lives under the
-  # centralized iotstack home instead of inside the repo checkout.
-  local esphome_link="${YAMLS_DIR}/.esphome"
-  local esphome_home="${iotstack_home}/.esphome"
-
-  if [[ ! -L "$esphome_link" ]] || [[ "$(readlink "$esphome_link")" != "$esphome_home" ]]; then
-    if [[ -d "$esphome_link" && ! -L "$esphome_link" ]]; then
-      # Real build cache from before the symlink existed -- migrate it
-      # instead of discarding it, unless a cache is already there.
-      mkdir -p "$(dirname "$esphome_home")"
-      if [[ ! -e "$esphome_home" ]]; then
-        mv "$esphome_link" "$esphome_home"
-      else
-        rm -rf "$esphome_link"
-      fi
+  # ESPHome's build cache (fonts, .esphome/build/<role>/) is redirected via
+  # ESPHOME_DATA_DIR (see config.sh) to live under yamls/.iotstack/.esphome --
+  # i.e. through the symlink above, not a second dedicated one. Clean up any
+  # leftover yamls/.esphome from before that redirect existed.
+  local esphome_legacy="${YAMLS_DIR}/.esphome"
+  if [[ -L "$esphome_legacy" ]]; then
+    # Obsolete symlink from an earlier approach; the real data already lives
+    # under $iotstack_home/.esphome (reachable via yamls/.iotstack/.esphome).
+    rm -f "$esphome_legacy"
+  elif [[ -d "$esphome_legacy" ]]; then
+    # Real build cache predating any redirect -- migrate instead of discarding.
+    local esphome_home="${iotstack_home}/.esphome"
+    mkdir -p "$(dirname "$esphome_home")"
+    if [[ ! -e "$esphome_home" ]]; then
+      mv "$esphome_legacy" "$esphome_home"
+      debug "Migrated legacy yamls/.esphome build cache to $esphome_home"
     else
-      # Remove broken/wrong symlink if it exists
-      [[ -e "$esphome_link" || -L "$esphome_link" ]] && rm -f "$esphome_link"
+      rm -rf "$esphome_legacy"
     fi
-    mkdir -p "$esphome_home"
-    ln -s "$esphome_home" "$esphome_link"
-    debug "Restored .esphome symlink: $esphome_link -> $esphome_home"
   fi
 
   _ensure_chip_tool_storage
