@@ -6083,6 +6083,31 @@ main() {
     debug "Restored .iotstack symlink: $iotstack_link -> $iotstack_home"
   fi
 
+  # Ensure symlink from yamls/.esphome -> ~/.iotstack/.esphome exists, so
+  # ESPHome's build cache (fonts, .esphome/build/<role>/) lives under the
+  # centralized iotstack home instead of inside the repo checkout.
+  local esphome_link="${YAMLS_DIR}/.esphome"
+  local esphome_home="${iotstack_home}/.esphome"
+
+  if [[ ! -L "$esphome_link" ]] || [[ "$(readlink "$esphome_link")" != "$esphome_home" ]]; then
+    if [[ -d "$esphome_link" && ! -L "$esphome_link" ]]; then
+      # Real build cache from before the symlink existed -- migrate it
+      # instead of discarding it, unless a cache is already there.
+      mkdir -p "$(dirname "$esphome_home")"
+      if [[ ! -e "$esphome_home" ]]; then
+        mv "$esphome_link" "$esphome_home"
+      else
+        rm -rf "$esphome_link"
+      fi
+    else
+      # Remove broken/wrong symlink if it exists
+      [[ -e "$esphome_link" || -L "$esphome_link" ]] && rm -f "$esphome_link"
+    fi
+    mkdir -p "$esphome_home"
+    ln -s "$esphome_home" "$esphome_link"
+    debug "Restored .esphome symlink: $esphome_link -> $esphome_home"
+  fi
+
   _ensure_chip_tool_storage
 
   # Only verify WiFi credentials if it's an actual operation (not help)
