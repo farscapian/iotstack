@@ -2213,7 +2213,7 @@ _resolve_flash_tty_for_role() {
   source "${SCRIPT_DIR}/scripts/yaml-info.sh"
 
   if resolved=$(esp_tty_for_role "$role" 2>/dev/null); then
-    info "Resolved role '$role' to $resolved (NVS device_role)"
+    info "Resolved role '$role' to $resolved (NVS device_role)" >&2
     printf '%s\n' "$resolved"
     return 0
   fi
@@ -2227,7 +2227,7 @@ _resolve_flash_tty_for_role() {
     done < <(esp_serial_ports)
     if [[ ${#variant_ports[@]} -eq 1 ]]; then
       resolved="${variant_ports[0]}"
-      info "Resolved role '$role' to $resolved (${expected_variant}; NVS device_role not set)"
+      info "Resolved role '$role' to $resolved (${expected_variant}; NVS device_role not set)" >&2
       printf '%s\n' "$resolved"
       return 0
     fi
