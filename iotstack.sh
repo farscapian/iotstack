@@ -5501,6 +5501,60 @@ Note: Use 'iotstack update $device' for OTA flashing to devices already on netwo
 
 # -- Main ---------------------------------------------------------------------
 
+verify_common_pass_secrets() {
+  # Every invocation (except read-only/informational commands -- see main())
+  # checks ha_url, ha_token, and every other item already stored under
+  # iotstack/common/ for existence and a non-placeholder value, prompting to
+  # fill in anything missing. Reuses ensure_pass_secret so prompting, the
+  # double-echo `pass insert`, and the CONFIGURE_ME placeholder check stay in
+  # one place (scripts/ensure-integration-secrets.sh) instead of being
+  # reimplemented here.
+  command -v pass &>/dev/null || err "pass is required but not installed"
+
+  # shellcheck source=scripts/ensure-integration-secrets.sh
+  source "${SCRIPT_DIR}/scripts/ensure-integration-secrets.sh"
+
+  HA_URL="$(ensure_pass_secret \
+    "iotstack/common/ha_url" \
+    "Home Assistant URL (e.g. homeassistant.local:8123)" \
+    "false" "true")"
+  HA_TOKEN="$(ensure_pass_secret \
+    "iotstack/common/ha_token" \
+    "Home Assistant long-lived access token" \
+    "true" "true")"
+  export HA_URL HA_TOKEN
+
+  # Human-friendly prompts for keys this codebase already knows about. Any
+  # other file discovered under iotstack/common/ that is missing/CONFIGURE_ME
+  # falls back to a generic prompt so newly added keys are covered without a
+  # code change here.
+  local -A known_prompts=(
+    [wifi_ssid]="WiFi network name (SSID)"
+    [wifi_password]="WiFi password"
+    [thread_tlv]="Thread operational dataset TLV (hex string from HA Settings -> Thread)"
+  )
+  local -A known_secret=(
+    [wifi_ssid]="false"
+    [wifi_password]="true"
+    [thread_tlv]="true"
+  )
+
+  local common_dir="${PASSWORD_STORE_DIR}/iotstack/common"
+  [[ -d "$common_dir" ]] || return 0
+
+  local file key value prompt_text is_secret
+  while IFS= read -r file; do
+    key="$(basename "$file" .gpg)"
+    [[ "$key" == "ha_url" || "$key" == "ha_token" ]] && continue
+
+    value="$(get_pass_secret "iotstack/common/${key}")"
+    is_unconfigured "$value" || continue
+
+    prompt_text="${known_prompts[$key]:-Value for iotstack/common/${key}}"
+    is_secret="${known_secret[$key]:-true}"
+    ensure_pass_secret "iotstack/common/${key}" "$prompt_text" "$is_secret" "true" >/dev/null
+  done < <(find "$common_dir" -maxdepth 1 -name '*.gpg' 2>/dev/null | sort)
+}
 
 verify_wifi_credentials() {
   # Check pass store for WiFi credentials
@@ -6126,6 +6180,19 @@ main() {
   fi
 
   _ensure_chip_tool_storage
+
+  # Every invocation checks ha_url/ha_token and the rest of iotstack/common/
+  # for existence and non-placeholder values, prompting to fill in anything
+  # missing. Read-only/informational commands are exempt so they stay usable
+  # without a full HA/Thread/WiFi setup (e.g. 'iotstack help').
+  case "$command" in
+    help|devices|roles|logs|ps) ;;
+    *)
+      if [[ "${2:-}" != "help" ]]; then
+        verify_common_pass_secrets
+      fi
+      ;;
+  esac
 
   # Only verify WiFi credentials if it's an actual operation (not help)
   if [[ "${2:-}" != "help" ]]; then
