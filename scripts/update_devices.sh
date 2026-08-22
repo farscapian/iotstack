@@ -1003,42 +1003,51 @@ if [[ "$REASSIGN_MODE" == true ]]; then
   # Reassign always OTA's from bootstrap, which advertises "$(iotstack_bootstrap_mdns_service)" only.
   # Dry-run may run before the device has been switched to bootstrap, so also scan
   # production mDNS to allow compile/plan when the device is still on production.
-  if [[ "$DRY_RUN" == true ]]; then
-    _mdns_prod_raw=$(mktemp)
-    _mdns_boot_raw=$(mktemp)
-    avahi-browse -t -r _esphomelib._tcp 2>/dev/null >"$_mdns_prod_raw" &
-    _mdns_prod_pid=$!
-    avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null >"$_mdns_boot_raw" &
-    _mdns_boot_pid=$!
-    wait "$_mdns_prod_pid" || true
-    wait "$_mdns_boot_pid" || true
-    RAW=$(cat "$_mdns_prod_raw" "$_mdns_boot_raw")
-    rm -f "$_mdns_prod_raw" "$_mdns_boot_raw"
-  else
-    RAW=$(avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null || true)
-  fi
-else
-  RAW=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null || true)
-fi
-
-# Extract device hostnames from mDNS
-if [[ "$REASSIGN_MODE" == true ]]; then
-  # In reassign mode, discover ALL devices then filter by MAC suffix
-  ALL_DEVICES=$(echo "$RAW" \
-    | grep "^= " \
-    | awk '{print $4}' \
-    | sort -u || true)
-
+  #
+  # Reassign runs right after an NVS-triggered reboot (iotstack.sh confirms the
+  # device is back up via a direct mDNS query before calling us), but the
+  # avahi-daemon service cache that `avahi-browse -t` reads from can lag a few
+  # seconds behind that -- it depends on the daemon having already observed the
+  # device's post-reboot announcement. Retry a few times before giving up.
   HOSTNAMES=""
-  for mac in "${REASSIGN_MACS[@]}"; do
-    # Match devices ending with the MAC suffix (strip special chars, just use the MAC)
-    matching=$(echo "$ALL_DEVICES" | grep "${mac}" || true)
-    if [[ -n "$matching" ]]; then
-      HOSTNAMES+="$matching"$'\n'
+  for _reassign_attempt in 1 2 3 4 5; do
+    if [[ "$DRY_RUN" == true ]]; then
+      _mdns_prod_raw=$(mktemp)
+      _mdns_boot_raw=$(mktemp)
+      avahi-browse -t -r _esphomelib._tcp 2>/dev/null >"$_mdns_prod_raw" &
+      _mdns_prod_pid=$!
+      avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null >"$_mdns_boot_raw" &
+      _mdns_boot_pid=$!
+      wait "$_mdns_prod_pid" || true
+      wait "$_mdns_boot_pid" || true
+      RAW=$(cat "$_mdns_prod_raw" "$_mdns_boot_raw")
+      rm -f "$_mdns_prod_raw" "$_mdns_boot_raw"
+    else
+      RAW=$(avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null || true)
+    fi
+
+    # In reassign mode, discover ALL devices then filter by MAC suffix
+    ALL_DEVICES=$(echo "$RAW" \
+      | grep "^= " \
+      | awk '{print $4}' \
+      | sort -u || true)
+
+    for mac in "${REASSIGN_MACS[@]}"; do
+      # Match devices ending with the MAC suffix (strip special chars, just use the MAC)
+      matching=$(echo "$ALL_DEVICES" | grep "${mac}" || true)
+      if [[ -n "$matching" ]]; then
+        HOSTNAMES+="$matching"$'\n'
+      fi
+    done
+    HOSTNAMES=$(echo "$HOSTNAMES" | sed '/^$/d' | sort -u)
+    [[ -n "$HOSTNAMES" ]] && break
+    if (( _reassign_attempt < 5 )); then
+      log "No matching devices in avahi cache yet (attempt ${_reassign_attempt}/5); retrying..."
+      sleep 3
     fi
   done
-  HOSTNAMES=$(echo "$HOSTNAMES" | sed '/^$/d' | sort -u)
 else
+  RAW=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null || true)
   # Normal mode: Match by device_name to avoid cross-config flashing
   HOSTNAMES=$(echo "$RAW" \
     | grep "^= " \
