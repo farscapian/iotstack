@@ -1006,11 +1006,13 @@ if [[ "$REASSIGN_MODE" == true ]]; then
   #
   # Reassign runs right after an NVS-triggered reboot (iotstack.sh confirms the
   # device is back up via a direct mDNS query before calling us), but the
-  # avahi-daemon service cache that `avahi-browse -t` reads from can lag a few
-  # seconds behind that -- it depends on the daemon having already observed the
-  # device's post-reboot announcement. Retry a few times before giving up.
+  # avahi-daemon service cache that `avahi-browse -t` reads from can lag well
+  # behind that -- it depends on the daemon having already observed the
+  # device's post-reboot announcement, and 15s (5 attempts x 3s) has been
+  # observed to be too short. Retry for up to ~30s before giving up, matching
+  # the 30s budget _wait_for_ota_service already allows for the same reboot.
   HOSTNAMES=""
-  for _reassign_attempt in 1 2 3 4 5; do
+  for _reassign_attempt in 1 2 3 4 5 6 7 8 9 10; do
     if [[ "$DRY_RUN" == true ]]; then
       _mdns_prod_raw=$(mktemp)
       _mdns_boot_raw=$(mktemp)
@@ -1041,8 +1043,8 @@ if [[ "$REASSIGN_MODE" == true ]]; then
     done
     HOSTNAMES=$(echo "$HOSTNAMES" | sed '/^$/d' | sort -u)
     [[ -n "$HOSTNAMES" ]] && break
-    if (( _reassign_attempt < 5 )); then
-      log "No matching devices in avahi cache yet (attempt ${_reassign_attempt}/5); retrying..."
+    if (( _reassign_attempt < 10 )); then
+      log "No matching devices in avahi cache yet (attempt ${_reassign_attempt}/10); retrying..."
       sleep 3
     fi
   done
