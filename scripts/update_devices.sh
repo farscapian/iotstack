@@ -36,6 +36,7 @@ COMPILE_YAML=""
 COMPILE_LOG=""
 
 cleanup() {
+  local exit_code=$?
   # Kill all background jobs (OTA uploads)
   jobs -p | xargs -r kill 2>/dev/null || true
   iotstack_cleanup_generated_yamls
@@ -44,6 +45,15 @@ cleanup() {
   fi
   if [[ -n "${COMPILE_LOG}" && -f "${COMPILE_LOG}" ]]; then
     rm -f "${COMPILE_LOG}"
+  fi
+  # On failure with --create-log, archive the temp compile YAML before
+  # iotstack_cleanup_compile_yaml removes it below, so it can be inspected
+  # post-mortem instead of vanishing with the rest of the throwaway mktemp file.
+  if [[ "$exit_code" -ne 0 && "${IOTSTACK_CREATE_LOG:-0}" -eq 1 \
+        && -n "${COMPILE_YAML:-}" && -f "${COMPILE_YAML:-}" ]]; then
+    local archive_dir="${LOG_ROOT:-${HOME}/.iotstack/logs}"
+    mkdir -p "$archive_dir"
+    cp "$COMPILE_YAML" "${archive_dir}/${RUN_TS:-$(date '+%Y%m%d_%H%M%S')}.failed-compile-$(basename "$COMPILE_YAML")"
   fi
   if [[ -n "${ORIGINAL_YAML_FILE:-}" ]]; then
     iotstack_cleanup_compile_yaml "${COMPILE_YAML:-}" "$ORIGINAL_YAML_FILE"
@@ -961,10 +971,10 @@ fi
 log "Using esphome: ${ESPHOME_BIN}"
 
 # -- Parse yaml project info (display only) ----------------------------------
-EXPECTED_PROJECT=$(awk '/^\s+project:/{found=1; next} found && /name:/{print; found=0}' "$YAML_FILE" \
+EXPECTED_PROJECT=$(awk '/^[[:space:]]+project:/{found=1; next} found && /name:/{print; found=0}' "$YAML_FILE" \
   | sed 's/.*name:[[:space:]]*//' | tr -d '"')
 EXPECTED_PROJECT=$(resolve_subs "$EXPECTED_PROJECT")
-EXPECTED_VERSION=$(awk '/^\s+project:/{found=1; next} found && /version:/{print; found=0}' "$YAML_FILE" \
+EXPECTED_VERSION=$(awk '/^[[:space:]]+project:/{found=1; next} found && /version:/{print; found=0}' "$YAML_FILE" \
   | sed 's/.*version:[[:space:]]*//' | tr -d '"')
 EXPECTED_VERSION=$(resolve_subs "$EXPECTED_VERSION")
 
@@ -972,7 +982,7 @@ if [[ -n "$EXPECTED_PROJECT" ]]; then log "Project : ${EXPECTED_PROJECT}"; fi
 if [[ -n "$EXPECTED_VERSION" ]]; then log "Version : ${EXPECTED_VERSION}"; fi
 
 # -- Discover devices ---------------------------------------------------------
-BASE_NAME=$(awk '/^esphome:/{found=1; next} found && /^\s+name:/{print; found=0}' "$YAML_FILE" \
+BASE_NAME=$(awk '/^esphome:/{found=1; next} found && /^[[:space:]]+name:/{print; found=0}' "$YAML_FILE" \
   | sed 's/.*name:[[:space:]]*//' | tr -d '"')
 BASE_NAME=$(resolve_subs "$BASE_NAME")
 

@@ -88,7 +88,7 @@ yaml_friendly_name_from_file() {
   fi
   friendly=$(yaml_resolve_value "$yaml_file" "$friendly")
   if [[ -z "$friendly" || "$friendly" =~ \$\{ ]]; then
-    friendly=$(awk '/^esphome:/{found=1; next} found && /^\s+name:/{print; found=0}' "$yaml_file" \
+    friendly=$(awk '/^esphome:/{found=1; next} found && /^[[:space:]]+name:/{print; found=0}' "$yaml_file" \
       | sed 's/.*name:[[:space:]]*//' | tr -d '"')
     friendly=$(yaml_resolve_value "$yaml_file" "$friendly")
   fi
