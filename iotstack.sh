@@ -458,6 +458,7 @@ confirm_multi_device() {
 
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 SCRIPT_DIR="$(dirname "$SCRIPT_PATH")"
+HELP_DIR="${SCRIPT_DIR}/docs/help"
 
 # Source centralized configuration (now under scripts/). config.sh exports
 # SCRIPTS_DIR, PROJECT_ROOT, ROLES_CONF and UPDATE_SCRIPT.
@@ -853,34 +854,34 @@ run_parallel_jobs() {
 # -- Subcommands --------------------------------------------------------------
 
 usage() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack.txt"
+  cat "${HELP_DIR}/iotstack.txt"
 }
 
 help_update() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-update.txt"
+  cat "${HELP_DIR}/iotstack-update.txt"
 }
 
 help_verify() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-verify.txt"
+  cat "${HELP_DIR}/iotstack-verify.txt"
 }
 
 help_verify_flash() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-verify-flash.txt"
+  cat "${HELP_DIR}/iotstack-verify-flash.txt"
 }
 
 help_devices() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-devices.txt"
+  cat "${HELP_DIR}/iotstack-devices.txt"
 }
 
 help_restart() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-restart.txt"
+  cat "${HELP_DIR}/iotstack-restart.txt"
 }
 
 help_roles() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-roles.txt"
+  cat "${HELP_DIR}/iotstack-roles.txt"
 }
 
-_ROLE_HELP_DIR="${SCRIPT_DIR}/docs/help/roles"
+_ROLE_HELP_DIR="${HELP_DIR}/roles"
 
 role_help_file() {
   printf '%s/%s.txt' "$_ROLE_HELP_DIR" "$1"
@@ -969,31 +970,31 @@ EOF
 }
 
 help_reassign() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-reassign.txt"
+  cat "${HELP_DIR}/iotstack-reassign.txt"
 }
 
 help_flash() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-flash.txt"
+  cat "${HELP_DIR}/iotstack-flash.txt"
 }
 
 help_logs() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-logs.txt"
+  cat "${HELP_DIR}/iotstack-logs.txt"
 }
 
 help_query() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-query.txt"
+  cat "${HELP_DIR}/iotstack-query.txt"
 }
 
 help_secret() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-secret.txt"
+  cat "${HELP_DIR}/iotstack-secret.txt"
 }
 
 help_rotate_secrets() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-rotate-secrets.txt"
+  cat "${HELP_DIR}/iotstack-rotate-secrets.txt"
 }
 
 help_device() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-device.txt"
+  cat "${HELP_DIR}/iotstack-device.txt"
 }
 
 _iotstack_require_jq() {
@@ -5817,7 +5818,7 @@ cmd_matter_decode_qr() {
   # Decode a Matter QR image and print the MT: payload to stdout.
   # Usage: iotstack matter decode-qr <path-to-image>
   if [[ "${1:-}" == "help" ]]; then
-    cat "${SCRIPT_DIR}/docs/help/iotstack-matter-decode-qr.txt"
+    cat "${HELP_DIR}/iotstack-matter-decode-qr.txt"
     return 0
   fi
 
@@ -5832,7 +5833,7 @@ cmd_matter_mdns() {
   # Show operational mDNS for one chip-tool fabric node (not all HA Matter devices).
   # Usage: iotstack matter mdns [node-id]
   if [[ "${1:-}" == "help" ]]; then
-    cat "${SCRIPT_DIR}/docs/help/iotstack-matter-mdns.txt"
+    cat "${HELP_DIR}/iotstack-matter-mdns.txt"
     return 0
   fi
 
@@ -5903,21 +5904,21 @@ help_matter() {
     commission) help_matter_commission ;;
     configure-trust-store) help_matter_configure_trust_store ;;
     decode-qr) help_matter_decode_qr ;;
-    mdns) cat "${SCRIPT_DIR}/docs/help/iotstack-matter-mdns.txt" ;;
-    *) cat "${SCRIPT_DIR}/docs/help/iotstack-matter.txt" ;;
+    mdns) cat "${HELP_DIR}/iotstack-matter-mdns.txt" ;;
+    *) cat "${HELP_DIR}/iotstack-matter.txt" ;;
   esac
 }
 
 help_matter_commission() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-matter-commission.txt"
+  cat "${HELP_DIR}/iotstack-matter-commission.txt"
 }
 
 help_matter_configure_trust_store() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-matter-configure-trust-store.txt"
+  cat "${HELP_DIR}/iotstack-matter-configure-trust-store.txt"
 }
 
 help_matter_decode_qr() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-matter-decode-qr.txt"
+  cat "${HELP_DIR}/iotstack-matter-decode-qr.txt"
 }
 
 help_commission() {
@@ -5931,7 +5932,7 @@ cmd_otbr() {
 }
 
 help_otbr() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-otbr.txt"
+  cat "${HELP_DIR}/iotstack-otbr.txt"
 }
 
 _cmd_clean_remove_path() {
@@ -6004,15 +6005,15 @@ cmd_clean() {
 }
 
 help_clean() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-clean.txt"
+  cat "${HELP_DIR}/iotstack-clean.txt"
 }
 
 help_ps() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-ps.txt"
+  cat "${HELP_DIR}/iotstack-ps.txt"
 }
 
 help_kill() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-kill.txt"
+  cat "${HELP_DIR}/iotstack-kill.txt"
 }
 
 cmd_kill() {
@@ -6054,7 +6055,7 @@ cmd_ps() {
 }
 
 help_tests() {
-  cat "${SCRIPT_DIR}/docs/help/iotstack-tests.txt"
+  cat "${HELP_DIR}/iotstack-tests.txt"
 }
 
 cmd_tests() {
