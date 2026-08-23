@@ -5540,12 +5540,9 @@ verify_common_pass_secrets() {
     else
       PERFORM_HA_DEVICE_REGISTRATION=0
     fi
-    {
-      echo ""
-      echo "# Auto-register production devices in Home Assistant after flash/update (0=off, 1=on)"
-      echo "# Uses the device-specific api_encryption_key (derived from pass + MAC) via WebSocket."
-      echo "PERFORM_HA_DEVICE_REGISTRATION=${PERFORM_HA_DEVICE_REGISTRATION}"
-    } >> "$ENV_FILE"
+    # .env files hold values only -- comments belong in .env.example. See
+    # PERFORM_HA_DEVICE_REGISTRATION in .env.example for what this controls.
+    echo "PERFORM_HA_DEVICE_REGISTRATION=${PERFORM_HA_DEVICE_REGISTRATION}" >> "$ENV_FILE"
     ok "Set PERFORM_HA_DEVICE_REGISTRATION=${PERFORM_HA_DEVICE_REGISTRATION} in $ENV_FILE"
     export PERFORM_HA_DEVICE_REGISTRATION
   fi
