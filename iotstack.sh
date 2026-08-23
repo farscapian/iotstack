@@ -5522,15 +5522,30 @@ verify_common_pass_secrets() {
   # shellcheck source=scripts/ensure-integration-secrets.sh
   source "${SCRIPT_DIR}/scripts/ensure-integration-secrets.sh"
 
-  HA_URL="$(ensure_pass_secret \
-    "iotstack/common/ha_url" \
-    "Home Assistant URL (e.g. homeassistant.local:8123)" \
-    "false" "true")"
-  HA_TOKEN="$(ensure_pass_secret \
-    "iotstack/common/ha_token" \
-    "Home Assistant long-lived access token" \
-    "true" "true")"
-  export HA_URL HA_TOKEN
+  # Ask once whether this setup uses Home Assistant at all, so a "no" skips
+  # the URL/token prompts entirely instead of forcing input for an
+  # integration the user doesn't want. The answer is sticky in pass; reset
+  # iotstack/common/ha_enabled (CONFIGURE_ME) to be asked again.
+  local ha_enabled
+  ha_enabled="$(get_pass_secret "iotstack/common/ha_enabled")"
+  if is_unconfigured "$ha_enabled"; then
+    local answer
+    answer="$(prompt_value "Do you want to integrate this device with Home Assistant? (y/n)" false)"
+    [[ "$answer" =~ ^[Yy] ]] && ha_enabled="true" || ha_enabled="false"
+    store_pass_secret "iotstack/common/ha_enabled" "$ha_enabled"
+  fi
+
+  if [[ "$ha_enabled" == "true" ]]; then
+    # Prompts for token then URL (if unset) and live-tests the WebSocket
+    # connection right here, reprompting for a bad URL/token in place --
+    # fail fast, before any build/flash work starts, instead of surfacing a
+    # raw connection error deep into the run once HA is actually used.
+    ensure_ha_integration
+  else
+    HA_URL=""
+    HA_TOKEN=""
+    export HA_URL HA_TOKEN
+  fi
 
   # Human-friendly prompts for keys this codebase already knows about. Any
   # other file discovered under iotstack/common/ that is missing/CONFIGURE_ME
@@ -5553,7 +5568,7 @@ verify_common_pass_secrets() {
   local file key value prompt_text is_secret
   while IFS= read -r file; do
     key="$(basename "$file" .gpg)"
-    [[ "$key" == "ha_url" || "$key" == "ha_token" ]] && continue
+    [[ "$key" == "ha_url" || "$key" == "ha_token" || "$key" == "ha_enabled" ]] && continue
 
     value="$(get_pass_secret "iotstack/common/${key}")"
     is_unconfigured "$value" || continue
