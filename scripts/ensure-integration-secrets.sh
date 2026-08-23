@@ -212,13 +212,18 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     url="$(printf '%s' "$url" | xargs)"
     url="${url%/}"
 
-    # Accept common bare host:port input (e.g. homeassistant.local:8123).
-    if [[ ! "$url" =~ ^https?:// ]]; then
-      if [[ "$url" =~ ^(localhost|127\.0\.0\.1)(:|/|$) ]]; then
-        url="http://${url}"
-      else
-        url="https://${url}"
-      fi
+    # The prompt only ever asks for bare host:port (e.g. homeassistant.local:8123),
+    # so a scheme the user typed anyway is not trustworthy -- people paste
+    # "http://" out of habit even when the real host needs https. Strip
+    # whatever was given and always re-derive it from the host, same as
+    # schemeless input.
+    url="${url#http://}"
+    url="${url#https://}"
+
+    if [[ "$url" =~ ^(localhost|127\.0\.0\.1)(:|/|$) ]]; then
+      url="http://${url}"
+    else
+      url="https://${url}"
     fi
 
     # Base URL only -- strip any path the user may have pasted.
