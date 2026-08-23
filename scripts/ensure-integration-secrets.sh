@@ -162,6 +162,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     local prompt_text="$1"
     local is_secret="${2:-false}"
     local value=""
+    local rc=0
 
     # Record that a prompt happened (never the value) -- an interactive prompt is
     # otherwise invisible in the session log, which is what made a double-prompt
@@ -171,12 +172,17 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     echo "" >&2
     echo -ne "${YLW}[PROMPT]${RST} ${prompt_text}: " >&2
     if [[ "$is_secret" == "true" ]]; then
-      read -rs value </dev/tty 2>/dev/null || value=""
+      read -rs value </dev/tty 2>/dev/null && rc=0 || rc=$?
       echo >&2
     else
-      read -r value </dev/tty 2>/dev/null || value=""
+      read -r value </dev/tty 2>/dev/null && rc=0 || rc=$?
     fi
+    # rc is 0 whenever /dev/tty was readable, even for a blank Enter -- read
+    # only fails (rc != 0) when there is no controlling terminal to read from
+    # at all. Callers use this to tell "user submitted nothing" (retry) apart
+    # from "can't prompt here" (fail fast) instead of treating both the same.
     printf '%s' "$value" | xargs
+    return "$rc"
   }
 
   ensure_pass_secret() {
@@ -195,14 +201,28 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     value="$(iotstack_pass_common_read "$key")" || value=""
 
     if is_unconfigured "$value"; then
-      value="$(prompt_value "$prompt_text" "$is_secret")"
-      if [[ -z "$value" ]]; then
-        if [[ "$required" == "true" ]]; then
-          _ies_err "Credential required: $pass_path"
+      local attempt=1
+      local max_attempts=3
+      local rc=0
+      while :; do
+        value="$(prompt_value "$prompt_text" "$is_secret")"
+        rc=$?
+        if [[ $rc -ne 0 ]]; then
+          _ies_err "Credential required: $pass_path (no controlling terminal available to prompt for it)"
         fi
-        echo ""
-        return 0
-      fi
+        if [[ -n "$value" ]]; then
+          break
+        fi
+        if [[ "$required" != "true" ]]; then
+          echo ""
+          return 0
+        fi
+        if (( attempt >= max_attempts )); then
+          _ies_err "Credential required: $pass_path (left blank after ${max_attempts} attempts)"
+        fi
+        attempt=$((attempt + 1))
+        _ies_warn "Value cannot be blank -- try again (attempt ${attempt}/${max_attempts})"
+      done
       if [[ "$key" == "ha_url" ]]; then
         value="$(normalize_ha_url "$value")"
         validate_ha_url "$value"
