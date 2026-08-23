@@ -5363,6 +5363,7 @@ _flash_production_smart() {
           fi
           _flash_ota_step_begin
           if _flash_invoke_update "$device_mac" "$yaml_path" "$device" "$tty_device"; then
+            _ha_after_production_online "$yaml_path" "$prod_hostname"
             ok "Production firmware setup complete!"
             return
           fi
@@ -5448,6 +5449,7 @@ _flash_production_smart() {
         fi
         _flash_invoke_update "$device_mac" "$yaml_path" "$device" "$tty_device" \
           || err "iotstack update failed"
+        _ha_after_production_online "$yaml_path" "$prod_hostname"
         ok "Production firmware setup complete!"
         return
       fi
@@ -5490,6 +5492,7 @@ _flash_production_smart() {
 
       _flash_invoke_update "$device_mac" "$yaml_path" "$device" "$tty_device" \
         || err "iotstack update failed (device may still be booting; retry: iotstack update ${device} ${device_mac})"
+      _ha_after_production_online "$yaml_path" "$prod_hostname"
     fi
 
     ok "Production firmware setup complete!"
