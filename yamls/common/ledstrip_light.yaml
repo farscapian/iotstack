@@ -10,13 +10,13 @@
 #
 # esp32_rmt_led_strip is the native esp-idf addressable-LED driver. (neopixelbus
 # is Arduino-only and was deprecated for ESP32 in ESPHome 2026.6 -- not used here.)
-# is_rgbw: true drives the 4th (white) channel; rgb_order is the RGB part only
-# (SK6812 = GRB + W).
+# is_rgbw: true drives the 4th (white) channel; channel_colors is the RGB part
+# only (SK6812 = GRB + W).
 
 light:
   - platform: esp32_rmt_led_strip
     chipset: SK6812
-    rgb_order: GRB
+    channel_colors: GRB
     is_rgbw: true
     pin: ${strip_data_pin}
     num_leds: ${strip_num_leds}

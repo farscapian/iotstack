@@ -298,7 +298,7 @@ light:
     name: "Status LED"
     pin: GPIO1
     num_leds: 1
-    rgb_order: GRB
+    channel_colors: GRB
     chipset: WS2812
     restore_mode: ALWAYS_OFF
     effects:
