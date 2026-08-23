@@ -389,6 +389,23 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     if [[ -n "$HA_URL" && -n "$HA_TOKEN" ]]; then
       return 0
     fi
+
+    # Registration is on and exactly one of the two credentials is on file --
+    # a broken/partial setup, not a deliberate opt-out (that's the branch
+    # above, which clears both and returns before reaching here). The
+    # mandatory path (ensure_ha_integration, run once per iotstack
+    # invocation ahead of these best-effort lookups) is what normally fixes
+    # this by prompting; if a caller still finds it broken, say so once
+    # instead of silently skipping the way a genuine opt-out would.
+    if [[ -z "${_IOTSTACK_HA_PARTIAL_WARNED:-}" && ( -n "$HA_URL" || -n "$HA_TOKEN" ) ]]; then
+      _IOTSTACK_HA_PARTIAL_WARNED=1
+      if [[ -z "$HA_URL" ]]; then
+        _ies_warn "PERFORM_HA_DEVICE_REGISTRATION=1 and ha_token is set, but ha_url is missing -- skipping this HA step. Run 'pass insert iotstack/default/common/ha_url' or re-run flash to be prompted."
+      else
+        _ies_warn "PERFORM_HA_DEVICE_REGISTRATION=1 and ha_url is set, but ha_token is missing -- skipping this HA step. Run 'pass insert iotstack/default/common/ha_token' or re-run flash to be prompted."
+      fi
+    fi
+
     return 1
   }
 
