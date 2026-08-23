@@ -107,6 +107,13 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     local test_output=""
 
     while true; do
+      local resolved
+      if resolved="$(resolve_ha_url_scheme "$HA_URL")" && [[ -n "$resolved" && "$resolved" != "$HA_URL" ]]; then
+        _ies_info "Resolved ${HA_URL} -> ${resolved} (redirect)"
+        HA_URL="$resolved"
+        store_pass_secret "$(iotstack_pass_common_path ha_url)" "$HA_URL"
+        export HA_URL
+      fi
       _ies_info "Testing Home Assistant WebSocket connection to ${HA_URL}..."
       if test_output="$(test_ha_websocket "$HA_URL" "$HA_TOKEN" 2>&1)"; then
         _ies_ok "Home Assistant connection verified (${test_output})"
@@ -212,19 +219,14 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     url="$(printf '%s' "$url" | xargs)"
     url="${url%/}"
 
-    # The prompt only ever asks for bare host:port (e.g. homeassistant.local:8123),
-    # so a scheme the user typed anyway is not trustworthy -- people paste
-    # "http://" out of habit even when the real host needs https. Strip
-    # whatever was given and always re-derive it from the host, same as
-    # schemeless input.
+    # The prompt only ever asks for bare host:port (e.g. homeassistant.local:8123).
+    # Don't guess http vs https from the hostname -- strip whatever scheme the
+    # user typed and always start on http://. The real scheme is discovered
+    # empirically by resolve_ha_url_scheme() following redirects when the
+    # connection is actually tested, not assumed here.
     url="${url#http://}"
     url="${url#https://}"
-
-    if [[ "$url" =~ ^(localhost|127\.0\.0\.1)(:|/|$) ]]; then
-      url="http://${url}"
-    else
-      url="https://${url}"
-    fi
+    url="http://${url}"
 
     # Base URL only -- strip any path the user may have pasted.
     if [[ "$url" =~ ^(https?://[^/?#]+) ]]; then
@@ -232,6 +234,34 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     fi
 
     printf '%s' "$url"
+  }
+
+  resolve_ha_url_scheme() {
+    # Probe a base URL with a plain HTTP request, following any redirects,
+    # and print the scheme+host:port it lands on. A Home Assistant instance
+    # behind a TLS-terminating reverse proxy commonly redirects a plain
+    # http:// request straight to https:// on the same host -- this finds
+    # that empirically instead of guessing from the hostname. If nothing
+    # answers on http at all (e.g. HA's own SSL is configured directly on
+    # the port, with no plain-http listener), fall back to probing https
+    # directly. -k: this step is only for locating the right scheme/host,
+    # not for validating certificate trust -- the actual WebSocket
+    # connection is still made (and TLS handled) afterward.
+    local base_url="$1"
+    local host_port="${base_url#*://}"
+    local effective rc=0
+
+    effective="$(curl -s -o /dev/null -w '%{url_effective}' -L -k \
+        --max-redirs 10 --connect-timeout 5 --max-time 10 \
+        "http://${host_port}" 2>/dev/null)" || rc=$?
+    if [[ $rc -ne 0 || -z "$effective" ]]; then
+      rc=0
+      effective="$(curl -s -o /dev/null -w '%{url_effective}' -L -k \
+          --max-redirs 10 --connect-timeout 5 --max-time 10 \
+          "https://${host_port}" 2>/dev/null)" || rc=$?
+    fi
+    [[ $rc -eq 0 && "$effective" =~ ^(https?://[^/?#]+) ]] || return 1
+    printf '%s' "${BASH_REMATCH[1]}"
   }
 
   validate_ha_url() {
