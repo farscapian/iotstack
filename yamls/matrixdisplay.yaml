@@ -132,17 +132,20 @@ font:
 # To add an icon: drop the .svg/.png in yamls/images/, add three entries here
 # (_s/_m/_l), then add a case to icon_for() and a token to ICON_TOKENS below.
 image:
-  - file: images/bitcoin.svg
+  - platform: file
+    file: images/bitcoin.svg
     id: icon_btc_s
     type: RGB565
     transparency: alpha_channel
     resize: 8x8
-  - file: images/bitcoin.svg
+  - platform: file
+    file: images/bitcoin.svg
     id: icon_btc_m
     type: RGB565
     transparency: alpha_channel
     resize: 14x14
-  - file: images/bitcoin.svg
+  - platform: file
+    file: images/bitcoin.svg
     id: icon_btc_l
     type: RGB565
     transparency: alpha_channel
