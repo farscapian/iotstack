@@ -22,6 +22,8 @@ iotstack_parse_global_argv() {
   VERBOSE=0
   QUIET=0
   unset IOTSTACK_LOG_ID 2>/dev/null || true
+  unset IOTSTACK_LOG_TS 2>/dev/null || true
+  unset IOTSTACK_LOG_SESSION_DIR 2>/dev/null || true
   unset IOTSTACK_COMPILATION_OUTPUT 2>/dev/null || true
 
   while [[ $# -gt 0 ]]; do
@@ -39,6 +41,10 @@ iotstack_parse_global_argv() {
           IOTSTACK_LOG_ID=$(uuidgen 2>/dev/null \
             || python3 -c 'import uuid; print(uuid.uuid4())')
           export IOTSTACK_LOG_ID
+        fi
+        if [[ -z "${IOTSTACK_LOG_TS:-}" ]]; then
+          IOTSTACK_LOG_TS=$(date +%s)
+          export IOTSTACK_LOG_TS
         fi
         ;;
       --timestamp)
@@ -87,6 +93,54 @@ iotstack_compilation_output_enabled() {
 
 create_log_defer_enabled() {
   [[ "${IOTSTACK_LOG_DEFER:-0}" -eq 1 ]]
+}
+
+iotstack_log_role_guess() {
+  # Best-effort peek at IOTSTACK_ARGV for the device role a --create-log
+  # session belongs to, so its logs/artifacts land under logs/<role>/. Falls
+  # back to the subcommand name when no role applies (clean, ps, tests, ...)
+  # or none was given.
+  local command="${IOTSTACK_ARGV[0]:-}"
+  local candidate=""
+  case "$command" in
+    flash|update|verify|verify-flash|reassign|restart|rotate-secrets)
+      candidate="${IOTSTACK_ARGV[1]:-}"
+      ;;
+    secret)
+      candidate="${IOTSTACK_ARGV[2]:-}"
+      ;;
+  esac
+  if [[ -z "$candidate" || "$candidate" == -* || "$candidate" == /dev/* || "$candidate" == help ]]; then
+    candidate="${command:-general}"
+  fi
+  # Keep it a safe single path component.
+  candidate="${candidate//[^A-Za-z0-9._-]/_}"
+  printf '%s\n' "${candidate:-general}"
+}
+
+iotstack_log_session_dir() {
+  # Resolve (and cache for the life of this process) the
+  # ~/.iotstack/logs/<role>/<unix-timestamp>/ directory for this --create-log
+  # session. All session artifacts (session log, serial log, archived YAML)
+  # live under it. Collision-safe: if that exact <role>/<ts> directory is
+  # already in use (two sessions starting in the same second), a short
+  # suffix from IOTSTACK_LOG_ID disambiguates.
+  create_log_enabled || return 0
+  if [[ -n "${IOTSTACK_LOG_SESSION_DIR:-}" ]]; then
+    printf '%s\n' "$IOTSTACK_LOG_SESSION_DIR"
+    return 0
+  fi
+  local role dir
+  role=$(iotstack_log_role_guess)
+  dir="${IOTSTACK_HOME}/logs/${role}/${IOTSTACK_LOG_TS}"
+  [[ -e "$dir" ]] && dir="${dir}-${IOTSTACK_LOG_ID:0:8}"
+  export IOTSTACK_LOG_SESSION_DIR="$dir"
+  printf '%s\n' "$dir"
+}
+
+iotstack_log_serial_file() {
+  create_log_enabled || return 0
+  printf '%s/serial.log\n' "$(iotstack_log_session_dir)"
 }
 
 create_log_defer_start() {
@@ -246,7 +300,7 @@ create_log_watch_append() {
 
   if [[ -n "${IOTSTACK_LOG_ID:-}" ]]; then
     log_id="$IOTSTACK_LOG_ID"
-    serial_log="${IOTSTACK_HOME}/logs/iotstack-${IOTSTACK_LOG_ID}-serial.log"
+    serial_log="$(iotstack_log_serial_file)"
   else
     log_id="-"
     serial_log="-"
@@ -270,22 +324,20 @@ create_log_setup() {
   # line-buffered. iotstack messages are stamped via create_log_stamp_line(); piped
   # subprocesses use create_log_run() / create_log_tee_console().
   #
-  # --create-log: generates iotstack-<guid>.log (always fresh; GUID is unique per run).
+  # --create-log: all of this session's artifacts (session log, serial log,
+  # archived YAML) live under ~/.iotstack/logs/<role>/<unix-timestamp>/ (see
+  # iotstack_log_session_dir()); the directory is fresh per invocation.
   # Without --create-log: no session log.
   #
   # Does NOT write the === header; call create_log_write_header() after announcing
   # session/serial log paths so those lines appear first in the log file.
   local command="$1"
-  local log_name
   create_log_enabled || return 0
 
   export PYTHONUNBUFFERED=1
-  if [[ -n "${IOTSTACK_LOG_ID:-}" ]]; then
-    log_name="iotstack-${IOTSTACK_LOG_ID}"
-  else
-    log_name="iotstack-${command}"
-  fi
-  export IOTSTACK_LOG_FILE="${IOTSTACK_HOME}/logs/${log_name}.log"
+  local session_dir
+  session_dir=$(iotstack_log_session_dir)
+  export IOTSTACK_LOG_FILE="${session_dir}/iotstack.log"
 
   if [[ "$command" == "clean" ]]; then
     create_log_defer_start
@@ -296,12 +348,7 @@ create_log_setup() {
   fi
 
   mkdir -p "$(dirname "$IOTSTACK_LOG_FILE")"
-
-  if [[ -n "${IOTSTACK_LOG_ID:-}" && -f "$IOTSTACK_LOG_FILE" ]]; then
-    echo "" >> "$IOTSTACK_LOG_FILE"
-  else
-    : > "$IOTSTACK_LOG_FILE"
-  fi
+  : > "$IOTSTACK_LOG_FILE"
 }
 
 create_log_write_header() {
@@ -432,7 +479,7 @@ create_log_serial_stable_tty() {
 }
 
 create_log_serial_capture_start() {
-  # Background serial monitor -> iotstack-<log-id>-serial.log (file only; --reconnect).
+  # Background serial monitor -> <role>/<ts>/serial.log (file only; --reconnect).
   # Usage: create_log_serial_capture_start <tty> [variant]
   local tty="$1"
   local variant="${2:-unknown}"
@@ -448,7 +495,7 @@ create_log_serial_capture_start() {
   fi
   create_log_serial_capture_stop
 
-  log_file="${IOTSTACK_HOME}/logs/iotstack-${IOTSTACK_LOG_ID}-serial.log"
+  log_file="$(iotstack_log_serial_file)"
   export IOTSTACK_SERIAL_LOG_FILE="$log_file"
   export IOTSTACK_FLASH_SERIAL_TTY="$tty"
   export IOTSTACK_FLASH_SERIAL_VARIANT="$variant"

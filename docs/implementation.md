@@ -51,9 +51,10 @@ r'(name:\s+["\']?)([^"\'\n]*)\$\{device_name\}([^"\'\n]*["\']?)'
 - `["\']?` matches optional quote (end)
 
 ### Logging Strategy
-- Compilation output goes to: `~/.iotstack/logs/<device>/<timestamp>.compile.log`
-- Flash logs per device: `~/.iotstack/logs/<device>/<timestamp>-<hash>/`
-- Per-device build cache: `~/.iotstack/logs/<device>.build.cache` (`esphome_version` + `config_hash`; the sole build-identity key, shared by `smart_compile` and `update_devices.sh`)
+- `--create-log` session artifacts (`iotstack.sh` / `scripts/create-log.sh`): everything for one session lives under `~/.iotstack/logs/<role>/<unix-timestamp>/` -- session log (`iotstack.log`), serial capture on flash (`serial.log`), and any archived YAML (`<kind>-<name>.yaml`). `<role>` is a best-effort guess at the device role from argv (falls back to the subcommand name for roleless commands like `clean`); `<unix-timestamp>` is seconds since epoch when `--create-log` was parsed. `IOTSTACK_LOG_ID` (GUID) still exists internally for the `sessions.watch` `log_id` column and same-second collision suffixes, but no longer names files directly. `sessions.watch` itself stays flat at `~/.iotstack/logs/sessions.watch` -- see `workflow.md`.
+- `update_devices.sh` compilation output (independent of `--create-log`) goes to: `~/.iotstack/logs/<device>/<timestamp>.compile.log`
+- Flash logs per device (`update_devices.sh`): `~/.iotstack/logs/<device>/<timestamp>-<hash>/`
+- Per-device build cache: `~/.iotstack/logs/<device>.build.cache` (`esphome_version` + `config_hash`; the sole build-identity key, shared by `smart_compile` and `update_devices.sh`) -- a persistent cache, not a session log, so it stays flat and is not moved under `<role>/<timestamp>/`
 - Cache invalidated whenever `config_hash` changes: any YAML / `common/` / `external_components/` edit (the latter two via the `project_version` fingerprint), a new git tag, or an ESPHome upgrade
 
 ### Session log ordering (`create-log.sh`)

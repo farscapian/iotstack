@@ -90,7 +90,7 @@ so output and reconnect behaviour are identical. Crash backtraces are not decode
 
 | Command / file | Purpose |
 |----------------|---------|
-| `iotstack --create-log ...` | Session log `~/.iotstack/logs/iotstack-<guid>.log`; implies `-v`; serial to `iotstack-<guid>-serial.log` on flash |
+| `iotstack --create-log ...` | Session log `~/.iotstack/logs/<role>/<unix-timestamp>/iotstack.log`; implies `-v`; serial to `serial.log` in the same dir on flash |
 | `~/.iotstack/logs/sessions.watch` | Append-only registry of every invocation (TSV) -- agents tail this for new runs |
 | `iotstack ps` | List `pstree` of running sessions and detached helpers |
 | `iotstack kill` | Stop all running iotstack sessions and helper process trees |

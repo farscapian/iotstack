@@ -339,12 +339,12 @@ _flash_sync_update_devices_cache() {
 
 _flash_archive_yaml() {
   # Retain a copy of the yaml actually used for this flash (bootstrap's rendered
-  # .iotstack-bootstrap-<variant>.yaml, or the resolved production role yaml) in
-  # ~/.iotstack/logs/, since both are transient or can drift from what was
-  # flashed by the time anyone goes looking. Named with the --create-log session
-  # id when present so it sits alongside that session's log/serial files;
-  # otherwise a per-invocation timestamp shared by every yaml archived in the
-  # same 'iotstack flash' run. Best-effort: never fails the flash.
+  # .iotstack-bootstrap-<variant>.yaml, or the resolved production role yaml),
+  # since both are transient or can drift from what was flashed by the time
+  # anyone goes looking. Under --create-log it lives alongside that session's
+  # log/serial files (~/.iotstack/logs/<role>/<ts>/); otherwise it falls back
+  # to a flat, per-invocation-timestamp name shared by every yaml archived in
+  # the same 'iotstack flash' run. Best-effort: never fails the flash.
   # Usage: _flash_archive_yaml <yaml_file> <device_name_for_logging>
   local yaml_file="$1"
   local device_name="${2:-unknown}"
@@ -357,17 +357,18 @@ _flash_archive_yaml() {
     name="${IOTSTACK_BOOTSTRAP_VARIANT:-$device_name}"
   fi
 
-  local tag
-  if [[ -n "${IOTSTACK_LOG_ID:-}" ]]; then
-    tag="$IOTSTACK_LOG_ID"
+  local archive_dir archive_name
+  if create_log_enabled; then
+    archive_dir="$(iotstack_log_session_dir)"
+    archive_name="${kind}-${name}.yaml"
   else
     export IOTSTACK_FLASH_RUN_TS="${IOTSTACK_FLASH_RUN_TS:-$(date +%Y%m%d_%H%M%S)}"
-    tag="flash-${IOTSTACK_FLASH_RUN_TS}"
+    archive_dir="${IOTSTACK_HOME}/logs"
+    archive_name="iotstack-flash-${IOTSTACK_FLASH_RUN_TS}-${kind}-${name}.yaml"
   fi
 
-  local archive_dir="${IOTSTACK_HOME}/logs"
   mkdir -p "$archive_dir" 2>/dev/null || return 0
-  cp "$yaml_file" "${archive_dir}/iotstack-${tag}-${kind}-${name}.yaml" 2>/dev/null || true
+  cp "$yaml_file" "${archive_dir}/${archive_name}" 2>/dev/null || true
 }
 
 smart_compile() {
@@ -4510,7 +4511,7 @@ _flash_serial_log_teardown() {
 }
 
 _flash_serial_log_setup() {
-  # With --create-log, capture firmware serial output to iotstack-<guid>-serial.log.
+  # With --create-log, capture firmware serial output to <role>/<ts>/serial.log.
   local tty="$1"
   local variant="${2:-}"
   create_log_serial_capture_enabled || return 0
@@ -6194,7 +6195,8 @@ main() {
   if create_log_enabled; then
     info "Session log: tail -f ${IOTSTACK_LOG_FILE}"
     if [[ "$command" == "flash" ]] && create_log_serial_capture_enabled; then
-      local _early_serial_log="${IOTSTACK_HOME}/logs/iotstack-${IOTSTACK_LOG_ID}-serial.log"
+      local _early_serial_log
+      _early_serial_log="$(iotstack_log_serial_file)"
       export IOTSTACK_SERIAL_LOG_FILE="$_early_serial_log"
       export _FLASH_SERIAL_LOG_ANNOUNCED=1
       mkdir -p "$(dirname "$IOTSTACK_SERIAL_LOG_FILE")"
