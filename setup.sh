@@ -74,6 +74,33 @@ else
   fi
 fi
 
+# -- avahi-utils (mDNS discovery CLI) ---------------------------------------
+echo
+echo "========================================================"
+echo "Checking avahi-utils (mDNS discovery)"
+echo "========================================================"
+echo
+
+# iotstack discovers devices (bootstrap and production) via avahi-browse.
+# avahi-daemon (the mDNS service) is a separate package from avahi-utils (the
+# CLI tools) and does not pull it in as a dependency, so a host can have
+# working mDNS with no avahi-browse binary at all. Every call site redirects
+# its stderr and swallows a nonzero exit, so a missing binary looks exactly
+# like "no devices found yet" instead of failing loudly -- install it here so
+# that never happens.
+if command -v avahi-browse &>/dev/null; then
+  ok "avahi-browse is already installed"
+else
+  warn "avahi-browse not found (required for iotstack device discovery)"
+  if command -v apt &>/dev/null; then
+    echo "Installing avahi-utils..."
+    sudo apt update && sudo apt install -y avahi-utils
+    ok "Installed avahi-utils"
+  else
+    err "Could not install avahi-utils automatically. Please install manually:\n  Ubuntu/Debian: sudo apt install avahi-utils"
+  fi
+fi
+
 # -- ESPHome Installation ---------------------------------------------------
 echo
 echo "========================================================"

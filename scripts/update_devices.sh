@@ -968,6 +968,18 @@ if [[ -z "$ESPHOME_BIN" ]]; then
   exit 1
 fi
 
+# All mDNS device discovery below shells out to avahi-browse. On Debian/Ubuntu
+# it ships in the avahi-utils package, which is separate from avahi-daemon and
+# is not a dependency of it -- a host can have the daemon running with no CLI
+# tools installed. `avahi-browse ... 2>/dev/null || true` elsewhere in this
+# script hides a missing binary (exit 127) as an empty, silently-swallowed
+# result indistinguishable from "no devices found yet", so check up front
+# instead of discovering it via confusing retry-loop timeouts.
+if ! command -v avahi-browse &>/dev/null; then
+  err "avahi-browse not found. Install it: sudo apt install avahi-utils"
+  exit 1
+fi
+
 log "Using esphome: ${ESPHOME_BIN}"
 
 # -- Parse yaml project info (display only) ----------------------------------
