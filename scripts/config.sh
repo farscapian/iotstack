@@ -50,6 +50,46 @@ export GNUPG_HOME="${GNUPG_HOME:-${IOTSTACK_HOME}/.gnupg}"
 export GNUPGHOME="$GNUPG_HOME"
 export PASSWORD_STORE_DIR="$PASS_STORE_DIR"
 
+# Pass-store path helpers -- functions, not variables, so they always read the
+# current $ENV_FILE (set above from the default .env, but -env=<file> can
+# reassign it later in iotstack.sh's argv parsing, well before any of these
+# are actually called). Namespaces every secret under the active environment
+# so switching -env= files never reuses another environment's device secrets.
+iotstack_env_name() {
+  local base
+  base="$(basename "${ENV_FILE:-${IOTSTACK_HOME}/.env}")"
+  base="${base%.env}"
+  [[ -z "$base" ]] && base="default"
+  printf '%s\n' "$base"
+}
+
+iotstack_pass_common_path() { printf 'iotstack/%s/common/%s\n' "$(iotstack_env_name)" "$1"; }
+iotstack_pass_role_path()   { printf 'iotstack/%s/roles/%s/%s\n' "$(iotstack_env_name)" "$1" "$2"; }
+
+# Pre-migration (unscoped) equivalents -- read-time fallback only, never written to.
+iotstack_pass_common_legacy_path() { printf 'iotstack/common/%s\n' "$1"; }
+iotstack_pass_role_legacy_path()   { printf 'iotstack/roles/%s/%s\n' "$1" "$2"; }
+
+# Read a pass entry, auto-migrating it from the legacy unscoped path to the
+# env-scoped path on first successful read. Mirrors the pre-existing bootstrap
+# OTA-password legacy-path migration (scripts/iotstack-bootstrap.sh).
+iotstack_pass_read_migrating() {
+  local new_path="$1" legacy_path="$2" value
+  value="$(pass show "$new_path" 2>/dev/null)" && { printf '%s\n' "$value"; return 0; }
+  value="$(pass show "$legacy_path" 2>/dev/null)" || return 1
+  { echo "$value"; echo "$value"; } | pass insert -f "$new_path" >/dev/null 2>&1
+  pass rm --force "$legacy_path" >/dev/null 2>&1
+  echo "[INFO] Migrated pass secret: $legacy_path -> $new_path" >&2
+  printf '%s\n' "$value"
+}
+
+iotstack_pass_common_read() {
+  iotstack_pass_read_migrating "$(iotstack_pass_common_path "$1")" "$(iotstack_pass_common_legacy_path "$1")"
+}
+iotstack_pass_role_read() {
+  iotstack_pass_read_migrating "$(iotstack_pass_role_path "$1" "$2")" "$(iotstack_pass_role_legacy_path "$1" "$2")"
+}
+
 export PARTITION_TABLE_CSV="${PARTITION_TABLE_CSV:-iotstack_partition_table.csv}"
 export PARTITION_TABLE="${PARTITION_TABLE:-${ARTIFACTS_DIR}/${PARTITION_TABLE_CSV}}"
 export PARTITION_TABLE_SYMLINK="${PARTITION_TABLE_SYMLINK:-${YAMLS_DIR}/${PARTITION_TABLE_CSV}}"
