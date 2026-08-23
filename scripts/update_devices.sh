@@ -1045,7 +1045,7 @@ if [[ -z "$BASE_NAME" ]]; then
 fi
 
 if [[ "$REASSIGN_MODE" == true ]]; then
-  info "Discovering devices to reassign: ${REASSIGN_MACS[*]}"
+  info "Discovering device on network: ${REASSIGN_MACS[*]}"
 elif [[ "$VERIFY" == true ]]; then
   info "Discovering ${BASE_NAME}-* devices via mDNS..."
 else
@@ -1120,27 +1120,33 @@ info "Found ${DEVICE_COUNT} device(s) on network: $(echo "$HOSTNAMES" | paste -s
 
 # -- Parse config_hash and project_version from mDNS TXT records -------------
 # config_hash is the primary comparison key; project_version is the fallback.
+# Skipped in --reassign mode: $RAW is only populated by the normal-mode
+# avahi-browse above (line ~1070) -- _reassign_discover_hostnames's $RAW is
+# function-local -- and reassign mode never consults these maps anyway (it
+# always flashes unconditionally; see the REASSIGN_MODE check further down).
 declare -A DEVICE_HASHES
 declare -A DEVICE_VERSIONS
-while IFS=: read -r type host val; do
-  [[ "$type" == hash ]] && DEVICE_HASHES["$host"]="$val"
-  [[ "$type" == ver  ]] && DEVICE_VERSIONS["$host"]="$val"
-done < <(awk '
-  /^= / { host = $4 }
-  /txt =/ {
-    n = split($0, parts, "\"")
-    for (i = 1; i <= n; i++) {
-      if (parts[i] ~ /^config_hash=/) {
-        split(parts[i], kv, "=")
-        print "hash:" host ":" kv[2]
-      }
-      if (parts[i] ~ /^project_version=/) {
-        split(parts[i], kv, "=")
-        print "ver:" host ":" kv[2]
+if [[ "$REASSIGN_MODE" != true ]]; then
+  while IFS=: read -r type host val; do
+    [[ "$type" == hash ]] && DEVICE_HASHES["$host"]="$val"
+    [[ "$type" == ver  ]] && DEVICE_VERSIONS["$host"]="$val"
+  done < <(awk '
+    /^= / { host = $4 }
+    /txt =/ {
+      n = split($0, parts, "\"")
+      for (i = 1; i <= n; i++) {
+        if (parts[i] ~ /^config_hash=/) {
+          split(parts[i], kv, "=")
+          print "hash:" host ":" kv[2]
+        }
+        if (parts[i] ~ /^project_version=/) {
+          split(parts[i], kv, "=")
+          print "ver:" host ":" kv[2]
+        }
       }
     }
-  }
-' <<< "$RAW")
+  ' <<< "$RAW")
+fi
 
 # -- Home Assistant registry check -------------------------------------------
 # Runs immediately after discovery so it always prints, even when no devices.

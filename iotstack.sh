@@ -95,7 +95,7 @@ _check_serial_port_in_use() {
   local tty_device="$1"
   local processes pid cmd kill_cmd
 
-  debug "_check_serial_port_in_use: checking $tty_device"
+  debug "Checking $tty_device for a serial-port conflict..."
 
   if [[ -n "${IOTSTACK_FLASH_SERIAL_TTY:-}" && "$IOTSTACK_FLASH_SERIAL_TTY" == "$tty_device" \
       && -n "${IOTSTACK_SERIAL_LOG_PID:-}" ]]; then
@@ -4949,8 +4949,6 @@ _flash_bootstrap_to_tty() {
           fi
           err "Failed to extract MAC address from device (try: esptool --port $tty_device chip-id)"
         fi
-      else
-        debug "Reusing chip MAC ${device_mac} from preflight (skip chip-id after layout flash)"
       fi
 
       _flash_nvs_step_begin
@@ -5273,7 +5271,6 @@ _flash_production_smart() {
         chipid_out="$IOTSTACK_FLASH_PROBED_CHIPID_OUT"
         connected_variant="$IOTSTACK_FLASH_PROBED_VARIANT"
         device_mac="$IOTSTACK_FLASH_PROBED_MAC"
-        debug "Reusing connected-board probe from preflight (${connected_variant}, MAC ${device_mac})"
       else
         info "Reading chip MAC via USB..."
         chipid_out=$(esp_esptool_chip_id "$tty_device" 2>/dev/null) || chipid_out=""
