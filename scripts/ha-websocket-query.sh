@@ -133,8 +133,8 @@ sync_secret() {
 }
 
 # Sync legacy secrets.yaml values into pass, then prompt/validate if still missing.
-sync_secret "ha_token" "iotstack/common/ha_token" >/dev/null 2>&1 || true
-sync_secret "ha_url" "iotstack/common/ha_url" >/dev/null 2>&1 || true
+sync_secret "ha_token" "$(iotstack_pass_common_path ha_token)" >/dev/null 2>&1 || true
+sync_secret "ha_url" "$(iotstack_pass_common_path ha_url)" >/dev/null 2>&1 || true
 
 # shellcheck source=scripts/ensure-integration-secrets.sh
 source "${SCRIPT_DIR}/ensure-integration-secrets.sh"

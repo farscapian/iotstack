@@ -30,15 +30,18 @@ ok()   { [[ "${PRINT_API_JSON:-0}" == "1" ]] && return 0; echo -e "${GRN}[OK]${R
 info() { [[ "${PRINT_API_JSON:-0}" == "1" ]] && return 0; echo -e "${YLW}[INFO]${RST} $*" >&2; }
 warn() { echo -e "${YLW}[WARN]${RST} $*" >&2; }
 
-# Get or prompt for credential (lazy-loading on demand)
+# Get or prompt for a common (env-scoped) credential (lazy-loading on demand)
 _get_or_prompt_credential() {
-  local pass_path="$1"
+  local key="$1"
   local prompt_text="$2"
   local is_secret="${3:-true}"  # true for passwords, false for non-secret values
 
-  # Try to get from pass store
+  local pass_path
+  pass_path="$(iotstack_pass_common_path "$key")"
+
+  # Try to get from pass store (auto-migrating a legacy unscoped entry)
   local value
-  value=$(pass show "$pass_path" 2>/dev/null || echo "")
+  value=$(iotstack_pass_common_read "$key" 2>/dev/null || echo "")
 
   # If not set or is placeholder, prompt user
   if [[ -z "$value" || "$value" == "CONFIGURE_ME" ]]; then
@@ -125,17 +128,17 @@ fi
 
 # -- Retrieve shared credentials --------------------------------------------
 info "Retrieving WiFi credentials..."
-WIFI_SSID=$(_get_or_prompt_credential "iotstack/common/wifi_ssid" "WiFi network name (SSID)" false)
-WIFI_PASSWORD=$(_get_or_prompt_credential "iotstack/common/wifi_password" "WiFi password" true)
+WIFI_SSID=$(_get_or_prompt_credential "wifi_ssid" "WiFi network name (SSID)" false)
+WIFI_PASSWORD=$(_get_or_prompt_credential "wifi_password" "WiFi password" true)
 
 # Get optional Thread credentials (lazy-load with skip option)
-THREAD_TLV=$(pass show "iotstack/common/thread_tlv" 2>/dev/null || echo "")
+THREAD_TLV=$(iotstack_pass_common_read "thread_tlv" 2>/dev/null || echo "")
 if [[ -z "$THREAD_TLV" || "$THREAD_TLV" == "CONFIGURE_ME" ]]; then
   echo -ne "${YLW}[PROMPT]${RST} Thread TLV commissioning string (optional, press Enter to skip): " >&2
   read -rs THREAD_TLV_INPUT </dev/tty 2>/dev/null || THREAD_TLV_INPUT=""
   echo >&2
   if [[ -n "$THREAD_TLV_INPUT" ]]; then
-    { echo "$THREAD_TLV_INPUT"; echo "$THREAD_TLV_INPUT"; } | pass insert -f "iotstack/common/thread_tlv" 2>/dev/null || true
+    { echo "$THREAD_TLV_INPUT"; echo "$THREAD_TLV_INPUT"; } | pass insert -f "$(iotstack_pass_common_path thread_tlv)" 2>/dev/null || true
     THREAD_TLV="$THREAD_TLV_INPUT"
     ok "Thread TLV stored in pass"
   else
@@ -153,7 +156,7 @@ BOOTSTRAP_OTA_PASSWORD=$(echo -n "${BOOTSTRAP_OTA_BASE}|${DEVICE_MAC}" | sha256s
 # The bootstrap API is encrypted (zero-trust LAN). This key is written to NVS
 # ONLY over USB (this path); it is NEVER sent over the API, so --print-api-json
 # below deliberately omits it. Same role-master|MAC derivation as production.
-BOOTSTRAP_API_BASE=$(pass show "$(iotstack_bootstrap_pass_api_path)" 2>/dev/null || echo "")
+BOOTSTRAP_API_BASE=$(iotstack_bootstrap_pass_api_read 2>/dev/null || echo "")
 if [[ -z "$BOOTSTRAP_API_BASE" ]]; then
   info "Bootstrap API key not found for role: $(iotstack_bootstrap_role), generating..."
   BOOTSTRAP_API_BASE=$(openssl rand -base64 32 | tr -d '\n')
@@ -172,12 +175,12 @@ if [[ -n "$PRODUCTION_ROLE" ]]; then
   fi
   info "Computing production API key for role: $PRODUCTION_ROLE (device: $DEVICE_MAC)"
 
-  PROD_API_BASE=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/api_encryption_key" 2>/dev/null || echo "")
+  PROD_API_BASE=$(iotstack_pass_role_read "$PRODUCTION_ROLE" "api_encryption_key" 2>/dev/null || echo "")
   if [[ -z "$PROD_API_BASE" ]]; then
     info "API encryption key not found for role: $PRODUCTION_ROLE, generating..."
     PROD_API_BASE=$(openssl rand -base64 32 | tr -d '\n')
     { echo "$PROD_API_BASE"; echo "$PROD_API_BASE"; } | \
-      pass insert -f "iotstack/roles/${PRODUCTION_ROLE}/api_encryption_key" 2>/dev/null || \
+      pass insert -f "$(iotstack_pass_role_path "$PRODUCTION_ROLE" "api_encryption_key")" 2>/dev/null || \
       err "Failed to store API encryption key in pass"
     ok "API encryption key generated and stored for role: $PRODUCTION_ROLE"
   fi
@@ -197,7 +200,7 @@ fi
 # Set via flash flags, env override, or pass per role:
 #   iotstack flash matrixdisplay /dev/ttyACM0 --horizontal-panel-count=2 --vertical-panel-count=1 --matrix-panel-width=64 --matrix-panel-height=32
 #   MATRIX_COLS=2 MATRIX_ROWS=1 iotstack flash matrixdisplay /dev/ttyACM0
-#   pass: iotstack/roles/matrixdisplay/matrix_{cols,rows,panel_w,panel_h}
+#   pass: iotstack/<env>/roles/matrixdisplay/matrix_{cols,rows,panel_w,panel_h}
 # cols = panels side by side; rows = panels stacked top-to-bottom.
 WRITE_MATRIX_LAYOUT=0
 MATRIX_COLS="${MATRIX_COLS:-}"
@@ -208,10 +211,10 @@ MATRIX_PANEL_H="${MATRIX_PANEL_H:-}"
 # MATRIX_* env vars can never leak panel geometry into a non-matrix device's NVS.
 if [[ "$PRODUCTION_ROLE" == "matrixdisplay" ]]; then
   WRITE_MATRIX_LAYOUT=1
-  [[ -z "$MATRIX_COLS" ]] && MATRIX_COLS=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_cols" 2>/dev/null || echo "")
-  [[ -z "$MATRIX_ROWS" ]] && MATRIX_ROWS=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_rows" 2>/dev/null || echo "")
-  [[ -z "$MATRIX_PANEL_W" ]] && MATRIX_PANEL_W=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_panel_w" 2>/dev/null || echo "")
-  [[ -z "$MATRIX_PANEL_H" ]] && MATRIX_PANEL_H=$(pass show "iotstack/roles/${PRODUCTION_ROLE}/matrix_panel_h" 2>/dev/null || echo "")
+  [[ -z "$MATRIX_COLS" ]] && MATRIX_COLS=$(iotstack_pass_role_read "$PRODUCTION_ROLE" "matrix_cols" 2>/dev/null || echo "")
+  [[ -z "$MATRIX_ROWS" ]] && MATRIX_ROWS=$(iotstack_pass_role_read "$PRODUCTION_ROLE" "matrix_rows" 2>/dev/null || echo "")
+  [[ -z "$MATRIX_PANEL_W" ]] && MATRIX_PANEL_W=$(iotstack_pass_role_read "$PRODUCTION_ROLE" "matrix_panel_w" 2>/dev/null || echo "")
+  [[ -z "$MATRIX_PANEL_H" ]] && MATRIX_PANEL_H=$(iotstack_pass_role_read "$PRODUCTION_ROLE" "matrix_panel_h" 2>/dev/null || echo "")
   MATRIX_COLS="${MATRIX_COLS:-1}"
   MATRIX_ROWS="${MATRIX_ROWS:-1}"
   MATRIX_PANEL_W="${MATRIX_PANEL_W:-64}"

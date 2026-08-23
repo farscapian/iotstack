@@ -75,10 +75,12 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       export HA_TOKEN
       return 0
     fi
-    store_pass_secret "iotstack/common/ha_token" "$PLACEHOLDER_VALUE"
+    local ha_token_path
+    ha_token_path="$(iotstack_pass_common_path ha_token)"
+    store_pass_secret "$ha_token_path" "$PLACEHOLDER_VALUE"
     HA_TOKEN=""
     export HA_TOKEN
-    _ies_info "Invalidated iotstack/common/ha_token in pass (set to ${PLACEHOLDER_VALUE})"
+    _ies_info "Invalidated ${ha_token_path} in pass (set to ${PLACEHOLDER_VALUE})"
   }
 
   invalidate_ha_token_if_auth_failure() {
@@ -126,7 +128,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
         invalidate_ha_token
         _ies_warn "Home Assistant rejected the access token (attempt ${attempt}/${max_attempts}); enter a new long-lived access token."
         HA_TOKEN="$(ensure_pass_secret \
-          "iotstack/common/ha_token" \
+          "ha_token" \
           "Home Assistant long-lived access token" \
           "true" \
           "true")"
@@ -134,10 +136,10 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       else
         # Could not reach the host at all: most likely a typo'd URL. Drop it
         # from the store, then ask for a corrected one.
-        store_pass_secret "iotstack/common/ha_url" "$PLACEHOLDER_VALUE"
+        store_pass_secret "$(iotstack_pass_common_path ha_url)" "$PLACEHOLDER_VALUE"
         _ies_warn "Could not reach Home Assistant at ${HA_URL} (attempt ${attempt}/${max_attempts}); enter a corrected URL."
         HA_URL="$(ensure_pass_secret \
-          "iotstack/common/ha_url" \
+          "ha_url" \
           "Home Assistant URL (e.g. homeassistant.local:8123)" \
           "false" \
           "true")"
@@ -171,13 +173,19 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
   }
 
   ensure_pass_secret() {
-    local pass_path="$1"
+    # $1 is the bare common-secret key (e.g. "ha_url"), not a full pass path --
+    # the env-scoped path is built internally so every caller automatically
+    # stays scoped to the active -env= environment.
+    local key="$1"
     local prompt_text="$2"
     local is_secret="${3:-false}"
     local required="${4:-true}"
 
+    local pass_path
+    pass_path="$(iotstack_pass_common_path "$key")"
+
     local value
-    value="$(get_pass_secret "$pass_path")"
+    value="$(iotstack_pass_common_read "$key")" || value=""
 
     if is_unconfigured "$value"; then
       value="$(prompt_value "$prompt_text" "$is_secret")"
@@ -188,7 +196,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
         echo ""
         return 0
       fi
-      if [[ "$pass_path" == "iotstack/common/ha_url" ]]; then
+      if [[ "$key" == "ha_url" ]]; then
         value="$(normalize_ha_url "$value")"
         validate_ha_url "$value"
       fi
@@ -308,8 +316,8 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       return 1
     fi
 
-    HA_URL="$(get_pass_secret "iotstack/common/ha_url")"
-    HA_TOKEN="$(get_pass_secret "iotstack/common/ha_token")"
+    HA_URL="$(iotstack_pass_common_read "ha_url")" || HA_URL=""
+    HA_TOKEN="$(iotstack_pass_common_read "ha_token")" || HA_TOKEN=""
 
     if is_unconfigured "$HA_URL"; then
       HA_URL=""
@@ -337,12 +345,12 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     # Token first: verify_ha_websocket_or_reprompt below needs a token on hand
     # to actually test the connection as soon as the URL is entered.
     HA_TOKEN="$(ensure_pass_secret \
-      "iotstack/common/ha_token" \
+      "ha_token" \
       "Home Assistant long-lived access token" \
       "true" \
       "true")"
     HA_URL="$(ensure_pass_secret \
-      "iotstack/common/ha_url" \
+      "ha_url" \
       "Home Assistant URL (e.g. homeassistant.local:8123)" \
       "false" \
       "true")"
@@ -370,7 +378,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     command -v pass &>/dev/null || _ies_err "pass is required but not installed"
 
     THREAD_TLV="$(ensure_pass_secret \
-      "iotstack/common/thread_tlv" \
+      "thread_tlv" \
       "$prompt" \
       "true" \
       "$required")"

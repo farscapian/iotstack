@@ -316,9 +316,10 @@ EXAMPLES:
   thread-stats.sh --debug
 
 CONFIGURATION:
-  Load credentials from pass store:
-    pass insert iotstack/common/ha_url
-    pass insert iotstack/common/ha_token
+  Load credentials from pass store (namespaced by the active -env= environment;
+  "default" for the default ~/.iotstack/.env):
+    pass insert iotstack/default/common/ha_url
+    pass insert iotstack/default/common/ha_token
 
   Or set environment variables:
     export HA_URL="http://homeassistant.local:8123"

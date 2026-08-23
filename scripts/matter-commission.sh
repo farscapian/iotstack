@@ -605,14 +605,14 @@ resolve_thread_dataset() {
         canonical_ha="$(canonical_thread_dataset "$from_ha")" \
             || die "Home Assistant returned an invalid Thread dataset"
         canonical_local="$(canonical_thread_dataset "$stored_tlv")" \
-            || die "Local pass store Thread dataset is invalid (iotstack/common/thread_tlv)"
+            || die "Local pass store Thread dataset is invalid ($(iotstack_pass_common_path thread_tlv))"
 
         if [[ "$canonical_ha" == "$canonical_local" ]]; then
             info "Local Thread dataset matches Home Assistant OTBR"
         else
             warn "Local Thread dataset differs from Home Assistant OTBR; using HA dataset"
-            if { echo "$from_ha"; echo "$from_ha"; } | pass insert -f "iotstack/common/thread_tlv" >/dev/null 2>&1; then
-                info "Updated iotstack/common/thread_tlv in pass to match HA"
+            if { echo "$from_ha"; echo "$from_ha"; } | pass insert -f "$(iotstack_pass_common_path thread_tlv)" >/dev/null 2>&1; then
+                info "Updated $(iotstack_pass_common_path thread_tlv) in pass to match HA"
             else
                 warn "Could not update pass store; continuing with HA dataset"
             fi
@@ -633,7 +633,7 @@ resolve_thread_dataset() {
         return
     fi
 
-    die "No Thread dataset available. Ensure HA OTBR is running, or store one with: pass insert iotstack/common/thread_tlv"
+    die "No Thread dataset available. Ensure HA OTBR is running, or store one with: pass insert $(iotstack_pass_common_path thread_tlv)"
 }
 
 # ---------------------------------------------------------------------------
@@ -645,7 +645,7 @@ setup_chip_tool_snap_enabled || true
 ensure_chip_tool_snap_interfaces
 ensure_ha_integration
 
-THREAD_TLV="$(get_pass_secret "iotstack/common/thread_tlv")"
+THREAD_TLV="$(iotstack_pass_common_read "thread_tlv")" || THREAD_TLV=""
 export THREAD_TLV
 
 # ---------------------------------------------------------------------------

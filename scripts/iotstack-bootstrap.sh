@@ -81,23 +81,37 @@ iotstack_mdns_retry() {
 iotstack_bootstrap_pass_ota_path() {
   local role
   role=$(iotstack_bootstrap_role)
-  printf 'iotstack/roles/%s/ota_password\n' "$role"
+  iotstack_pass_role_path "$role" ota_password
+}
+
+iotstack_bootstrap_pass_ota_legacy_role_path() {
+  # Unscoped role path, from before pass paths gained an environment prefix.
+  local role
+  role=$(iotstack_bootstrap_role)
+  iotstack_pass_role_legacy_path "$role" ota_password
 }
 
 iotstack_bootstrap_pass_ota_legacy_path() {
+  # Oldest path: predates both env-scoping and the bootstrap role rename.
   printf '%s\n' "iotstack/roles/failsafe/ota_password"
 }
 
 iotstack_bootstrap_pass_ota_read() {
-  # Read bootstrap role OTA base secret from pass. Auto-migrates legacy failsafe path.
+  # Read bootstrap role OTA base secret from pass, trying (newest to oldest):
+  # env-scoped role path -> unscoped role path -> unscoped failsafe path.
+  # Auto-migrates forward to the env-scoped path on a successful fallback read.
   local path secret legacy
   path=$(iotstack_bootstrap_pass_ota_path)
   secret=$(pass show "$path" 2>/dev/null) || true
   [[ -n "$secret" ]] && { printf '%s' "$secret"; return 0; }
 
-  legacy=$(iotstack_bootstrap_pass_ota_legacy_path)
+  legacy=$(iotstack_bootstrap_pass_ota_legacy_role_path)
   secret=$(pass show "$legacy" 2>/dev/null) || true
-  [[ -z "$secret" ]] && return 1
+  if [[ -z "$secret" ]]; then
+    legacy=$(iotstack_bootstrap_pass_ota_legacy_path)
+    secret=$(pass show "$legacy" 2>/dev/null) || true
+    [[ -z "$secret" ]] && return 1
+  fi
 
   { echo "$secret"; echo "$secret"; } | pass insert -f "$path" >/dev/null 2>&1 \
     || return 1
@@ -111,7 +125,33 @@ iotstack_bootstrap_pass_api_path() {
   # Role master secret from which per-device bootstrap API PSKs are derived.
   local role
   role=$(iotstack_bootstrap_role)
-  printf 'iotstack/roles/%s/api_encryption_key\n' "$role"
+  iotstack_pass_role_path "$role" api_encryption_key
+}
+
+iotstack_bootstrap_pass_api_legacy_path() {
+  local role
+  role=$(iotstack_bootstrap_role)
+  iotstack_pass_role_legacy_path "$role" api_encryption_key
+}
+
+iotstack_bootstrap_pass_api_read() {
+  # Read bootstrap role API master secret from pass, auto-migrating a legacy
+  # unscoped entry forward to the env-scoped path on first successful read.
+  local path secret legacy
+  path=$(iotstack_bootstrap_pass_api_path)
+  secret=$(pass show "$path" 2>/dev/null) || true
+  [[ -n "$secret" ]] && { printf '%s' "$secret"; return 0; }
+
+  legacy=$(iotstack_bootstrap_pass_api_legacy_path)
+  secret=$(pass show "$legacy" 2>/dev/null) || true
+  [[ -z "$secret" ]] && return 1
+
+  { echo "$secret"; echo "$secret"; } | pass insert -f "$path" >/dev/null 2>&1 \
+    || return 1
+  pass rm "$legacy" >/dev/null 2>&1 || true
+  echo "[INFO] Migrated bootstrap API key: $legacy -> $path" >&2
+  printf '%s' "$secret"
+  return 0
 }
 
 iotstack_bootstrap_device_api_key() {
@@ -120,7 +160,7 @@ iotstack_bootstrap_device_api_key() {
   # (no output) when the role master secret is absent from pass -- callers must
   # NOT fall back to a plaintext bootstrap connection.
   local mac="$1" base
-  base=$(pass show "$(iotstack_bootstrap_pass_api_path)" 2>/dev/null) || return 1
+  base=$(iotstack_bootstrap_pass_api_read 2>/dev/null) || return 1
   [[ -z "$base" ]] && return 1
   printf '%s' "$(echo -n "${base}|${mac}" | sha256sum | cut -c1-64)"
 }

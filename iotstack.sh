@@ -3385,7 +3385,7 @@ _derive_device_api_encryption_key() {
   local role="$1"
   local mac="$2"
   local base
-  base=$(pass show "iotstack/roles/${role}/api_encryption_key" 2>/dev/null) || return 1
+  base=$(iotstack_pass_role_read "$role" "api_encryption_key") || return 1
   echo -n "${base}|${mac}" | sha256sum | cut -c1-64
 }
 
@@ -3520,7 +3520,7 @@ _ha_register_esphome_device() {
   # yet). Warn instead of err/exit so the flash finishes cleanly; the human can
   # finish from the HA dashboard. Return non-zero so the caller skips ha-finalize.
   if invalidate_ha_token_if_auth_failure "$reg_out"; then
-    warn "Home Assistant access token is invalid -- iotstack/common/ha_token reset to CONFIGURE_ME. Configure a new token and re-run to register $hostname."
+    warn "Home Assistant access token is invalid -- $(iotstack_pass_common_path ha_token) reset to CONFIGURE_ME. Configure a new token and re-run to register $hostname."
     return 1
   fi
   warn "Home Assistant registration for $hostname did not complete -- finish manually: ${HA_URL}/config/integrations/dashboard"
@@ -3899,10 +3899,10 @@ _flash_resolve_matrix_layout() {
   _w_ref="${MATRIX_PANEL_W:-}"
   _h_ref="${MATRIX_PANEL_H:-}"
   if [[ -n "$role" ]]; then
-    [[ -z "$_cols_ref" ]] && _cols_ref=$(pass show "iotstack/roles/${role}/matrix_cols" 2>/dev/null || echo "")
-    [[ -z "$_rows_ref" ]] && _rows_ref=$(pass show "iotstack/roles/${role}/matrix_rows" 2>/dev/null || echo "")
-    [[ -z "$_w_ref" ]] && _w_ref=$(pass show "iotstack/roles/${role}/matrix_panel_w" 2>/dev/null || echo "")
-    [[ -z "$_h_ref" ]] && _h_ref=$(pass show "iotstack/roles/${role}/matrix_panel_h" 2>/dev/null || echo "")
+    [[ -z "$_cols_ref" ]] && _cols_ref=$(iotstack_pass_role_read "$role" "matrix_cols" 2>/dev/null || echo "")
+    [[ -z "$_rows_ref" ]] && _rows_ref=$(iotstack_pass_role_read "$role" "matrix_rows" 2>/dev/null || echo "")
+    [[ -z "$_w_ref" ]] && _w_ref=$(iotstack_pass_role_read "$role" "matrix_panel_w" 2>/dev/null || echo "")
+    [[ -z "$_h_ref" ]] && _h_ref=$(iotstack_pass_role_read "$role" "matrix_panel_h" 2>/dev/null || echo "")
   fi
   _cols_ref="${_cols_ref:-1}"
   _rows_ref="${_rows_ref:-1}"
@@ -4152,13 +4152,13 @@ _flash_store_matrix_layout_pass() {
   local h="$5"
 
   [[ "${MATRIX_COLS_EXPLICIT:-0}" == "1" ]] && \
-    printf '%s' "$cols" | pass insert -f "iotstack/roles/${role}/matrix_cols" 2>/dev/null || true
+    printf '%s' "$cols" | pass insert -f "$(iotstack_pass_role_path "$role" matrix_cols)" 2>/dev/null || true
   [[ "${MATRIX_ROWS_EXPLICIT:-0}" == "1" ]] && \
-    printf '%s' "$rows" | pass insert -f "iotstack/roles/${role}/matrix_rows" 2>/dev/null || true
+    printf '%s' "$rows" | pass insert -f "$(iotstack_pass_role_path "$role" matrix_rows)" 2>/dev/null || true
   [[ "${MATRIX_PANEL_W_EXPLICIT:-0}" == "1" ]] && \
-    printf '%s' "$w" | pass insert -f "iotstack/roles/${role}/matrix_panel_w" 2>/dev/null || true
+    printf '%s' "$w" | pass insert -f "$(iotstack_pass_role_path "$role" matrix_panel_w)" 2>/dev/null || true
   [[ "${MATRIX_PANEL_H_EXPLICIT:-0}" == "1" ]] && \
-    printf '%s' "$h" | pass insert -f "iotstack/roles/${role}/matrix_panel_h" 2>/dev/null || true
+    printf '%s' "$h" | pass insert -f "$(iotstack_pass_role_path "$role" matrix_panel_h)" 2>/dev/null || true
 }
 
 _flash_matrix_layout_mismatch() {
@@ -5511,12 +5511,12 @@ Note: Use 'iotstack update $device' for OTA flashing to devices already on netwo
 
 verify_common_pass_secrets() {
   # Every invocation (except read-only/informational commands -- see main())
-  # checks ha_url, ha_token, and every other item already stored under
-  # iotstack/common/ for existence and a non-placeholder value, prompting to
-  # fill in anything missing. Reuses ensure_pass_secret so prompting, the
-  # double-echo `pass insert`, and the CONFIGURE_ME placeholder check stay in
-  # one place (scripts/ensure-integration-secrets.sh) instead of being
-  # reimplemented here.
+  # checks ha_url, ha_token, and every other item already stored under this
+  # environment's iotstack/<env>/common/ for existence and a non-placeholder
+  # value, prompting to fill in anything missing. Reuses ensure_pass_secret so
+  # prompting, the double-echo `pass insert`, and the CONFIGURE_ME placeholder
+  # check stay in one place (scripts/ensure-integration-secrets.sh) instead of
+  # being reimplemented here.
   command -v pass &>/dev/null || err "pass is required but not installed"
 
   # shellcheck source=scripts/ensure-integration-secrets.sh
@@ -5560,9 +5560,9 @@ verify_common_pass_secrets() {
   fi
 
   # Human-friendly prompts for keys this codebase already knows about. Any
-  # other file discovered under iotstack/common/ that is missing/CONFIGURE_ME
-  # falls back to a generic prompt so newly added keys are covered without a
-  # code change here.
+  # other file discovered under this environment's common/ (or the legacy
+  # unscoped common/) that is missing/CONFIGURE_ME falls back to a generic
+  # prompt so newly added keys are covered without a code change here.
   local -A known_prompts=(
     [wifi_ssid]="WiFi network name (SSID)"
     [wifi_password]="WiFi password"
@@ -5574,21 +5574,29 @@ verify_common_pass_secrets() {
     [thread_tlv]="true"
   )
 
-  local common_dir="${PASSWORD_STORE_DIR}/iotstack/common"
-  [[ -d "$common_dir" ]] || return 0
+  # Scan both the env-scoped dir and the legacy unscoped dir so a key that
+  # only exists under the old path (never touched by an explicit call site --
+  # e.g. thread_tlv) is still discovered and migrated via ensure_pass_secret.
+  local new_common_dir="${PASSWORD_STORE_DIR}/iotstack/$(iotstack_env_name)/common"
+  local legacy_common_dir="${PASSWORD_STORE_DIR}/iotstack/common"
 
   local file key value prompt_text is_secret
   while IFS= read -r file; do
-    key="$(basename "$file" .gpg)"
+    key="${file%.gpg}"
+    [[ -z "$key" ]] && continue
     [[ "$key" == "ha_url" || "$key" == "ha_token" ]] && continue
 
-    value="$(get_pass_secret "iotstack/common/${key}")"
+    value="$(iotstack_pass_common_read "$key")" || value=""
     is_unconfigured "$value" || continue
 
-    prompt_text="${known_prompts[$key]:-Value for iotstack/common/${key}}"
+    prompt_text="${known_prompts[$key]:-Value for $(iotstack_pass_common_path "$key")}"
     is_secret="${known_secret[$key]:-true}"
-    ensure_pass_secret "iotstack/common/${key}" "$prompt_text" "$is_secret" "true" >/dev/null
-  done < <(find "$common_dir" -maxdepth 1 -name '*.gpg' 2>/dev/null | sort)
+    ensure_pass_secret "$key" "$prompt_text" "$is_secret" "true" >/dev/null
+  done < <(
+    { find "$new_common_dir" -maxdepth 1 -name '*.gpg' 2>/dev/null
+      find "$legacy_common_dir" -maxdepth 1 -name '*.gpg' 2>/dev/null
+    } | xargs -n1 basename 2>/dev/null | sort -u
+  )
 }
 
 verify_wifi_credentials() {
@@ -5606,14 +5614,14 @@ verify_wifi_credentials() {
   # caught deep inside write-nvs-secrets.sh, after compile/erase/flash has
   # already run (see _get_or_prompt_credential in scripts/write-nvs-secrets.sh,
   # which applies this same emptiness/placeholder check).
-  wifi_ssid=$(pass show iotstack/common/wifi_ssid 2>/dev/null || echo "")
+  wifi_ssid=$(iotstack_pass_common_read wifi_ssid 2>/dev/null || echo "")
   if [[ -n "$wifi_ssid" && "$wifi_ssid" != "CONFIGURE_ME" ]]; then
     has_ssid=true
     debug "Found WiFi SSID in pass store"
   fi
 
   # Check pass store for WiFi password (same emptiness/placeholder check)
-  wifi_password=$(pass show iotstack/common/wifi_password 2>/dev/null || echo "")
+  wifi_password=$(iotstack_pass_common_read wifi_password 2>/dev/null || echo "")
   if [[ -n "$wifi_password" && "$wifi_password" != "CONFIGURE_ME" ]]; then
     has_password=true
     debug "Found WiFi password in pass store"
@@ -5627,7 +5635,7 @@ verify_wifi_credentials() {
     if [[ "$has_ssid" == false ]]; then
       read -rp "Enter WiFi SSID: " wifi_ssid
       [[ -z "$wifi_ssid" ]] && err "WiFi SSID cannot be empty"
-      { echo "$wifi_ssid"; echo "$wifi_ssid"; } | pass insert -f iotstack/common/wifi_ssid 2>&1 | grep -v "^mkdir:" || true
+      { echo "$wifi_ssid"; echo "$wifi_ssid"; } | pass insert -f "$(iotstack_pass_common_path wifi_ssid)" 2>&1 | grep -v "^mkdir:" || true
       debug "Stored WiFi SSID in pass store"
     fi
 
@@ -5635,7 +5643,7 @@ verify_wifi_credentials() {
       read -rsp "Enter WiFi password: " wifi_password
       echo ""
       [[ -z "$wifi_password" ]] && err "WiFi password cannot be empty"
-      { echo "$wifi_password"; echo "$wifi_password"; } | pass insert -f iotstack/common/wifi_password 2>&1 | grep -v "^mkdir:" || true
+      { echo "$wifi_password"; echo "$wifi_password"; } | pass insert -f "$(iotstack_pass_common_path wifi_password)" 2>&1 | grep -v "^mkdir:" || true
       debug "Stored WiFi password in pass store"
     fi
 
@@ -6216,10 +6224,10 @@ main() {
 
   _ensure_chip_tool_storage
 
-  # Every invocation checks ha_url/ha_token and the rest of iotstack/common/
-  # for existence and non-placeholder values, prompting to fill in anything
-  # missing. Read-only/informational commands are exempt so they stay usable
-  # without a full HA/Thread/WiFi setup (e.g. 'iotstack help').
+  # Every invocation checks ha_url/ha_token and the rest of this environment's
+  # common/ secrets for existence and non-placeholder values, prompting to
+  # fill in anything missing. Read-only/informational commands are exempt so
+  # they stay usable without a full HA/Thread/WiFi setup (e.g. 'iotstack help').
   case "$command" in
     help|devices|roles|logs|ps) ;;
     *)

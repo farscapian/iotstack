@@ -477,9 +477,11 @@ export PASSWORD_STORE_DIR="$PASS_DIR"
 # Config items that should exist but can be empty (seeded with placeholder)
 declare -a config_items=("wifi_ssid" "wifi_password" "thread_tlv" "ha_url" "ha_token")
 
-# Seed config items under iotstack/common/ (user can update via: pass edit iotstack/common/wifi_ssid)
+# Seed config items under this environment's common/ (always "default" here --
+# setup.sh always seeds the default ~/.iotstack/.env; user can update via:
+# pass edit iotstack/default/common/wifi_ssid).
 for config_key in "${config_items[@]}"; do
-  pass_path="iotstack/common/${config_key}"
+  pass_path="$(iotstack_pass_common_path "$config_key")"
   if ! pass show "$pass_path" >/dev/null 2>&1; then
     {
       echo "CONFIGURE_ME"
