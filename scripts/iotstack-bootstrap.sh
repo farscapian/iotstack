@@ -56,6 +56,15 @@ iotstack_mdns_retry() {
   #
   # Retries up to 10 times, 3s apart (~30s total), matching the budget
   # confirmed necessary for --reassign in cab8088/75f66d1.
+  #
+  # Every <discover_fn> shells out to avahi-browse, which redirects its
+  # stderr and ignores its exit code -- so on a host missing avahi-utils
+  # (avahi-daemon does not pull it in), a "command not found" (exit 127)
+  # is indistinguishable from a genuinely empty, not-yet-populated cache and
+  # would otherwise burn the full retry budget before failing with a
+  # misleading "no devices found". Fail fast with the real cause instead.
+  command -v avahi-browse &>/dev/null \
+    || { err "avahi-browse not found. Install it: sudo apt install avahi-utils"; exit 1; }
   local label="$1" logger_fn="$2" discover_fn="$3"
   shift 3
   local attempt
