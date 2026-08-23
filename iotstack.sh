@@ -6228,8 +6228,10 @@ main() {
   # common/ secrets for existence and non-placeholder values, prompting to
   # fill in anything missing. Read-only/informational commands are exempt so
   # they stay usable without a full HA/Thread/WiFi setup (e.g. 'iotstack help').
+  # 'kill' is exempt too, but for a different reason: it must always be able
+  # to stop other iotstack processes, even ones stuck on this very prompt.
   case "$command" in
-    help|devices|roles|logs|ps) ;;
+    help|devices|roles|logs|ps|kill) ;;
     *)
       if [[ "${2:-}" != "help" ]]; then
         verify_common_pass_secrets
