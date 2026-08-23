@@ -12,6 +12,7 @@
 | WiFi credentials from NVS | [OK] Working | nvs_secrets reads SSID+password from NVS and applies them at runtime via `wifi::global_wifi_component->save_wifi_sta()` (see WiFi Credentials From NVS below) |
 | Production API key (`prod_api_key`) | [OK] Working | Per-device key from NVS applied at boot (`set_noise_psk`); used for HA API auth |
 | Bootstrap API key (`boot_api_key`) | [OK] Working | Per-device noise PSK for the encrypted bootstrap API; written OOB over USB only (see [security.md](security.md) "Bootstrap API encryption"). Needs hardware validation. |
+| Runtime log level (`log_level`) | [OK] Working | nvs_secrets applies it at boot and persists changes made via the HA "Log Level" select (see below) |
 | Flash encryption | [TODO] TODO | Planned for production hardening with eFuses |
 
 ## CRITICAL: NVS namespace row required
@@ -104,6 +105,28 @@ The Thread analog of the WiFi-from-NVS path. ESPHome's `openthread` component ba
 - `CONFLICTS_WITH = ["wifi"]` in the openthread component means a single image cannot do both radios -- WiFi and Thread are **separate bootstrap/production variants** (one radio per image; the C6 runs whichever image is booted). The dynamic partition table sizes each slot to whatever image lands there.
 
 Status: compiles on threadrouter (Thread stack) and on WiFi-only devices (OT code excluded by the guard). **Not yet validated on a live Thread network** -- the runtime `otDatasetSetActiveTlvs` + re-attach sequence (and its timing vs. the OT task spin-up) needs hardware confirmation; the disable->set->enable order may need tuning.
+
+### Runtime Log Level ([OK] Solved)
+
+Both bootstrap and every production role expose a **"Log Level" select** in Home
+Assistant (`yamls/common/partition_manager_base.yaml`, `select: platform:
+logger`), backed by ESPHome's built-in `logger` select component. Picking a
+level in HA calls the logger's `set_log_level()` immediately (no reboot) and
+also fires `nvs_secrets`'s `on_log_level_change()` callback, which persists the
+new value to the `log_level` key (a single `u8`) in the `iotstack` NVS
+namespace, skipping the write when it would be a no-op.
+
+At boot, `nvs_secrets` reads `log_level` from NVS and re-applies it before
+registering as a listener, so the level survives reboots and OTA updates
+without a recompile. If the key has never been written (fresh device), the
+compiled `logger: level:` default applies -- no NVS write happens until the
+device is actually adjusted from HA.
+
+The HA dropdown's option list is capped by ESPHome at the compiled `logger:
+level:` for that image (currently `DEBUG` for both bootstrap and production,
+see each role's `logger:` block) -- `set_log_level()` clamps and warns if a
+higher level is ever requested, so raising the ceiling (e.g. to `VERBOSE`)
+means bumping that YAML value, which grows the compiled binary.
 
 ### TODO: production self-recovery into bootstrap
 

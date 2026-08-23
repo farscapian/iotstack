@@ -5,6 +5,16 @@ packages:
 partition_manager:
   id: partition_mgr
 
+# Runtime-adjustable log level, exposed to Home Assistant as a dropdown.
+# ESPHome's built-in logger select: options are capped at the compiled
+# `logger: level:` (see each role's logger block); nvs_secrets persists the
+# chosen level to the "log_level" key in the iotstack NVS namespace and
+# re-applies it on every boot, so it survives reboots and OTA updates without
+# needing a recompile.
+select:
+  - platform: logger
+    name: "Log Level"
+
 button:
   - platform: restart
     name: "Restart"

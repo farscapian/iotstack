@@ -141,6 +141,9 @@ void NVSSecrets::setup() {
   // initialized the stack by the time this setup runs.
   apply_thread_dataset_();
   apply_api_encryption_key_();
+#ifdef USE_LOGGER
+  apply_log_level_();
+#endif
 
   ESP_LOGI(TAG, "[NVS] Setup complete");
 }
@@ -247,6 +250,57 @@ void NVSSecrets::apply_thread_dataset_() {
 #endif
 }
 
+#ifdef USE_LOGGER
+void NVSSecrets::apply_log_level_() {
+  nvs_handle_t nvs_handle;
+  esp_err_t err = nvs_open(NAMESPACE, NVS_READONLY, &nvs_handle);
+  if (err == ESP_OK) {
+    uint8_t level = 0;
+    err = nvs_get_u8(nvs_handle, "log_level", &level);
+    if (err == ESP_OK) {
+      nvs_log_level_ = level;
+      if (logger::global_logger != nullptr) {
+        ESP_LOGI(TAG, "[NVS] Applying log level from NVS: %u", (unsigned) level);
+        logger::global_logger->set_log_level(level);
+      }
+    } else if (err == ESP_ERR_NVS_NOT_FOUND) {
+      ESP_LOGD(TAG, "[NVS] No log_level in NVS; using compiled default");
+    } else {
+      ESP_LOGW(TAG, "[NVS] Failed to read log_level: %s", esp_err_to_name(err));
+    }
+    nvs_close(nvs_handle);
+  } else {
+    ESP_LOGW(TAG, "[NVS] Failed to open NVS namespace '%s' for log level: %s", NAMESPACE, esp_err_to_name(err));
+  }
+
+  // Listen for future changes (HA select, lambda, etc.) so NVS stays in sync.
+  if (logger::global_logger != nullptr)
+    logger::global_logger->add_level_listener(this);
+}
+
+void NVSSecrets::on_log_level_change(uint8_t level) {
+  if (level == nvs_log_level_)
+    return;  // already persisted; avoid a redundant flash write every boot
+
+  nvs_handle_t nvs_handle;
+  esp_err_t err = nvs_open(NAMESPACE, NVS_READWRITE, &nvs_handle);
+  if (err != ESP_OK) {
+    ESP_LOGW(TAG, "[NVS] Failed to open NVS to persist log level: %s", esp_err_to_name(err));
+    return;
+  }
+  err = nvs_set_u8(nvs_handle, "log_level", level);
+  if (err == ESP_OK)
+    err = nvs_commit(nvs_handle);
+  if (err == ESP_OK) {
+    nvs_log_level_ = level;
+    ESP_LOGI(TAG, "[NVS] Log level %u persisted to NVS", (unsigned) level);
+  } else {
+    ESP_LOGW(TAG, "[NVS] Failed to persist log level: %s", esp_err_to_name(err));
+  }
+  nvs_close(nvs_handle);
+}
+#endif
+
 void NVSSecrets::write_nvs_string(nvs_handle_t handle, const char* key, const std::string &value) {
   if (value.empty())
     return;
@@ -352,6 +406,9 @@ void NVSSecrets::dump_config() {
   ESP_LOGCONFIG(TAG, "  Thread TLV: %s", thread_tlv_.empty() ? "(not set)" : "(loaded from NVS)");
 #endif
   ESP_LOGCONFIG(TAG, "  git_commit: %s", git_commit_.empty() ? "(not set)" : git_commit_.c_str());
+#ifdef USE_LOGGER
+  ESP_LOGCONFIG(TAG, "  log_level: %s", nvs_log_level_ == 0xFF ? "(not set; using compiled default)" : "(loaded from NVS)");
+#endif
 }
 
 void NVSSecrets::loop() {

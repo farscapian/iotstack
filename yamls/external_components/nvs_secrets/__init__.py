@@ -1,9 +1,12 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome.components.logger import request_logger_level_listeners
 from esphome.const import CONF_ID
 
 CODEOWNERS = ["@iotstack"]
-DEPENDENCIES = []
+# logger: is present in every role YAML; nvs_secrets persists its runtime log
+# level to NVS and needs USE_LOGGER_LEVEL_LISTENERS (see to_code below).
+DEPENDENCIES = ["logger"]
 
 nvs_secrets_ns = cg.esphome_ns.namespace("nvs_secrets")
 NVSSecrets = nvs_secrets_ns.class_("NVSSecrets", cg.Component)
@@ -33,3 +36,6 @@ async def to_code(config):
     cg.add(var.set_api_nvs_key(config["api_nvs_key"]))
     cg.add(var.set_update_api_nvs_key(config["update_api_nvs_key"]))
     cg.add(var.set_require_api_encryption(config["require_api_encryption"]))
+    # nvs_secrets implements LoggerLevelListener to persist log level changes
+    # (e.g. from the HA "Log Level" select) to the iotstack NVS namespace.
+    request_logger_level_listeners()

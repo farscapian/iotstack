@@ -5,10 +5,19 @@
 #include "nvs.h"
 #include <string>
 
+#ifdef USE_LOGGER
+#include "esphome/components/logger/logger.h"
+#endif
+
 namespace esphome {
 namespace nvs_secrets {
 
-class NVSSecrets : public Component {
+class NVSSecrets : public Component
+#ifdef USE_LOGGER
+    ,
+    public logger::LoggerLevelListener
+#endif
+{
  public:
   float get_setup_priority() const override {
     return setup_priority::BEFORE_CONNECTION;  // After WiFi (250), before API (200)
@@ -16,6 +25,14 @@ class NVSSecrets : public Component {
   void setup() override;
   void dump_config() override;
   void loop() override;
+
+#ifdef USE_LOGGER
+  // LoggerLevelListener interface: fires on every log-level change, regardless
+  // of source (the HA "Log Level" select, a lambda, etc.), so NVS always
+  // mirrors the live level. Skips the write when it would be a no-op (see
+  // nvs_log_level_ below).
+  void on_log_level_change(uint8_t level) override;
+#endif
 
   void set_ota_nvs_key(const std::string &key) { ota_nvs_key_ = key; }
   void set_api_nvs_key(const std::string &key) { api_nvs_key_ = key; }
@@ -68,6 +85,16 @@ class NVSSecrets : public Component {
   // stack at runtime. No-op build unless USE_OPENTHREAD is defined.
   void apply_thread_dataset_();
   void apply_api_encryption_key_();
+#ifdef USE_LOGGER
+  // Reads the "log_level" NVS key (u8) and applies it to the logger, then
+  // registers this component as a level listener so later changes (e.g. from
+  // the HA "Log Level" select) get persisted back via on_log_level_change().
+  void apply_log_level_();
+  // Last level known to be stored in NVS; 0xFF means "not yet determined",
+  // which forces the first on_log_level_change() call to write through even
+  // if the compiled default happens to equal a stale/absent NVS value.
+  uint8_t nvs_log_level_{0xFF};
+#endif
 };
 
 }  // namespace nvs_secrets
