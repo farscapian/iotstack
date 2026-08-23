@@ -2423,12 +2423,26 @@ _update_via_bootstrap() {
     # Match the ESPHome node name, not the role -- they differ for roles that
     # shorten esphome.name, and matching "<role>-<mac>" finds nothing at all.
     node=$(_device_node_name "$role")
-    while IFS= read -r line; do
-      if [[ "$line" =~ ${node}-([0-9a-f]{6}) ]]; then
-        macs+=("${BASH_REMATCH[1]}")
+    # A single avahi-browse -t snapshot can race the avahi-daemon's own service
+    # cache, which lags behind until it has observed the device's mDNS
+    # announcement (freshly booted, just reconnected to WiFi, or right after
+    # an avahi-daemon restart). Retry for up to ~30s before giving up, matching
+    # the reassign mDNS retry budget in update_devices.sh.
+    local _discover_attempt
+    for _discover_attempt in 1 2 3 4 5 6 7 8 9 10; do
+      macs=()
+      while IFS= read -r line; do
+        if [[ "$line" =~ ${node}-([0-9a-f]{6}) ]]; then
+          macs+=("${BASH_REMATCH[1]}")
+        fi
+      done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+      [[ ${#macs[@]} -gt 0 ]] && mapfile -t macs < <(printf '%s\n' "${macs[@]}" | sort -u)
+      [[ ${#macs[@]} -gt 0 ]] && break
+      if (( _discover_attempt < 10 )); then
+        log "No '$role' device(s) in avahi cache yet (attempt ${_discover_attempt}/10); retrying..."
+        sleep 3
       fi
-    done < <(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
-    [[ ${#macs[@]} -gt 0 ]] && mapfile -t macs < <(printf '%s\n' "${macs[@]}" | sort -u)
+    done
   fi
 
   if [[ ${#macs[@]} -eq 0 ]]; then
