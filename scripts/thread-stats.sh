@@ -307,7 +307,7 @@ OPTIONS:
   --help, -h       Show this help message
   --verbose, -v    Enable verbose output
   --debug          Enable debug output
-  --ha-url URL     Home Assistant URL (default: http://homeassistant.local:8123)
+  --ha-url URL     Home Assistant URL (default: http://homeassistant.ancapistan.io:8123)
   --ha-token TOKEN Home Assistant API token
 
 EXAMPLES:
@@ -322,7 +322,7 @@ CONFIGURATION:
     pass insert iotstack/default/common/ha_token
 
   Or set environment variables:
-    export HA_URL="http://homeassistant.local:8123"
+    export HA_URL="http://homeassistant.ancapistan.io:8123"
     export HA_TOKEN="your_long_lived_token"
 
 REQUIREMENTS:

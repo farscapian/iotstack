@@ -147,7 +147,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
         _ies_warn "Could not reach Home Assistant at ${HA_URL} (attempt ${attempt}/${max_attempts}); enter a corrected URL."
         HA_URL="$(ensure_pass_secret \
           "ha_url" \
-          "Home Assistant URL (e.g. homeassistant.local:8123)" \
+          "Home Assistant URL (e.g. homeassistant.ancapistan.io:8123)" \
           "false" \
           "true")"
         HA_URL="$(normalize_ha_url "$HA_URL")"
@@ -219,7 +219,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     url="$(printf '%s' "$url" | xargs)"
     url="${url%/}"
 
-    # The prompt only ever asks for bare host:port (e.g. homeassistant.local:8123).
+    # The prompt only ever asks for bare host:port (e.g. homeassistant.ancapistan.io:8123).
     # Don't guess http vs https from the hostname -- strip whatever scheme the
     # user typed and always start on http://. The real scheme is discovered
     # empirically by resolve_ha_url_scheme() following redirects when the
@@ -386,7 +386,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       "true")"
     HA_URL="$(ensure_pass_secret \
       "ha_url" \
-      "Home Assistant URL (e.g. homeassistant.local:8123)" \
+      "Home Assistant URL (e.g. homeassistant.ancapistan.io:8123)" \
       "false" \
       "true")"
 

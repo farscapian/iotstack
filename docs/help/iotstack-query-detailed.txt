@@ -77,7 +77,7 @@ WebSocket API Details
 
 iotstack query connects via WebSocket API (more efficient than REST):
 
-  WebSocket: ws://homeassistant.local:8123/api/websocket
+  WebSocket: ws://homeassistant.ancapistan.io:8123/api/websocket
 
 Commands used:
   - auth (authenticate with token)

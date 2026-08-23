@@ -151,7 +151,7 @@ To enable automatic entity ID updates after device reassignment:
 
 # Store it in pass
 pass insert iotstack/default/common/ha_token
-pass insert iotstack/default/common/ha_url  # e.g., http://homeassistant.local:8123
+pass insert iotstack/default/common/ha_url  # e.g., homeassistant.ancapistan.io:8123
 ```
 
 ## Security Model
