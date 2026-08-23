@@ -5522,20 +5522,32 @@ verify_common_pass_secrets() {
   # shellcheck source=scripts/ensure-integration-secrets.sh
   source "${SCRIPT_DIR}/scripts/ensure-integration-secrets.sh"
 
-  # Ask once whether this setup uses Home Assistant at all, so a "no" skips
-  # the URL/token prompts entirely instead of forcing input for an
-  # integration the user doesn't want. The answer is sticky in pass; reset
-  # iotstack/common/ha_enabled (CONFIGURE_ME) to be asked again.
-  local ha_enabled
-  ha_enabled="$(get_pass_secret "iotstack/common/ha_enabled")"
-  if is_unconfigured "$ha_enabled"; then
+  # PERFORM_HA_DEVICE_REGISTRATION is the single answer to "does this setup
+  # use Home Assistant at all" -- ask once, up front, only when .env doesn't
+  # already have an explicit line for it (the shipped default in .env.example
+  # already answers "no" for every fresh install). Check the file directly,
+  # not the shell variable: config.sh defaults an unset var to 0, which would
+  # otherwise be indistinguishable from an explicit prior "no" and skip the
+  # prompt for everyone. Edit/remove the line in .env to be asked again.
+  if [[ -n "${ENV_FILE:-}" ]] && ! grep -qE '^PERFORM_HA_DEVICE_REGISTRATION=' "$ENV_FILE" 2>/dev/null; then
     local answer
     answer="$(prompt_value "Do you want to integrate this device with Home Assistant? (y/n)" false)"
-    [[ "$answer" =~ ^[Yy] ]] && ha_enabled="true" || ha_enabled="false"
-    store_pass_secret "iotstack/common/ha_enabled" "$ha_enabled"
+    if [[ "$answer" =~ ^[Yy] ]]; then
+      PERFORM_HA_DEVICE_REGISTRATION=1
+    else
+      PERFORM_HA_DEVICE_REGISTRATION=0
+    fi
+    {
+      echo ""
+      echo "# Auto-register production devices in Home Assistant after flash/update (0=off, 1=on)"
+      echo "# Uses the device-specific api_encryption_key (derived from pass + MAC) via WebSocket."
+      echo "PERFORM_HA_DEVICE_REGISTRATION=${PERFORM_HA_DEVICE_REGISTRATION}"
+    } >> "$ENV_FILE"
+    ok "Set PERFORM_HA_DEVICE_REGISTRATION=${PERFORM_HA_DEVICE_REGISTRATION} in $ENV_FILE"
+    export PERFORM_HA_DEVICE_REGISTRATION
   fi
 
-  if [[ "$ha_enabled" == "true" ]]; then
+  if [[ "${PERFORM_HA_DEVICE_REGISTRATION:-0}" == "1" ]]; then
     # Prompts for token then URL (if unset) and live-tests the WebSocket
     # connection right here, reprompting for a bad URL/token in place --
     # fail fast, before any build/flash work starts, instead of surfacing a
@@ -5568,7 +5580,7 @@ verify_common_pass_secrets() {
   local file key value prompt_text is_secret
   while IFS= read -r file; do
     key="$(basename "$file" .gpg)"
-    [[ "$key" == "ha_url" || "$key" == "ha_token" || "$key" == "ha_enabled" ]] && continue
+    [[ "$key" == "ha_url" || "$key" == "ha_token" ]] && continue
 
     value="$(get_pass_secret "iotstack/common/${key}")"
     is_unconfigured "$value" || continue

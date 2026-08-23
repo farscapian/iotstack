@@ -296,11 +296,12 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
   }
 
   load_ha_credentials_optional() {
-    # An explicit "no" to the ha_enabled prompt (verify_common_pass_secrets)
-    # is authoritative: don't let a stale ha_url/ha_token left over from
-    # before the user opted out get picked up by a later best-effort HA step
-    # in the same run (device registration, entity ID recreation, etc.).
-    if [[ "$(get_pass_secret "iotstack/common/ha_enabled")" == "false" ]]; then
+    # PERFORM_HA_DEVICE_REGISTRATION=0 (the default, and what "no" to the
+    # verify_common_pass_secrets prompt writes to .env) is authoritative:
+    # don't let a stale ha_url/ha_token left over from before the user opted
+    # out get picked up by a later best-effort HA step in the same run
+    # (device registration, entity ID recreation, etc.).
+    if [[ "${PERFORM_HA_DEVICE_REGISTRATION:-0}" != "1" ]]; then
       HA_URL=""
       HA_TOKEN=""
       export HA_URL HA_TOKEN
