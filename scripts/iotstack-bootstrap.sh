@@ -34,6 +34,41 @@ iotstack_meta_mdns_service() {
   printf '_iotstack-meta._tcp\n'
 }
 
+iotstack_mdns_retry() {
+  # Retry an mDNS discovery attempt until it succeeds or a budget is spent.
+  #
+  # A single avahi-browse -t snapshot only shows what the avahi-daemon has
+  # already cached; it does not wait for a device's mDNS announcement to
+  # arrive. That races freshly booted devices, ones that just reconnected to
+  # WiFi, or a just-restarted avahi-daemon. Both iotstack.sh (production
+  # update, by role) and update_devices.sh (--reassign, by MAC) hit this same
+  # race, so the retry loop lives here once instead of twice.
+  #
+  # Usage: iotstack_mdns_retry <label> <logger_fn> <discover_fn> [args...]
+  #   <label>       Noun phrase for the retry log line, e.g. "'bleproxy' device(s)"
+  #   <logger_fn>   Name of a function to call with the retry message (info/log/etc)
+  #   <discover_fn> Name of a function to call each attempt; it should populate
+  #                 whatever result variable the caller cares about (a plain
+  #                 global, or a local in the caller's stack frame -- bash
+  #                 resolves unshadowed variable names dynamically) and return
+  #                 0 once it found something, 1 otherwise.
+  #   [args...]     Extra arguments forwarded to <discover_fn> verbatim.
+  #
+  # Retries up to 10 times, 3s apart (~30s total), matching the budget
+  # confirmed necessary for --reassign in cab8088/75f66d1.
+  local label="$1" logger_fn="$2" discover_fn="$3"
+  shift 3
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    "$discover_fn" "$@" && return 0
+    if (( attempt < 10 )); then
+      "$logger_fn" "No ${label} in avahi cache yet (attempt ${attempt}/10); retrying..."
+      sleep 3
+    fi
+  done
+  return 1
+}
+
 iotstack_bootstrap_pass_ota_path() {
   local role
   role=$(iotstack_bootstrap_role)
