@@ -2,7 +2,7 @@
 # iotstack.sh -- CLI tool for managing iotstack ESPHome devices
 # Wrapper around update_devices.sh with a cleaner interface
 
-set -euox pipefail
+set -euo pipefail
 
 # Top-level invocation PID; subshells (e.g. profile=$(bootstrap_resolve_profile))
 # use a different $$ but must not be treated as a stale flash session.
