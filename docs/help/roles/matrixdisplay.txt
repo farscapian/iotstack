@@ -49,9 +49,9 @@ Examples:
 
 NVS / pass store (optional defaults):
 
-  iotstack/roles/matrixdisplay/matrix_cols
-  iotstack/roles/matrixdisplay/matrix_panel_w
-  iotstack/roles/matrixdisplay/matrix_panel_h
+  iotstack/default/roles/matrixdisplay/matrix_cols
+  iotstack/default/roles/matrixdisplay/matrix_panel_w
+  iotstack/default/roles/matrixdisplay/matrix_panel_h
 
 General command reference:
 

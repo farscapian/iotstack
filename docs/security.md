@@ -21,10 +21,10 @@ echo "[OK] OTA password: $password"
 
 ```bash
 # OK: password echoed twice
-{ echo "$password"; echo "$password"; } | pass insert -f "iotstack/roles/bleproxy/ota_password"
+{ echo "$password"; echo "$password"; } | pass insert -f "iotstack/default/roles/bleproxy/ota_password"
 
 # FAIL: password only echoed once (WILL FAIL SILENTLY)
-echo "$password" | pass insert -f "iotstack/roles/bleproxy/ota_password"
+echo "$password" | pass insert -f "iotstack/default/roles/bleproxy/ota_password"
 ```
 
 **Why:** `pass insert` requires confirmation like interactive entry. Single echo fails silently (exit 1).
@@ -47,8 +47,8 @@ never exposed on the wire.
 
 - Derivation mirrors the production API key: `sha256(<role master> | <mac>)`,
   where the role master lives in pass at
-  `iotstack/roles/<bootstrap-role>/api_encryption_key` (auto-generated on first
-  flash). See `iotstack_bootstrap_device_api_key` in `scripts/iotstack-bootstrap.sh`.
+  `iotstack/<env>/roles/<bootstrap-role>/api_encryption_key` (auto-generated on
+  first flash). See `iotstack_bootstrap_device_api_key` in `scripts/iotstack-bootstrap.sh`.
 - Written to device NVS **only over USB** by `scripts/write-nvs-secrets.sh` at
   flash time -- the trusted out-of-band channel. It is **never** included in the
   `update_nvs_secrets` API payload (`--print-api-json` deliberately omits it).

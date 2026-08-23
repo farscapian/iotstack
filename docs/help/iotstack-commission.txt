@@ -5,14 +5,14 @@ from a QR image or pairing code, then hands it off to Home Assistant. Prefer
 iotstack matter commission for new use.
 
 Required secrets (stored in pass):
-  iotstack/common/thread_tlv          Thread network TLV data (hex)
-  iotstack/common/ha_url              Home Assistant URL
-  iotstack/common/ha_token            Home Assistant long-lived token
+  iotstack/default/common/thread_tlv          Thread network TLV data (hex)
+  iotstack/default/common/ha_url              Home Assistant URL
+  iotstack/default/common/ha_token            Home Assistant long-lived token
 
 Set secrets with:
-  pass insert iotstack/common/thread_tlv
-  pass insert iotstack/common/ha_url
-  pass insert iotstack/common/ha_token
+  pass insert iotstack/default/common/thread_tlv
+  pass insert iotstack/default/common/ha_url
+  pass insert iotstack/default/common/ha_token
 
 chip-tool / Matter files (non-secret) under ~/.iotstack/chip-tool/
   common/        fabric storage

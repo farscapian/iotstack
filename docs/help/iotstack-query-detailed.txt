@@ -11,9 +11,9 @@ iotstack query uses Home Assistant's WebSocket API to list devices and entities.
 Required:
   - Home Assistant instance running and accessible
   - Long-lived access token configured:
-    pass insert iotstack/common/ha_token
+    pass insert iotstack/default/common/ha_token
   - Home Assistant URL configured:
-    pass insert iotstack/common/ha_url
+    pass insert iotstack/default/common/ha_url
   - websocat (WebSocket client) installed
 
 Optional dependencies are auto-installed:
@@ -38,11 +38,11 @@ To enable iotstack query and other HA integration:
    - Copy the token
 
 2. Store in pass:
-   pass insert iotstack/common/ha_token
+   pass insert iotstack/default/common/ha_token
    (paste the token when prompted)
 
 3. Store HA URL:
-   pass insert iotstack/common/ha_url
+   pass insert iotstack/default/common/ha_url
    (example: http://192.168.1.100:8123 or https://home.example.com)
 
 4. Test:

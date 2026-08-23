@@ -40,7 +40,7 @@ Getting your Thread dataset:
   - Otherwise, generate one using chip-tool
 
 Storing Thread dataset in pass:
-  pass insert iotstack/common/thread_tlv
+  pass insert iotstack/default/common/thread_tlv
   (paste the hex-encoded TLV data when prompted)
 
 
@@ -55,8 +55,8 @@ Matter commissioning requires Home Assistant with:
 Configuration steps:
   1. Settings -> Developer Tools -> Long-Lived Access Tokens
   2. Create token, copy it
-  3. pass insert iotstack/common/ha_token
-  4. pass insert iotstack/common/ha_url
+  3. pass insert iotstack/default/common/ha_token
+  4. pass insert iotstack/default/common/ha_url
   5. Verify Home Assistant is reachable from flashing device
 
 

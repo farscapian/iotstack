@@ -30,8 +30,8 @@ After reassignment, entity IDs automatically update in Home Assistant:
 
 This happens automatically via WebSocket API when:
   - HA_URL and HA_TOKEN are configured in pass:
-    pass insert iotstack/common/ha_url
-    pass insert iotstack/common/ha_token
+    pass insert iotstack/default/common/ha_url
+    pass insert iotstack/default/common/ha_token
 
 Entity ID format:
   <device-friendly-name>-<mac-suffix>

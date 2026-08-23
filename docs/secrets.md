@@ -27,19 +27,26 @@ Sensitive information (WiFi passwords, API keys, OTA passwords) is managed throu
 
 ### Layer 1: Role-Based Secrets (Encrypted Pass Store)
 
-Each device role (bleproxy, threadrouter, mmwave, etc.) has a master secret stored in the encrypted pass store:
+Each device role (bleproxy, threadrouter, mmwave, etc.) has a master secret stored in the encrypted pass store, namespaced by the active `-env=` environment (the default `~/.iotstack/.env` is namespaced `default`; `-env=pangolin.env` is namespaced `pangolin`, etc. -- see [configuration.md](configuration.md)):
 
 ```
 ~/.iotstack/.pass/
 `--- iotstack/
-    `--- roles/
-        |--- bleproxy/
-        |   `--- ota_password
-        |--- threadrouter/
-        |   `--- ota_password
-        `--- mmwave/
-            `--- ota_password
+    `--- default/
+        |--- common/
+        |   |--- wifi_ssid
+        |   |--- ha_url
+        |   `--- ha_token
+        `--- roles/
+            |--- bleproxy/
+            |   `--- ota_password
+            |--- threadrouter/
+            |   `--- ota_password
+            `--- mmwave/
+                `--- ota_password
 ```
+
+Multiple `-env=` configs never share secrets this way -- `iotstack/pangolin/roles/bleproxy/ota_password` is a completely separate secret from `iotstack/default/roles/bleproxy/ota_password`.
 
 These master secrets are:
 - Encrypted with your GPG key
@@ -131,7 +138,7 @@ You can also manually create a role secret:
 openssl rand -hex 16 | tr -d '\n'
 
 # Store it in pass (enter it twice for confirmation)
-pass insert iotstack/roles/bleproxy/ota_password
+pass insert iotstack/default/roles/bleproxy/ota_password
 ```
 
 ### Home Assistant Integration
@@ -143,8 +150,8 @@ To enable automatic entity ID updates after device reassignment:
 # Settings -> Developer Tools -> Long-Lived Access Tokens -> Create Token
 
 # Store it in pass
-pass insert iotstack/common/ha_token
-pass insert iotstack/common/ha_url  # e.g., http://homeassistant.local:8123
+pass insert iotstack/default/common/ha_token
+pass insert iotstack/default/common/ha_url  # e.g., http://homeassistant.local:8123
 ```
 
 ## Security Model
@@ -191,7 +198,7 @@ This means the role secret doesn't exist yet. Create it:
 
 ```bash
 # Generate and store a new secret
-openssl rand -hex 16 | (read pwd; echo "$pwd"; echo "$pwd") | pass insert iotstack/roles/<role>/ota_password
+openssl rand -hex 16 | (read pwd; echo "$pwd"; echo "$pwd") | pass insert iotstack/default/roles/<role>/ota_password
 ```
 
 ### "Failed to write NVS partition"
@@ -214,11 +221,14 @@ If the device logs show NVS keys aren't found:
 ### Viewing pass store structure
 
 ```bash
-# List all stored secrets
+# List all stored secrets, across every -env= environment
 pass iotstack/
 
+# List secrets for one environment only
+pass iotstack/default/
+
 # View a specific secret (requires password)
-pass show iotstack/roles/bleproxy/ota_password
+pass show iotstack/default/roles/bleproxy/ota_password
 ```
 
 ### Rotating Secrets

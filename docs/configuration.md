@@ -29,3 +29,10 @@ iotstack -env=pangolin.env flash bleproxy /dev/ttyACM0
 # Or combine with other flags
 iotstack -v -env=debug.env update bleproxy
 ```
+
+**Pass store scoping:** each `.env` file gets its own namespace in the pass
+store, derived from the `.env` filename (`.env` -> `default`, `pangolin.env` ->
+`pangolin`) -- e.g. `iotstack/default/roles/bleproxy/ota_password` vs.
+`iotstack/pangolin/roles/bleproxy/ota_password`. WiFi, Home Assistant, and
+per-role secrets are never shared between environments; see
+[secrets.md](secrets.md).

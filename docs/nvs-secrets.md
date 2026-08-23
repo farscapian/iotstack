@@ -150,8 +150,8 @@ cycles ota_0->ota_1->ota_2->ota_0, so:
   expose a target), which is the one piece beyond a weekend.
 
 **Naming:** with the cascade, rename the current `bootstrap` -> `bootstrap-wifi`
-(touches the mDNS name `bootstrap-<mac>`, the `iotstack/roles/bootstrap/...` pass
-paths, the flash wait logic, and the `bootstrap` partition label) and add
+(touches the mDNS name `bootstrap-<mac>`, the `iotstack/<env>/roles/bootstrap/...`
+pass paths, the flash wait logic, and the `bootstrap` partition label) and add
 `bootstrap-thread`. Do the rename *with* the cascade, not piecemeal.
 
 **Build order:** (1) matched 2-variant bootstrap (wifi/thread) + validated
@@ -161,7 +161,7 @@ able to target a *specific* slot (not just toggle) so it's cascade-ready.
 
 Architecture:
 1. **Pass store** (`~/.iotstack/.pass/`): Role-based master secrets (encrypted)
-   - One secret per role (e.g., `iotstack/roles/bleproxy/ota_password`)
+   - One secret per role, namespaced by environment (e.g., `iotstack/default/roles/bleproxy/ota_password`)
    - Generated during setup.sh, stored securely
    - Never written to disk unencrypted
 
@@ -232,7 +232,7 @@ Our threat model protects against:
 
 ```
 Role-based secret (in pass store):
-  iotstack/roles/bootstrap/ota_password = "base_secret_xyz"
+  iotstack/default/roles/bootstrap/ota_password = "base_secret_xyz"
   
 Device-specific computation (in-memory during flash):
   device_password = sha256("base_secret_xyz" | "1af95c")[0:32]
