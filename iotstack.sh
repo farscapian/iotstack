@@ -337,6 +337,39 @@ _flash_sync_update_devices_cache() {
   debug "Synced update_devices build cache for ${yaml_name}"
 }
 
+_flash_archive_yaml() {
+  # Retain a copy of the yaml actually used for this flash (bootstrap's rendered
+  # .iotstack-bootstrap-<variant>.yaml, or the resolved production role yaml) in
+  # ~/.iotstack/logs/, since both are transient or can drift from what was
+  # flashed by the time anyone goes looking. Named with the --create-log session
+  # id when present so it sits alongside that session's log/serial files;
+  # otherwise a per-invocation timestamp shared by every yaml archived in the
+  # same 'iotstack flash' run. Best-effort: never fails the flash.
+  # Usage: _flash_archive_yaml <yaml_file> <device_name_for_logging>
+  local yaml_file="$1"
+  local device_name="${2:-unknown}"
+  [[ -f "$yaml_file" ]] || return 0
+
+  local kind="production"
+  local name="$device_name"
+  if _is_bootstrap_yaml "$yaml_file"; then
+    kind="bootstrap"
+    name="${IOTSTACK_BOOTSTRAP_VARIANT:-$device_name}"
+  fi
+
+  local tag
+  if [[ -n "${IOTSTACK_LOG_ID:-}" ]]; then
+    tag="$IOTSTACK_LOG_ID"
+  else
+    export IOTSTACK_FLASH_RUN_TS="${IOTSTACK_FLASH_RUN_TS:-$(date +%Y%m%d_%H%M%S)}"
+    tag="flash-${IOTSTACK_FLASH_RUN_TS}"
+  fi
+
+  local archive_dir="${IOTSTACK_HOME}/logs"
+  mkdir -p "$archive_dir" 2>/dev/null || return 0
+  cp "$yaml_file" "${archive_dir}/iotstack-${tag}-${kind}-${name}.yaml" 2>/dev/null || true
+}
+
 smart_compile() {
   # Smart compilation that skips a rebuild when the current esphome config_hash
   # already matches the built one. config_hash is the sole build-identity key
@@ -345,6 +378,8 @@ smart_compile() {
   # Usage: smart_compile <yaml_file> [device_name_for_logging]
   local yaml_file="$1"
   local device_name="${2:-unknown}"
+
+  _flash_archive_yaml "$yaml_file" "$device_name"
 
   if _smart_compile_already_done "$yaml_file"; then
     _smart_compile_repeat_satisfied "$yaml_file" "$device_name"
