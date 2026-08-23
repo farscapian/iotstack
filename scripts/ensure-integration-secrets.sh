@@ -111,7 +111,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       if resolved="$(resolve_ha_url_scheme "$HA_URL")" && [[ -n "$resolved" && "$resolved" != "$HA_URL" ]]; then
         _ies_info "Resolved ${HA_URL} -> ${resolved} (redirect)"
         HA_URL="$resolved"
-        store_pass_secret "$(iotstack_pass_common_path ha_url)" "$HA_URL"
+        store_pass_secret "$(iotstack_pass_common_path ha_url)" "$(strip_ha_url_scheme "$HA_URL")"
         export HA_URL
       fi
       _ies_info "Testing Home Assistant WebSocket connection to ${HA_URL}..."
@@ -226,12 +226,25 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       if [[ "$key" == "ha_url" ]]; then
         value="$(normalize_ha_url "$value")"
         validate_ha_url "$value"
+        store_pass_secret "$pass_path" "$(strip_ha_url_scheme "$value")"
+      else
+        store_pass_secret "$pass_path" "$value"
       fi
-      store_pass_secret "$pass_path" "$value"
       _ies_info "Stored credential: $pass_path"
     fi
 
     echo "$value"
+  }
+
+  strip_ha_url_scheme() {
+    # Bare FQDN:port only -- what actually gets persisted to pass. The
+    # scheme is a runtime concern (see normalize_ha_url/resolve_ha_url_scheme)
+    # and is never stored, so a later http->https migration on the HA side
+    # doesn't leave a stale scheme baked into the credential.
+    local url="$1"
+    url="${url#http://}"
+    url="${url#https://}"
+    printf '%s' "$url"
   }
 
   normalize_ha_url() {
