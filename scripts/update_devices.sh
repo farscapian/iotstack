@@ -518,8 +518,8 @@ try:
         timeout=10
     )
 except Exception as e:
-    print(f'ERROR: Failed to connect to HA WebSocket: {e}', file=sys.stderr)
-    sys.exit(1)
+    print(f'WARNING: Failed to connect to HA WebSocket: {e}', file=sys.stderr)
+    sys.exit(0)
 
 msg_id = 1
 
@@ -527,16 +527,18 @@ msg_id = 1
 try:
     init_msg = json.loads(ws.recv())
     if init_msg.get('type') != 'auth_required':
-        sys.exit(1)
+        print('WARNING: Unexpected HA WebSocket handshake', file=sys.stderr)
+        sys.exit(0)
 
     ws.send(json.dumps({'type': 'auth', 'access_token': token}))
     auth_result = json.loads(ws.recv())
 
     if auth_result.get('type') != 'auth_ok':
-        sys.exit(1)
+        print('WARNING: Home Assistant rejected the access token', file=sys.stderr)
+        sys.exit(0)
 except Exception as e:
-    print(f'ERROR: Authentication failed: {e}', file=sys.stderr)
-    sys.exit(1)
+    print(f'WARNING: Authentication failed: {e}', file=sys.stderr)
+    sys.exit(0)
 
 # Get entity registry list
 try:
@@ -548,13 +550,15 @@ try:
 
     entities_msg = json.loads(ws.recv())
     if not entities_msg.get('success'):
-        sys.exit(1)
+        print('WARNING: Failed to list entities', file=sys.stderr)
+        ws.close()
+        sys.exit(0)
 
     all_entities = entities_msg.get('result', [])
 except Exception as e:
-    print(f'ERROR: Failed to list entities: {e}', file=sys.stderr)
+    print(f'WARNING: Failed to list entities: {e}', file=sys.stderr)
     ws.close()
-    sys.exit(1)
+    sys.exit(0)
 
 # Get device registry to match MACs and update device names
 try:
