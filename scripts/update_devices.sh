@@ -488,7 +488,7 @@ recreate_entity_ids() {
 
   HA_URL="$ha_url" HA_TOKEN="$ha_token" HOSTNAMES="$hostnames" \
     FRIENDLY_NAME="$friendly_name" python3 - <<'PYEOF'
-import json, os, sys, ssl, re, websocket
+import json, os, sys, ssl, re, time, websocket
 
 ha_url = os.environ['HA_URL'].rstrip('/')
 token = os.environ['HA_TOKEN']
@@ -511,14 +511,23 @@ ws_url = ha_url.replace('http://', 'ws://').replace('https://', 'wss://') + '/ap
 import warnings
 warnings.filterwarnings('ignore')
 
-try:
-    ws = websocket.create_connection(
-        ws_url,
-        sslopt={"cert_reqs": ssl.CERT_NONE},
-        timeout=10
-    )
-except Exception as e:
-    print(f'WARNING: Failed to connect to HA WebSocket: {e}', file=sys.stderr)
+ws = None
+connect_err = None
+for attempt in range(3):
+    try:
+        ws = websocket.create_connection(
+            ws_url,
+            sslopt={"cert_reqs": ssl.CERT_NONE},
+            timeout=10
+        )
+        break
+    except Exception as e:
+        connect_err = e
+        if attempt < 2:
+            time.sleep(1 + attempt)
+
+if ws is None:
+    print(f'WARNING: Failed to connect to HA WebSocket: {connect_err}', file=sys.stderr)
     sys.exit(0)
 
 msg_id = 1
