@@ -621,6 +621,7 @@ def recreate_entity_ids(
         lines.append(f"WARNING: Failed to get automatic entity IDs: {exc}")
         return lines
 
+    updated_count = 0
     for old_id, new_id in id_mapping.items():
         if old_id == new_id or not new_id:
             continue
@@ -629,10 +630,66 @@ def recreate_entity_ids(
                 "config/entity_registry/update", entity_id=old_id, new_entity_id=new_id
             )
             lines.append(f"Recreated: {old_id} -> {new_id}")
+            updated_count += 1
         except HAWebSocketError as exc:
             lines.append(f"WARNING: Failed to update {old_id}: {exc}")
 
+    if updated_count > 0:
+        lines.append(f"Successfully recreated {updated_count} entity ID(s).")
+
     return lines
+
+
+def verify_entity_id_consistency(
+    client: HAWebSocketClient, hostnames: list[str], entity_slug: str, friendly_name: str
+) -> list[str]:
+    """Check that discovered ESPHome entity IDs still reflect entity_slug.
+
+    Ported from the standalone WebSocket connection scripts/update_devices.sh
+    used to open per-call; operates over an already-connected `client` instead
+    (see recreate_entity_ids). Returns [] when there's nothing to report (no
+    matching devices, or a lookup failure -- best-effort, cosmetic check), else
+    a single all-clear line, or one "WARNING: ..." line per inconsistent entity.
+    Never raises.
+    """
+    mac_suffixes: dict[str, str] = {}
+    for hostname in hostnames:
+        mac = _mac_suffix_from_hostname(hostname)
+        if mac:
+            mac_suffixes[mac] = hostname
+
+    if not mac_suffixes:
+        return []
+
+    try:
+        all_entities = client.send_command("config/entity_registry/list") or []
+    except HAWebSocketError:
+        return []
+
+    base_slug = entity_slug.replace("-", "_")
+    inconsistent = []
+    for entity in all_entities:
+        entity_id = entity.get("entity_id", "").lower()
+        platform = entity.get("platform", "").lower()
+        if platform != "esphome":
+            continue
+        for mac, hostname in mac_suffixes.items():
+            if mac not in entity_id:
+                continue
+            if base_slug not in entity_id:
+                inconsistent.append({"entity_id": entity_id, "device": hostname, "mac": mac})
+            break
+
+    if inconsistent:
+        lines = ["WARNING: Entity ID inconsistencies detected:"]
+        for item in inconsistent:
+            lines.append(
+                f"  {item['entity_id']} (should contain '{base_slug}', "
+                f"from friendly_name '{friendly_name}', device {item['device']})"
+            )
+        return lines
+
+    return ["All entity IDs are consistent with device names."]
 
 
 def finalize_esphome_device(
@@ -641,20 +698,27 @@ def finalize_esphome_device(
     hostname: str,
     noise_psk: str,
     friendly_name: str,
+    entity_slug: str = "",
     *,
     poll_timeout: float = 90.0,
 ) -> dict[str, Any]:
-    """Register/reconfigure hostname in HA, then recreate its entity IDs.
+    """Register/reconfigure hostname in HA, recreate its entity IDs, then verify
+    they're consistent.
 
-    Both steps share one WebSocket connection, opened before the reconfigure
-    flow's HA-side config-entry reload begins, so the entity-ID step does not
-    need to open a fresh connection right after that reload starts.
+    All three steps share one WebSocket connection, opened before the
+    reconfigure flow's HA-side config-entry reload begins, so the later steps
+    do not need to open a fresh connection right after that reload starts.
     """
     with HAWebSocketClient(ha_url, token) as client:
         result = register_esphome_device(
             ha_url, token, hostname, noise_psk, poll_timeout=poll_timeout, client=client
         )
         result["entity_lines"] = recreate_entity_ids(client, [hostname], friendly_name)
+        result["consistency_lines"] = (
+            verify_entity_id_consistency(client, [hostname], entity_slug, friendly_name)
+            if entity_slug
+            else []
+        )
     return result
 
 
@@ -734,6 +798,7 @@ def main() -> int:
         help="Device API encryption key (base64 noise_psk for HA)",
     )
     finalize_parser.add_argument("--friendly-name", default="")
+    finalize_parser.add_argument("--entity-slug", default="")
     finalize_parser.add_argument(
         "--poll-timeout",
         type=float,
@@ -741,6 +806,27 @@ def main() -> int:
         help="Seconds to wait for HA discovery flow",
     )
     finalize_parser.set_defaults(func=lambda args: _cmd_finalize_esphome(args))
+
+    recreate_parser = sub.add_parser(
+        "recreate-entities",
+        help="Recreate entity IDs for one or more already-registered ESPHome devices",
+    )
+    recreate_parser.add_argument(
+        "--hostnames", required=True, help="space-separated device hostnames"
+    )
+    recreate_parser.add_argument("--friendly-name", default="")
+    recreate_parser.set_defaults(func=lambda args: _cmd_recreate_entities(args))
+
+    verify_parser = sub.add_parser(
+        "verify-entities",
+        help="Check that entity IDs for one or more ESPHome devices are consistent",
+    )
+    verify_parser.add_argument(
+        "--hostnames", required=True, help="space-separated device hostnames"
+    )
+    verify_parser.add_argument("--entity-slug", required=True)
+    verify_parser.add_argument("--friendly-name", default="")
+    verify_parser.set_defaults(func=lambda args: _cmd_verify_entities(args))
 
     args = parser.parse_args()
     try:
@@ -763,6 +849,22 @@ def _cmd_query(args: argparse.Namespace) -> None:
     print()
 
 
+def _print_register_status(result: dict[str, Any], hostname: str) -> None:
+    status = result.get("status")
+    if status == "reconfigured":
+        print(f"[OK] Home Assistant reconfigured {hostname}")
+    elif status in {"already_registered", "already_configured"}:
+        print(f"[OK] Home Assistant already has {hostname}")
+    else:
+        title = (result.get("result") or {}).get("title", hostname)
+        print(f"[OK] Home Assistant registered: {title}")
+
+
+def _print_lines(lines: list[str]) -> None:
+    for line in lines:
+        print(line, file=sys.stderr if line.startswith("WARNING") else sys.stdout)
+
+
 def _cmd_register_esphome(args: argparse.Namespace) -> None:
     result = register_esphome_device(
         args.ha_url,
@@ -771,15 +873,7 @@ def _cmd_register_esphome(args: argparse.Namespace) -> None:
         args.noise_psk,
         poll_timeout=args.poll_timeout,
     )
-    status = result.get("status")
-    if status == "reconfigured":
-        print(f"[OK] Home Assistant reconfigured {args.hostname}")
-        return
-    if status in {"already_registered", "already_configured"}:
-        print(f"[OK] Home Assistant already has {args.hostname}")
-        return
-    title = (result.get("result") or {}).get("title", args.hostname)
-    print(f"[OK] Home Assistant registered: {title}")
+    _print_register_status(result, args.hostname)
 
 
 def _cmd_finalize_esphome(args: argparse.Namespace) -> None:
@@ -789,19 +883,32 @@ def _cmd_finalize_esphome(args: argparse.Namespace) -> None:
         args.hostname,
         args.noise_psk,
         args.friendly_name,
+        args.entity_slug,
         poll_timeout=args.poll_timeout,
     )
-    status = result.get("status")
-    if status == "reconfigured":
-        print(f"[OK] Home Assistant reconfigured {args.hostname}")
-    elif status in {"already_registered", "already_configured"}:
-        print(f"[OK] Home Assistant already has {args.hostname}")
-    else:
-        title = (result.get("result") or {}).get("title", args.hostname)
-        print(f"[OK] Home Assistant registered: {title}")
+    _print_register_status(result, args.hostname)
+    _print_lines(result.get("entity_lines", []))
+    _print_lines(result.get("consistency_lines", []))
 
-    for line in result.get("entity_lines", []):
-        print(line, file=sys.stderr if line.startswith("WARNING") else sys.stdout)
+
+def _cmd_recreate_entities(args: argparse.Namespace) -> None:
+    hostnames = args.hostnames.split()
+    if not any(_mac_suffix_from_hostname(h) for h in hostnames):
+        return  # nothing to do -- skip connecting entirely, as recreate_entity_ids would
+    with HAWebSocketClient(args.ha_url, args.ha_token) as client:
+        _print_lines(recreate_entity_ids(client, hostnames, args.friendly_name))
+
+
+def _cmd_verify_entities(args: argparse.Namespace) -> None:
+    hostnames = args.hostnames.split()
+    if not any(_mac_suffix_from_hostname(h) for h in hostnames):
+        return  # nothing to do -- skip connecting entirely, as verify_entity_id_consistency would
+    with HAWebSocketClient(args.ha_url, args.ha_token) as client:
+        _print_lines(
+            verify_entity_id_consistency(
+                client, hostnames, args.entity_slug, args.friendly_name
+            )
+        )
 
 
 def _cmd_call_service(args: argparse.Namespace) -> None:

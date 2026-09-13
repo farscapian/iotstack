@@ -3407,12 +3407,12 @@ _ha_after_production_online() {
     [[ -z "$HA_URL" || -z "$HA_TOKEN" ]] && return 0
   fi
 
-  # HA registration failure is non-fatal (device is flashed and running); only
-  # run ha-finalize when registration actually completed. Always return 0 so a
-  # failed/optional HA step never aborts the flash under set -e.
-  if _ha_register_esphome_device "$prod_hostname" "$yaml_path"; then
-    _run_update_devices --ha-finalize "$prod_hostname" "$yaml_path"
-  fi
+  # HA registration failure is non-fatal (device is flashed and running).
+  # _ha_register_esphome_device does registration, entity-ID recreation, and
+  # consistency verification together (ha_websocket.py finalize-esphome) --
+  # there is no separate ha-finalize step to run afterward. Always return 0 so
+  # a failed/optional HA step never aborts the flash under set -e.
+  _ha_register_esphome_device "$prod_hostname" "$yaml_path" || true
   return 0
 }
 
@@ -3514,7 +3514,7 @@ _ha_register_esphome_device() {
     return 0
   fi
 
-  local mac role api_key_hex noise_psk_b64 friendly_name
+  local mac role api_key_hex noise_psk_b64 friendly_name entity_slug
   mac=$(echo "$hostname" | grep -oE '[0-9a-f]{6}$' | tr '[:upper:]' '[:lower:]')
   role=$(_yaml_device_role "$yaml_path")
   if [[ -z "$mac" || -z "$role" ]]; then
@@ -3528,16 +3528,19 @@ _ha_register_esphome_device() {
   noise_psk_b64=$(python3 -c "import binascii,base64,sys; print(base64.b64encode(binascii.unhexlify(sys.argv[1])).decode())" "$api_key_hex")
 
   friendly_name=""
+  entity_slug=""
   if [[ -f "$yaml_path" ]]; then
     friendly_name=$(yaml_friendly_name_from_file "$yaml_path") || friendly_name=""
+    entity_slug=$(yaml_entity_slug_from_file "$yaml_path") || entity_slug=""
   fi
 
   info "Registering $hostname in Home Assistant (PERFORM_HA_DEVICE_REGISTRATION=1)..."
-  # finalize-esphome does registration/reconfigure AND entity-ID recreation over
-  # one shared WebSocket connection, opened before HA reloads the config entry --
-  # a fresh connection made right after that reload starts (the old two-step
-  # register-esphome + separate update_devices.sh recreate_entity_ids call) was
-  # observed being refused for 20+ seconds while the reload was in flight.
+  # finalize-esphome does registration/reconfigure, entity-ID recreation, AND
+  # consistency verification over one shared WebSocket connection, opened
+  # before HA reloads the config entry -- a fresh connection made right after
+  # that reload starts (the old separate register-esphome + update_devices.sh
+  # recreate_entity_ids/verify_entity_id_consistency calls) was observed being
+  # refused for 20+ seconds while the reload was in flight.
   local reg_out reg_rc=0
   reg_out=$(python3 "${SCRIPT_DIR}/scripts/ha_websocket.py" \
       --ha-url "$HA_URL" \
@@ -3545,20 +3548,10 @@ _ha_register_esphome_device() {
       finalize-esphome \
       --hostname "$hostname" \
       --noise-psk "$noise_psk_b64" \
-      --friendly-name "$friendly_name" 2>&1) || reg_rc=$?
+      --friendly-name "$friendly_name" \
+      --entity-slug "$entity_slug" 2>&1) || reg_rc=$?
   if [[ $reg_rc -eq 0 ]]; then
-    if echo "$reg_out" | grep -qi 'already has'; then
-      ok "Home Assistant already has $hostname"
-    else
-      echo "$reg_out" | grep -E '^\[OK\]' || ok "Home Assistant registration complete for $hostname"
-    fi
-    while IFS= read -r _line; do
-      case "$_line" in
-        ''|'[OK]'*) ;;  # already surfaced above
-        WARNING:*) warn "  ${_line#WARNING: }" ;;
-        *) info "  ${_line}" ;;
-      esac
-    done <<< "$reg_out"
+    ha_ws_print_result_lines "$reg_out"
     return 0
   fi
 
@@ -3574,7 +3567,7 @@ _ha_register_esphome_device() {
   # flashed, running, and reachable -- only the optional HA auto-registration did
   # not complete (e.g. a Thread device whose SRP service has not propagated to HA
   # yet). Warn instead of err/exit so the flash finishes cleanly; the human can
-  # finish from the HA dashboard. Return non-zero so the caller skips ha-finalize.
+  # finish from the HA dashboard.
   if invalidate_ha_token_if_auth_failure "$reg_out"; then
     warn "Home Assistant access token is invalid -- $(iotstack_pass_common_path ha_token) reset to CONFIGURE_ME. Configure a new token and re-run to register $hostname."
     return 1

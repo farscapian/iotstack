@@ -335,6 +335,25 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     _ies_err "python3 websocket-client is required. Install with: pip3 install websocket-client"
   }
 
+  ha_ws_print_result_lines() {
+    # Route each line of a ha_websocket.py subcommand's combined stdout+stderr
+    # through the caller's own ok/warn/info logging, so the several call sites
+    # that run one of these subcommands (finalize-esphome, recreate-entities,
+    # verify-entities) don't each duplicate this same classify-by-prefix loop.
+    local output="$1"
+    local line
+    while IFS= read -r line; do
+      case "$line" in
+        '') ;;
+        '[OK]'*)    ok   "${line#"[OK] "}" ;;
+        WARNING:*)  warn "  ${line#"WARNING: "}" ;;
+        '[warn]'*)  warn "  ${line#"[warn] "}" ;;
+        '[error]'*) warn "  ${line#"[error] "}" ;;
+        *)          info "  ${line}" ;;
+      esac
+    done <<< "$output"
+  }
+
   test_ha_websocket() {
     local ha_url="$1"
     local ha_token="$2"

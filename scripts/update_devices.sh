@@ -74,7 +74,6 @@ JOBS_EXPLICIT=false
 YAML_FILE=""
 OTA_PASSWORD=""
 REASSIGN_MODE=false
-HA_FINALIZE_HOSTNAME=""
 declare -a REASSIGN_MACS=()
 REASSIGN_YAML=""
 
@@ -120,33 +119,10 @@ _compile_log_banner() {
   if [[ "$VERBOSE" == true ]]; then echo "$banner"; fi
 }
 
-# -- Ensure websocket-client library is installed ----------------------------
-ensure_websocket_client() {
-  if python3 -c "import websocket" 2>/dev/null; then
-    return 0
-  fi
-
-  echo >&2
-  warn "python3-websocket library is required for entity ID recreation" >&2
-  echo "Without it, entity IDs won't be updated when devices are renamed." >&2
-  echo >&2
-
-  read -p "Install python3-websocket now? (y/n) " -n 1 -r </dev/tty
-  echo >&2
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    warn "Skipping entity ID recreation" >&2
-    return 1
-  fi
-
-  if sudo apt-get update -qq && sudo apt-get install -y python3-websocket >/dev/null 2>&1; then
-    ok "python3-websocket installed successfully" >&2
-    return 0
-  else
-    err "Failed to install python3-websocket"
-    warn "You can install manually: sudo apt-get install python3-websocket" >&2
-    return 1
-  fi
-}
+# ensure_websocket_client is defined in ensure-integration-secrets.sh (sourced
+# below once HA credentials are needed) -- verify_entity_id_consistency and
+# recreate_entity_ids call it from there rather than duplicating an installer
+# here.
 
 # -- Report discovered ESPHome config flows via WebSocket API ----------------
 # Home Assistant exposes discovery flows over WebSocket (config_entries/flow/progress).
@@ -308,165 +284,38 @@ update_yaml_device_name() {
   fi
 }
 
-# -- Post-production HA: entity IDs + consistency (production hostname only) -
-run_ha_production_finalize() {
-  local yaml_file="$1"
-  local prod_hostname="$2"
-
-  _UPDATE_DEVICES_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  # shellcheck source=scripts/ensure-integration-secrets.sh
-  source "${_UPDATE_DEVICES_SCRIPT_DIR}/ensure-integration-secrets.sh"
-  load_ha_credentials_optional || true
-
-  if [[ -z "$HA_URL" || -z "$HA_TOKEN" ]]; then
-    return 0
-  fi
-
-  # Entity IDs are recreated as part of iotstack.sh's _ha_register_esphome_device
-  # (ha_websocket.py finalize-esphome), which shares one WebSocket connection
-  # between registration and entity-ID recreation -- calling recreate_entity_ids
-  # again here would open a second, separate connection right after HA's config-
-  # entry reload, which is exactly the race that merge was made to avoid.
-  local consistency_output
-  consistency_output=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$yaml_file" "$prod_hostname" 2>&1)
-  if [[ -n "$consistency_output" ]]; then
-    if echo "$consistency_output" | grep -q "WARNING"; then
-      echo "$consistency_output"
-    else
-      ok "Entity ID consistency: All entity IDs match device names"
-    fi
-  fi
-}
-
 # -- Verify entity ID consistency with device name ------------------------------
+# Thin wrapper over ha_websocket.py's verify-entities: the actual WebSocket
+# connect/auth/retry/lookup logic lives there (shared with recreate_entity_ids
+# below and with iotstack.sh's finalize-esphome) instead of being duplicated
+# here as its own standalone connection per call site.
 verify_entity_id_consistency() {
   local ha_url="$1"
   local ha_token="$2"
   local yaml_file="$3"
   local hostnames="$4"  # space-separated list of device hostnames
-  local entity_slug
 
   if [[ -z "$ha_url" || -z "$ha_token" || -z "$hostnames" || -z "$yaml_file" ]]; then
     return 0
   fi
+  ensure_websocket_client || return 0
 
   local entity_slug friendly_name
   entity_slug=$(yaml_entity_slug_from_file "$yaml_file") || return 0
   friendly_name=$(yaml_friendly_name_from_file "$yaml_file") || friendly_name="$entity_slug"
 
-  HA_URL="$ha_url" HA_TOKEN="$ha_token" ENTITY_SLUG="$entity_slug" \
-    FRIENDLY_NAME="$friendly_name" HOSTNAMES="$hostnames" python3 - <<'VERIFYEOF'
-import json, os, sys, ssl, re
-try:
-    import websocket
-except ImportError:
-    # Skip if websocket not available (check will be skipped silently)
-    sys.exit(0)
-
-ha_url = os.environ['HA_URL'].rstrip('/')
-token = os.environ['HA_TOKEN']
-entity_slug = os.environ['ENTITY_SLUG']
-friendly_name = os.environ.get('FRIENDLY_NAME', entity_slug)
-hostnames = os.environ['HOSTNAMES'].strip().split()
-
-# Extract MAC suffixes
-mac_suffixes = {}
-for hostname in hostnames:
-    m = re.search(r'([0-9a-f]{6})$', hostname, re.IGNORECASE)
-    if m:
-        mac = m.group(1).lower()
-        mac_suffixes[mac] = hostname
-
-if not mac_suffixes:
-    sys.exit(0)
-
-# Connect to WebSocket
-ws_url = ha_url.replace('http://', 'ws://').replace('https://', 'wss://') + '/api/websocket'
-import warnings
-warnings.filterwarnings('ignore')
-
-try:
-    ws = websocket.create_connection(
-        ws_url,
-        sslopt={"cert_reqs": ssl.CERT_NONE},
-        timeout=10
-    )
-except Exception:
-    sys.exit(0)
-
-msg_id = 1
-
-# Authenticate
-try:
-    init_msg = json.loads(ws.recv())
-    if init_msg.get('type') != 'auth_required':
-        ws.close()
-        sys.exit(0)
-    ws.send(json.dumps({'type': 'auth', 'access_token': token}))
-    auth_result = json.loads(ws.recv())
-    if auth_result.get('type') != 'auth_ok':
-        ws.close()
-        sys.exit(0)
-except Exception:
-    ws.close()
-    sys.exit(0)
-
-# Get entity registry
-try:
-    msg_id += 1
-    ws.send(json.dumps({'id': msg_id, 'type': 'config/entity_registry/list'}))
-    entities_msg = json.loads(ws.recv())
-    if not entities_msg.get('success'):
-        ws.close()
-        sys.exit(0)
-    all_entities = entities_msg.get('result', [])
-except Exception:
-    ws.close()
-    sys.exit(0)
-
-ws.close()
-
-# Check entity ID consistency (only ESPHome entities)
-base_slug = entity_slug.replace('-', '_')
-inconsistent = []
-
-for entity in all_entities:
-    entity_id = entity.get('entity_id', '').lower()
-    platform = entity.get('platform', '').lower()
-
-    # Only check ESPHome entities
-    if platform != 'esphome':
-        continue
-
-    # Check if entity belongs to any of our devices
-    for mac, hostname in mac_suffixes.items():
-        if mac not in entity_id:
-            continue
-
-        # Entity belongs to this device - check if device name is correct
-        if base_slug not in entity_id:
-            inconsistent.append({
-                'entity_id': entity_id,
-                'device': hostname,
-                'mac': mac
-            })
-        break
-
-if inconsistent:
-    print('WARNING: Entity ID inconsistencies detected:', file=sys.stderr)
-    for item in inconsistent:
-        print(
-            f"  {item['entity_id']} (should contain '{base_slug}', "
-            f"from friendly_name '{friendly_name}', device {item['device']})",
-            file=sys.stderr,
-        )
-    sys.exit(0)
-
-print('All entity IDs are consistent with device names.')
-VERIFYEOF
+  # Best-effort/cosmetic: a connection failure here must never abort the
+  # caller under this script's `set -e` -- explicitly swallow a nonzero exit
+  # rather than letting it propagate.
+  python3 "${_UPDATE_DEVICES_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/ha_websocket.py" \
+    --ha-url "$ha_url" --ha-token "$ha_token" \
+    verify-entities --hostnames "$hostnames" \
+    --entity-slug "$entity_slug" --friendly-name "$friendly_name" || true
 }
 
 # -- Recreate entity IDs for renamed devices --------------------------------
+# Thin wrapper over ha_websocket.py's recreate-entities -- see
+# verify_entity_id_consistency above.
 recreate_entity_ids() {
   local ha_url="$1"
   local ha_token="$2"
@@ -476,11 +325,7 @@ recreate_entity_ids() {
   if [[ -z "$ha_url" || -z "$ha_token" || -z "$hostnames" ]]; then
     return 0
   fi
-
-  # Check if websocket library is available
-  if ! ensure_websocket_client; then
-    return 0
-  fi
+  ensure_websocket_client || return 0
 
   local friendly_name=""
   if [[ -n "$yaml_file" && -f "$yaml_file" ]]; then
@@ -488,317 +333,10 @@ recreate_entity_ids() {
   fi
 
   ok "Updating device names and entity IDs..."
-
-  HA_URL="$ha_url" HA_TOKEN="$ha_token" HOSTNAMES="$hostnames" \
-    FRIENDLY_NAME="$friendly_name" python3 - <<'PYEOF'
-import json, os, sys, ssl, re, time, websocket
-
-ha_url = os.environ['HA_URL'].rstrip('/')
-token = os.environ['HA_TOKEN']
-hostnames = os.environ['HOSTNAMES'].strip().split()
-friendly_name = os.environ.get('FRIENDLY_NAME', '').strip()
-
-# Extract MAC suffixes from hostnames
-mac_suffixes = set()
-for hostname in hostnames:
-    m = re.search(r'([0-9a-f]{6})$', hostname, re.IGNORECASE)
-    if m:
-        mac_suffixes.add(m.group(1).lower())
-
-if not mac_suffixes:
-    sys.exit(0)
-
-# Convert HTTP(S) URL to WS(S) URL
-ws_url = ha_url.replace('http://', 'ws://').replace('https://', 'wss://') + '/api/websocket'
-
-import warnings
-warnings.filterwarnings('ignore')
-
-# This runs right after _ha_register_esphome_device() drives HA's ESPHome
-# reconfigure flow (iotstack.sh _ha_after_production_online), which reloads
-# the config entry HA-side. A fresh WebSocket connect made immediately after
-# can be refused for several seconds while that reload is in flight, so the
-# retry budget needs to span that, not just cover a brief network blip.
-ws = None
-connect_err = None
-max_attempts = 5
-for attempt in range(max_attempts):
-    try:
-        ws = websocket.create_connection(
-            ws_url,
-            sslopt={"cert_reqs": ssl.CERT_NONE},
-            timeout=10
-        )
-        break
-    except Exception as e:
-        connect_err = e
-        if attempt < max_attempts - 1:
-            time.sleep(2 * (attempt + 1))
-
-if ws is None:
-    print(f'WARNING: Failed to connect to HA WebSocket: {connect_err}', file=sys.stderr)
-    sys.exit(0)
-
-msg_id = 1
-
-# Authenticate
-try:
-    init_msg = json.loads(ws.recv())
-    if init_msg.get('type') != 'auth_required':
-        print('WARNING: Unexpected HA WebSocket handshake', file=sys.stderr)
-        sys.exit(0)
-
-    ws.send(json.dumps({'type': 'auth', 'access_token': token}))
-    auth_result = json.loads(ws.recv())
-
-    if auth_result.get('type') != 'auth_ok':
-        print('WARNING: Home Assistant rejected the access token', file=sys.stderr)
-        sys.exit(0)
-except Exception as e:
-    print(f'WARNING: Authentication failed: {e}', file=sys.stderr)
-    sys.exit(0)
-
-# Get entity registry list
-try:
-    msg_id += 1
-    ws.send(json.dumps({
-        'id': msg_id,
-        'type': 'config/entity_registry/list'
-    }))
-
-    entities_msg = json.loads(ws.recv())
-    if not entities_msg.get('success'):
-        print('WARNING: Failed to list entities', file=sys.stderr)
-        ws.close()
-        sys.exit(0)
-
-    all_entities = entities_msg.get('result', [])
-except Exception as e:
-    print(f'WARNING: Failed to list entities: {e}', file=sys.stderr)
-    ws.close()
-    sys.exit(0)
-
-# Get device registry to match MACs and update device names
-try:
-    msg_id += 1
-    ws.send(json.dumps({
-        'id': msg_id,
-        'type': 'config/device_registry/list'
-    }))
-
-    devices_msg = json.loads(ws.recv())
-    if not devices_msg.get('success'):
-        ws.close()
-        sys.exit(0)
-
-    all_devices = devices_msg.get('result', [])
-except Exception:
-    ws.close()
-    sys.exit(0)
-
-# Get area registry so an already-registered device the human has placed in an
-# area is named "<Area> <Friendly Name>" instead of the bare role name.
-area_names = {}
-try:
-    msg_id += 1
-    ws.send(json.dumps({
-        'id': msg_id,
-        'type': 'config/area_registry/list'
-    }))
-
-    areas_msg = json.loads(ws.recv())
-    if areas_msg.get('success'):
-        for area in areas_msg.get('result', []):
-            area_id = area.get('area_id')
-            name = (area.get('name') or '').strip()
-            if area_id and name:
-                area_names[area_id] = name
-except Exception:
-    area_names = {}
-
-# Config entries owned by the esphome integration. Renaming is restricted to
-# these: other integrations (e.g. Music Assistant) mint their own device for the
-# same speaker, with the MAC embedded in *their* identifier -- matching on the
-# MAC alone would rename their device instead of ours.
-esphome_entry_ids = set()
-try:
-    msg_id += 1
-    ws.send(json.dumps({
-        'id': msg_id,
-        'type': 'config_entries/get',
-        'domain': 'esphome'
-    }))
-
-    entries_msg = json.loads(ws.recv())
-    if entries_msg.get('success'):
-        for entry in entries_msg.get('result', []):
-            entry_id = entry.get('entry_id')
-            if entry_id:
-                esphome_entry_ids.add(entry_id)
-except Exception:
-    esphome_entry_ids = set()
-
-# Build hostname map from hostname list
-hostname_map = {}
-for hostname in hostnames:
-    m = re.search(r'([0-9a-f]{6})$', hostname, re.IGNORECASE)
-    if m:
-        mac = m.group(1).lower()
-        hostname_map[mac] = hostname
-
-
-def device_is_esphome(device):
-    if esphome_entry_ids.intersection(device.get('config_entries') or []):
-        return True
-    for identifier_set in device.get('identifiers') or []:
-        if isinstance(identifier_set, (list, tuple)) and identifier_set:
-            if str(identifier_set[0]).lower() == 'esphome':
-                return True
-    return False
-
-
-def device_mac_suffixes(device):
-    # ESPHome devices carry the MAC in connections [["mac", "e0:72:a1:d5:e4:10"]]
-    # and often have no identifiers at all, so connections is the primary key.
-    suffixes = set()
-    for conn in device.get('connections') or []:
-        if not isinstance(conn, (list, tuple)) or len(conn) < 2:
-            continue
-        if str(conn[0]).lower() != 'mac':
-            continue
-        compact = re.sub(r'[^0-9a-f]', '', str(conn[1]).lower())
-        if len(compact) >= 6:
-            suffixes.add(compact[-6:])
-    for identifier_set in device.get('identifiers') or []:
-        if not isinstance(identifier_set, (list, tuple)):
-            continue
-        for identifier in identifier_set:
-            if not isinstance(identifier, str):
-                continue
-            m = re.search(r'([0-9a-f]{6})$', identifier.lower())
-            if m:
-                suffixes.add(m.group(1))
-    return suffixes
-
-
-# Find and update ESPHome devices by MAC, naming them from the area + friendly name
-updated_devices = []
-for device in all_devices:
-    device_id = device.get('id')
-    if not device_id or not device_is_esphome(device):
-        continue
-
-    for mac in device_mac_suffixes(device):
-        hostname = hostname_map.get(mac)
-        if not hostname:
-            continue
-
-        # Role name from hostname (e.g. "sendspin" from "sendspin-d5e410")
-        role = hostname.rsplit('-', 1)[0] if '-' in hostname else hostname
-        area = area_names.get(device.get('area_id') or '')
-        if area:
-            # Already registered and placed in an area: "<Area> <Friendly Name>",
-            # no MAC suffix (e.g. "Office SendSpin Speaker").
-            new_name = f'{area} {friendly_name or role}'
-        else:
-            # No area: status quo -- the bare role name.
-            new_name = role
-        updated_devices.append((device_id, hostname, new_name))
-        break
-
-# Update device names in registry (this triggers HA to regenerate entity IDs)
-for device_id, hostname, new_name in updated_devices:
-    try:
-        msg_id += 1
-        ws.send(json.dumps({
-            'id': msg_id,
-            'type': 'config/device_registry/update',
-            'device_id': device_id,
-            'name_by_user': new_name
-        }))
-
-        result = json.loads(ws.recv())
-        if result.get('success'):
-            print(f'Updated device: {hostname} -> {new_name}')
-    except Exception:
-        pass
-
-# Find entities for entity ID updates. Match on device_id: once a device is named
-# "<Area> <Friendly Name>" its regenerated entity IDs no longer carry the MAC, so
-# a MAC-only match would never find them again (the MAC match stays as a fallback
-# for entities HA has not re-slugged yet).
-renamed_device_ids = {device_id for device_id, _, _ in updated_devices}
-entity_ids_to_update = []
-for entity in all_entities:
-    entity_id = entity.get('entity_id', '').lower()
-    platform = entity.get('platform', '').lower()
-
-    # Skip entities that don't belong to ESPHome
-    if platform != 'esphome':
-        continue
-
-    if entity.get('device_id') in renamed_device_ids:
-        entity_ids_to_update.append(entity.get('entity_id'))
-        continue
-
-    for mac in mac_suffixes:
-        if mac in entity_id:
-            entity_ids_to_update.append(entity.get('entity_id'))
-            break
-
-if not entity_ids_to_update:
-    ws.close()
-    sys.exit(0)
-
-# Get automatic entity IDs for these entities
-try:
-    msg_id += 1
-    ws.send(json.dumps({
-        'id': msg_id,
-        'type': 'config/entity_registry/get_automatic_entity_ids',
-        'entity_ids': entity_ids_to_update
-    }))
-
-    auto_ids_msg = json.loads(ws.recv())
-    if not auto_ids_msg.get('success'):
-        print(f'WARNING: Failed to get automatic entity IDs', file=sys.stderr)
-        ws.close()
-        sys.exit(0)
-
-    id_mapping = auto_ids_msg.get('result', {})
-except Exception as e:
-    print(f'WARNING: Failed to get automatic entity IDs: {e}', file=sys.stderr)
-    ws.close()
-    sys.exit(0)
-
-# Update entity IDs if they changed
-updated_count = 0
-for old_id, new_id in id_mapping.items():
-    if old_id == new_id or not new_id:
-        continue
-
-    try:
-        msg_id += 1
-        ws.send(json.dumps({
-            'id': msg_id,
-            'type': 'config/entity_registry/update',
-            'entity_id': old_id,
-            'new_entity_id': new_id
-        }))
-
-        result = json.loads(ws.recv())
-        if result.get('success'):
-            print(f'Recreated: {old_id} -> {new_id}')
-            updated_count += 1
-        else:
-            print(f'WARNING: Failed to update {old_id}: {result.get("error")}', file=sys.stderr)
-    except Exception as e:
-        print(f'WARNING: Error updating {old_id}: {e}', file=sys.stderr)
-
-ws.close()
-if updated_count > 0:
-    print(f'Successfully recreated {updated_count} entity ID(s).')
-PYEOF
+  # Best-effort/cosmetic: see the note in verify_entity_id_consistency above.
+  python3 "${_UPDATE_DEVICES_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/ha_websocket.py" \
+    --ha-url "$ha_url" --ha-token "$ha_token" \
+    recreate-entities --hostnames "$hostnames" --friendly-name "$friendly_name" || true
 }
 
 # -- Help --------------------------------------------------------------------
@@ -817,7 +355,6 @@ while [[ $# -gt 0 ]]; do
     --dry-run)               DRY_RUN=true;        shift ;;
     --jobs)                  MAX_JOBS="$2"; JOBS_EXPLICIT=true; shift 2 ;;
     --ota-password)          OTA_PASSWORD="$2";   shift 2 ;;
-    --ha-finalize)           HA_FINALIZE_HOSTNAME="$2"; shift 2 ;;
     --reassign)
       REASSIGN_MODE=true
       shift
@@ -859,12 +396,6 @@ fi
 if [[ ! -f "$YAML_FILE" ]]; then
   err "File not found: $YAML_FILE"
   exit 1
-fi
-
-# Standalone: entity-ID work after device has booted production (not bootstrap).
-if [[ -n "$HA_FINALIZE_HOSTNAME" ]]; then
-  run_ha_production_finalize "$YAML_FILE" "$HA_FINALIZE_HOSTNAME"
-  exit 0
 fi
 
 # -- Handle custom OTA password for authentication -------------------------
@@ -1173,7 +704,8 @@ fi
 # -- Home Assistant registry check -------------------------------------------
 # Runs immediately after discovery so it always prints, even when no devices.
 # Skipped in --reassign mode: the device is still on bootstrap; HA is handled
-# after production boot via iotstack.sh -> --ha-finalize <prod-hostname>.
+# after production boot via iotstack.sh's _ha_register_esphome_device
+# (ha_websocket.py finalize-esphome).
 HA_URL=""
 HA_TOKEN=""
 
