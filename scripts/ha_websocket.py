@@ -606,36 +606,65 @@ def recreate_entity_ids(
                 entity_ids_to_update.append(entity_id)
                 break
 
-    if not entity_ids_to_update:
-        return lines
-
-    try:
-        id_mapping = (
-            client.send_command(
-                "config/entity_registry/get_automatic_entity_ids",
-                entity_ids=entity_ids_to_update,
+    id_mapping: dict[str, str] = {}
+    if entity_ids_to_update:
+        try:
+            id_mapping = (
+                client.send_command(
+                    "config/entity_registry/get_automatic_entity_ids",
+                    entity_ids=entity_ids_to_update,
+                )
+                or {}
             )
-            or {}
-        )
-    except HAWebSocketError as exc:
-        lines.append(f"WARNING: Failed to get automatic entity IDs: {exc}")
-        return lines
+        except HAWebSocketError as exc:
+            lines.append(f"WARNING: Failed to get automatic entity IDs: {exc}")
+            id_mapping = {}
 
-    updated_count = 0
-    for old_id, new_id in id_mapping.items():
-        if old_id == new_id or not new_id:
+        updated_count = 0
+        for old_id, new_id in id_mapping.items():
+            if old_id == new_id or not new_id:
+                continue
+            try:
+                client.send_command(
+                    "config/entity_registry/update", entity_id=old_id, new_entity_id=new_id
+                )
+                lines.append(f"Recreated: {old_id} -> {new_id}")
+                updated_count += 1
+            except HAWebSocketError as exc:
+                lines.append(f"WARNING: Failed to update {old_id}: {exc}")
+
+        if updated_count > 0:
+            lines.append(f"Successfully recreated {updated_count} entity ID(s).")
+
+    # Push the just-resolved device name into each device's "Display Text"
+    # entity (matrix displays only carry one), so a successful registration/
+    # reregistration replaces the compiled-in default with the name that was
+    # set on the device above, e.g. "Master Bedroom Matrix Display".
+    device_names = {device_id: new_name for device_id, _, new_name in updated_devices}
+    for entity in all_entities:
+        device_id = entity.get("device_id")
+        if device_id not in device_names:
             continue
+        entity_id = entity.get("entity_id", "")
+        if entity.get("platform", "").lower() != "esphome":
+            continue
+        if not entity_id.lower().startswith("text.") or not entity_id.lower().endswith(
+            "_display_text"
+        ):
+            continue
+        final_entity_id = id_mapping.get(entity_id) or entity_id
+        new_name = device_names[device_id]
         try:
             client.send_command(
-                "config/entity_registry/update", entity_id=old_id, new_entity_id=new_id
+                "call_service",
+                domain="text",
+                service="set_value",
+                service_data={"value": new_name},
+                target={"entity_id": final_entity_id},
             )
-            lines.append(f"Recreated: {old_id} -> {new_id}")
-            updated_count += 1
+            lines.append(f"Set display text: {final_entity_id} -> {new_name}")
         except HAWebSocketError as exc:
-            lines.append(f"WARNING: Failed to update {old_id}: {exc}")
-
-    if updated_count > 0:
-        lines.append(f"Successfully recreated {updated_count} entity ID(s).")
+            lines.append(f"WARNING: Failed to set display text for {final_entity_id}: {exc}")
 
     return lines
 
