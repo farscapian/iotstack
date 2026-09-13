@@ -73,6 +73,22 @@ compile/cache-check/flash step reads the live dir; `smart_compile`'s ordinary
 changed. Production roles don't need this -- each role YAML pins one board, so
 `esphome.name` (and therefore the build dir) is already unique per variant.
 
+**Flash lock.** Because the bootstrap build tree is shared and swapped by
+rename, two concurrent `iotstack flash` invocations for different variants
+(e.g. `mmwave` started while `matrixdisplay` is still flashing) can each
+rename the live dir underneath the other, handing esptool a mid-swap or
+wrong-variant image -- surfacing as esptool's "Unexpected chip ID in image"
+error. `flash_lock_acquire()` (`scripts/flash-lock.sh`) takes an exclusive
+`flock` on `~/.iotstack/flash.lock` for the full compile+serial+OTA lifetime
+of a single `iotstack flash` invocation (acquired first thing in `cmd_flash`),
+so a second invocation blocks -- printing which role/pid holds the lock --
+until the first finishes. This is a whole-machine, whole-invocation lock, not
+scoped to just the risky swap window: it trades a bit of flash-to-flash
+parallelism for certainty that the shared cache is never touched by two
+invocations at once, consistent with the existing rule that multiple serial
+ttys within one invocation are already flashed one at a time, never in
+parallel.
+
 ### Serial Flash Baud Rate (per chip)
 `esp_esptool_baud_for_chip()` in `scripts/esp-serial.sh` selects the rate:
 

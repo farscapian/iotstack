@@ -673,6 +673,8 @@ _run_update_devices() {
 source "${SCRIPT_DIR}/scripts/bootstrap-yaml.sh"
 # shellcheck source=scripts/flash-compare.sh
 source "${SCRIPT_DIR}/scripts/flash-compare.sh"
+# shellcheck source=scripts/flash-lock.sh
+source "${SCRIPT_DIR}/scripts/flash-lock.sh"
 
 _is_bootstrap_yaml() {
   bootstrap_is_artifact_yaml "$1" || [[ "$(basename "$1")" == "bootstrap.yaml" ]]
@@ -4474,6 +4476,13 @@ cmd_flash() {
     help_flash
     exit 1
   fi
+
+  # Serialize against any other 'iotstack flash' invocation for the whole
+  # compile+serial+OTA lifetime: the bootstrap build cache is shared across
+  # chip variants (iotstack_bootstrap_swap_build_cache) and two concurrent
+  # flashes for different variants can hand esptool a mid-swap or
+  # wrong-variant image (see docs/pitfalls.md).
+  flash_lock_acquire "$device"
 
   if [[ -n "$MATRIX_COLS$MATRIX_ROWS$MATRIX_PANEL_W$MATRIX_PANEL_H" ]]; then
     if ! _flash_matrix_layout_applicable "$device" "$tty_device_or_role"; then

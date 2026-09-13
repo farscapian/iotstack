@@ -3,6 +3,10 @@ iotstack flash -- Serial bootstrap flash + OTA production setup
 USB/serial writes the partition table and bootstrap partition only. Production
 firmware is always delivered over OTA after the device boots into bootstrap.
 
+Only one 'iotstack flash' runs at a time on this machine: it shares a build
+cache with every other flash, so a second invocation (e.g. in another
+terminal) waits for the first to finish rather than running alongside it.
+
 Usage:
   iotstack flash <device> [tty-device...] [options]
   iotstack flash bootstrap [tty-device...|role]
