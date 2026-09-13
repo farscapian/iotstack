@@ -41,6 +41,10 @@ packages:
 
 esphome:
   name: ${device_role}
+  # Keyed per chip variant (esphome.name above stays the constant bootstrap
+  # role) so every variant gets its own persistent build dir instead of
+  # sharing/swapping one -- see docs/architecture.md (Compilation Cache).
+  build_path: build/${bootstrap_role}-${chip_variant}
   includes:
     - common/mdns_remove.h
   on_boot:

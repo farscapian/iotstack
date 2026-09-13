@@ -190,64 +190,13 @@ iotstack_bootstrap_artifact_name() {
   printf '.iotstack-%s-%s.yaml\n' "$role" "$variant"
 }
 
-# -- Bootstrap build cache (one ESPHome build dir shared by every chip variant) --
-# ESPHome names a build directory after esphome.name, which for bootstrap is
-# always the bootstrap role (e.g. "bootstrap") regardless of chip variant --
-# there is no --build-path override to key it on variant instead. So the live
-# ${ESPHOME_BUILD_DIR}/bootstrap/ dir holds only one variant's build at a time,
-# and switching chip variants (e.g. esp32c6 <-> esp32s3) makes smart_compile's
-# config_hash check see the wrong variant's build_info.json and force a full
-# recompile, even when that variant was already built before.
-#
-# Keep one shadow copy of the whole bootstrap build tree per variant under
-# .bootstrap-variants/<variant>/ and swap it in/out of the live "bootstrap" dir
-# by rename (same filesystem -- instant, no extra disk vs. copying). A marker
-# file inside the live dir records which variant is currently there.
-
-iotstack_bootstrap_variant_cache_dir() {
+iotstack_bootstrap_build_name() {
+  # Per-variant build directory key for bootstrap. yamls/bootstrap.yaml sets
+  # ESPHome's esphome.build_path to build/${bootstrap_role}-${chip_variant},
+  # so every chip variant gets its own persistent build dir instead of one
+  # shared dir keyed on esphome.name (which stays the constant bootstrap role
+  # regardless of variant -- see iotstack_build_firmware_bin's esphome_name
+  # argument). This is the single place that string is assembled.
   local variant="$1"
-  printf '%s/.bootstrap-variants/%s\n' "${ESPHOME_BUILD_DIR}" "$variant"
-}
-
-iotstack_bootstrap_swap_build_cache() {
-  # Make sure ${ESPHOME_BUILD_DIR}/bootstrap/ holds (or is ready to receive)
-  # the build for $variant before any compile/cache-check/flash step reads it.
-  # Usage: iotstack_bootstrap_swap_build_cache <variant>
-  local variant="$1"
-  local live_dir cache_dir marker current
-  [[ -n "$variant" ]] || return 0
-
-  live_dir=$(iotstack_build_root "$(iotstack_bootstrap_role)")
-  cache_dir=$(iotstack_bootstrap_variant_cache_dir "$variant")
-  marker="${live_dir}/.iotstack_variant"
-
-  current=""
-  [[ -f "$marker" ]] && current=$(<"$marker")
-  [[ "$current" == "$variant" && -d "$live_dir" ]] && return 0
-
-  mkdir -p "$(dirname "$cache_dir")"
-
-  if [[ -d "$live_dir" ]]; then
-    if [[ -n "$current" ]]; then
-      rm -rf "${ESPHOME_BUILD_DIR}/.bootstrap-variants/${current}"
-      mv "$live_dir" "${ESPHOME_BUILD_DIR}/.bootstrap-variants/${current}"
-    else
-      # No marker -- a pre-existing build from before this cache existed, or
-      # an unlabeled variant. Can't safely shelve it under a variant name, so
-      # discard; this only costs one recompile, the same as today's behavior.
-      rm -rf "$live_dir"
-    fi
-  fi
-
-  [[ -d "$cache_dir" ]] && mv "$cache_dir" "$live_dir"
-}
-
-iotstack_bootstrap_mark_build_cache() {
-  # Record which variant is now live, after a swap-in/compile completes.
-  local variant="$1"
-  local live_dir
-  [[ -n "$variant" ]] || return 0
-  live_dir=$(iotstack_build_root "$(iotstack_bootstrap_role)")
-  [[ -d "$live_dir" ]] || return 0
-  printf '%s\n' "$variant" > "${live_dir}/.iotstack_variant"
+  printf '%s-%s\n' "$(iotstack_bootstrap_role)" "$variant"
 }

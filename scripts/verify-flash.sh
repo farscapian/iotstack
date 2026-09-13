@@ -43,8 +43,17 @@ fi
 [[ -z "$ESPTOOL_CHIP" ]] && ESPTOOL_CHIP=esp32c6
 info "Using esptool chip: $ESPTOOL_CHIP (port: $TTY_DEVICE)"
 
-# Build directory
-BUILD_DIR=$(iotstack_build_output_dir "$DEVICE_NAME")
+# Build directory. Bootstrap's build dir is keyed per chip variant
+# (esphome.build_path in yamls/bootstrap.yaml), not the bare "bootstrap" role,
+# so resolve it via the detected chip; ESPHOME_NAME (used for the compiled
+# binary's filename) stays the constant bootstrap role either way.
+BUILD_NAME="$DEVICE_NAME"
+ESPHOME_NAME="$DEVICE_NAME"
+if [[ "$DEVICE_NAME" == "$(iotstack_bootstrap_role)" ]]; then
+  BUILD_NAME=$(iotstack_bootstrap_build_name "$ESPTOOL_CHIP")
+  ESPHOME_NAME=$(iotstack_bootstrap_role)
+fi
+BUILD_DIR=$(iotstack_build_output_dir "$BUILD_NAME")
 [[ ! -d "$BUILD_DIR" ]] && err "Build directory not found: $BUILD_DIR"
 
 info "Verifying flash checksums for: $DEVICE_NAME"
@@ -76,7 +85,7 @@ declare -a source_files
 # so we only verify bootloader and firmware
 offsets=(0x0 "$bootstrap_offset")
 files=(bootloader.bin firmware.bin)
-source_files=("$(iotstack_build_bootloader_bin "$DEVICE_NAME")" "$(iotstack_build_firmware_bin "$DEVICE_NAME")")
+source_files=("$(iotstack_build_bootloader_bin "$BUILD_NAME")" "$(iotstack_build_firmware_bin "$BUILD_NAME" "$ESPHOME_NAME")")
 
 # Verify each region
 failed=0

@@ -22,9 +22,15 @@ flash_file_md5() {
 flash_partition_table_csv_for_device() {
   # Prefer the compiled bootstrap build table -- matches partitions.bin on the device.
   # The generated ~/.iotstack artifact can lag (firmware-size estimate vs pass-2 layout).
-  local bootstrap_role build_name bootstrap_csv
-  bootstrap_role=$(iotstack_bootstrap_role)
-  build_name="$bootstrap_role"
+  # IOTSTACK_BOOTSTRAP_VARIANT (set by bootstrap_apply_profile_to_env once a chip
+  # is resolved) picks the active variant's build dir; falls back to the bare
+  # role when unset (e.g. called outside a resolved-variant flash flow).
+  local build_name bootstrap_csv
+  if [[ -n "${IOTSTACK_BOOTSTRAP_VARIANT:-}" ]]; then
+    build_name=$(iotstack_bootstrap_build_name "$IOTSTACK_BOOTSTRAP_VARIANT")
+  else
+    build_name=$(iotstack_bootstrap_role)
+  fi
   bootstrap_csv=$(iotstack_build_partitions_csv "$build_name")
   if [[ -f "$bootstrap_csv" ]] && grep -qE '^production,' "$bootstrap_csv" 2>/dev/null; then
     printf '%s\n' "$bootstrap_csv"
@@ -199,7 +205,7 @@ flash_assess_bootstrap_device() {
 
   local partition_file firmware_file
   partition_file=$(iotstack_build_partition_table_bin "$build_name")
-  firmware_file=$(iotstack_build_firmware_bin "$build_name")
+  firmware_file=$(iotstack_build_firmware_bin "$build_name" "$(iotstack_bootstrap_role)")
 
   if flash_region_matches_device "$tty_device" "$esptool_chip" "0x8000" "$partition_file"; then
     FLASH_ASSESS_PARTITION_MATCH=1

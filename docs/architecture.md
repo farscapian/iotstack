@@ -59,35 +59,47 @@ not recompile).
 
 **Bootstrap build cache is per chip variant.** ESPHome names a build directory
 after `esphome.name`, which for bootstrap is always the bootstrap role (e.g.
-`bootstrap`) regardless of chip variant -- there is no `esphome compile
---build-path` override to key it on variant instead. Without help, the live
-`${ESPHOME_BUILD_DIR}/bootstrap/` dir would hold only one variant's build at a
-time, so switching between an esp32c6 and esp32s3 target (e.g. flashing
-bleproxy then matrixdisplay) would force a full recompile on every switch even
-when that variant was already built. `iotstack_bootstrap_swap_build_cache()`
-(`scripts/iotstack-bootstrap.sh`) shelves the outgoing variant's whole build
-tree under `${ESPHOME_BUILD_DIR}/.bootstrap-variants/<variant>/` and restores
-the target variant's tree by rename (instant, no extra disk) before any
-compile/cache-check/flash step reads the live dir; `smart_compile`'s ordinary
-`config_hash` check then sees a genuine hit if that variant's source hasn't
-changed. Production roles don't need this -- each role YAML pins one board, so
-`esphome.name` (and therefore the build dir) is already unique per variant.
+`bootstrap`) regardless of chip variant -- so without help, one build dir would
+be overwritten by whichever variant compiled last. ESPHome's `esphome:` block
+supports an explicit `build_path:` config key (independent of `esphome.name`,
+and excluded from `config_hash` so it cannot perturb the compile-skip check);
+`yamls/bootstrap.yaml` sets `build_path: build/${bootstrap_role}-${chip_variant}`,
+so every variant (`bootstrap-esp32c6`, `bootstrap-esp32s3`, ...) gets its own
+permanent directory under `${ESPHOME_BUILD_DIR}/`. Switching between an
+esp32c6 and esp32s3 target (e.g. flashing bleproxy then matrixdisplay) now
+just switches which directory `smart_compile`'s `config_hash` check reads --
+no swap step, no risk of reading a mid-swap or wrong-variant build. The one
+catch: ESPHome still names the compiled binary after `esphome.name` (constant
+"bootstrap") inside that per-variant directory, so any bootstrap-path helper
+that needs the actual binary -- `iotstack_build_firmware_bin()`
+(`scripts/iotstack-version.sh`) -- takes the build directory key and the real
+`esphome.name` as two separate arguments; every other build-artifact helper
+(`iotstack_build_partition_table_bin`, `iotstack_build_partitions_csv`, ...) only
+needs the directory key. `iotstack_bootstrap_build_name()`
+(`scripts/iotstack-bootstrap.sh`) is the one place the
+`<role>-<variant>` directory-key string is assembled. Production roles don't
+need any of this -- each role YAML pins one board, so `esphome.name` (and
+therefore the default build dir) is already unique per variant.
 
-**Flash lock.** Because the bootstrap build tree is shared and swapped by
-rename, two concurrent `iotstack flash` invocations for different variants
-(e.g. `mmwave` started while `matrixdisplay` is still flashing) can each
-rename the live dir underneath the other, handing esptool a mid-swap or
-wrong-variant image -- surfacing as esptool's "Unexpected chip ID in image"
-error. `flash_lock_acquire()` (`scripts/flash-lock.sh`) takes an exclusive
-`flock` on `~/.iotstack/flash.lock` for the full compile+serial+OTA lifetime
-of a single `iotstack flash` invocation (acquired first thing in `cmd_flash`),
-so a second invocation blocks -- printing which role/pid holds the lock --
-until the first finishes. This is a whole-machine, whole-invocation lock, not
-scoped to just the risky swap window: it trades a bit of flash-to-flash
-parallelism for certainty that the shared cache is never touched by two
-invocations at once, consistent with the existing rule that multiple serial
-ttys within one invocation are already flashed one at a time, never in
-parallel.
+**Flash lock.** `flash_lock_acquire()` (`scripts/flash-lock.sh`) still takes
+an exclusive `flock` on `~/.iotstack/flash.lock` for the full
+compile+serial+OTA lifetime of a single `iotstack flash` invocation (acquired
+first thing in `cmd_flash`), so a second invocation blocks -- printing which
+role/pid holds the lock -- until the first finishes. Per-variant build dirs
+removed the original reason for this (a shared, rename-swapped build tree),
+but a different shared resource remains: `~/.iotstack/artifacts/iotstack_partition_table.csv`
+(`$PARTITION_TABLE`) is one global file, re-synced from whichever variant's
+bootstrap compile finishes most recently
+(`_sync_bootstrap_partition_table_from_build()` in `iotstack.sh`), and every
+step that resolves an NVS/bootstrap/production offset during flashing reads
+it. Bootstrap firmware size -- and so partition offsets -- differs across
+variants (esp-idf vs arduino framework, different flash sizes), so two
+concurrent flashes of different variants could overwrite this file mid-flight
+and hand a later step in the other invocation an offset that doesn't match
+what is actually on that device. The lock stays whole-machine and
+whole-invocation for this reason, consistent with the existing rule that
+multiple serial ttys within one invocation are already flashed one at a time,
+never in parallel.
 
 ### Serial Flash Baud Rate (per chip)
 `esp_esptool_baud_for_chip()` in `scripts/esp-serial.sh` selects the rate:

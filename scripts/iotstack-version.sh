@@ -165,9 +165,17 @@ iotstack_build_partitions_csv() {
 }
 
 iotstack_build_firmware_bin() {
-  # App image for USB write / on-flash comparison. Named after the build
-  # (esphome.name), not "firmware.bin" -- that name is reserved for the OTA image.
-  printf '%s/%s.bin\n' "$(iotstack_build_output_dir "$1")" "$1"
+  # App image for USB write / on-flash comparison. Named after esphome.name,
+  # not "firmware.bin" (that name is reserved for the OTA image).
+  # Usage: iotstack_build_firmware_bin <build_name> [esphome_name]
+  # <build_name> keys the build directory (iotstack_build_root); <esphome_name>
+  # is the actual esphome.name used to name the binary inside it. These differ
+  # only for bootstrap, where build_path is keyed per chip variant
+  # (build_name=bootstrap-<variant>) but esphome.name stays the constant
+  # bootstrap role -- callers must pass it explicitly in that case.
+  local build_name="$1"
+  local esphome_name="${2:-$1}"
+  printf '%s/%s.bin\n' "$(iotstack_build_output_dir "$build_name")" "$esphome_name"
 }
 
 iotstack_build_ota_bin() {
@@ -218,10 +226,10 @@ _current_config_hash_for_yaml() {
   # works when sourced without iotstack.sh's bootstrap helpers (update_devices.sh).
   if [[ -n "$device_name" ]] && declare -F _is_bootstrap_yaml &>/dev/null \
       && _is_bootstrap_yaml "$yaml_file"; then
-    firmware_bin=$(iotstack_build_firmware_bin "$device_name")
+    firmware_bin=$(iotstack_build_firmware_bin "$device_name" "$(iotstack_bootstrap_role)")
     if [[ -f "$firmware_bin" ]] && declare -F _sync_bootstrap_partition_table_from_build &>/dev/null; then
       # Side-effect only; must not write to stdout (hash capture uses command substitution).
-      _sync_bootstrap_partition_table_from_build >/dev/null
+      _sync_bootstrap_partition_table_from_build "$device_name" >/dev/null
     fi
   fi
 
@@ -310,9 +318,13 @@ _build_matches_config_hash() {
   # Returns 0 when an existing build matches the current esphome config-hash.
   local yaml_file="$1"
   local device_name="${2:-}"
-  local resolved_device current_hash built_hash firmware_bin
+  local resolved_device current_hash built_hash firmware_bin esphome_name
   resolved_device=$(_compile_skip_device_name "$yaml_file" "$device_name")
-  firmware_bin=$(iotstack_build_firmware_bin "$resolved_device")
+  esphome_name="$resolved_device"
+  if declare -F _is_bootstrap_yaml &>/dev/null && _is_bootstrap_yaml "$yaml_file"; then
+    esphome_name=$(iotstack_bootstrap_role)
+  fi
+  firmware_bin=$(iotstack_build_firmware_bin "$resolved_device" "$esphome_name")
   [[ -f "$firmware_bin" ]] || return 1
   current_hash=$(_current_config_hash_for_yaml "$yaml_file" "$resolved_device") || return 1
   built_hash=$(_config_hash_from_build_dir "$resolved_device" 2>/dev/null) || return 1

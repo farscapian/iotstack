@@ -82,7 +82,9 @@ _compile_skip_miss_reason() {
     return 0
   fi
 
-  firmware_bin=$(iotstack_build_firmware_bin "$resolved_device")
+  local esphome_name="$resolved_device"
+  _is_bootstrap_yaml "$yaml_file" && esphome_name=$(iotstack_bootstrap_role)
+  firmware_bin=$(iotstack_build_firmware_bin "$resolved_device" "$esphome_name")
   if [[ ! -f "$firmware_bin" ]]; then
     echo "${yaml_name} config_hash matched but firmware.bin missing"
     return 0
@@ -158,8 +160,12 @@ _partition_table_bootstrap_size() {
 }
 
 _sync_bootstrap_partition_table_from_build() {
+  # Usage: _sync_bootstrap_partition_table_from_build [build_name]
+  # build_name defaults to the bare bootstrap role for callers outside a
+  # resolved-variant flash flow (e.g. update_devices.sh context).
+  local build_name="${1:-$(iotstack_bootstrap_role)}"
   local build_csv
-  build_csv=$(iotstack_build_partitions_csv "$(iotstack_bootstrap_role)")
+  build_csv=$(iotstack_build_partitions_csv "$build_name")
   if [[ -f "$build_csv" ]] && grep -qE '^production,' "$build_csv" 2>/dev/null; then
     cp "$build_csv" "$PARTITION_TABLE"
     _ensure_partition_table_symlink "$PARTITION_TABLE"
@@ -253,11 +259,13 @@ _smart_compile_mark_done() {
 _smart_compile_repeat_satisfied() {
   local yaml_file="$1"
   local device_name="$2"
+  local esphome_name="$device_name"
+  _is_bootstrap_yaml "$yaml_file" && esphome_name=$(iotstack_bootstrap_role)
   local firmware_bin
-  firmware_bin=$(iotstack_build_firmware_bin "$device_name")
+  firmware_bin=$(iotstack_build_firmware_bin "$device_name" "$esphome_name")
   debug "Build already prepared for $(iotstack_compilation_cache_yaml_name "$yaml_file")"
   if _is_bootstrap_yaml "$yaml_file"; then
-    _sync_bootstrap_partition_table_from_build \
+    _sync_bootstrap_partition_table_from_build "$device_name" \
       || { local fs_size; fs_size=$(_bootstrap_part_size "$firmware_bin")
            IOTSTACK_BOOTSTRAP_PART_SIZE="$fs_size" _update_partition_table_file; }
   else
@@ -387,8 +395,10 @@ smart_compile() {
     return 0
   fi
 
+  local esphome_name="$device_name"
+  _is_bootstrap_yaml "$yaml_file" && esphome_name=$(iotstack_bootstrap_role)
   local firmware_bin
-  firmware_bin=$(iotstack_build_firmware_bin "$device_name")
+  firmware_bin=$(iotstack_build_firmware_bin "$device_name" "$esphome_name")
   local cached=0
   _build_matches_config_hash "$yaml_file" "$device_name" && cached=1
 
@@ -417,7 +427,7 @@ smart_compile() {
   # measure, regenerate the table, then recompile so partitions.bin matches.
   if [[ $cached -eq 1 && -f "$firmware_bin" ]]; then
     _smart_compile_cache_hit_notice "$yaml_file" "$device_name" "bootstrap"
-    _sync_bootstrap_partition_table_from_build \
+    _sync_bootstrap_partition_table_from_build "$device_name" \
       || { local fs_size; fs_size=$(_bootstrap_part_size "$firmware_bin")
            IOTSTACK_BOOTSTRAP_PART_SIZE="$fs_size" _update_partition_table_file; }
     _smart_compile_mark_done "$yaml_file"
@@ -451,17 +461,17 @@ smart_compile() {
   fs_size=$(_bootstrap_part_size "$firmware_bin")
   fw_bytes=$(stat -c%s "$firmware_bin" 2>/dev/null || echo "?")
   info "Bootstrap firmware ${fw_bytes} bytes -> bootstrap partition ${fs_size}"
-  partitions_bin=$(iotstack_build_partition_table_bin "$(iotstack_bootstrap_role)")
+  partitions_bin=$(iotstack_build_partition_table_bin "$device_name")
 
   if _hex_sizes_equal "$fs_size" "$IOTSTACK_BOOTSTRAP_PART_SIZE" && [[ -f "$partitions_bin" ]]; then
-    _sync_bootstrap_partition_table_from_build
+    _sync_bootstrap_partition_table_from_build "$device_name"
     info "Bootstrap partition table already exact (${fs_size}) -- skipping pass 2"
   else
     export IOTSTACK_BOOTSTRAP_PART_SIZE="$fs_size"
     _update_partition_table_file
     debug "Bootstrap compile pass 2/2: applying exact partition table (${fs_size})"
     _esphome_compile "$yaml_file" || return 1
-    _sync_bootstrap_partition_table_from_build
+    _sync_bootstrap_partition_table_from_build "$device_name"
   fi
 
   _smart_compile_mark_done "$yaml_file"
@@ -1845,7 +1855,7 @@ _flash_production_partition_paths() {
   if [[ -n "$_FLASH_PROD_OFFSET" ]]; then
     local _part_csv
     _part_csv=$(flash_partition_table_csv_for_device 2>/dev/null) || true
-    [[ "$_part_csv" == *"/build/bootstrap/partitions.csv" ]] \
+    [[ "$_part_csv" == *"/build/$(iotstack_bootstrap_role)"*"/partitions.csv" ]] \
       && debug "On-flash production offset ${_FLASH_PROD_OFFSET} (from bootstrap build partition table)"
   fi
 }
@@ -1873,12 +1883,12 @@ _flash_production_image_hash_on_device() {
 _flash_bootstrap_image_hash_on_device() {
   # First 8 hex chars of the bootstrap-partition MD5 read from serial flash.
   local tty_device="$1"
-  local firmware_file
-  firmware_file=$(iotstack_build_firmware_bin "$(iotstack_bootstrap_role)")
-  local bootstrap_offset chip file_size md5
+  local chip firmware_file
+  chip=$(esp_detect_chip "$tty_device" 2>/dev/null) || return 1
+  firmware_file=$(iotstack_build_firmware_bin "$(iotstack_bootstrap_build_name "$chip")" "$(iotstack_bootstrap_role)")
+  local bootstrap_offset file_size md5
   bootstrap_offset=$(flash_partition_offset bootstrap 2>/dev/null) || bootstrap_offset=""
   [[ -f "$firmware_file" && -n "$bootstrap_offset" ]] || return 1
-  chip=$(esp_detect_chip "$tty_device" 2>/dev/null) || return 1
   file_size=$(stat -c%s "$firmware_file" 2>/dev/null) || return 1
   md5=$(flash_read_region_md5 "$tty_device" "$chip" "$bootstrap_offset" "$file_size") || return 1
   echo "${md5:0:8}"
@@ -4485,10 +4495,10 @@ cmd_flash() {
   fi
 
   # Serialize against any other 'iotstack flash' invocation for the whole
-  # compile+serial+OTA lifetime: the bootstrap build cache is shared across
-  # chip variants (iotstack_bootstrap_swap_build_cache) and two concurrent
-  # flashes for different variants can hand esptool a mid-swap or
-  # wrong-variant image (see docs/pitfalls.md).
+  # compile+serial+OTA lifetime: the global partition-table artifact is
+  # shared across chip variants, and two concurrent flashes for different
+  # variants can overwrite it mid-flight and hand a later step the wrong
+  # NVS/bootstrap/production offset (see scripts/flash-lock.sh).
   flash_lock_acquire "$device"
 
   if [[ -n "$MATRIX_COLS$MATRIX_ROWS$MATRIX_PANEL_W$MATRIX_PANEL_H" ]]; then
@@ -4692,11 +4702,14 @@ _flash_bootstrap_esptool() {
   esp_esptool_flash_params_for_build "$build_dir" flash_mode flash_freq flash_size
   debug "esptool write-flash params: mode=${flash_mode} freq=${flash_freq} size=${flash_size}"
 
-  local bootstrap_role bootloader_bin partitions_bin firmware_bin
-  bootstrap_role=$(iotstack_bootstrap_role)
-  bootloader_bin=$(iotstack_build_bootloader_bin "$bootstrap_role")
-  partitions_bin=$(iotstack_build_partition_table_bin "$bootstrap_role")
-  firmware_bin=$(iotstack_build_firmware_bin "$bootstrap_role")
+  # build_dir is already the variant-specific output dir (caller resolved it);
+  # derive paths from it directly rather than re-deriving from the bare
+  # bootstrap role, which is no longer the build directory key -- see
+  # iotstack_build_firmware_bin in scripts/iotstack-version.sh.
+  local bootloader_bin partitions_bin firmware_bin
+  bootloader_bin="${build_dir}/bootloader/bootloader.bin"
+  partitions_bin="${build_dir}/partition_table/partition-table.bin"
+  firmware_bin="${build_dir}/$(iotstack_bootstrap_role).bin"
 
   local esptool_src="esptool:${esptool_chip}"
 
@@ -4793,8 +4806,10 @@ _flash_bootstrap_esptool_write_firmware() {
   esptool_baud=$(esp_esptool_baud_for_chip "$esptool_chip")
   esp_esptool_flash_params_for_build "$build_dir" flash_mode flash_freq flash_size
   debug "esptool firmware write params: mode=${flash_mode} freq=${flash_freq} size=${flash_size}"
-  local firmware_bin
-  firmware_bin=$(iotstack_build_firmware_bin "$(iotstack_bootstrap_role)")
+  # build_dir is already the variant-specific output dir; the binary inside it
+  # is still named after esphome.name (the constant bootstrap role), not the
+  # per-variant build_name -- see iotstack_build_firmware_bin.
+  local firmware_bin="${build_dir}/$(iotstack_bootstrap_role).bin"
   local esptool_src="esptool:${esptool_chip}"
   local -a esptool_base_args=(
     --chip "$esptool_chip" --port "$tty_device" --baud "$esptool_baud"
@@ -4865,15 +4880,13 @@ _flash_prepare_builds() {
   bootstrap_yaml="${YAMLS_DIR}/$(iotstack_bootstrap_artifact_name "$variant")"
   bootstrap_render_yaml "$variant" "$board" "$flash_size" "$framework" >/dev/null || return 1
   iotstack_register_yaml_cleanup_trap
-  build_name="bootstrap"
+  build_name=$(iotstack_bootstrap_build_name "$variant")
 
   if [[ $CLEAN_BUILD_DIRECTORY -eq 1 ]]; then
     info "Cleaning build directory (CLEAN_BUILD_DIRECTORY=1)..."
     rm -rf "$ESPHOME_BUILD_DIR"
     ok "Build directory cleaned"
   fi
-
-  iotstack_bootstrap_swap_build_cache "$variant"
 
   info "Project version: $(iotstack_project_version)"
 
@@ -4885,7 +4898,6 @@ _flash_prepare_builds() {
   fi
 
   smart_compile "$bootstrap_yaml" "$build_name" || return 1
-  iotstack_bootstrap_mark_build_cache "$variant"
 
   if [[ -n "$yaml_path" ]]; then
     info "Compiling production image (${device_name}); iotstack flash installs it via OTA (USB writes bootstrap only)"
@@ -4939,15 +4951,12 @@ _flash_bootstrap_to_tty() {
   bootstrap_yaml="${YAMLS_DIR}/$(iotstack_bootstrap_artifact_name "$variant")"
   bootstrap_render_yaml "$variant" "$board" "$flash_size" "$framework" >/dev/null || return 1
   iotstack_register_yaml_cleanup_trap
-  build_name="bootstrap"
+  build_name=$(iotstack_bootstrap_build_name "$variant")
 
-  iotstack_bootstrap_swap_build_cache "$variant"
-
-  if [[ ! -f "$(iotstack_build_firmware_bin "$build_name")" ]]; then
+  if [[ ! -f "$(iotstack_build_firmware_bin "$build_name" "$(iotstack_bootstrap_role)")" ]]; then
     debug "Bootstrap firmware not pre-built -- compiling for ${variant}"
     smart_compile "$bootstrap_yaml" "$build_name" || return 1
   fi
-  iotstack_bootstrap_mark_build_cache "$variant"
 
   debug "Recovery image: ${variant} on ${tty_device}"
   debug "YAML: ${bootstrap_yaml#"${YAMLS_DIR%/*}/"}"
