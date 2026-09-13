@@ -3507,12 +3507,14 @@ _ha_register_esphome_device() {
 
   # shellcheck source=scripts/ensure-integration-secrets.sh
   source "${SCRIPT_DIR}/scripts/ensure-integration-secrets.sh"
+  # shellcheck source=scripts/yaml-info.sh
+  source "${SCRIPT_DIR}/scripts/yaml-info.sh"
 
   if [[ "${PERFORM_HA_DEVICE_REGISTRATION:-0}" != "1" ]]; then
     return 0
   fi
 
-  local mac role api_key_hex noise_psk_b64
+  local mac role api_key_hex noise_psk_b64 friendly_name
   mac=$(echo "$hostname" | grep -oE '[0-9a-f]{6}$' | tr '[:upper:]' '[:lower:]')
   role=$(_yaml_device_role "$yaml_path")
   if [[ -z "$mac" || -z "$role" ]]; then
@@ -3525,20 +3527,38 @@ _ha_register_esphome_device() {
 
   noise_psk_b64=$(python3 -c "import binascii,base64,sys; print(base64.b64encode(binascii.unhexlify(sys.argv[1])).decode())" "$api_key_hex")
 
+  friendly_name=""
+  if [[ -f "$yaml_path" ]]; then
+    friendly_name=$(yaml_friendly_name_from_file "$yaml_path") || friendly_name=""
+  fi
+
   info "Registering $hostname in Home Assistant (PERFORM_HA_DEVICE_REGISTRATION=1)..."
+  # finalize-esphome does registration/reconfigure AND entity-ID recreation over
+  # one shared WebSocket connection, opened before HA reloads the config entry --
+  # a fresh connection made right after that reload starts (the old two-step
+  # register-esphome + separate update_devices.sh recreate_entity_ids call) was
+  # observed being refused for 20+ seconds while the reload was in flight.
   local reg_out reg_rc=0
   reg_out=$(python3 "${SCRIPT_DIR}/scripts/ha_websocket.py" \
       --ha-url "$HA_URL" \
       --ha-token "$HA_TOKEN" \
-      register-esphome \
+      finalize-esphome \
       --hostname "$hostname" \
-      --noise-psk "$noise_psk_b64" 2>&1) || reg_rc=$?
+      --noise-psk "$noise_psk_b64" \
+      --friendly-name "$friendly_name" 2>&1) || reg_rc=$?
   if [[ $reg_rc -eq 0 ]]; then
     if echo "$reg_out" | grep -qi 'already has'; then
       ok "Home Assistant already has $hostname"
     else
       echo "$reg_out" | grep -E '^\[OK\]' || ok "Home Assistant registration complete for $hostname"
     fi
+    while IFS= read -r _line; do
+      case "$_line" in
+        ''|'[OK]'*) ;;  # already surfaced above
+        WARNING:*) warn "  ${_line#WARNING: }" ;;
+        *) info "  ${_line}" ;;
+      esac
+    done <<< "$reg_out"
     return 0
   fi
 

@@ -122,9 +122,18 @@ def auth_test(ha_url: str, token: str) -> str:
         return client.ha_version
 
 
-def query(ha_url: str, token: str, msg_type: str, fields: dict[str, Any] | None = None) -> Any:
-    with HAWebSocketClient(ha_url, token) as client:
+def query(
+    ha_url: str,
+    token: str,
+    msg_type: str,
+    fields: dict[str, Any] | None = None,
+    *,
+    client: HAWebSocketClient | None = None,
+) -> Any:
+    if client is not None:
         return client.send_command(msg_type, **(fields or {}))
+    with HAWebSocketClient(ha_url, token) as owned_client:
+        return owned_client.send_command(msg_type, **(fields or {}))
 
 
 def _ssl_context() -> ssl.SSLContext:
@@ -227,9 +236,11 @@ def _find_esphome_flow(flows: list[dict[str, Any]], hostname: str) -> dict[str, 
     return None
 
 
-def _find_esphome_entry_id(ha_url: str, token: str, hostname: str) -> str | None:
+def _find_esphome_entry_id(
+    ha_url: str, token: str, hostname: str, *, client: HAWebSocketClient | None = None
+) -> str | None:
     """Return the esphome config-entry id for a device, or None if not integrated."""
-    entries = query(ha_url, token, "config_entries/get", {"domain": "esphome"}) or []
+    entries = query(ha_url, token, "config_entries/get", {"domain": "esphome"}, client=client) or []
     for entry in entries:
         data = entry.get("data") or {}
         for field in (
@@ -240,7 +251,7 @@ def _find_esphome_entry_id(ha_url: str, token: str, hostname: str) -> str | None
             if _ha_label_matches_hostname(field, hostname):
                 return entry.get("entry_id")
 
-    devices = query(ha_url, token, "config/device_registry/list") or []
+    devices = query(ha_url, token, "config/device_registry/list", client=client) or []
     for device in devices:
         for identifier_set in device.get("identifiers") or []:
             if not isinstance(identifier_set, (list, tuple)) or len(identifier_set) < 2:
@@ -254,8 +265,10 @@ def _find_esphome_entry_id(ha_url: str, token: str, hostname: str) -> str | None
     return None
 
 
-def _esphome_entry_exists(ha_url: str, token: str, hostname: str) -> bool:
-    return _find_esphome_entry_id(ha_url, token, hostname) is not None
+def _esphome_entry_exists(
+    ha_url: str, token: str, hostname: str, *, client: HAWebSocketClient | None = None
+) -> bool:
+    return _find_esphome_entry_id(ha_url, token, hostname, client=client) is not None
 
 
 def _flow_input_for_step(step_id: str, noise_psk: str) -> dict[str, Any]:
@@ -369,6 +382,7 @@ def register_esphome_device(
     noise_psk: str,
     *,
     poll_timeout: float = 90.0,
+    client: HAWebSocketClient | None = None,
 ) -> dict[str, Any]:
     """Complete HA ESPHome discovery for a production device.
 
@@ -376,8 +390,14 @@ def register_esphome_device(
     authenticated REST to advance config-flow steps (HA has no WS submit API).
     When the device already has an entry (a re-flash), drive a reconfigure so HA
     picks up any entities added since it was first integrated.
+
+    Pass an already-connected `client` to reuse its WebSocket connection for the
+    lookup calls here (and for a caller's follow-up work, e.g. recreate_entity_ids)
+    instead of opening a fresh one -- a new connection made right after this
+    function's reconfigure_esphome_entry() reloads the config entry can be refused
+    for several seconds while that reload is in flight HA-side.
     """
-    entry_id = _find_esphome_entry_id(ha_url, token, hostname)
+    entry_id = _find_esphome_entry_id(ha_url, token, hostname, client=client)
     if entry_id:
         try:
             reconfigure_esphome_entry(ha_url, token, entry_id, noise_psk)
@@ -394,7 +414,7 @@ def register_esphome_device(
     deadline = time.time() + poll_timeout
     flow: dict[str, Any] | None = None
     while time.time() < deadline:
-        flows = query(ha_url, token, "config_entries/flow/progress") or []
+        flows = query(ha_url, token, "config_entries/flow/progress", client=client) or []
         flow = _find_esphome_flow(flows, hostname)
         if flow:
             break
@@ -402,7 +422,7 @@ def register_esphome_device(
 
     if not flow:
         # No zeroconf flow when the device is already integrated (common on re-flash).
-        if _esphome_entry_exists(ha_url, token, hostname):
+        if _esphome_entry_exists(ha_url, token, hostname, client=client):
             return {"status": "already_registered", "hostname": hostname}
         raise HAWebSocketError(
             f"No ESPHome discovery flow for {hostname} after {int(poll_timeout)}s"
@@ -442,6 +462,200 @@ def register_esphome_device(
         raise HAWebSocketError(f"Unexpected config-flow response type: {step_type}")
 
     raise HAWebSocketError(f"ESPHome config flow for {hostname} did not complete")
+
+
+def recreate_entity_ids(
+    client: HAWebSocketClient, hostnames: list[str], friendly_name: str
+) -> list[str]:
+    """Rename ESPHome devices/entities in HA to match friendly_name.
+
+    Ported from the standalone WebSocket connection scripts/update_devices.sh
+    used to open per-call; operates over an already-connected `client` instead
+    so it can be run immediately after register_esphome_device() without a new
+    connection attempt. Returns human-readable status/warning lines; never
+    raises (best-effort, cosmetic renaming).
+    """
+    mac_suffixes: set[str] = set()
+    hostname_map: dict[str, str] = {}
+    for hostname in hostnames:
+        mac = _mac_suffix_from_hostname(hostname)
+        if mac:
+            mac_suffixes.add(mac)
+            hostname_map[mac] = hostname
+
+    if not mac_suffixes:
+        return []
+
+    lines: list[str] = []
+
+    try:
+        all_entities = client.send_command("config/entity_registry/list") or []
+    except HAWebSocketError as exc:
+        return [f"WARNING: Failed to list entities: {exc}"]
+
+    try:
+        all_devices = client.send_command("config/device_registry/list") or []
+    except HAWebSocketError:
+        return lines
+
+    area_names: dict[str, str] = {}
+    try:
+        for area in client.send_command("config/area_registry/list") or []:
+            area_id = area.get("area_id")
+            name = (area.get("name") or "").strip()
+            if area_id and name:
+                area_names[area_id] = name
+    except HAWebSocketError:
+        pass
+
+    # Config entries owned by the esphome integration. Renaming is restricted to
+    # these: other integrations (e.g. Music Assistant) mint their own device for
+    # the same speaker, with the MAC embedded in *their* identifier -- matching
+    # on the MAC alone would rename their device instead of ours.
+    esphome_entry_ids: set[str] = set()
+    try:
+        for entry in client.send_command("config_entries/get", domain="esphome") or []:
+            entry_id = entry.get("entry_id")
+            if entry_id:
+                esphome_entry_ids.add(entry_id)
+    except HAWebSocketError:
+        pass
+
+    def device_is_esphome(device: dict[str, Any]) -> bool:
+        if esphome_entry_ids.intersection(device.get("config_entries") or []):
+            return True
+        for identifier_set in device.get("identifiers") or []:
+            if isinstance(identifier_set, (list, tuple)) and identifier_set:
+                if str(identifier_set[0]).lower() == "esphome":
+                    return True
+        return False
+
+    def device_mac_suffixes(device: dict[str, Any]) -> set[str]:
+        # ESPHome devices carry the MAC in connections [["mac", "e0:72:a1:d5:e4:10"]]
+        # and often have no identifiers at all, so connections is the primary key.
+        suffixes: set[str] = set()
+        for conn in device.get("connections") or []:
+            if not isinstance(conn, (list, tuple)) or len(conn) < 2:
+                continue
+            if str(conn[0]).lower() != "mac":
+                continue
+            compact = re.sub(r"[^0-9a-f]", "", str(conn[1]).lower())
+            if len(compact) >= 6:
+                suffixes.add(compact[-6:])
+        for identifier_set in device.get("identifiers") or []:
+            if not isinstance(identifier_set, (list, tuple)):
+                continue
+            for identifier in identifier_set:
+                if not isinstance(identifier, str):
+                    continue
+                m = re.search(r"([0-9a-f]{6})$", identifier.lower())
+                if m:
+                    suffixes.add(m.group(1))
+        return suffixes
+
+    # Find and update ESPHome devices by MAC, naming them from the area + friendly name
+    updated_devices: list[tuple[str, str, str]] = []
+    for device in all_devices:
+        device_id = device.get("id")
+        if not device_id or not device_is_esphome(device):
+            continue
+        for mac in device_mac_suffixes(device):
+            hostname = hostname_map.get(mac)
+            if not hostname:
+                continue
+            # Role name from hostname (e.g. "sendspin" from "sendspin-d5e410")
+            role = hostname.rsplit("-", 1)[0] if "-" in hostname else hostname
+            area = area_names.get(device.get("area_id") or "")
+            if area:
+                # Already registered and placed in an area: "<Area> <Friendly
+                # Name>", no MAC suffix (e.g. "Office SendSpin Speaker").
+                new_name = f"{area} {friendly_name or role}"
+            else:
+                # No area: status quo -- the bare role name.
+                new_name = role
+            updated_devices.append((device_id, hostname, new_name))
+            break
+
+    # Update device names in registry (this triggers HA to regenerate entity IDs)
+    for device_id, hostname, new_name in updated_devices:
+        try:
+            client.send_command(
+                "config/device_registry/update", device_id=device_id, name_by_user=new_name
+            )
+            lines.append(f"Updated device: {hostname} -> {new_name}")
+        except HAWebSocketError:
+            pass
+
+    # Find entities for entity ID updates. Match on device_id: once a device is
+    # named "<Area> <Friendly Name>" its regenerated entity IDs no longer carry
+    # the MAC, so a MAC-only match would never find them again (the MAC match
+    # stays as a fallback for entities HA has not re-slugged yet).
+    renamed_device_ids = {device_id for device_id, _, _ in updated_devices}
+    entity_ids_to_update: list[str] = []
+    for entity in all_entities:
+        entity_id = entity.get("entity_id", "")
+        platform = entity.get("platform", "").lower()
+        if platform != "esphome":
+            continue
+        if entity.get("device_id") in renamed_device_ids:
+            entity_ids_to_update.append(entity_id)
+            continue
+        low = entity_id.lower()
+        for mac in mac_suffixes:
+            if mac in low:
+                entity_ids_to_update.append(entity_id)
+                break
+
+    if not entity_ids_to_update:
+        return lines
+
+    try:
+        id_mapping = (
+            client.send_command(
+                "config/entity_registry/get_automatic_entity_ids",
+                entity_ids=entity_ids_to_update,
+            )
+            or {}
+        )
+    except HAWebSocketError as exc:
+        lines.append(f"WARNING: Failed to get automatic entity IDs: {exc}")
+        return lines
+
+    for old_id, new_id in id_mapping.items():
+        if old_id == new_id or not new_id:
+            continue
+        try:
+            client.send_command(
+                "config/entity_registry/update", entity_id=old_id, new_entity_id=new_id
+            )
+            lines.append(f"Recreated: {old_id} -> {new_id}")
+        except HAWebSocketError as exc:
+            lines.append(f"WARNING: Failed to update {old_id}: {exc}")
+
+    return lines
+
+
+def finalize_esphome_device(
+    ha_url: str,
+    token: str,
+    hostname: str,
+    noise_psk: str,
+    friendly_name: str,
+    *,
+    poll_timeout: float = 90.0,
+) -> dict[str, Any]:
+    """Register/reconfigure hostname in HA, then recreate its entity IDs.
+
+    Both steps share one WebSocket connection, opened before the reconfigure
+    flow's HA-side config-entry reload begins, so the entity-ID step does not
+    need to open a fresh connection right after that reload starts.
+    """
+    with HAWebSocketClient(ha_url, token) as client:
+        result = register_esphome_device(
+            ha_url, token, hostname, noise_psk, poll_timeout=poll_timeout, client=client
+        )
+        result["entity_lines"] = recreate_entity_ids(client, [hostname], friendly_name)
+    return result
 
 
 def call_service(
@@ -508,6 +722,26 @@ def main() -> int:
     )
     register_parser.set_defaults(func=lambda args: _cmd_register_esphome(args))
 
+    finalize_parser = sub.add_parser(
+        "finalize-esphome",
+        help="Register/reconfigure an ESPHome device and recreate its entity IDs "
+        "over one shared WebSocket connection",
+    )
+    finalize_parser.add_argument("--hostname", required=True)
+    finalize_parser.add_argument(
+        "--noise-psk",
+        required=True,
+        help="Device API encryption key (base64 noise_psk for HA)",
+    )
+    finalize_parser.add_argument("--friendly-name", default="")
+    finalize_parser.add_argument(
+        "--poll-timeout",
+        type=float,
+        default=90.0,
+        help="Seconds to wait for HA discovery flow",
+    )
+    finalize_parser.set_defaults(func=lambda args: _cmd_finalize_esphome(args))
+
     args = parser.parse_args()
     try:
         args.func(args)
@@ -546,6 +780,28 @@ def _cmd_register_esphome(args: argparse.Namespace) -> None:
         return
     title = (result.get("result") or {}).get("title", args.hostname)
     print(f"[OK] Home Assistant registered: {title}")
+
+
+def _cmd_finalize_esphome(args: argparse.Namespace) -> None:
+    result = finalize_esphome_device(
+        args.ha_url,
+        args.ha_token,
+        args.hostname,
+        args.noise_psk,
+        args.friendly_name,
+        poll_timeout=args.poll_timeout,
+    )
+    status = result.get("status")
+    if status == "reconfigured":
+        print(f"[OK] Home Assistant reconfigured {args.hostname}")
+    elif status in {"already_registered", "already_configured"}:
+        print(f"[OK] Home Assistant already has {args.hostname}")
+    else:
+        title = (result.get("result") or {}).get("title", args.hostname)
+        print(f"[OK] Home Assistant registered: {title}")
+
+    for line in result.get("entity_lines", []):
+        print(line, file=sys.stderr if line.startswith("WARNING") else sys.stdout)
 
 
 def _cmd_call_service(args: argparse.Namespace) -> None:

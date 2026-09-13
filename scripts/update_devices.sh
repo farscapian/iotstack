@@ -322,8 +322,11 @@ run_ha_production_finalize() {
     return 0
   fi
 
-  recreate_entity_ids "$HA_URL" "$HA_TOKEN" "$prod_hostname" "$yaml_file"
-
+  # Entity IDs are recreated as part of iotstack.sh's _ha_register_esphome_device
+  # (ha_websocket.py finalize-esphome), which shares one WebSocket connection
+  # between registration and entity-ID recreation -- calling recreate_entity_ids
+  # again here would open a second, separate connection right after HA's config-
+  # entry reload, which is exactly the race that merge was made to avoid.
   local consistency_output
   consistency_output=$(verify_entity_id_consistency "$HA_URL" "$HA_TOKEN" "$yaml_file" "$prod_hostname" 2>&1)
   if [[ -n "$consistency_output" ]]; then
