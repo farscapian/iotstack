@@ -50,6 +50,7 @@ packages:
   boot_button: !include common/boot_button.yaml
   esphome_base: !include common/esphome_base.yaml
   sntp_time: !include common/sntp_time.yaml
+  wifi_signal: !include common/wifi_signal.yaml
 
 # 1. Core services
 logger:
@@ -166,10 +167,6 @@ text_sensor:
 sensor:
   - platform: uptime
     name: "Uptime"
-    entity_category: diagnostic
-  - platform: wifi_signal
-    name: "WiFi Signal"
-    update_interval: 60s
     entity_category: diagnostic
 
 # 8. Buttons -- "Restart" and "Toggle Boot Partition" come from partition_mgmt package

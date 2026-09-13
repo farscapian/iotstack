@@ -29,6 +29,7 @@ packages:
   esphome_base: !include common/esphome_base.yaml
   sntp_time: !include common/sntp_time.yaml
   strip_light: !include common/ledstrip_light.yaml
+  wifi_signal: !include common/wifi_signal.yaml
 
 esphome:
   name: ledstrip-s3-wifi
@@ -58,10 +59,6 @@ logger:
 sensor:
   - platform: uptime
     name: "Uptime"
-    update_interval: 60s
-    entity_category: diagnostic
-  - platform: wifi_signal
-    name: "WiFi Signal"
     update_interval: 60s
     entity_category: diagnostic
 

@@ -37,6 +37,7 @@ packages:
   partition_mgmt: !include common/partition_manager_bootstrap.yaml
   boot_button: !include common/boot_button.yaml
   esphome_base: !include common/esphome_base.yaml
+  wifi_signal: !include common/wifi_signal.yaml
 
 esphome:
   name: ${device_role}
@@ -161,10 +162,6 @@ binary_sensor:
 sensor:
   - platform: uptime
     name: "Uptime"
-  - platform: wifi_signal
-    name: "WiFi RSSI (dBm)"
-    update_interval: 10s
-    entity_category: diagnostic
 
 # Aliveness beacon (bootstrap only). Lets `iotstack logs` confirm the device is
 # alive and in bootstrap without a reboot; the free-heap reading also surfaces a

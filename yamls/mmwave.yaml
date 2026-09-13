@@ -19,6 +19,7 @@ packages:
   boot_button: !include common/boot_button.yaml
   esphome_base: !include common/esphome_base.yaml
   sntp_time: !include common/sntp_time.yaml
+  wifi_signal: !include common/wifi_signal.yaml
   ext_antenna: !include common/xiao_c6_ext_antenna.yaml
 
 esphome:
@@ -236,11 +237,6 @@ sensor:
 
   - platform: uptime
     name: "Uptime"
-    entity_category: diagnostic
-
-  - platform: wifi_signal
-    name: "WiFi RSSI (dBm)"
-    update_interval: 10s
     entity_category: diagnostic
 
   # 4.1 BH1750 illuminance

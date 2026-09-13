@@ -1,0 +1,7 @@
+# Shared WiFi RSSI sensor, included by every WiFi-connected device role via
+# packages: so signal strength reporting is configured identically everywhere.
+sensor:
+  - platform: wifi_signal
+    name: "WiFi RSSI (dBm)"
+    update_interval: 10s
+    entity_category: diagnostic
