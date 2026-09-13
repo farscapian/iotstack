@@ -266,7 +266,7 @@ fi
 # -- Matter Commissioning Dependencies --------------------------------------
 echo
 echo "========================================================"
-echo "Checking Matter commissioning dependencies (optional)"
+echo "Checking Matter commissioning and Home Assistant dependencies (optional)"
 echo "========================================================"
 echo
 
@@ -295,8 +295,14 @@ if command -v python3 &>/dev/null && ! python3 -c "import websocket" 2>/dev/null
   MISSING_DEPS+=("python3-websocket-client")
 fi
 
+# Check for websocat (Home Assistant device/area registry queries: 'iotstack
+# devices' HA area column, 'iotstack query')
+if ! command -v websocat &>/dev/null; then
+  MISSING_DEPS+=("websocat")
+fi
+
 if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
-  echo "Missing dependencies for Matter commissioning:"
+  echo "Missing dependencies for Matter commissioning / Home Assistant integration:"
   printf '  %s\n' "${MISSING_DEPS[@]}"
   echo
   read -p "Install missing dependencies now? (y/N) " -n 1 -r
@@ -327,6 +333,13 @@ if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
       pip3 install websocket-client >/dev/null 2>&1 || warn "Failed to install websocket-client Python library"
     fi
 
+    # websocat (required for Home Assistant device/area registry queries)
+    if [[ " ${MISSING_DEPS[*]} " =~ " websocat " ]]; then
+      # shellcheck source=scripts/ensure-websocat.sh
+      source "${SCRIPT_DIR}/scripts/ensure-websocat.sh"
+      ensure_websocat || warn "Failed to install websocat"
+    fi
+
     # chip-tool (snap recommended on Ubuntu/Debian)
     if [[ " ${MISSING_DEPS[*]} " =~ " chip-tool " ]]; then
       if command -v snap &>/dev/null; then
@@ -340,12 +353,13 @@ if [[ ${#MISSING_DEPS[@]} -gt 0 ]]; then
     fi
   else
     dim "Skipping dependency installation"
-    echo "To use 'iotstack matter commission', install:"
+    echo "To use 'iotstack matter commission' and Home Assistant integration, install:"
     printf '  sudo apt install %s\n' "${MISSING_DEPS[@]}"
     echo "  And: sudo snap install chip-tool  (or build from source)"
+    echo "  websocat (if listed above): https://github.com/vi/websocat/releases"
   fi
 else
-  ok "All Matter commissioning dependencies installed"
+  ok "All Matter commissioning and Home Assistant integration dependencies installed"
 fi
 
 # -- chip-tool layout + snap interfaces -----------------------------------
