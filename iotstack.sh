@@ -4857,6 +4857,8 @@ _flash_prepare_builds() {
     ok "Build directory cleaned"
   fi
 
+  iotstack_bootstrap_swap_build_cache "$variant"
+
   info "Project version: $(iotstack_project_version)"
 
   if [[ -n "$yaml_path" ]]; then
@@ -4867,6 +4869,7 @@ _flash_prepare_builds() {
   fi
 
   smart_compile "$bootstrap_yaml" "$build_name" || return 1
+  iotstack_bootstrap_mark_build_cache "$variant"
 
   if [[ -n "$yaml_path" ]]; then
     info "Compiling production image (${device_name}); iotstack flash installs it via OTA (USB writes bootstrap only)"
@@ -4922,10 +4925,13 @@ _flash_bootstrap_to_tty() {
   iotstack_register_yaml_cleanup_trap
   build_name="bootstrap"
 
+  iotstack_bootstrap_swap_build_cache "$variant"
+
   if [[ ! -f "$(iotstack_build_firmware_bin "$build_name")" ]]; then
     debug "Bootstrap firmware not pre-built -- compiling for ${variant}"
     smart_compile "$bootstrap_yaml" "$build_name" || return 1
   fi
+  iotstack_bootstrap_mark_build_cache "$variant"
 
   debug "Recovery image: ${variant} on ${tty_device}"
   debug "YAML: ${bootstrap_yaml#"${YAMLS_DIR%/*}/"}"

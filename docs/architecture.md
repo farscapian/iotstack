@@ -57,6 +57,22 @@ There is no force/disable flag -- `config_hash` is complete, so a stale build is
 never reused (a docs-only commit that touches none of the above correctly does
 not recompile).
 
+**Bootstrap build cache is per chip variant.** ESPHome names a build directory
+after `esphome.name`, which for bootstrap is always the bootstrap role (e.g.
+`bootstrap`) regardless of chip variant -- there is no `esphome compile
+--build-path` override to key it on variant instead. Without help, the live
+`${ESPHOME_BUILD_DIR}/bootstrap/` dir would hold only one variant's build at a
+time, so switching between an esp32c6 and esp32s3 target (e.g. flashing
+bleproxy then matrixdisplay) would force a full recompile on every switch even
+when that variant was already built. `iotstack_bootstrap_swap_build_cache()`
+(`scripts/iotstack-bootstrap.sh`) shelves the outgoing variant's whole build
+tree under `${ESPHOME_BUILD_DIR}/.bootstrap-variants/<variant>/` and restores
+the target variant's tree by rename (instant, no extra disk) before any
+compile/cache-check/flash step reads the live dir; `smart_compile`'s ordinary
+`config_hash` check then sees a genuine hit if that variant's source hasn't
+changed. Production roles don't need this -- each role YAML pins one board, so
+`esphome.name` (and therefore the build dir) is already unique per variant.
+
 ### Serial Flash Baud Rate (per chip)
 `esp_esptool_baud_for_chip()` in `scripts/esp-serial.sh` selects the rate:
 
