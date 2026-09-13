@@ -240,7 +240,7 @@ sensor:
 
   - platform: wifi_signal
     name: "WiFi RSSI (dBm)"
-    update_interval: 60s
+    update_interval: 10s
     entity_category: diagnostic
 
   # 4.1 BH1750 illuminance
