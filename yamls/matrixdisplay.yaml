@@ -557,7 +557,7 @@ text:
     restore_value: true
     min_length: 0
     max_length: 128
-    initial_value: ""
+    initial_value: "iotstack - ${friendly_name}"
     on_value:
       # Redraw immediately so text changes are not delayed to the next update tick.
       - component.update: matrix_display
