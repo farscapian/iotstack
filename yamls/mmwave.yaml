@@ -176,11 +176,11 @@ text_sensor:
       return id(presence).state ? std::string("Detected") : std::string("Not Detected");
     update_interval: 1s
 
-  # Metric/Imperial display for Detection Distance. A sensor's unit_of_measurement
-  # is fixed at compile time in this ESPHome build (no runtime setter), so this
-  # is a separate formatted-text readout rather than the numeric sensor itself.
+  # Detection Distance, formatted per the "Distance Units" select. A sensor's
+  # unit_of_measurement is fixed at compile time in this ESPHome build (no
+  # runtime setter), so this is a text sensor rather than a numeric one.
   - platform: template
-    name: "Detection Distance (Display)"
+    name: "Detection Distance"
     icon: "mdi:tape-measure"
     update_interval: 1s
     lambda: |-
@@ -220,9 +220,8 @@ sensor:
 
 
   # 4.4 mmWave -- detection distance
-  # Raw reading stays internal (native cm); "Detection Distance" below is
-  # derived from it and unchanged from before (always ft, for HA history/
-  # automations). See the text_sensor above for the metric/imperial toggle.
+  # Raw reading stays internal (native cm); the "Detection Distance" text
+  # sensor above is the only distance entity exposed to HA.
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     distance:
@@ -234,19 +233,6 @@ sensor:
       name: "Target Count"
       id: target_count
       state_class: measurement
-
-  - platform: template
-    id: distance_sensor
-    name: "Detection Distance"
-    unit_of_measurement: "ft"
-    device_class: distance
-    state_class: measurement
-    accuracy_decimals: 2
-    update_interval: 1s
-    lambda: |-
-      if (!id(distance_raw_cm).has_state())
-        return {};
-      return id(distance_raw_cm).state * 0.0328084f;
 
   - platform: uptime
     name: "Uptime"
