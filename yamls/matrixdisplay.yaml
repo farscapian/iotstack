@@ -282,12 +282,8 @@ display:
         return false;
       };
 
-      // No text yet -> show the panel geometry (white), no effects.
       std::string text = id(display_text).state;
-      if (text.empty()) {
-        it.printf(0, H / 2, fnt, TextAlign::CENTER_LEFT, "%dx%d", W, H);
-        return;
-      }
+      if (text.empty()) return;
 
       // ":btc:" -> U+E000, so the rest of the lambda only ever sees codepoints.
       for (const auto &t : ICON_TOKENS) {
