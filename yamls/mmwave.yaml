@@ -176,6 +176,24 @@ text_sensor:
       return id(presence).state ? std::string("Detected") : std::string("Not Detected");
     update_interval: 1s
 
+  # Metric/Imperial display for Detection Distance. A sensor's unit_of_measurement
+  # is fixed at compile time in this ESPHome build (no runtime setter), so this
+  # is a separate formatted-text readout rather than the numeric sensor itself.
+  - platform: template
+    name: "Detection Distance (Display)"
+    icon: "mdi:tape-measure"
+    update_interval: 1s
+    lambda: |-
+      if (!id(distance_raw_cm).has_state())
+        return {};
+      char buf[16];
+      if (id(units_select).current_option() == "Metric") {
+        snprintf(buf, sizeof(buf), "%.2f m", id(distance_raw_cm).state / 100.0f);
+      } else {
+        snprintf(buf, sizeof(buf), "%.2f ft", id(distance_raw_cm).state * 0.0328084f);
+      }
+      return std::string(buf);
+
 sensor:
   # 4.2 mmWave -- respiratory rate
   - platform: seeed_mr60bha2
@@ -202,8 +220,9 @@ sensor:
 
 
   # 4.4 mmWave -- detection distance
-  # Raw reading stays internal (native cm); the visible sensor below is
-  # republished in the unit selected by the "Distance Units" dropdown.
+  # Raw reading stays internal (native cm); "Detection Distance" below is
+  # derived from it and unchanged from before (always ft, for HA history/
+  # automations). See the text_sensor above for the metric/imperial toggle.
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     distance:
@@ -211,12 +230,6 @@ sensor:
       internal: true
       unit_of_measurement: "cm"
       accuracy_decimals: 2
-      on_value:
-        then:
-          - lambda: |-
-              id(last_distance_cm) = x;
-              bool metric = id(units_select).state == "Metric";
-              id(distance_sensor).publish_state(metric ? x / 100.0f : x * 0.0328084f);
     num_targets:
       name: "Target Count"
       id: target_count
@@ -225,10 +238,15 @@ sensor:
   - platform: template
     id: distance_sensor
     name: "Detection Distance"
-    unit_of_measurement: "ft"  # matches the default "Imperial" option below
+    unit_of_measurement: "ft"
     device_class: distance
     state_class: measurement
     accuracy_decimals: 2
+    update_interval: 1s
+    lambda: |-
+      if (!id(distance_raw_cm).has_state())
+        return {};
+      return id(distance_raw_cm).state * 0.0328084f;
 
   - platform: uptime
     name: "Uptime"
@@ -276,10 +294,6 @@ globals:
     type: float
     initial_value: '0.5'  # Default to 50%
     restore_value: no
-  - id: last_distance_cm
-    type: float
-    initial_value: '0'
-    restore_value: no
 
 # 7. Buttons
 button:
@@ -311,10 +325,8 @@ button:
 #           id(uart_bus).write_str("sensorStop\r\n");
 #           ESP_LOGI("SENSOR", "Sensor disabled");
 
-# Metric/Imperial toggle for Detection Distance.
-# Note: the numeric value updates immediately, but the "ft"/"m" unit label
-# shown in HA is fixed at API-connect time -- it refreshes on the device's
-# next reboot or HA restart, not the instant the dropdown is changed.
+# Metric/Imperial toggle, read by the "Detection Distance (Display)" text
+# sensor above (polled every 1s, so the display catches up within a second).
 select:
   - platform: template
     name: "Distance Units"
@@ -327,11 +339,6 @@ select:
       - "Metric"
     initial_option: "Imperial"
     restore_value: true
-    set_action:
-      - lambda: |-
-          bool metric = (x == "Metric");
-          id(distance_sensor).set_unit_of_measurement(metric ? "m" : "ft");
-          id(distance_sensor).publish_state(metric ? id(last_distance_cm) / 100.0f : id(last_distance_cm) * 0.0328084f);
 
 # 7. RGB LED (onboard WS2812, GPIO1)
 light:
