@@ -721,6 +721,110 @@ def verify_entity_id_consistency(
     return ["All entity IDs are consistent with device names."]
 
 
+def sync_bluetooth_proxy_area(client: HAWebSocketClient, hostname: str) -> list[str]:
+    """For a bleproxy device, make its HA "bluetooth" scanner device match the
+    ESPHome device's area.
+
+    ESPHome's bluetooth_proxy component causes HA to mint a second device (domain
+    "bluetooth", one per physical BT radio) for the same hardware, linked to the
+    "esphome" device via `via_device_id` -- HA does not keep the two devices' areas
+    in sync on its own. The ESPHome device's area is authoritative (it is the one
+    the human sets when placing the proxy); the Bluetooth device is corrected to
+    match, and a mismatch is reported as a warning. No-ops when the ESPHome device
+    has no area assigned. Never raises (best-effort, mirrors recreate_entity_ids).
+    """
+    mac = _mac_suffix_from_hostname(hostname)
+    if not mac:
+        return []
+
+    try:
+        all_devices = client.send_command("config/device_registry/list") or []
+    except HAWebSocketError:
+        return []
+
+    try:
+        esphome_entry_ids = {
+            entry.get("entry_id")
+            for entry in client.send_command("config_entries/get", domain="esphome") or []
+            if entry.get("entry_id")
+        }
+    except HAWebSocketError:
+        esphome_entry_ids = set()
+
+    def device_mac_suffixes(device: dict[str, Any]) -> set[str]:
+        suffixes: set[str] = set()
+        for conn in device.get("connections") or []:
+            if not isinstance(conn, (list, tuple)) or len(conn) < 2:
+                continue
+            if str(conn[0]).lower() not in {"mac", "bluetooth"}:
+                continue
+            compact = re.sub(r"[^0-9a-f]", "", str(conn[1]).lower())
+            if len(compact) >= 6:
+                suffixes.add(compact[-6:])
+        return suffixes
+
+    def device_is_esphome(device: dict[str, Any]) -> bool:
+        if esphome_entry_ids.intersection(device.get("config_entries") or []):
+            return True
+        for identifier_set in device.get("identifiers") or []:
+            if isinstance(identifier_set, (list, tuple)) and identifier_set:
+                if str(identifier_set[0]).lower() == "esphome":
+                    return True
+        return False
+
+    esphome_device = None
+    for device in all_devices:
+        if device.get("id") and device_is_esphome(device) and mac in device_mac_suffixes(device):
+            esphome_device = device
+            break
+
+    if esphome_device is None:
+        return []
+
+    esphome_area = esphome_device.get("area_id")
+    if not esphome_area:
+        return []
+
+    bt_device = None
+    for device in all_devices:
+        if device.get("via_device_id") == esphome_device.get("id"):
+            bt_device = device
+            break
+
+    if bt_device is None or bt_device.get("area_id") == esphome_area:
+        return []
+
+    area_names: dict[str, str] = {}
+    try:
+        for area in client.send_command("config/area_registry/list") or []:
+            area_id = area.get("area_id")
+            name = (area.get("name") or "").strip()
+            if area_id and name:
+                area_names[area_id] = name
+    except HAWebSocketError:
+        pass
+
+    bt_area = bt_device.get("area_id")
+    lines = [
+        f"WARNING: Bluetooth device area mismatch for {hostname}: "
+        f"ESPHome area is '{area_names.get(esphome_area, esphome_area)}', "
+        f"Bluetooth device area is "
+        f"'{area_names.get(bt_area, bt_area) if bt_area else 'none'}'; "
+        "setting Bluetooth device to match ESPHome (authoritative)."
+    ]
+    try:
+        client.send_command(
+            "config/device_registry/update", device_id=bt_device["id"], area_id=esphome_area
+        )
+        lines.append(
+            f"Set Bluetooth device area to '{area_names.get(esphome_area, esphome_area)}'"
+        )
+    except HAWebSocketError as exc:
+        lines.append(f"WARNING: Failed to update Bluetooth device area: {exc}")
+
+    return lines
+
+
 def finalize_esphome_device(
     ha_url: str,
     token: str,
@@ -730,6 +834,7 @@ def finalize_esphome_device(
     entity_slug: str = "",
     *,
     poll_timeout: float = 90.0,
+    role: str = "",
 ) -> dict[str, Any]:
     """Register/reconfigure hostname in HA, recreate its entity IDs, then verify
     they're consistent.
@@ -747,6 +852,9 @@ def finalize_esphome_device(
             verify_entity_id_consistency(client, [hostname], entity_slug, friendly_name)
             if entity_slug
             else []
+        )
+        result["bluetooth_area_lines"] = (
+            sync_bluetooth_proxy_area(client, hostname) if role == "bleproxy" else []
         )
     return result
 
@@ -828,6 +936,12 @@ def main() -> int:
     )
     finalize_parser.add_argument("--friendly-name", default="")
     finalize_parser.add_argument("--entity-slug", default="")
+    finalize_parser.add_argument(
+        "--role",
+        default="",
+        help="Device role (roles.conf name, e.g. bleproxy) -- enables role-specific "
+        "post-registration steps such as Bluetooth device area sync",
+    )
     finalize_parser.add_argument(
         "--poll-timeout",
         type=float,
@@ -914,10 +1028,12 @@ def _cmd_finalize_esphome(args: argparse.Namespace) -> None:
         args.friendly_name,
         args.entity_slug,
         poll_timeout=args.poll_timeout,
+        role=args.role,
     )
     _print_register_status(result, args.hostname)
     _print_lines(result.get("entity_lines", []))
     _print_lines(result.get("consistency_lines", []))
+    _print_lines(result.get("bluetooth_area_lines", []))
 
 
 def _cmd_recreate_entities(args: argparse.Namespace) -> None:

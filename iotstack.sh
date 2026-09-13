@@ -3549,7 +3549,8 @@ _ha_register_esphome_device() {
       --hostname "$hostname" \
       --noise-psk "$noise_psk_b64" \
       --friendly-name "$friendly_name" \
-      --entity-slug "$entity_slug" 2>&1) || reg_rc=$?
+      --entity-slug "$entity_slug" \
+      --role "$role" 2>&1) || reg_rc=$?
   if [[ $reg_rc -eq 0 ]]; then
     ha_ws_print_result_lines "$reg_out"
     return 0
