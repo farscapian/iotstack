@@ -701,6 +701,13 @@ _ensure_chip_tool_storage() {
   setup_chip_tool_storage
 }
 
+_ensure_websocat() {
+  command -v websocat &>/dev/null && return 0
+  # shellcheck source=scripts/ensure-websocat.sh
+  source "${SCRIPT_DIR}/scripts/ensure-websocat.sh"
+  ensure_websocat
+}
+
 _ha_websocket_call_service() {
   local domain="$1"
   local service="$2"
@@ -808,6 +815,7 @@ list_device_names() {
 # Returns a JSON object keyed by MAC suffix, hostname, and device name -> area name
 get_ha_device_areas() {
   _load_ha_credentials_optional || return 1
+  _ensure_websocat || return 1
 
   local ha_token="$HA_TOKEN"
   local ha_url="$HA_URL"
