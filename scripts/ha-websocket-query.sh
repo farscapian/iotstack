@@ -1,6 +1,5 @@
 #!/bin/bash
 # Query Home Assistant WebSocket API for devices/entities
-# Auto-installs websocat if needed
 
 set -euo pipefail
 
@@ -8,8 +7,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/config.sh
 source "${SCRIPT_DIR}/config.sh"
-# shellcheck source=scripts/ensure-websocat.sh
-source "${SCRIPT_DIR}/ensure-websocat.sh"
 
 DEVICE_NAME="${1:-}"
 LIST_DEVICES="${LIST_DEVICES:-false}"
@@ -81,7 +78,7 @@ WS_URL="${WS_URL}/api/websocket"
 echo "[INFO] Using WebSocket URL: $WS_URL" >&2
 
 # Ensure websocat is available
-ensure_websocat
+command -v websocat &>/dev/null || err "websocat not found. Re-run setup.sh to install it."
 
 # Send WebSocket commands and parse responses
 echo "[DEBUG] Connecting to WebSocket..." >&2

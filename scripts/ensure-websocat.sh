@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ensure-websocat.sh
 # Installs websocat (used for Home Assistant WebSocket API calls) if missing.
-# Shared by iotstack.sh (get_ha_device_areas) and ha-websocket-query.sh.
+# Used only by setup.sh -- runtime commands just check for websocat and tell
+# the user to re-run setup.sh if it's missing.
 
 set -euo pipefail
 

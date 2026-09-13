@@ -316,23 +316,7 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       return 0
     fi
 
-    _ies_info "python3 websocket-client is required for Home Assistant integration"
-    _ies_info "Installing websocket-client..."
-
-    if python3 -m pip install websocket-client >/dev/null 2>&1 \
-      || pip3 install websocket-client >/dev/null 2>&1; then
-      _ies_ok "websocket-client installed via pip"
-      return 0
-    fi
-
-    if command -v apt-get &>/dev/null \
-      && sudo apt-get update -qq \
-      && sudo apt-get install -y python3-websocket >/dev/null 2>&1; then
-      _ies_ok "python3-websocket installed via apt"
-      return 0
-    fi
-
-    _ies_err "python3 websocket-client is required. Install with: pip3 install websocket-client"
+    _ies_err "python3 websocket-client is required for Home Assistant integration. Re-run setup.sh to install it."
   }
 
   ha_ws_print_result_lines() {
