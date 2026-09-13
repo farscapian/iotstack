@@ -202,20 +202,33 @@ sensor:
 
 
   # 4.4 mmWave -- detection distance
+  # Raw reading stays internal (native cm); the visible sensor below is
+  # republished in the unit selected by the "Distance Units" dropdown.
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     distance:
-      id: distance_sensor
-      name: "Detection Distance"
-      unit_of_measurement: "ft"
-      state_class: measurement
+      id: distance_raw_cm
+      internal: true
+      unit_of_measurement: "cm"
       accuracy_decimals: 2
-      filters:
-        - multiply: 0.0328084  # Convert cm to feet
+      on_value:
+        then:
+          - lambda: |-
+              id(last_distance_cm) = x;
+              bool metric = id(units_select).state == "Metric";
+              id(distance_sensor).publish_state(metric ? x / 100.0f : x * 0.0328084f);
     num_targets:
       name: "Target Count"
       id: target_count
       state_class: measurement
+
+  - platform: template
+    id: distance_sensor
+    name: "Detection Distance"
+    unit_of_measurement: "ft"  # matches the default "Imperial" option below
+    device_class: distance
+    state_class: measurement
+    accuracy_decimals: 2
 
   - platform: uptime
     name: "Uptime"
@@ -263,6 +276,10 @@ globals:
     type: float
     initial_value: '0.5'  # Default to 50%
     restore_value: no
+  - id: last_distance_cm
+    type: float
+    initial_value: '0'
+    restore_value: no
 
 # 7. Buttons
 button:
@@ -275,21 +292,46 @@ button:
   # "Restart" and "Toggle Boot Partition" buttons come from partition_mgmt package
 
 # 7. Sensor Controls
-switch:
+# Disabled for now: raw UART writes here race with the seeed_mr60bha2
+# component's own binary protocol on the same bus, and the switch is
+# optimistic (no readback to confirm the sensor actually started/stopped).
+# switch:
+#   - platform: template
+#     name: "Sensor Enabled"
+#     id: sensor_enabled
+#     icon: "mdi:radar"
+#     entity_category: config
+#     optimistic: true
+#     turn_on_action:
+#       - lambda: |-
+#           id(uart_bus).write_str("sensorStart\r\n");
+#           ESP_LOGI("SENSOR", "Sensor enabled");
+#     turn_off_action:
+#       - lambda: |-
+#           id(uart_bus).write_str("sensorStop\r\n");
+#           ESP_LOGI("SENSOR", "Sensor disabled");
+
+# Metric/Imperial toggle for Detection Distance.
+# Note: the numeric value updates immediately, but the "ft"/"m" unit label
+# shown in HA is fixed at API-connect time -- it refreshes on the device's
+# next reboot or HA restart, not the instant the dropdown is changed.
+select:
   - platform: template
-    name: "Sensor Enabled"
-    id: sensor_enabled
-    icon: "mdi:radar"
+    name: "Distance Units"
+    id: units_select
+    icon: "mdi:tape-measure"
     entity_category: config
     optimistic: true
-    turn_on_action:
+    options:
+      - "Imperial"
+      - "Metric"
+    initial_option: "Imperial"
+    restore_value: true
+    set_action:
       - lambda: |-
-          id(uart_bus).write_str("sensorStart\r\n");
-          ESP_LOGI("SENSOR", "Sensor enabled");
-    turn_off_action:
-      - lambda: |-
-          id(uart_bus).write_str("sensorStop\r\n");
-          ESP_LOGI("SENSOR", "Sensor disabled");
+          bool metric = (x == "Metric");
+          id(distance_sensor).set_unit_of_measurement(metric ? "m" : "ft");
+          id(distance_sensor).publish_state(metric ? id(last_distance_cm) / 100.0f : id(last_distance_cm) * 0.0328084f);
 
 # 7. RGB LED (onboard WS2812, GPIO1)
 light:
@@ -443,7 +485,10 @@ light:
           lambda: |-
             // Distance-based brightness (green color)
             // 6 inches (0.15m) = 100% bright, 20 feet (6.1m) = 10% bright
-            if (!id(distance_sensor).has_state()) {
+            // Reads the raw cm sensor (not the unit-toggleable Detection
+            // Distance display sensor) so thresholds stay correct
+            // regardless of the Distance Units dropdown.
+            if (!id(distance_raw_cm).has_state()) {
               // No distance reading - turn off
               auto call = id(rgb_led).make_call();
               call.set_state(false);
@@ -451,7 +496,7 @@ light:
               return;
             }
 
-            float distance = id(distance_sensor).state;  // in feet
+            float distance = id(distance_raw_cm).state * 0.0328084f;  // cm to feet
             float min_dist = 0.5f;    // 6 inches
             float max_dist = 20.0f;   // 20 feet
             float min_brightness = 0.1f;  // 10% at far distance
