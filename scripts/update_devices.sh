@@ -511,9 +511,15 @@ ws_url = ha_url.replace('http://', 'ws://').replace('https://', 'wss://') + '/ap
 import warnings
 warnings.filterwarnings('ignore')
 
+# This runs right after _ha_register_esphome_device() drives HA's ESPHome
+# reconfigure flow (iotstack.sh _ha_after_production_online), which reloads
+# the config entry HA-side. A fresh WebSocket connect made immediately after
+# can be refused for several seconds while that reload is in flight, so the
+# retry budget needs to span that, not just cover a brief network blip.
 ws = None
 connect_err = None
-for attempt in range(3):
+max_attempts = 5
+for attempt in range(max_attempts):
     try:
         ws = websocket.create_connection(
             ws_url,
@@ -523,8 +529,8 @@ for attempt in range(3):
         break
     except Exception as e:
         connect_err = e
-        if attempt < 2:
-            time.sleep(1 + attempt)
+        if attempt < max_attempts - 1:
+            time.sleep(2 * (attempt + 1))
 
 if ws is None:
     print(f'WARNING: Failed to connect to HA WebSocket: {connect_err}', file=sys.stderr)
