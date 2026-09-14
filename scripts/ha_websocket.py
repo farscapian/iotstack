@@ -553,8 +553,16 @@ def recreate_entity_ids(
                     suffixes.add(m.group(1))
         return suffixes
 
-    # Find and update ESPHome devices by MAC, naming them from the area + friendly name
-    updated_devices: list[tuple[str, str, str]] = []
+    # Find and update ESPHome devices by MAC, naming them from the friendly name.
+    # Home Assistant's default entity_id_parts already include AREA ahead of
+    # DEVICE (homeassistant/helpers/entity_registry.py, _async_generate_entity_id),
+    # so it prepends the device's assigned area to both the entity friendly name
+    # and the generated entity_id on its own. Baking the area into name_by_user
+    # here as well used to double it up for any device placed in an area (e.g.
+    # device "Office Matrix Display" in area "Office" -> HA prepends "Office"
+    # again -> text.office_office_matrix_display_display_text). Set the bare
+    # name here and let HA add the area exactly once.
+    updated_devices: list[tuple[str, str, str, str]] = []
     for device in all_devices:
         device_id = device.get("id")
         if not device_id or not device_is_esphome(device):
@@ -567,17 +575,19 @@ def recreate_entity_ids(
             role = hostname.rsplit("-", 1)[0] if "-" in hostname else hostname
             area = area_names.get(device.get("area_id") or "")
             if area:
-                # Already registered and placed in an area: "<Area> <Friendly
-                # Name>", no MAC suffix (e.g. "Office SendSpin Speaker").
-                new_name = f"{area} {friendly_name or role}"
+                # Placed in an area: bare friendly name -- HA prepends the
+                # area itself (see above), so name_by_user must not.
+                new_name = friendly_name or role
+                display_text = f"{area} {new_name}"
             else:
                 # No area: status quo -- the bare role name.
                 new_name = role
-            updated_devices.append((device_id, hostname, new_name))
+                display_text = new_name
+            updated_devices.append((device_id, hostname, new_name, display_text))
             break
 
     # Update device names in registry (this triggers HA to regenerate entity IDs)
-    for device_id, hostname, new_name in updated_devices:
+    for device_id, hostname, new_name, _display_text in updated_devices:
         try:
             client.send_command(
                 "config/device_registry/update", device_id=device_id, name_by_user=new_name
@@ -587,10 +597,10 @@ def recreate_entity_ids(
             pass
 
     # Find entities for entity ID updates. Match on device_id: once a device is
-    # named "<Area> <Friendly Name>" its regenerated entity IDs no longer carry
-    # the MAC, so a MAC-only match would never find them again (the MAC match
-    # stays as a fallback for entities HA has not re-slugged yet).
-    renamed_device_ids = {device_id for device_id, _, _ in updated_devices}
+    # renamed its regenerated entity IDs no longer carry the MAC, so a
+    # MAC-only match would never find them again (the MAC match stays as a
+    # fallback for entities HA has not re-slugged yet).
+    renamed_device_ids = {device_id for device_id, _, _, _ in updated_devices}
     entity_ids_to_update: list[str] = []
     for entity in all_entities:
         entity_id = entity.get("entity_id", "")
@@ -636,11 +646,15 @@ def recreate_entity_ids(
         if updated_count > 0:
             lines.append(f"Successfully recreated {updated_count} entity ID(s).")
 
-    # Push the just-resolved device name into each device's "Display Text"
-    # entity (matrix displays only carry one), so a successful registration/
-    # reregistration replaces the compiled-in default with the name that was
-    # set on the device above, e.g. "Master Bedroom Matrix Display".
-    device_names = {device_id: new_name for device_id, _, new_name in updated_devices}
+    # Push the just-resolved "<Area> <Friendly Name>" text into each device's
+    # "Display Text" entity (matrix displays only carry one), so a successful
+    # registration/reregistration replaces the compiled-in default with the
+    # full name, e.g. "Master Bedroom Matrix Display" -- name_by_user itself
+    # is set bare above and gets the area prepended by HA, but the physical
+    # screen has no such logic and needs it spelled out here.
+    device_names = {
+        device_id: display_text for device_id, _, _, display_text in updated_devices
+    }
     for entity in all_entities:
         device_id = entity.get("device_id")
         if device_id not in device_names:
