@@ -70,19 +70,33 @@ Uses `update_devices.sh --verify`. Discovery and mismatch reporting must use `in
 - Verifies entity ID consistency across all discovered devices
 - Device naming (`name_by_user` in the device registry):
   - No area assigned in HA: `<rolename>` (hostname minus the MAC suffix) -- the status quo
-  - Area assigned in HA: `<Area> <friendly_name>` (no MAC suffix), e.g. area `Office` +
-    `friendly_name: "SendSpin Speaker"` -> `Office SendSpin Speaker`. Entity IDs are
-    regenerated from that name, so they pick up the area prefix too.
+  - Area assigned in HA: bare `<friendly_name>` (no area, no MAC suffix), e.g.
+    `friendly_name: "SendSpin Speaker"` -> `SendSpin Speaker`. HA's own default
+    `entity_id_parts` (AREA, PARENT_DEVICE, DEVICE, ENTITY --
+    `homeassistant/helpers/entity_registry.py`, `_async_generate_entity_id`) already
+    prepends the area to both the entity friendly name and the generated entity ID, so
+    `name_by_user` must NOT also carry the area -- doing so double-prefixes it (device
+    "Office Matrix Display" in area "Office" -> `text.office_office_matrix_display_...`).
+  - Matrix displays' physical "Display Text" entity still gets pushed the full
+    `<Area> <friendly_name>` string (e.g. "Office Matrix Display") since the LED screen
+    has no HA area logic of its own -- that string is computed separately and never
+    written to `name_by_user`.
   - The area is read from HA, never written: assign it in the HA UI and the next
     flash/reassign/entity update adopts it.
   - Device matching is by the MAC in the registry's `connections` (ESPHome devices have
     NO `identifiers`), scoped to devices owned by an `esphome` config entry. Do not match
     on the MAC alone: other integrations (Music Assistant) create their own device for the
     same hardware with the MAC inside their identifier, and would be renamed by mistake.
+  - Every matched device is also tagged with a label named after its own MAC suffix (e.g.
+    `8238cc`), merged into any existing labels rather than replacing them. Renaming a
+    device makes it unfindable by MAC in HA's device/entity search otherwise; labels
+    survive renames and HA's search matches label names, so the MAC suffix stays
+    searchable regardless of what the device is later renamed to.
 - Commands used:
   - `config/entity_registry/list` -- get all entities
   - `config/area_registry/list` -- resolve a device's `area_id` to its area name
-  - `config/device_registry/update` -- set the device `name_by_user`
+  - `config/device_registry/update` -- set the device `name_by_user` and `labels`
   - `config/entity_registry/get_automatic_entity_ids` -- compute new IDs for given device_name
   - `config/entity_registry/update` -- update entity ID
+  - `config/label_registry/list` / `config/label_registry/create` -- ensure the MAC-suffix label exists
 - Entity ID security: only updates entities with `platform == 'esphome'`, preventing accidental updates to beacon trackers, iBeacon integrations, etc.
