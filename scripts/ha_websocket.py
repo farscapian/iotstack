@@ -563,6 +563,10 @@ def recreate_entity_ids(
     # again -> text.office_office_matrix_display_display_text). Set the bare
     # name here and let HA add the area exactly once.
     updated_devices: list[tuple[str, str, str, str]] = []
+    # (device_id, mac, current label_ids) for every matched device, regardless
+    # of area/rename -- fed into the MAC-label step below so a device stays
+    # findable by MAC suffix no matter what it gets renamed to later.
+    mac_label_targets: list[tuple[str, str, list[str]]] = []
     for device in all_devices:
         device_id = device.get("id")
         if not device_id or not device_is_esphome(device):
@@ -571,6 +575,7 @@ def recreate_entity_ids(
             hostname = hostname_map.get(mac)
             if not hostname:
                 continue
+            mac_label_targets.append((device_id, mac, list(device.get("labels") or [])))
             # Role name from hostname (e.g. "sendspin" from "sendspin-d5e410")
             role = hostname.rsplit("-", 1)[0] if "-" in hostname else hostname
             area = area_names.get(device.get("area_id") or "")
@@ -585,6 +590,54 @@ def recreate_entity_ids(
                 display_text = new_name
             updated_devices.append((device_id, hostname, new_name, display_text))
             break
+
+    # Tag every matched device with a label named after its MAC suffix (e.g.
+    # "8238cc"). Labels aren't touched by device renames, and Home Assistant's
+    # device/entity list search matches label names (getLabelsTableColumn is
+    # filterable in the frontend data table) -- so typing the MAC suffix into
+    # that search box finds the device no matter what it has been renamed to.
+    if mac_label_targets:
+        label_ids_by_name: dict[str, str] = {}
+        try:
+            for label in client.send_command("config/label_registry/list") or []:
+                name = label.get("name")
+                label_id = label.get("label_id")
+                if name and label_id:
+                    label_ids_by_name[name] = label_id
+        except HAWebSocketError:
+            pass
+
+        def _ensure_mac_label_id(mac: str) -> str | None:
+            label_id = label_ids_by_name.get(mac)
+            if label_id:
+                return label_id
+            try:
+                entry = client.send_command(
+                    "config/label_registry/create",
+                    name=mac,
+                    description="iotstack MAC suffix -- keeps the device searchable by MAC regardless of name",
+                )
+            except HAWebSocketError as exc:
+                lines.append(f"WARNING: Failed to create label '{mac}': {exc}")
+                return None
+            label_id = entry.get("label_id") if entry else None
+            if label_id:
+                label_ids_by_name[mac] = label_id
+            return label_id
+
+        for device_id, mac, current_labels in mac_label_targets:
+            label_id = _ensure_mac_label_id(mac)
+            if not label_id or label_id in current_labels:
+                continue
+            try:
+                client.send_command(
+                    "config/device_registry/update",
+                    device_id=device_id,
+                    labels=current_labels + [label_id],
+                )
+                lines.append(f"Tagged device with MAC label: {mac}")
+            except HAWebSocketError as exc:
+                lines.append(f"WARNING: Failed to tag device with label '{mac}': {exc}")
 
     # Update device names in registry (this triggers HA to regenerate entity IDs)
     for device_id, hostname, new_name, _display_text in updated_devices:
