@@ -43,8 +43,10 @@ esphome:
             uint8_t bi = (uint8_t) lroundf(b);
             id(matrix_display).set_brightness(bi);
             id(pixel_brightness).publish_state(bi);
-        # One-time default gradient colors (orange / red / purple). Runs once ever
-        # -- after this, each light's own restored/HA-set color takes over.
+        # One-time default gradient colors: gradient A = orange / red / purple,
+        # gradient B (selected inline via the ":gb:" token) = cyan / blue / green,
+        # so ":gb:" looks right out of the box. Runs once ever -- after this, each
+        # light's own restored/HA-set color takes over.
         - if:
             condition:
               lambda: 'return !id(text_colors_initialized);'
@@ -64,6 +66,21 @@ esphome:
                   red: 50%
                   green: 0%
                   blue: 50%
+              - light.turn_on:
+                  id: text_color_b1
+                  red: 0%
+                  green: 100%
+                  blue: 100%
+              - light.turn_on:
+                  id: text_color_b2
+                  red: 0%
+                  green: 40%
+                  blue: 100%
+              - light.turn_on:
+                  id: text_color_b3
+                  red: 0%
+                  green: 100%
+                  blue: 30%
               - globals.set:
                   id: text_colors_initialized
                   value: 'true'
@@ -254,19 +271,21 @@ display:
       const int H = it.get_height();
       it.fill(Color(0, 0, 0));  // blank frame first (writer does not auto-clear)
 
-      // Font = "Font" (family) x "Text Size".
+      // Font = "Font" (family) x "Text Size" -- the *default* style, in effect
+      // until a ":font=..:" / ":size=..:" token (see below) overrides it.
+      using FontPtr = decltype(id(font_roboto_m));
+      auto font_for = [&](const std::string &face, const std::string &sz) -> FontPtr {
+        if (face == "mono")
+          return (sz == "small") ? id(font_mono_s)
+               : (sz == "large") ? id(font_mono_l) : id(font_mono_m);
+        if (face == "slab")
+          return (sz == "small") ? id(font_slab_s)
+               : (sz == "large") ? id(font_slab_l) : id(font_slab_m);
+        return (sz == "small") ? id(font_roboto_s)
+             : (sz == "large") ? id(font_roboto_l) : id(font_roboto_m);
+      };
       std::string face = id(text_font).current_option().str();
       std::string sz = id(text_size).current_option().str();
-      auto *fnt = id(font_roboto_m);
-      if (face == "mono")
-        fnt = (sz == "small") ? id(font_mono_s)
-            : (sz == "large") ? id(font_mono_l) : id(font_mono_m);
-      else if (face == "slab")
-        fnt = (sz == "small") ? id(font_slab_s)
-            : (sz == "large") ? id(font_slab_l) : id(font_slab_m);
-      else
-        fnt = (sz == "small") ? id(font_roboto_s)
-            : (sz == "large") ? id(font_roboto_l) : id(font_roboto_m);
 
       // --- Inline icons ------------------------------------------------------
       // Text is walked as UTF-8 codepoints. A codepoint in the icon table renders
@@ -330,30 +349,41 @@ display:
         return cp;
       };
 
-      // Width of s in px, counting icons by their image width. Every width below
-      // goes through here, so wrap, scroll span and gradient all agree on one number.
-      auto measure = [&](const std::string &s) -> int {
+      // Per-character style, set by inline ":key=value:" tokens (see STYLE_TOKENS
+      // parsing below) and carried alongside the text through wrap/measure/draw so
+      // a single "Display Text" string can mix fonts, gradients, flash rates and
+      // local brightness -- e.g. "Price :gb: {{ states(...) }}" switches to
+      // Gradient B partway through, inline, no separate entity needed.
+      struct Style { FontPtr font; int gset; float flash_s; float bright; };
+
+      // Text laid out with a Style attached to every byte (1:1 with the bytes in
+      // .s, repeated across a codepoint's continuation bytes). Every helper below
+      // takes/returns SText instead of std::string so style always travels with
+      // the text it colors, through substr/append/word-wrap alike.
+      struct SText {
+        std::string s;
+        std::vector<Style> st;
+        void push(char c, const Style &sty) { s.push_back(c); st.push_back(sty); }
+        bool empty() const { return s.empty(); }
+        void clear() { s.clear(); st.clear(); }
+      };
+
+      // Width of t in px, counting icons by their image width, each codepoint
+      // measured with its own style's font. Every width below goes through here,
+      // so wrap, scroll span and gradient all agree on one number.
+      auto measure = [&](const SText &t) -> int {
         int w = 0;
         size_t i = 0;
-        while (i < s.size()) {
+        while (i < t.s.size()) {
           size_t start = i;
-          auto *ic = icon_for(next_cp(s, i));
+          auto *ic = icon_for(next_cp(t.s, i));
           if (ic != nullptr) { w += ic->get_width() + 2 * ICON_PAD; continue; }
           int bx, by, cw, ch;
-          it.get_text_bounds(0, 0, s.substr(start, i - start).c_str(), fnt,
+          it.get_text_bounds(0, 0, t.s.substr(start, i - start).c_str(), t.st[start].font,
                              TextAlign::TOP_LEFT, &bx, &by, &cw, &ch);
           w += cw;
         }
         return w;
-      };
-
-      // Lets an ordinary all-text line keep the single-print fast path below.
-      auto has_icon = [&](const std::string &s) -> bool {
-        size_t i = 0;
-        while (i < s.size())
-          if (icon_for(next_cp(s, i)) != nullptr)
-            return true;
-        return false;
       };
 
       std::string text = id(display_text).state;
@@ -379,114 +409,187 @@ display:
         }
       }
 
-      // Flash: blank the text for the second half of each interval (0 = steady).
-      float flash_s = id(flash_interval).state;
-      if (flash_s > 0.01f) {
-        float phase = fmodf(millis() / 1000.0f, flash_s);
-        if (phase >= flash_s * 0.5f) return;  // "off" half -> leave blank
-      }
-
-      // Gradient stops: each "Text Color N" light contributes a stop while it is
-      // on, in order 1..3. 0 -> nothing to draw; 1 -> solid; 2-3 -> gradient.
-      float sr[3], sg[3], sb[3];
-      int n = 0;
-      auto add_stop = [&](auto *ls) {
+      // Gradient stops: each "Text Color N" (gradient A) / "Text Color BN"
+      // (gradient B) light contributes a stop while it is on, in order 1..3.
+      // A gradient with 0 stops on renders as black (invisible on the black
+      // background) wherever it is the active style -- see shade() below.
+      float sr[2][3], sg[2][3], sb[2][3];
+      int ns[2] = {0, 0};
+      auto add_stop = [&](int g, auto *ls) {
         auto v = ls->current_values;
-        if (v.get_state() > 0.5f) {           // on/off (transitions are instant)
-          float s = v.get_brightness();        // per-stop intensity
-          sr[n] = v.get_red() * s; sg[n] = v.get_green() * s; sb[n] = v.get_blue() * s;
-          n++;
+        if (v.get_state() > 0.5f) {            // on/off (transitions are instant)
+          float s = v.get_brightness();         // per-stop intensity
+          int k = ns[g];
+          sr[g][k] = v.get_red() * s; sg[g][k] = v.get_green() * s; sb[g][k] = v.get_blue() * s;
+          ns[g]++;
         }
       };
-      add_stop(id(text_color_1));
-      add_stop(id(text_color_2));
-      add_stop(id(text_color_3));
-      if (n == 0) return;                      // all color stops off -> blank
+      add_stop(0, id(text_color_1));
+      add_stop(0, id(text_color_2));
+      add_stop(0, id(text_color_3));
+      add_stop(1, id(text_color_b1));
+      add_stop(1, id(text_color_b2));
+      add_stop(1, id(text_color_b3));
+      if (ns[0] == 0 && ns[1] == 0) return;     // both gradients off -> blank
 
-      // Color at t in [0,1] interpolated across the active stops.
-      auto grad = [&](float t) -> Color {
+      // Color at t in [0,1] interpolated across gradient g's active stops, scaled
+      // by the style's local ":bright=N:" (default 100%, independent of the panel-
+      // wide "Brightness" number, which is the hardware PWM/safety-capped level).
+      auto shade = [&](float t, const Style &sty) -> Color {
         if (t < 0) t = 0;
         if (t > 1) t = 1;
-        float pos = (n == 1) ? 0.0f : t * (float) (n - 1);
-        int i = (int) pos;
-        if (i > n - 1) i = n - 1;
-        int j = (i + 1 < n) ? i + 1 : i;
-        float f = pos - (float) i;
-        float r = sr[i] + (sr[j] - sr[i]) * f;
-        float g = sg[i] + (sg[j] - sg[i]) * f;
-        float b = sb[i] + (sb[j] - sb[i]) * f;
-        return Color((uint8_t) lroundf(r * 255.0f),
-                     (uint8_t) lroundf(g * 255.0f),
-                     (uint8_t) lroundf(b * 255.0f));
+        int g = sty.gset;
+        int n = ns[g];
+        float r = 0, gg = 0, b = 0;
+        if (n > 0) {
+          float pos = (n == 1) ? 0.0f : t * (float) (n - 1);
+          int i = (int) pos;
+          if (i > n - 1) i = n - 1;
+          int j = (i + 1 < n) ? i + 1 : i;
+          float f = pos - (float) i;
+          r = sr[g][i] + (sr[g][j] - sr[g][i]) * f;
+          gg = sg[g][i] + (sg[g][j] - sg[g][i]) * f;
+          b = sb[g][i] + (sb[g][j] - sb[g][i]) * f;
+        }
+        float k = sty.bright;
+        return Color((uint8_t) lroundf(r * k * 255.0f),
+                     (uint8_t) lroundf(gg * k * 255.0f),
+                     (uint8_t) lroundf(b * k * 255.0f));
       };
-      Color solid = grad(0.0f);
 
       // Draw one line: walk it a codepoint at a time, drawing icons as images and
-      // everything else as glyphs, each colored by its horizontal center across the
-      // line (the gradient). A solid-color line with no icons keeps its single print.
-      auto draw_line = [&](int x0, int y, const std::string &s, bool center_v) {
+      // everything else as glyphs, each using its own style's font/gradient/flash,
+      // colored by its horizontal center across the line (the gradient).
+      auto draw_line = [&](int x0, int y, const SText &t, bool center_v) {
         TextAlign al = center_v ? TextAlign::CENTER_LEFT : TextAlign::TOP_LEFT;
-        if (n == 1 && !has_icon(s)) { it.print(x0, y, fnt, solid, al, s.c_str()); return; }
-        int lw = measure(s);
-        if (lw <= 0) { it.print(x0, y, fnt, solid, al, s.c_str()); return; }
+        int lw = measure(t);
+        if (lw <= 0) return;
         int cx = 0;
         size_t i = 0;
-        while (i < s.size()) {
+        while (i < t.s.size()) {
           size_t start = i;
-          auto *ic = icon_for(next_cp(s, i));
+          const Style &sty = t.st[start];
+          bool vis = true;
+          if (sty.flash_s > 0.01f) {
+            float phase = fmodf(millis() / 1000.0f, sty.flash_s);
+            vis = phase < sty.flash_s * 0.5f;    // "off" half -> skip drawing
+          }
+          auto *ic = icon_for(next_cp(t.s, i));
           if (ic != nullptr) {
             int iw = ic->get_width() + 2 * ICON_PAD;
-            float t = (cx + iw * 0.5f) / (float) lw;
-            // A color image ignores the color argument; a 1-bit icon would be tinted
-            // by the gradient here, exactly like text.
-            it.image(x0 + cx + ICON_PAD,
-                     center_v ? (y - ic->get_height() / 2) : y,
-                     ic, grad(t), Color::BLACK);
+            if (vis) {
+              float tp = (cx + iw * 0.5f) / (float) lw;
+              // A color image ignores the color argument; a 1-bit icon would be
+              // tinted by the gradient here, exactly like text.
+              it.image(x0 + cx + ICON_PAD,
+                       center_v ? (y - ic->get_height() / 2) : y,
+                       ic, shade(tp, sty), Color::BLACK);
+            }
             cx += iw;
             continue;
           }
-          std::string one = s.substr(start, i - start);   // one whole codepoint
+          std::string one = t.s.substr(start, i - start);   // one whole codepoint
           int cbx, cby, cw, chh;
-          it.get_text_bounds(0, 0, one.c_str(), fnt, al, &cbx, &cby, &cw, &chh);
-          float t = (cx + cw * 0.5f) / (float) lw;
-          it.print(x0 + cx, y, fnt, grad(t), al, one.c_str());
+          it.get_text_bounds(0, 0, one.c_str(), sty.font, al, &cbx, &cby, &cw, &chh);
+          if (vis) {
+            float tp = (cx + cw * 0.5f) / (float) lw;
+            it.print(x0 + cx, y, sty.font, shade(tp, sty), al, one.c_str());
+          }
           cx += cw;
         }
       };
 
-      // Width (icon-aware) and height of one line for this font.
-      int bx, by, tw, th;
-      it.get_text_bounds(0, 0, text.c_str(), fnt, TextAlign::TOP_LEFT,
-                         &bx, &by, &tw, &th);
-      tw = measure(text);
+      // --- Inline style tokens -------------------------------------------------
+      // ":br:" forces a line break (typed as two ASCII chars, since the HA "Display
+      // Text" box is single-line and can't hold a literal newline); it is folded to
+      // '\n' here so it reuses the existing word-wrap line-break handling untouched.
+      // ":ga:"/":gb:" switch the active gradient (Text Color 1/2/3 vs Text Color
+      // B1/B2/B3). ":font=roboto|mono|slab:" / ":size=small|medium|large:" switch
+      // the active font, matching the "Font"/"Text Size" select options exactly.
+      // ":flash=N:" sets this style's blink period in seconds (0 = steady).
+      // ":bright=N:" (0-100) locally dims this style's gradient output.
+      // An unrecognized ":...:" (including a stray colon in ordinary text, e.g. a
+      // clock "3:30") is left as literal text rather than consumed.
+      Style cur{font_for(face, sz), 0, id(flash_interval).state, 1.0f};
+      SText body;
       {
-        // An icon must not overflow its line: never let a line be shorter than one.
         size_t i = 0;
         while (i < text.size()) {
-          auto *ic = icon_for(next_cp(text, i));
-          if (ic != nullptr && ic->get_height() > th)
-            th = ic->get_height();
+          if (text[i] == ':') {
+            size_t end = text.find(':', i + 1);
+            if (end != std::string::npos && end > i + 1) {
+              std::string tok = text.substr(i + 1, end - i - 1);
+              bool known = true;
+              if (tok == "br") body.push('\n', cur);
+              else if (tok == "ga") cur.gset = 0;
+              else if (tok == "gb") cur.gset = 1;
+              else if (tok == "font=roboto") { face = "roboto"; cur.font = font_for(face, sz); }
+              else if (tok == "font=mono")   { face = "mono";   cur.font = font_for(face, sz); }
+              else if (tok == "font=slab")   { face = "slab";   cur.font = font_for(face, sz); }
+              else if (tok == "size=small")  { sz = "small";    cur.font = font_for(face, sz); }
+              else if (tok == "size=medium") { sz = "medium";   cur.font = font_for(face, sz); }
+              else if (tok == "size=large")  { sz = "large";    cur.font = font_for(face, sz); }
+              else if (tok.rfind("flash=", 0) == 0) {
+                cur.flash_s = strtof(tok.c_str() + 6, nullptr);
+              } else if (tok.rfind("bright=", 0) == 0) {
+                float pct = strtof(tok.c_str() + 7, nullptr);
+                if (pct < 0) pct = 0;
+                if (pct > 100) pct = 100;
+                cur.bright = pct / 100.0f;
+              } else known = false;
+              if (known) { i = end + 1; continue; }
+            }
+          }
+          body.push(text[i], cur);
+          i++;
         }
       }
 
+      // Line height: tallest glyph/icon used anywhere in the message, applied
+      // uniformly to every wrapped line (a per-line height would need a second
+      // wrap pass; this is simpler and fine for the short strings this panel shows).
+      int th = 1;
+      {
+        size_t i = 0;
+        while (i < body.s.size()) {
+          size_t start = i;
+          auto *ic = icon_for(next_cp(body.s, i));
+          if (ic != nullptr) { if (ic->get_height() > th) th = ic->get_height(); continue; }
+          int bx, by, cw, ch;
+          it.get_text_bounds(0, 0, body.s.substr(start, i - start).c_str(), body.st[start].font,
+                             TextAlign::TOP_LEFT, &bx, &by, &cw, &ch);
+          if (ch > th) th = ch;
+        }
+      }
+      int tw = measure(body);
+
       if (id(word_wrap).state) {
         // Greedy word wrap into lines no wider than the panel (honors '\n').
-        std::vector<std::string> lines;
-        std::string line, word;
+        std::vector<SText> lines;
+        SText line, word;
         size_t i = 0;
         while (true) {
-          bool end = (i >= text.size());
-          char c = end ? ' ' : text[i];
+          bool end = (i >= body.s.size());
+          char c = end ? ' ' : body.s[i];
+          Style sty = end ? cur : body.st[i];
           if (c == ' ' || c == '\n') {
             if (!word.empty()) {
-              std::string cand = line.empty() ? word : line + " " + word;
+              SText cand;
+              if (line.empty()) {
+                cand = word;
+              } else {
+                cand = line;
+                cand.push(' ', word.st.front());
+                cand.s += word.s;
+                cand.st.insert(cand.st.end(), word.st.begin(), word.st.end());
+              }
               if (measure(cand) > W && !line.empty()) { lines.push_back(line); line = word; }
               else line = cand;
               word.clear();
             }
             if (c == '\n') { lines.push_back(line); line.clear(); }
           } else {
-            word += c;
+            word.push(c, sty);
           }
           if (end) break;
           i++;
@@ -512,7 +615,7 @@ display:
         }
       } else if (tw <= W) {
         // Fits on one line: vertically centered, left-aligned.
-        draw_line(0, H / 2, text, true);
+        draw_line(0, H / 2, body, true);
       } else {
         // Wider than the panel: scroll horizontally at hscroll_speed px/s.
         float speed = id(hscroll_speed).state;
@@ -520,30 +623,52 @@ display:
         int off = 0;
         if (speed > 0.0f)
           off = (int) fmodf(millis() / 1000.0f * speed, (float) span);
-        draw_line(-off, H / 2, text, true);
-        draw_line(-off + span, H / 2, text, true);  // second copy -> seamless loop
+        draw_line(-off, H / 2, body, true);
+        draw_line(-off + span, H / 2, body, true);  // second copy -> seamless loop
       }
 
 # Home Assistant controls (entity ids are number./text./select./switch./light.
 # matrix_display_<mac>_<slug>):
-#   Display Text          (text)   -- the string to show. May contain inline icons:
-#                                     ":btc:" draws the full-color Bitcoin logo, and
-#                                     the Unicode BITCOIN SIGN (U+20BF) renders as a
-#                                     text glyph that follows the Text Color gradient.
-#                                     Emoji tokens (:smile: :sad: :cry: :heart:
-#                                     :thumbsup: :thumbsdown: :sun: :cloud: :rain:)
-#                                     also render as text glyphs, low-res but full
-#                                     panel resolution, following the same gradient.
+#   Display Text          (text)   -- the string to show. Everything below is one
+#                                     ":token:" mini-language, ASCII only, so the
+#                                     whole thing fits the single-line HA text box:
+#                                       :btc:                    Bitcoin roundel (full-color image)
+#                                       :smile: :sad: :cry: :heart: :thumbsup:
+#                                       :thumbsdown: :sun: :cloud: :rain:
+#                                                                Unicode emoji, rendered as text glyphs
+#                                       :br:                     forced line break (a literal
+#                                                                newline in the string works too,
+#                                                                but is not typeable in the HA box)
+#                                       :ga: / :gb:              switch active gradient: Text Color
+#                                                                1/2/3 (A) vs Text Color B1/2/3 (B)
+#                                       :font=roboto|mono|slab:  switch font family
+#                                       :size=small|medium|large: switch font size
+#                                       :flash=N:                blink period in seconds for
+#                                                                subsequent text (0 = steady)
+#                                       :bright=N:               0-100, locally dims subsequent
+#                                                                text (independent of the panel-
+#                                                                wide Brightness number below)
+#                                     A token stays in effect until overridden by another token of
+#                                     the same kind (:ga:/:gb:, :font=.., :size=.., :flash=.., or
+#                                     :bright=..) -- there is no "reset to default" token, so end a
+#                                     styled run by switching back explicitly, e.g. "...:gb: X :ga: Y".
+#                                     Tokens do not create a line break by themselves (except :br:):
+#                                     "Hello :gb: World" flows as one line/word-wrap unit, just with
+#                                     "World" in gradient B, per the same wrap/scroll rules as plain text.
+#                                     An unrecognized ":...:" (e.g. a clock "3:30") is left as literal text.
 #   Brightness            (number) -- 0-100% panel brightness (HA owns any dimming)
 #   Brightness In (s)     (number) -- fade-up duration to a higher brightness (0 = instant)
 #   Brightness Out (s)    (number) -- fade-down duration to a lower brightness (0 = instant)
-#   Text Color 1/2/3      (light)  -- gradient stops: each on light adds a stop in
+#   Text Color 1/2/3      (light)  -- gradient A stops: each on light adds a stop in
 #                                     order (1 on = solid; 2-3 on = gradient across
-#                                     the text). All off = blank.
-#   Font                  (select) -- roboto | mono | slab
-#   Text Size             (select) -- small | medium | large
+#                                     the text). All off = that gradient renders black.
+#   Text Color B1/2/3      (light) -- gradient B stops, same rules as gradient A; selected by
+#                                     the ":gb:" token. Default off (see on_boot below), so text
+#                                     never mentioning ":gb:" is unaffected.
+#   Font                  (select) -- roboto | mono | slab (default; overridable per-run via :font=)
+#   Text Size             (select) -- small | medium | large (default; overridable via :size=)
 #   Word Wrap             (switch) -- on: wrap to lines; off: horizontal scroll if wide
-#   Flash Interval        (number) -- seconds per blink cycle; 0 = steady
+#   Flash Interval        (number) -- seconds per blink cycle; 0 = steady (default; overridable via :flash=)
 #   Horizontal Scroll Speed (number) -- px/s when a line is wider than the panel
 #   Vertical Scroll Speed   (number) -- px/s when wrapped text is taller than the
 #                                       panel (Word Wrap must be on)
@@ -566,6 +691,12 @@ display:
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_display_text}
 #   data: {value: "Door open :sad:"}
+#
+#   # mixed styling: "Price" in the default gradient/font, the value in gradient B
+#   # and mono, a forced break, then a small flashing warning
+#   action: text.set_value
+#   target: {entity_id: text.matrix_display_<mac>_display_text}
+#   data: {value: "Price :gb::font=mono: {{ states('sensor.btc_price') }} :ga::font=roboto: :br: :size=small::flash=0.5: LOW BATTERY"}
 # Brightness fade state (pixel value 0-255). apply_brightness sets a new target;
 # the fade interval ramps bright_current toward it over "Brightness In"/"Out".
 globals:
@@ -739,6 +870,11 @@ number:
 # via current_values, not driven onto any pin. All three default on, giving an
 # orange -> red -> purple gradient out of the box (see the on_boot color init
 # below, which sets these RGB defaults once on a fresh flash).
+#
+# Text Color B1/B2/B3 below are a second, independent gradient (gradient B),
+# selected inline in "Display Text" via the ":gb:" token (":ga:" switches back
+# to this gradient). Same rules: 0 on = renders black, 1 on = solid, 2-3 on =
+# gradient. Defaults to cyan -> blue -> green (see on_boot).
 output:
   - platform: template
     type: float
@@ -776,6 +912,42 @@ output:
     type: float
     id: tc3_b
     write_action: []
+  - platform: template
+    type: float
+    id: tcb1_r
+    write_action: []
+  - platform: template
+    type: float
+    id: tcb1_g
+    write_action: []
+  - platform: template
+    type: float
+    id: tcb1_b
+    write_action: []
+  - platform: template
+    type: float
+    id: tcb2_r
+    write_action: []
+  - platform: template
+    type: float
+    id: tcb2_g
+    write_action: []
+  - platform: template
+    type: float
+    id: tcb2_b
+    write_action: []
+  - platform: template
+    type: float
+    id: tcb3_r
+    write_action: []
+  - platform: template
+    type: float
+    id: tcb3_g
+    write_action: []
+  - platform: template
+    type: float
+    id: tcb3_b
+    write_action: []
 
 light:
   - platform: rgb
@@ -803,6 +975,33 @@ light:
     green: tc3_g
     blue: tc3_b
     restore_mode: RESTORE_DEFAULT_ON   # default gradient stop 3: purple
+    default_transition_length: 0s
+    gamma_correct: 0
+  - platform: rgb
+    name: "Text Color B1"
+    id: text_color_b1
+    red: tcb1_r
+    green: tcb1_g
+    blue: tcb1_b
+    restore_mode: RESTORE_DEFAULT_ON   # default gradient B stop 1: cyan
+    default_transition_length: 0s
+    gamma_correct: 0
+  - platform: rgb
+    name: "Text Color B2"
+    id: text_color_b2
+    red: tcb2_r
+    green: tcb2_g
+    blue: tcb2_b
+    restore_mode: RESTORE_DEFAULT_ON   # default gradient B stop 2: blue
+    default_transition_length: 0s
+    gamma_correct: 0
+  - platform: rgb
+    name: "Text Color B3"
+    id: text_color_b3
+    red: tcb3_r
+    green: tcb3_g
+    blue: tcb3_b
+    restore_mode: RESTORE_DEFAULT_ON   # default gradient B stop 3: green
     default_transition_length: 0s
     gamma_correct: 0
 
