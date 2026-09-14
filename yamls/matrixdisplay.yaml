@@ -98,55 +98,88 @@ logger:
 # Font face x size, chosen at runtime via the "Font" and "Text Size" selects.
 # 3 families (Roboto sans / Roboto Mono / Roboto Slab) x 3 sizes (8/14/20).
 #
-# extras: pulls U+20BF BITCOIN SIGN into every font. No Roboto family ships that
-# codepoint (FT_Get_Char_Index returns 0 for all three), so it is sourced from
-# Noto, which does. Naming it under glyphs: makes a missing glyph a hard build
-# error, so a bad font swap fails loudly instead of silently rendering nothing.
-# "\u20BF" is a YAML escape, so this file stays ASCII (project rule).
+# extras: pulls U+20BF BITCOIN SIGN, plus a set of Unicode emoji, into every font.
+# No Roboto family ships those codepoints (FT_Get_Char_Index returns 0), so they
+# are sourced from Noto, which does. Naming them under glyphs: makes a missing
+# glyph a hard build error, so a bad font swap fails loudly instead of silently
+# rendering nothing. "\uXXXX"/"\UXXXXXXXX" are YAML escapes, so this file stays
+# ASCII (project rule).
 #
-# The full-color Bitcoin roundel is a different thing: it cannot be a glyph (two
-# colors), so it is an image -- see the image: block and icon_for() in the lambda.
+# Emoji are plain monochrome glyphs from Noto Emoji (Google Fonts' outline-only
+# emoji family, not the color/bitmap "Noto Color Emoji") -- they follow the Text
+# Color gradient exactly like any other glyph, just at low resolution on the
+# panel. This is different from the full-color Bitcoin roundel below, which is a
+# two-tone image and cannot be a glyph -- see the image: block and icon_for().
 font:
   - file: "gfonts://Roboto"
     id: font_roboto_s
     size: 8
-    extras: &btc_sign_sans
-      - file: "gfonts://Noto+Sans"
+    extras:
+      - &btc_sign_sans
+        file: "gfonts://Noto+Sans"
         glyphs: ["\u20BF"]
+      - &emoji_glyphs
+        file: "gfonts://Noto+Emoji"
+        glyphs:
+          - "\U0001F642"  # slightly smiling face  (:smile:)
+          - "\U0001F641"  # slightly frowning face  (:sad:)
+          - "\U0001F622"  # crying face             (:cry:)
+          - "\u2764"      # heavy black heart       (:heart:)
+          - "\U0001F44D"  # thumbs up sign          (:thumbsup:)
+          - "\U0001F44E"  # thumbs down sign        (:thumbsdown:)
+          - "\u2600"      # black sun with rays     (:sun:)
+          - "\u2601"      # cloud                   (:cloud:)
+          - "\u2614"      # umbrella with rain drops(:rain:)
   - file: "gfonts://Roboto"
     id: font_roboto_m
     size: 14
-    extras: *btc_sign_sans
+    extras:
+      - *btc_sign_sans
+      - *emoji_glyphs
   - file: "gfonts://Roboto"
     id: font_roboto_l
     size: 20
-    extras: *btc_sign_sans
+    extras:
+      - *btc_sign_sans
+      - *emoji_glyphs
   - file: "gfonts://Roboto+Mono"
     id: font_mono_s
     size: 8
-    extras: &btc_sign_mono
-      - file: "gfonts://Noto+Sans+Mono"
+    extras:
+      - &btc_sign_mono
+        file: "gfonts://Noto+Sans+Mono"
         glyphs: ["\u20BF"]
+      - *emoji_glyphs
   - file: "gfonts://Roboto+Mono"
     id: font_mono_m
     size: 14
-    extras: *btc_sign_mono
+    extras:
+      - *btc_sign_mono
+      - *emoji_glyphs
   - file: "gfonts://Roboto+Mono"
     id: font_mono_l
     size: 20
-    extras: *btc_sign_mono
+    extras:
+      - *btc_sign_mono
+      - *emoji_glyphs
   - file: "gfonts://Roboto+Slab"
     id: font_slab_s
     size: 8
-    extras: *btc_sign_sans
+    extras:
+      - *btc_sign_sans
+      - *emoji_glyphs
   - file: "gfonts://Roboto+Slab"
     id: font_slab_m
     size: 14
-    extras: *btc_sign_sans
+    extras:
+      - *btc_sign_sans
+      - *emoji_glyphs
   - file: "gfonts://Roboto+Slab"
     id: font_slab_l
     size: 20
-    extras: *btc_sign_sans
+    extras:
+      - *btc_sign_sans
+      - *emoji_glyphs
 
 # Inline icons, drawn as full-color images by the display lambda. Three sizes to
 # match the three "Text Size" steps, mirroring the fonts above. Source is the
@@ -248,6 +281,23 @@ display:
       };
       const int ICON_PAD = 1;    // px of breathing room each side of an icon
 
+      // Emoji tokens: an ASCII token maps to a real Unicode emoji codepoint (the
+      // font extras above pull each one in from Noto Emoji). Unlike ICON_TOKENS,
+      // these are ordinary glyphs, not images -- icon_for() never sees them, so
+      // they fall straight through to the normal glyph draw path and follow the
+      // Text Color gradient like any other character.
+      static const struct { const char *tok; const char *cp; } EMOJI_TOKENS[] = {
+        { ":smile:",      "\xF0\x9F\x99\x82" },  // U+1F642 slightly smiling face
+        { ":sad:",        "\xF0\x9F\x99\x81" },  // U+1F641 slightly frowning face
+        { ":cry:",        "\xF0\x9F\x98\xA2" },  // U+1F622 crying face
+        { ":heart:",      "\xE2\x9D\xA4" },      // U+2764  heavy black heart
+        { ":thumbsup:",   "\xF0\x9F\x91\x8D" },  // U+1F44D thumbs up sign
+        { ":thumbsdown:", "\xF0\x9F\x91\x8E" },  // U+1F44E thumbs down sign
+        { ":sun:",        "\xE2\x98\x80" },      // U+2600  black sun with rays
+        { ":cloud:",      "\xE2\x98\x81" },      // U+2601  cloud
+        { ":rain:",       "\xE2\x98\x94" },      // U+2614  umbrella with rain drops
+      };
+
       // Image for an icon codepoint at the current Text Size; nullptr = not an icon.
       auto icon_for = [&](uint32_t cp) -> esphome::image::Image * {
         switch (cp) {
@@ -311,6 +361,16 @@ display:
 
       // ":btc:" -> U+E000, so the rest of the lambda only ever sees codepoints.
       for (const auto &t : ICON_TOKENS) {
+        size_t at = 0;
+        size_t tlen = strlen(t.tok), clen = strlen(t.cp);
+        while ((at = text.find(t.tok, at)) != std::string::npos) {
+          text.replace(at, tlen, t.cp);
+          at += clen;
+        }
+      }
+
+      // ":smile:" -> U+1F642, etc, so HA can drive emoji without literal Unicode.
+      for (const auto &t : EMOJI_TOKENS) {
         size_t at = 0;
         size_t tlen = strlen(t.tok), clen = strlen(t.cp);
         while ((at = text.find(t.tok, at)) != std::string::npos) {
@@ -470,6 +530,10 @@ display:
 #                                     ":btc:" draws the full-color Bitcoin logo, and
 #                                     the Unicode BITCOIN SIGN (U+20BF) renders as a
 #                                     text glyph that follows the Text Color gradient.
+#                                     Emoji tokens (:smile: :sad: :cry: :heart:
+#                                     :thumbsup: :thumbsdown: :sun: :cloud: :rain:)
+#                                     also render as text glyphs, low-res but full
+#                                     panel resolution, following the same gradient.
 #   Brightness            (number) -- 0-100% panel brightness (HA owns any dimming)
 #   Brightness In (s)     (number) -- fade-up duration to a higher brightness (0 = instant)
 #   Brightness Out (s)    (number) -- fade-down duration to a lower brightness (0 = instant)
@@ -497,6 +561,11 @@ display:
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_display_text}
 #   data: {value: "BTC :btc: {{ states('sensor.btc_price') }}"}
+#
+#   # emoji token -- renders as a text glyph, same gradient as surrounding text
+#   action: text.set_value
+#   target: {entity_id: text.matrix_display_<mac>_display_text}
+#   data: {value: "Door open :sad:"}
 # Brightness fade state (pixel value 0-255). apply_brightness sets a new target;
 # the fade interval ramps bright_current toward it over "Brightness In"/"Out".
 globals:

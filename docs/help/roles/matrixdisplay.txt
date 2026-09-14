@@ -7,7 +7,10 @@ self-report wiring).
 Display content is set from Home Assistant (the "Display Text" entity), not from
 the CLI. It may contain inline icons: ":btc:" draws the full-color Bitcoin logo,
 and the Unicode BITCOIN SIGN (U+20BF) renders as a text glyph that follows the
-Text Color gradient. See docs/devices.md (Matrix Display) for how to add icons.
+Text Color gradient. Emoji tokens (:smile: :sad: :cry: :heart: :thumbsup:
+:thumbsdown: :sun: :cloud: :rain:) also render as text glyphs, low-res but
+following the same gradient. See docs/devices.md (Matrix Display) for how to
+add icons or emoji.
 
 Config: yamls/matrixdisplay.yaml
 Chip: esp32s3 (esp32-s3-devkitc-1)

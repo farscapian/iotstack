@@ -45,20 +45,30 @@ Roles are listed in `scripts/roles.conf`. Examples:
 |------------------------|---------|
 | `:btc:` | Full-color Bitcoin logo, inline, sized to `Text Size` |
 | U+20BF (BITCOIN SIGN) | Monochrome glyph; follows the `Text Color` gradient |
+| `:smile:` `:sad:` `:cry:` `:heart:` `:thumbsup:` `:thumbsdown:` `:sun:` `:cloud:` `:rain:` | Monochrome emoji glyph; follows the `Text Color` gradient |
 
-`:btc:` is an ASCII token, so it can be typed or templated from HA without
-entering literal Unicode; the lambda expands it to a Private Use Area codepoint
-(U+E000) before rendering. Example: `BTC :btc: 100k`.
+`:btc:` and the emoji tokens are ASCII, so they can be typed or templated from
+HA without entering literal Unicode. `:btc:` expands to a Private Use Area
+codepoint (U+E000) before rendering; the emoji tokens expand to their real
+Unicode emoji codepoint (e.g. `:sad:` -> U+1F641). Example: `BTC :btc: 100k`,
+`Door open :sad:`.
 
 Two mechanisms, because they are not interchangeable. A font glyph is one color
 by definition, so the two-tone roundel can only be an image; conversely an image
 does not scale with the font or take the gradient. Icons are images (`image:`
-block, rasterized from `yamls/images/*.svg` by resvg at build time); the sign is
-a font glyph (`extras:` on each font, since no Roboto family ships U+20BF).
+block, rasterized from `yamls/images/*.svg` by resvg at build time); the sign
+and the emoji are font glyphs (`extras:` on each font, sourced from Noto since
+no Roboto family ships those codepoints -- emoji specifically from Noto Emoji,
+the monochrome/outline family, not the color/bitmap "Noto Color Emoji").
 
 To add an icon: drop the SVG/PNG in `yamls/images/`, add three `image:` entries
 (`_s`/`_m`/`_l`, sized 8/14/20 to match `Text Size`), then add a `case` to
 `icon_for()` and an entry to `ICON_TOKENS` in the display lambda.
+
+To add an emoji: find its codepoint, add it to the `emoji_glyphs` font extras
+list (font: block), and add an entry to `EMOJI_TOKENS` in the display lambda.
+A codepoint Noto Emoji doesn't have fails the build loudly (glyphs: makes a
+missing glyph a hard error), so a bad pick can't silently render nothing.
 
 ### SendSpin Speaker (synchronized multi-room audio)
 - YAML: `yamls/sendspin.yaml`
