@@ -43,6 +43,30 @@ esphome:
             uint8_t bi = (uint8_t) lroundf(b);
             id(matrix_display).set_brightness(bi);
             id(pixel_brightness).publish_state(bi);
+        # One-time default gradient colors (orange / red / purple). Runs once ever
+        # -- after this, each light's own restored/HA-set color takes over.
+        - if:
+            condition:
+              lambda: 'return !id(text_colors_initialized);'
+            then:
+              - light.turn_on:
+                  id: text_color_1
+                  red: 100%
+                  green: 65%
+                  blue: 0%
+              - light.turn_on:
+                  id: text_color_2
+                  red: 100%
+                  green: 0%
+                  blue: 0%
+              - light.turn_on:
+                  id: text_color_3
+                  red: 50%
+                  green: 0%
+                  blue: 50%
+              - globals.set:
+                  id: text_colors_initialized
+                  value: 'true'
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -496,6 +520,10 @@ globals:
     type: float
     restore_value: no
     initial_value: '0'
+  - id: text_colors_initialized
+    type: bool
+    restore_value: yes
+    initial_value: 'false'
 
 interval:
   # Ramp the applied pixel brightness toward the target each tick. A whole
@@ -580,7 +608,7 @@ number:
     icon: "mdi:transition"
     optimistic: true
     restore_value: true
-    initial_value: 0
+    initial_value: 2.5
     min_value: 0
     max_value: 30
     step: 0.1
@@ -592,7 +620,7 @@ number:
     icon: "mdi:transition"
     optimistic: true
     restore_value: true
-    initial_value: 0
+    initial_value: 2.5
     min_value: 0
     max_value: 30
     step: 0.1
@@ -639,8 +667,9 @@ number:
 
 # Text color as up to three gradient stops, each an HA color-wheel light. The
 # template outputs are no-op sinks -- colors are read live in the display lambda
-# via current_values, not driven onto any pin. Colors 2 and 3 default off, so the
-# out-of-box look is solid white (stop 1 only).
+# via current_values, not driven onto any pin. All three default on, giving an
+# orange -> red -> purple gradient out of the box (see the on_boot color init
+# below, which sets these RGB defaults once on a fresh flash).
 output:
   - platform: template
     type: float
@@ -686,7 +715,7 @@ light:
     red: tc1_r
     green: tc1_g
     blue: tc1_b
-    restore_mode: RESTORE_DEFAULT_ON   # solid white text out of the box
+    restore_mode: RESTORE_DEFAULT_ON   # default gradient stop 1: orange
     default_transition_length: 0s      # color changes apply instantly
     gamma_correct: 0                    # linear -> lambda math stays predictable
   - platform: rgb
@@ -695,7 +724,7 @@ light:
     red: tc2_r
     green: tc2_g
     blue: tc2_b
-    restore_mode: RESTORE_DEFAULT_OFF  # off -> not a gradient stop
+    restore_mode: RESTORE_DEFAULT_ON   # default gradient stop 2: red
     default_transition_length: 0s
     gamma_correct: 0
   - platform: rgb
@@ -704,7 +733,7 @@ light:
     red: tc3_r
     green: tc3_g
     blue: tc3_b
-    restore_mode: RESTORE_DEFAULT_OFF  # off -> not a gradient stop
+    restore_mode: RESTORE_DEFAULT_ON   # default gradient stop 3: purple
     default_transition_length: 0s
     gamma_correct: 0
 
@@ -736,7 +765,7 @@ switch:
     id: word_wrap
     icon: "mdi:wrap"
     optimistic: true
-    restore_mode: RESTORE_DEFAULT_OFF
+    restore_mode: RESTORE_DEFAULT_ON
     turn_on_action:
       - component.update: matrix_display
     turn_off_action:
