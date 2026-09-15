@@ -402,6 +402,17 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
       HA_URL=""
     else
       HA_URL="$(normalize_ha_url "$HA_URL")"
+      # normalize_ha_url always starts on http:// (the scheme is never
+      # persisted -- see strip_ha_url_scheme). Probe for the real scheme the
+      # same way setup does; a TLS-terminating reverse proxy that only
+      # answers on https would otherwise silently fail every ws:// call
+      # this credential is used for (HA area lookups, entity registration,
+      # rotate-secrets), leaving e.g. the devices table's "HA area" column
+      # blank with no error.
+      local resolved_url
+      if resolved_url="$(resolve_ha_url_scheme "$HA_URL")" && [[ -n "$resolved_url" ]]; then
+        HA_URL="$resolved_url"
+      fi
     fi
 
     if is_unconfigured "$HA_TOKEN"; then
