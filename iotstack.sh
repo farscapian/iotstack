@@ -6371,6 +6371,13 @@ main() {
 
   _ensure_chip_tool_storage
 
+  # 'iotstack update' with no further arguments falls straight through to
+  # help_update (see cmd_update) without touching HA/WiFi at all -- treat it
+  # like the explicit 'help' case below so the HA websocket test doesn't run
+  # first.
+  local _bare_update=0
+  [[ "$command" == "update" && $# -eq 1 ]] && _bare_update=1
+
   # Every invocation checks ha_url/ha_token and the rest of this environment's
   # common/ secrets for existence and non-placeholder values, prompting to
   # fill in anything missing. Read-only/informational commands are exempt so
@@ -6380,14 +6387,14 @@ main() {
   case "$command" in
     help|devices|roles|logs|ps|kill) ;;
     *)
-      if [[ "${2:-}" != "help" ]]; then
+      if [[ "${2:-}" != "help" && $_bare_update -eq 0 ]]; then
         verify_common_pass_secrets
       fi
       ;;
   esac
 
   # Only verify WiFi credentials if it's an actual operation (not help)
-  if [[ "${2:-}" != "help" ]]; then
+  if [[ "${2:-}" != "help" && $_bare_update -eq 0 ]]; then
     case "$command" in
       update|reassign|flash)
         # Check WiFi credentials exist, prompt if missing (needed for device flashing)
