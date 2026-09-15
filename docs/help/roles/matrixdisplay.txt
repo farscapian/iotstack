@@ -5,12 +5,14 @@ illuminance. Panel geometry is stored in NVS at flash time (panels cannot
 self-report wiring).
 
 Display content is set from Home Assistant (the "Display Text" entity), not from
-the CLI. It may contain inline icons: ":btc:" draws the full-color Bitcoin logo,
-and the Unicode BITCOIN SIGN (U+20BF) renders as a text glyph that follows the
-Text Color gradient. Emoji tokens (:smile: :sad: :cry: :heart: :thumbsup:
-:thumbsdown: :sun: :cloud: :rain:) also render as text glyphs, low-res but
-following the same gradient. See docs/devices.md (Matrix Display) for how to
-add icons or emoji.
+the CLI. Colors, brightness and font come from the "Styles" entity, a small DSL
+(e.g. "S1:c255,20,7-b50-roboto") referenced inline via ":s1:".."sN:" tokens.
+Display Text may also contain inline icons: ":btc:" draws the full-color
+Bitcoin logo, and the Unicode BITCOIN SIGN (U+20BF) renders as a text glyph
+that takes the active style's color. Emoji tokens (:smile: :sad: :cry: :heart:
+:thumbsup: :thumbsdown: :sun: :cloud: :rain:) also render as text glyphs,
+low-res but following the same style color. See docs/devices.md (Matrix
+Display) for how to add icons or emoji.
 
 Config: yamls/matrixdisplay.yaml
 Chip: esp32s3 (esp32-s3-devkitc-1)

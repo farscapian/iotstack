@@ -44,8 +44,8 @@ Roles are listed in `scripts/roles.conf`. Examples:
 | Type in `Display Text` | Renders |
 |------------------------|---------|
 | `:btc:` | Full-color Bitcoin logo, inline, sized to `Text Size` |
-| U+20BF (BITCOIN SIGN) | Monochrome glyph; follows the `Text Color` gradient |
-| `:smile:` `:sad:` `:cry:` `:heart:` `:thumbsup:` `:thumbsdown:` `:sun:` `:cloud:` `:rain:` | Monochrome emoji glyph; follows the `Text Color` gradient |
+| U+20BF (BITCOIN SIGN) | Monochrome glyph; takes the active style's color |
+| `:smile:` `:sad:` `:cry:` `:heart:` `:thumbsup:` `:thumbsdown:` `:sun:` `:cloud:` `:rain:` | Monochrome emoji glyph; takes the active style's color |
 
 `:btc:` and the emoji tokens are ASCII, so they can be typed or templated from
 HA without entering literal Unicode. `:btc:` expands to a Private Use Area
@@ -55,7 +55,7 @@ Unicode emoji codepoint (e.g. `:sad:` -> U+1F641). Example: `BTC :btc: 100k`,
 
 Two mechanisms, because they are not interchangeable. A font glyph is one color
 by definition, so the two-tone roundel can only be an image; conversely an image
-does not scale with the font or take the gradient. Icons are images (`image:`
+does not scale with the font or take the style color. Icons are images (`image:`
 block, rasterized from `yamls/images/*.svg` by resvg at build time); the sign
 and the emoji are font glyphs (`extras:` on each font, sourced from Noto since
 no Roboto family ships those codepoints -- emoji specifically from Noto Emoji,
