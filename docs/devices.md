@@ -43,7 +43,7 @@ Roles are listed in `scripts/roles.conf`. Examples:
 
 | Type in `Display Text` | Renders |
 |------------------------|---------|
-| `:btc:` | Full-color Bitcoin logo, inline, sized to `Text Size` |
+| `:btc:` | Full-color Bitcoin logo, inline, sized to the active style's size |
 | U+20BF (BITCOIN SIGN) | Monochrome glyph; takes the active style's color |
 | `:smile:` `:sad:` `:cry:` `:heart:` `:thumbsup:` `:thumbsdown:` `:sun:` `:cloud:` `:rain:` | Monochrome emoji glyph; takes the active style's color |
 
@@ -62,8 +62,9 @@ no Roboto family ships those codepoints -- emoji specifically from Noto Emoji,
 the monochrome/outline family, not the color/bitmap "Noto Color Emoji").
 
 To add an icon: drop the SVG/PNG in `yamls/images/`, add three `image:` entries
-(`_s`/`_m`/`_l`, sized 8/14/20 to match `Text Size`), then add a `case` to
-`icon_for()` and an entry to `ICON_TOKENS` in the display lambda.
+(`_s`/`_m`/`_l`, sized 8/14/20 to match the small/medium/large text sizes),
+then add a `case` to `icon_for()` and an entry to `ICON_TOKENS` in the display
+lambda.
 
 To add an emoji: find its codepoint, add it to the `emoji_glyphs` font extras
 list (font: block), and add an entry to `EMOJI_TOKENS` in the display lambda.

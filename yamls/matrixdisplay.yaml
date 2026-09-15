@@ -71,8 +71,9 @@ api:
 logger:
   hardware_uart: USB_SERIAL_JTAG
 
-# Font face x size, chosen at runtime via the "Font" and "Text Size" selects.
-# 3 families (Roboto sans / Roboto Mono / Roboto Slab) x 3 sizes (8/14/20).
+# Font face x size, chosen at runtime via the "Styles" DSL's font/size parts
+# (see the display lambda below). 3 families (Roboto sans / Roboto Mono /
+# Roboto Slab) x 3 sizes (8/14/20).
 #
 # extras: pulls U+20BF BITCOIN SIGN, plus a set of Unicode emoji, into every font.
 # No Roboto family ships those codepoints (FT_Get_Char_Index returns 0), so they
@@ -158,9 +159,10 @@ font:
       - *emoji_glyphs
 
 # Inline icons, drawn as full-color images by the display lambda. Three sizes to
-# match the three "Text Size" steps, mirroring the fonts above. Source is the
-# public-domain Bitcoin logo (Wikimedia Commons, File:Bitcoin.svg); resvg
-# rasterizes it at build time, so there is no runtime SVG cost.
+# match the three text sizes (small/medium/large), mirroring the fonts above.
+# Source is the public-domain Bitcoin logo (Wikimedia Commons,
+# File:Bitcoin.svg); resvg rasterizes it at build time, so there is no
+# runtime SVG cost.
 #
 # To add an icon: drop the .svg/.png in yamls/images/, add three entries here
 # (_s/_m/_l), then add a case to icon_for() and a token to ICON_TOKENS below.
@@ -230,9 +232,9 @@ display:
       const int H = it.get_height();
       it.fill(Color(0, 0, 0));  // blank frame first (writer does not auto-clear)
 
-      // Font = "Font" (family) x "Text Size" -- the fallback style, used when
-      // Style 1 is undefined and no ":sN:" / ":font=..:" / ":size=..:" token
-      // (see below) is active.
+      // Font/size come entirely from the "Styles" DSL now (Style 1's face/size,
+      // or a ":sN:" / ":font=..:" / ":size=..:" token -- see below). "roboto" /
+      // "medium" is the hardcoded fallback when none of those apply.
       using FontPtr = std::remove_const<decltype(id(font_roboto_m))>::type;
       auto font_for = [&](const std::string &face, const std::string &sz) -> FontPtr {
         if (face == "mono")
@@ -244,8 +246,8 @@ display:
         return (sz == "small") ? id(font_roboto_s)
              : (sz == "large") ? id(font_roboto_l) : id(font_roboto_m);
       };
-      std::string face = id(text_font).current_option().str();
-      std::string sz = id(text_size).current_option().str();
+      std::string face = "roboto";
+      std::string sz = "medium";
 
       // --- Inline icons ------------------------------------------------------
       // Text is walked as UTF-8 codepoints. A codepoint in the icon table renders
@@ -277,7 +279,7 @@ display:
         { ":rain:",       "\xE2\x98\x94" },      // U+2614  umbrella with rain drops
       };
 
-      // Image for an icon codepoint at the current Text Size; nullptr = not an icon.
+      // Image for an icon codepoint at the current text size; nullptr = not an icon.
       auto icon_for = [&](uint32_t cp) -> esphome::image::Image * {
         switch (cp) {
           case 0xE000:
@@ -652,6 +654,8 @@ display:
 #                                                                uses S1 if defined, else white/roboto.
 #                                       :font=roboto|mono|slab:  override font family
 #                                       :size=small|medium|large: override font size
+#                                                                (fallback with neither Style 1 nor a
+#                                                                token active: roboto, medium)
 #                                       :flash=N:                blink period in seconds for
 #                                                                subsequent text (0 = steady)
 #                                       :bright=N:               0-100, locally dims subsequent
@@ -672,10 +676,6 @@ display:
 #   Color Picker           (light) -- reference only: does not drive the display. Pick a color
 #                                     on the wheel to read off its RGB values for use in the
 #                                     "Styles" box (see above).
-#   Font                  (select) -- roboto | mono | slab (fallback when Style 1 is undefined
-#                                     and no ":font=" token is active)
-#   Text Size             (select) -- small | medium | large (fallback when Style 1 is
-#                                     undefined and no ":size=" token is active)
 #   Word Wrap             (switch) -- on: wrap to lines; off: horizontal scroll if wide
 #   Flash Interval        (number) -- seconds per blink cycle; 0 = steady (default; overridable via :flash=)
 #   Horizontal Scroll Speed (number) -- px/s when a line is wider than the panel
@@ -691,7 +691,7 @@ display:
 #   data: {value: "{{ states('sensor.front_door') }}"}
 #
 #   # inline icon: text, roundel, text -- the icon sits in the text flow and
-#   # scales with Text Size
+#   # scales with the active style's size
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_display_text}
 #   data: {value: "BTC :btc: {{ states('sensor.btc_price') }}"}
@@ -913,28 +913,6 @@ light:
     blue: color_ref_b
     default_transition_length: 0s
     gamma_correct: 0
-
-select:
-  - platform: template
-    name: "Font"
-    id: text_font
-    icon: "mdi:format-font"
-    optimistic: true
-    restore_value: true
-    options: ["roboto", "mono", "slab"]
-    initial_option: "roboto"
-    on_value:
-      - component.update: matrix_display
-  - platform: template
-    name: "Text Size"
-    id: text_size
-    icon: "mdi:format-size"
-    optimistic: true
-    restore_value: true
-    options: ["small", "medium", "large"]
-    initial_option: "medium"
-    on_value:
-      - component.update: matrix_display
 
 switch:
   - platform: template
