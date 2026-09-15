@@ -2102,9 +2102,10 @@ _flash_assess_device_on_flash_action() {
   elif [[ $FLASH_ASSESS_FLASH_CURRENT -eq 1 && $FLASH_ASSESS_PROD_ONLINE -eq 1 ]]; then
     local want_cols want_rows want_w want_h cur_cols cur_rows cur_w cur_h
     if _flash_matrix_layout_applicable "$assess_role" ""; then
-      _flash_resolve_matrix_layout "$assess_role" want_cols want_rows want_w want_h
       if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$assess_role" \
           cur_cols cur_rows cur_w cur_h; then
+        _flash_resolve_matrix_layout "$assess_role" want_cols want_rows want_w want_h \
+          "$cur_cols" "$cur_rows" "$cur_w" "$cur_h"
         info "Matrix layout (runtime): ${cur_cols}x${cur_rows} panel(s), ${cur_w}x${cur_h} px"
         if [[ "$cur_cols" != "$want_cols" || "$cur_rows" != "$want_rows" || "$cur_w" != "$want_w" || "$cur_h" != "$want_h" ]]; then
           info "Matrix layout (target): ${want_cols}x${want_rows} panel(s), ${want_w}x${want_h} px"
@@ -2113,6 +2114,7 @@ _flash_assess_device_on_flash_action() {
           info "Action: none required -- device is current"
         fi
       elif _flash_matrix_layout_flags_set; then
+        _flash_resolve_matrix_layout "$assess_role" want_cols want_rows want_w want_h
         info "Matrix layout (target): ${want_cols}x${want_rows} panel(s), ${want_w}x${want_h} px"
         info "Action: update matrix layout on device (firmware is current)"
       else
@@ -4020,18 +4022,34 @@ _flash_matrix_layout_flags_set() {
 }
 
 _flash_resolve_matrix_layout() {
-  # Resolve target panel layout (flags -> pass -> defaults). Sets named refs.
+  # Resolve target panel layout for THIS invocation:
+  #   explicit CLI flags -> this device's own current layout (if known) ->
+  #   pass role default (new-device convenience) -> hardcoded default.
   # cols = horizontal panels (side by side); rows = vertical panels (stacked).
+  # cur_cols/cur_rows/cur_w/cur_h are optional: callers that already read the
+  # device's live layout (_flash_read_matrix_layout_from_device) pass it here
+  # so any dimension NOT given as an explicit flag keeps this device's own
+  # value instead of falling through to the role-wide pass default -- which
+  # may hold whatever some OTHER device of this role was last explicitly set
+  # to, and would otherwise silently overwrite this device's working layout.
   local role="$1"
   local -n _cols_ref="$2"
   local -n _rows_ref="$3"
   local -n _w_ref="$4"
   local -n _h_ref="$5"
+  local cur_cols="${6:-}"
+  local cur_rows="${7:-}"
+  local cur_w="${8:-}"
+  local cur_h="${9:-}"
 
   _cols_ref="${MATRIX_COLS:-}"
   _rows_ref="${MATRIX_ROWS:-}"
   _w_ref="${MATRIX_PANEL_W:-}"
   _h_ref="${MATRIX_PANEL_H:-}"
+  [[ -z "$_cols_ref" ]] && _cols_ref="$cur_cols"
+  [[ -z "$_rows_ref" ]] && _rows_ref="$cur_rows"
+  [[ -z "$_w_ref" ]] && _w_ref="$cur_w"
+  [[ -z "$_h_ref" ]] && _h_ref="$cur_h"
   if [[ -n "$role" ]]; then
     [[ -z "$_cols_ref" ]] && _cols_ref=$(iotstack_pass_role_read "$role" "matrix_cols" 2>/dev/null || echo "")
     [[ -z "$_rows_ref" ]] && _rows_ref=$(iotstack_pass_role_read "$role" "matrix_rows" 2>/dev/null || echo "")
@@ -4296,18 +4314,23 @@ _flash_store_matrix_layout_pass() {
 }
 
 _flash_matrix_layout_mismatch() {
-  # Compare target layout (flags -> pass -> defaults) to production API text_sensors.
-  # Returns 0 when layouts match or check not applicable; 1 when NVS update is needed.
+  # Compare target layout (flags -> this device's own current layout -> pass ->
+  # defaults) to production API text_sensors. Returns 0 when layouts match or
+  # check not applicable; 1 when NVS update is needed. Reading the device's own
+  # layout first means an invocation with no explicit flags always resolves
+  # want == cur (see _flash_resolve_matrix_layout) -- so it never "corrects" a
+  # device toward some OTHER device's pass-stored default.
   local device="$1"
   local device_mac="$2"
   local prod_hostname="$3"
   local want_cols want_rows want_w want_h cur_cols cur_rows cur_w cur_h
 
   _flash_matrix_layout_applicable "$device" "" || return 0
-  _flash_resolve_matrix_layout "$device" want_cols want_rows want_w want_h
 
   if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
       cur_cols cur_rows cur_w cur_h; then
+    _flash_resolve_matrix_layout "$device" want_cols want_rows want_w want_h \
+      "$cur_cols" "$cur_rows" "$cur_w" "$cur_h"
     [[ "$cur_cols" == "$want_cols" && "$cur_rows" == "$want_rows" && "$cur_w" == "$want_w" && "$cur_h" == "$want_h" ]] && return 0
     return 1
   fi
@@ -4337,15 +4360,17 @@ _flash_matrix_layout_update_via_bootstrap_if_needed() {
   if _flash_matrix_layout_mismatch "$device" "$device_mac" "$prod_hostname"; then
     return 0
   fi
-  _flash_resolve_matrix_layout "$device" want_cols want_rows want_w want_h
 
   if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
       cur_cols cur_rows cur_w cur_h; then
+    _flash_resolve_matrix_layout "$device" want_cols want_rows want_w want_h \
+      "$cur_cols" "$cur_rows" "$cur_w" "$cur_h"
     if [[ "$cur_cols" == "$want_cols" && "$cur_rows" == "$want_rows" && "$cur_w" == "$want_w" && "$cur_h" == "$want_h" ]]; then
       return 0
     fi
     info "Matrix layout mismatch: runtime ${cur_cols}x${cur_rows} panel(s) ${cur_w}x${cur_h} px -> target ${want_cols}x${want_rows} panel(s) ${want_w}x${want_h} px"
   else
+    _flash_resolve_matrix_layout "$device" want_cols want_rows want_w want_h
     info "Matrix layout: writing target ${want_cols}x${want_rows} panel(s), ${want_w}x${want_h} px to NVS"
   fi
 
@@ -5469,10 +5494,17 @@ _flash_production_smart() {
           if [[ $layout_rc -eq 1 ]]; then
             err "Matrix layout NVS update failed"
           fi
-          _flash_resolve_matrix_layout "$device" want_cols want_rows want_w want_h
           img_hash=$(_production_running_image_hash "$prod_hostname" "$tty_device" "$yaml_path")
           if [[ $layout_rc -eq 2 ]]; then
-            ok "Matrix layout updated on ${prod_hostname}: ${want_cols}x${want_rows} panel(s), ${want_w}x${want_h} px (config_hash ${img_hash})"
+            # Report what the device actually ended up with (post-reboot), not a
+            # flags/pass re-derivation -- fields left unset this run were resolved
+            # from the device's own prior layout, which a re-derivation would miss.
+            if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
+                want_cols want_rows want_w want_h; then
+              ok "Matrix layout updated on ${prod_hostname}: ${want_cols}x${want_rows} panel(s), ${want_w}x${want_h} px (config_hash ${img_hash})"
+            else
+              ok "Matrix layout updated on ${prod_hostname} (config_hash ${img_hash})"
+            fi
           else
             ok "Device ${prod_hostname} already running current ${device} firmware (config_hash ${img_hash})"
           fi
@@ -5498,8 +5530,12 @@ _flash_production_smart() {
               err "Matrix layout NVS update failed"
             fi
             if [[ $layout_rc -eq 2 ]]; then
-              _flash_resolve_matrix_layout "$device" want_cols want_rows want_w want_h
-              ok "Matrix layout updated on ${prod_hostname}: ${want_cols}x${want_rows} panel(s), ${want_w}x${want_h} px"
+              if _flash_read_matrix_layout_from_device "$prod_hostname" "$device_mac" "$device" \
+                  want_cols want_rows want_w want_h; then
+                ok "Matrix layout updated on ${prod_hostname}: ${want_cols}x${want_rows} panel(s), ${want_w}x${want_h} px"
+              else
+                ok "Matrix layout updated on ${prod_hostname}"
+              fi
             else
               ok "Production firmware already current -- OTA skipped"
             fi
