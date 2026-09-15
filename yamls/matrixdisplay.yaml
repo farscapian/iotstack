@@ -4,9 +4,10 @@ substitutions:
   boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
   heartbeat_interval: "10s"   # bootstrap-only aliveness beacon (see interval: below)
   # Fixed hardware pixel brightness (0-255): panel-wide dimming is no longer a
-  # runtime control -- per-style "b<0-100>" in the Styles DSL (see the display
-  # lambda below) is the only brightness knob now. This is a hardware safety
-  # ceiling, not a taste setting: raise it only if the panel/PSU can take it.
+  # runtime control -- per-style brightness="0-100%" in the "Styles" tags (see
+  # the display lambda below) is the only brightness knob now. This is a
+  # hardware safety ceiling, not a taste setting: raise it only if the
+  # panel/PSU can take it.
   matrix_brightness_cap: "170"
   project_version: "0.0.0"
 
@@ -54,9 +55,9 @@ api:
 logger:
   hardware_uart: USB_SERIAL_JTAG
 
-# Font face x size, chosen at runtime via the "Styles" DSL's font/size parts
-# (see the display lambda below). 3 families (Roboto sans / Roboto Mono /
-# Roboto Slab) x 3 sizes (8/14/20).
+# Font face x size, chosen at runtime via the font=".."/font-size=".." attrs
+# in the "Styles" tags (see the display lambda below). 3 families (Roboto
+# sans / Roboto Mono / Roboto Slab) x 3 sizes (8/14/20).
 #
 # extras: pulls U+20BF BITCOIN SIGN, plus a set of Unicode emoji, into every font.
 # No Roboto family ships those codepoints (FT_Get_Char_Index returns 0), so they
@@ -194,7 +195,7 @@ display:
     default_layout_cols: 1
     max_layout_rows: 2       # panels stacked top-to-bottom
     default_layout_rows: 1
-    brightness: ${matrix_brightness_cap}   # fixed; see per-style "b<0-100>" in the Styles DSL
+    brightness: ${matrix_brightness_cap}   # fixed; see per-style brightness="0-100%" in the Styles tags
     r1_pin: GPIO18
     g1_pin: GPIO8
     b1_pin: GPIO17
@@ -215,9 +216,9 @@ display:
       const int H = it.get_height();
       it.fill(Color(0, 0, 0));  // blank frame first (writer does not auto-clear)
 
-      // Font/size come entirely from the "Styles" DSL now (Style 1's face/size,
-      // or a ":sN:" / ":font=..:" / ":size=..:" token -- see below). "roboto" /
-      // "medium" is the hardcoded fallback when none of those apply.
+      // Font/size come entirely from the "Styles" tags now (Style 1's face/size,
+      // or a "<sN>" / "<span font=..>" / "<span font-size=..>" tag -- see
+      // below). "roboto" / "medium" is the hardcoded fallback when none apply.
       using FontPtr = std::remove_const<decltype(id(font_roboto_m))>::type;
       auto font_for = [&](const std::string &face, const std::string &sz) -> FontPtr {
         if (face == "mono")
@@ -294,11 +295,11 @@ display:
         return cp;
       };
 
-      // Per-character style, set by inline ":key=value:" tokens (see STYLE_TOKENS
-      // parsing below) and carried alongside the text through wrap/measure/draw so
-      // a single "Display Text" string can mix fonts, colors, flash rates and
-      // local brightness -- e.g. "Price :s2: {{ states(...) }}" switches to
-      // Style 2 partway through, inline, no separate entity needed.
+      // Per-character style, set by inline HTML-like tags (see the tag parser
+      // below) and carried alongside the text through wrap/measure/draw so a
+      // single "Display Text" string can mix fonts, colors, flash rates and
+      // local brightness -- e.g. "Price <s2>{{ states(...) }}</s2>" renders the
+      // templated value in Style 2, inline, no separate entity needed.
       struct Style { FontPtr font; Color color; float flash_s; float bright; };
 
       // Text laid out with a Style attached to every byte (1:1 with the bytes in
@@ -354,62 +355,145 @@ display:
         }
       }
 
+      // --- Tag parsing (shared by the "Styles" box and Display Text) ---------
+      // A single attr="value" pair inside a tag.
+      struct Attr { std::string key, val; };
+
+      // A parsed "<name attr=\"val\" ...>", "<name .../>" or "</name>".
+      // Structurally malformed input (unterminated tag, bad attr="value" pair)
+      // comes back with valid=false, so the caller falls back to treating the
+      // "<" as a literal character -- the same forgiving behavior an
+      // unrecognized token had before.
+      struct Tag {
+        bool valid = false, closing = false, self_closing = false;
+        std::string name;
+        std::vector<Attr> attrs;
+        size_t end = 0;   // index just past the tag's '>'
+      };
+
+      // Parses one attr="value" pair starting at s[i] (i at the first char of
+      // the key); advances i past the closing quote on success.
+      auto parse_attr = [&](const std::string &s, size_t &i, std::string &key, std::string &val) -> bool {
+        size_t kstart = i;
+        while (i < s.size() && s[i] != '=' && s[i] != ' ' && s[i] != '>' && s[i] != '/') i++;
+        if (i == kstart) return false;
+        key = s.substr(kstart, i - kstart);
+        while (i < s.size() && s[i] == ' ') i++;
+        if (i >= s.size() || s[i] != '=') return false;
+        i++;
+        while (i < s.size() && s[i] == ' ') i++;
+        if (i >= s.size() || s[i] != '"') return false;
+        i++;
+        size_t vstart = i;
+        while (i < s.size() && s[i] != '"') i++;
+        if (i >= s.size()) return false;
+        val = s.substr(vstart, i - vstart);
+        i++;
+        return true;
+      };
+
+      // Parses the tag starting at s[start] (s[start] == '<').
+      auto parse_tag = [&](const std::string &s, size_t start) -> Tag {
+        Tag t;
+        size_t i = start + 1;
+        if (i < s.size() && s[i] == '/') { t.closing = true; i++; }
+        size_t nstart = i;
+        while (i < s.size() && ((s[i] >= 'a' && s[i] <= 'z') || (s[i] >= 'A' && s[i] <= 'Z') ||
+                                (s[i] >= '0' && s[i] <= '9') || s[i] == '-')) i++;
+        if (i == nstart) return Tag{};
+        t.name = s.substr(nstart, i - nstart);
+        while (i < s.size() && s[i] == ' ') i++;
+        if (t.closing) {
+          if (i >= s.size() || s[i] != '>') return Tag{};
+          t.valid = true;
+          t.end = i + 1;
+          return t;
+        }
+        while (true) {
+          if (i < s.size() && s[i] == '/') {
+            t.self_closing = true;
+            i++;
+            while (i < s.size() && s[i] == ' ') i++;
+          }
+          if (i < s.size() && s[i] == '>') { i++; break; }
+          if (i >= s.size()) return Tag{};
+          std::string key, val;
+          if (!parse_attr(s, i, key, val)) return Tag{};
+          t.attrs.push_back(Attr{key, val});
+          while (i < s.size() && s[i] == ' ') i++;
+        }
+        t.valid = true;
+        t.end = i;
+        return t;
+      };
+
+      // "sN" (N >= 1) name check shared by the Styles box and Display Text.
+      auto style_num = [&](const std::string &name, int &n) -> bool {
+        if (name.size() < 2 || name[0] != 's') return false;
+        for (size_t k = 1; k < name.size(); k++)
+          if (name[k] < '0' || name[k] > '9') return false;
+        n = (int) strtol(name.c_str() + 1, nullptr, 10);
+        return n >= 1;
+      };
+
+      // Applies one attr="value" pair to a (color, brightness, font, font-size,
+      // flash-interval) tuple, shared by style-definition parsing below and by
+      // the <sN>/<span> attribute overlay in Display Text.
+      auto apply_kv = [&](Color &color, float &bright, std::string &face_, std::string &size_,
+                          float &flash_s, const std::string &key, const std::string &val) {
+        if (key == "color") {
+          char *endp = nullptr;
+          long r = strtol(val.c_str(), &endp, 10);
+          long g = (endp != nullptr && *endp == ',') ? strtol(endp + 1, &endp, 10) : 255;
+          long b = (endp != nullptr && *endp == ',') ? strtol(endp + 1, &endp, 10) : 255;
+          color = Color((uint8_t) r, (uint8_t) g, (uint8_t) b);
+        } else if (key == "brightness") {
+          float pct = strtof(val.c_str(), nullptr);
+          if (pct < 0) pct = 0;
+          if (pct > 100) pct = 100;
+          bright = pct / 100.0f;
+        } else if (key == "font") {
+          face_ = val;
+        } else if (key == "font-size") {
+          size_ = val;
+        } else if (key == "flash-interval") {
+          flash_s = strtof(val.c_str(), nullptr);
+        }
+      };
+
       // --- Style definitions (from the "Styles" text box) --------------------
-      // Syntax: whitespace-separated "S<n>:<part>-<part>-..." entries, e.g.
-      //   S1:c255,20,7-b50-roboto S2:c38,31,255-b80-mono-large
-      // Parts, any order: "c<r>,<g>,<b>" (0-255 RGB, default white), "b<0-100>"
-      // (brightness %, default 100), a font name (roboto|mono|slab, default
-      // roboto) and a size name (small|medium|large, default medium). An
-      // "S<n>:" not defined here leaves a ":sN:" token in Display Text as
-      // literal text, same as any other unrecognized token.
-      struct StyleDef { int n; bool set = false; Color color{255, 255, 255}; float bright = 1.0f; std::string face = "roboto"; std::string size = "medium"; };
+      // Syntax: one self-closing tag per style, e.g.
+      //   <s1 color="255,20,7" brightness="50%" font="roboto" font-size="medium" flash-interval="0" />
+      // All attributes are optional; an omitted one falls back to a default
+      // (color: white, brightness: 100%, font: roboto, font-size: medium,
+      // flash-interval: the "Flash Interval" number below). Re-defining "sN"
+      // later in the box overrides an earlier definition of the same number.
+      struct StyleDef {
+        int n; bool set = false;
+        Color color{255, 255, 255}; float bright = 1.0f;
+        std::string face = "roboto"; std::string size = "medium";
+        bool has_flash = false; float flash_s = 0.0f;
+      };
       std::vector<StyleDef> styles;
       {
         std::string spec = id(display_styles).state;
         size_t i = 0;
-        while (i < spec.size()) {
-          while (i < spec.size() && spec[i] == ' ') i++;
-          size_t start = i;
-          while (i < spec.size() && spec[i] != ' ') i++;
-          std::string entry = spec.substr(start, i - start);
-          if (entry.size() < 3 || (entry[0] != 'S' && entry[0] != 's')) continue;
-          size_t colon = entry.find(':');
-          if (colon == std::string::npos) continue;
-          int n = (int) strtol(entry.c_str() + 1, nullptr, 10);
-          if (n < 1) continue;
+        while ((i = spec.find('<', i)) != std::string::npos) {
+          Tag t = parse_tag(spec, i);
+          int n;
+          if (!t.valid || t.closing || !style_num(t.name, n)) { i++; continue; }
           StyleDef sd;
           sd.n = n;
           sd.set = true;
-          size_t p = colon + 1;
-          while (p <= entry.size()) {
-            size_t dash = entry.find('-', p);
-            size_t plen = (dash == std::string::npos ? entry.size() : dash) - p;
-            std::string part = entry.substr(p, plen);
-            if (!part.empty()) {
-              if (part[0] == 'c' && part.size() > 1) {
-                char *endp = nullptr;
-                long r = strtol(part.c_str() + 1, &endp, 10);
-                long g = (endp != nullptr && *endp == ',') ? strtol(endp + 1, &endp, 10) : 255;
-                long b = (endp != nullptr && *endp == ',') ? strtol(endp + 1, &endp, 10) : 255;
-                sd.color = Color((uint8_t) r, (uint8_t) g, (uint8_t) b);
-              } else if (part[0] == 'b' && part.size() > 1 && part[1] >= '0' && part[1] <= '9') {
-                float pct = strtof(part.c_str() + 1, nullptr);
-                if (pct < 0) pct = 0;
-                if (pct > 100) pct = 100;
-                sd.bright = pct / 100.0f;
-              } else if (part == "roboto" || part == "mono" || part == "slab") {
-                sd.face = part;
-              } else if (part == "small" || part == "medium" || part == "large") {
-                sd.size = part;
-              }
-            }
-            if (dash == std::string::npos) break;
-            p = dash + 1;
+          for (const auto &kv : t.attrs) {
+            if (kv.key == "flash-interval") sd.has_flash = true;
+            apply_kv(sd.color, sd.bright, sd.face, sd.size, sd.flash_s, kv.key, kv.val);
           }
           styles.push_back(sd);
+          i = t.end;
         }
       }
-      // Last definition of a given "S<n>:" wins, so a later entry overrides an
+      // Last definition of a given "sN" wins, so a later entry overrides an
       // earlier one instead of merging with it.
       auto find_style = [&](int n) -> const StyleDef * {
         const StyleDef *found = nullptr;
@@ -418,10 +502,10 @@ display:
         return found;
       };
 
-      // Effective draw color: the style's color scaled by its local ":bright=N:"
-      // / style brightness (0-100%), on top of the panel's fixed hardware
-      // brightness ceiling (matrix_brightness_cap, set once at the display's
-      // brightness: config, not adjustable at runtime).
+      // Effective draw color: the style's color scaled by its brightness
+      // (0-100%), on top of the panel's fixed hardware brightness ceiling
+      // (matrix_brightness_cap, set once at the display's brightness: config,
+      // not adjustable at runtime).
       auto eff_color = [&](const Style &sty) -> Color {
         return Color((uint8_t) lroundf(sty.color.r * sty.bright),
                      (uint8_t) lroundf(sty.color.g * sty.bright),
@@ -464,62 +548,94 @@ display:
         }
       };
 
-      // --- Inline style tokens -------------------------------------------------
-      // ":br:" forces a line break (typed as two ASCII chars, since the HA "Display
-      // Text" box is single-line and can't hold a literal newline); it is folded to
-      // '\n' here so it reuses the existing word-wrap line-break handling untouched.
-      // ":s1:".."sN:" switch to style N as defined in the "Styles" text box (color,
-      // brightness, font and size all at once). ":font=roboto|mono|slab:" /
-      // ":size=small|medium|large:" / ":bright=N:" / ":flash=N:" still work as
-      // standalone overrides, e.g. to tweak one aspect of a style mid-run.
-      // An unrecognized ":...:" (including a stray colon in ordinary text, e.g. a
-      // clock "3:30", or ":sN:" for an N not defined in Styles) is left as literal
-      // text rather than consumed.
-      Style cur{font_for(face, sz), Color(255, 255, 255), id(flash_interval).state, 1.0f};
-      if (const StyleDef *s1 = find_style(1)) {
-        face = s1->face; sz = s1->size;
-        cur = Style{font_for(face, sz), s1->color, id(flash_interval).state, s1->bright};
-      }
+      // --- Inline style tags ---------------------------------------------------
+      // A style-carrying frame: Style plus the font/size strings it was built
+      // from (font_for() needs both strings whenever either one changes).
+      struct Frame { Style style; std::string face_; std::string size_; };
+
+      // Resolves "<sN>" to a Frame from scratch: a *named* style is a fixed
+      // look, independent of wherever it's used, so this starts from the
+      // global default (white/100%/roboto/medium/Flash Interval) and layers
+      // sN's own definition on top -- never the currently active style.
+      auto resolve_named = [&](int n) -> Frame {
+        Frame f{Style{font_for("roboto", "medium"), Color(255, 255, 255), id(flash_interval).state, 1.0f},
+                "roboto", "medium"};
+        if (const StyleDef *def = find_style(n)) {
+          f.face_ = def->face; f.size_ = def->size;
+          f.style.color = def->color;
+          f.style.bright = def->bright;
+          f.style.flash_s = def->has_flash ? def->flash_s : id(flash_interval).state;
+          f.style.font = font_for(f.face_, f.size_);
+        }
+        return f;
+      };
+
+      // Overlays a tag's attrs (if any) onto a base frame -- used both for
+      // "<sN attr=\"..\">" (tweak style N just for this run) and "<span attr=\"..\">"
+      // (tweak whatever style is currently active). Attrs not present on the
+      // tag leave the base's value untouched.
+      auto overlay = [&](Frame f, const std::vector<Attr> &attrs) -> Frame {
+        for (const auto &kv : attrs)
+          apply_kv(f.style.color, f.style.bright, f.face_, f.size_, f.style.flash_s, kv.key, kv.val);
+        f.style.font = font_for(f.face_, f.size_);
+        return f;
+      };
+
+      // "<br/>" / "<br>" forces a line break (typed since the HA "Display Text"
+      // box is single-line and can't hold a literal newline); it is folded to
+      // '\n' here so it reuses the existing word-wrap line-break handling
+      // untouched.
+      //
+      // "<sN>...</sN>" applies style N (as defined in "Styles" above, optionally
+      // tweaked by attrs given right on this tag) to the enclosed text, then
+      // reverts on the matching close. "<sN ... />" (self-closing, no matching
+      // close) applies it from this point onward instead, until the next tag
+      // changes it or the text ends -- handy for a quick switch with nothing to
+      // remember to switch back. "<span attr=\"..\">...</span>" / "<span .../>"
+      // work the same way but tweak the *currently active* style instead of
+      // switching to a named one, e.g. "<span brightness=\"50%\">dim</span>" to
+      // dim one word without defining a whole new style.
+      //
+      // A closing tag "</...>" always reverts to whatever was active just
+      // before its matching open -- the tag name doesn't have to match (so
+      // "</span>" and "</s2>" are interchangeable), and one with no
+      // corresponding open is ignored.
+      //
+      // Text before the first tag uses Style 1 if defined, else white/roboto.
+      // An unrecognized "<...>" (a malformed tag, or a name that isn't "br",
+      // "span" or "sN") is left as literal text -- so is a plain "<"/">" in
+      // ordinary text, e.g. "5 < 10", as long as what follows doesn't happen to
+      // look like one of these tag names.
+      std::vector<Frame> stack;
+      stack.push_back(resolve_named(1));
+      face = stack.back().face_;
+      sz = stack.back().size_;
       SText body;
       {
         size_t i = 0;
         while (i < text.size()) {
-          if (text[i] == ':') {
-            size_t end = text.find(':', i + 1);
-            if (end != std::string::npos && end > i + 1) {
-              std::string tok = text.substr(i + 1, end - i - 1);
-              bool known = true;
-              bool is_style_tok = tok.size() >= 2 && tok[0] == 's';
-              for (size_t k = 1; is_style_tok && k < tok.size(); k++)
-                if (tok[k] < '0' || tok[k] > '9') is_style_tok = false;
-              if (tok == "br") body.push('\n', cur);
-              else if (is_style_tok) {
-                const StyleDef *sd = find_style((int) strtol(tok.c_str() + 1, nullptr, 10));
-                if (sd != nullptr) {
-                  face = sd->face; sz = sd->size;
-                  cur.font = font_for(face, sz);
-                  cur.color = sd->color;
-                  cur.bright = sd->bright;
-                } else known = false;
+          if (text[i] == '<') {
+            Tag t = parse_tag(text, i);
+            int n = 0;
+            bool is_style = t.valid && !t.closing && style_num(t.name, n);
+            bool recognized = t.valid && (t.closing || t.name == "br" || t.name == "span" || is_style);
+            if (recognized) {
+              if (t.closing) {
+                if (stack.size() > 1) stack.pop_back();
+              } else if (t.name == "br") {
+                body.push('\n', stack.back().style);
+              } else {
+                Frame f = is_style ? overlay(resolve_named(n), t.attrs) : overlay(stack.back(), t.attrs);
+                if (t.self_closing) stack.back() = f;
+                else stack.push_back(f);
               }
-              else if (tok == "font=roboto") { face = "roboto"; cur.font = font_for(face, sz); }
-              else if (tok == "font=mono")   { face = "mono";   cur.font = font_for(face, sz); }
-              else if (tok == "font=slab")   { face = "slab";   cur.font = font_for(face, sz); }
-              else if (tok == "size=small")  { sz = "small";    cur.font = font_for(face, sz); }
-              else if (tok == "size=medium") { sz = "medium";   cur.font = font_for(face, sz); }
-              else if (tok == "size=large")  { sz = "large";    cur.font = font_for(face, sz); }
-              else if (tok.rfind("flash=", 0) == 0) {
-                cur.flash_s = strtof(tok.c_str() + 6, nullptr);
-              } else if (tok.rfind("bright=", 0) == 0) {
-                float pct = strtof(tok.c_str() + 7, nullptr);
-                if (pct < 0) pct = 0;
-                if (pct > 100) pct = 100;
-                cur.bright = pct / 100.0f;
-              } else known = false;
-              if (known) { i = end + 1; continue; }
+              face = stack.back().face_;
+              sz = stack.back().size_;
+              i = t.end;
+              continue;
             }
           }
-          body.push(text[i], cur);
+          body.push(text[i], stack.back().style);
           i++;
         }
       }
@@ -550,7 +666,7 @@ display:
         while (true) {
           bool end = (i >= body.s.size());
           char c = end ? ' ' : body.s[i];
-          Style sty = end ? cur : body.st[i];
+          Style sty = end ? stack.back().style : body.st[i];
           if (c == ' ' || c == '\n') {
             if (!word.empty()) {
               SText cand;
@@ -609,63 +725,69 @@ display:
 # Home Assistant controls (entity ids are number./text./switch./light.
 # matrix_display_<mac>_<slug>):
 #   Styles                (text)   -- defines up to N named styles, referenced from
-#                                     Display Text via ":s1:".."sN:". Syntax is
-#                                     whitespace-separated "S<n>:<part>-<part>-...":
-#                                       S1:c255,20,7-b50-roboto S2:c38,31,255-b80-mono-large
-#                                     Parts, any order, all optional:
-#                                       c<r>,<g>,<b>   RGB 0-255 (default white)
-#                                       b<0-100>       brightness % (default 100)
-#                                       roboto|mono|slab       font family (default roboto)
-#                                       small|medium|large     font size (default medium)
+#                                     Display Text via <s1>..<sN>. One self-closing
+#                                     HTML-like tag per style, any order, all
+#                                     attributes optional:
+#                                       <s1 color="255,20,7" brightness="50%" font="roboto" font-size="medium" flash-interval="0" />
+#                                       <s2 color="38,31,255" brightness="80%" font="mono" font-size="large" />
+#                                     Attributes and their defaults when omitted:
+#                                       color="r,g,b"            RGB 0-255 (default white)
+#                                       brightness="0-100"       "%" suffix optional (default 100)
+#                                       font="roboto|mono|slab"  (default roboto)
+#                                       font-size="small|medium|large" (default medium)
+#                                       flash-interval="Ns"      blink period in seconds, "s" suffix
+#                                                                optional (default: the panel-wide
+#                                                                "Flash Interval" number below)
 #                                     Use the "Color Picker" light below to find RGB values: turn
 #                                     it on, pick a color on the wheel, then read off the R/G/B
-#                                     numbers HA shows and drop them into "c<r>,<g>,<b>" here. The
+#                                     numbers HA shows and drop them into color="r,g,b" here. The
 #                                     picker itself does not affect the display.
-#   Display Text          (text)   -- the string to show. Everything below is one
-#                                     ":token:" mini-language, ASCII only, so the
-#                                     whole thing fits the single-line HA text box:
+#   Display Text          (text)   -- the string to show. Everything below is HTML-like
+#                                     tags mixed with plain text, ASCII only:
 #                                       :btc:                    Bitcoin roundel (full-color image)
 #                                       :smile: :sad: :cry: :heart: :thumbsup:
 #                                       :thumbsdown: :sun: :cloud: :rain:
 #                                                                Unicode emoji, rendered as text glyphs
-#                                       :br:                     forced line break (a literal
-#                                                                newline in the string works too,
-#                                                                but is not typeable in the HA box)
-#                                       :s1: .. :sN:             switch to style N, as defined in
-#                                                                the "Styles" box above (color,
-#                                                                brightness, font and size at once).
-#                                                                Text before the first style token
-#                                                                uses S1 if defined, else white/roboto.
-#                                       :font=roboto|mono|slab:  override font family
-#                                       :size=small|medium|large: override font size
-#                                                                (fallback with neither Style 1 nor a
-#                                                                token active: roboto, medium)
-#                                       :flash=N:                blink period in seconds for
-#                                                                subsequent text (0 = steady)
-#                                       :bright=N:               0-100, locally dims subsequent
-#                                                                text (on top of the panel's fixed
-#                                                                hardware brightness ceiling)
-#                                     A token stays in effect until overridden by another token of
-#                                     the same kind (:sN:, :font=.., :size=.., :flash=.., or
-#                                     :bright=..) -- there is no "reset to default" token, so end a
-#                                     styled run by switching back explicitly, e.g. "...:s2: X :s1: Y".
-#                                     Tokens do not create a line break by themselves (except :br:):
-#                                     "Hello :s2: World" flows as one line/word-wrap unit, just with
-#                                     "World" in style 2, per the same wrap/scroll rules as plain text.
-#                                     An unrecognized ":...:" (e.g. a clock "3:30", or ":sN:" for an N
-#                                     not defined in Styles) is left as literal text.
+#                                                                (these two stay ":colon:" tokens --
+#                                                                they're glyph substitutions, not styling)
+#                                       <br/> or <br>            forced line break (a literal newline
+#                                                                in the string works too, but is not
+#                                                                typeable in the HA box)
+#                                       <sN>text</sN>            apply style N (as defined in "Styles"
+#                                                                above) to the enclosed text, then
+#                                                                revert to whatever was active before
+#                                       <sN attr="val" ...>      same, with one or more of sN's own
+#                                       text</sN>                attributes overridden just for this run
+#                                       <sN ... />               self-closing: apply style N from here
+#                                                                on, with no closing tag needed (until
+#                                                                the next tag changes it or text ends)
+#                                       <span attr="val" ...>    tweak the *currently active* style
+#                                       text</span>              (not a named one) for the enclosed
+#                                                                text, e.g. <span brightness="50%">
+#                                       <span attr="val" .../>   same, but sticks from here on instead
+#                                                                of reverting on a closing tag
+#                                     A closing "</...>" always reverts to whatever was active just
+#                                     before its matching open; the tag name doesn't have to match
+#                                     (so </span> and </s2> are interchangeable), and one with no
+#                                     corresponding open is ignored. Text before the first tag uses
+#                                     Style 1 if defined, else white/roboto/medium.
+#                                     An unrecognized "<...>" (a malformed tag, or a name that isn't
+#                                     "br", "span" or "sN") is left as literal text -- so is a plain
+#                                     "<"/">" in ordinary text (e.g. "5 < 10"), as long as what
+#                                     follows doesn't happen to look like one of these tag names.
 #   Color Picker           (light) -- reference only: does not drive the display. Pick a color
 #                                     on the wheel to read off its RGB values for use in the
 #                                     "Styles" box (see above).
 #   Word Wrap             (switch) -- on: wrap to lines; off: horizontal scroll if wide
-#   Flash Interval        (number) -- seconds per blink cycle; 0 = steady (default; overridable via :flash=)
+#   Flash Interval        (number) -- seconds per blink cycle; 0 = steady. Fallback for any
+#                                     style with no flash-interval attribute of its own.
 #   Horizontal Scroll Speed (number) -- px/s when a line is wider than the panel
 #   Vertical Scroll Speed   (number) -- px/s when wrapped text is taller than the
 #                                       panel (Word Wrap must be on)
 # Examples:
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_styles}
-#   data: {value: "S1:c255,20,7-b50-roboto S2:c38,31,255-b80-mono-large"}
+#   data: {value: '<s1 color="255,20,7" brightness="50%" font="roboto" /><s2 color="38,31,255" brightness="80%" font="mono" font-size="large" />'}
 #
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_display_text}
@@ -686,7 +808,7 @@ display:
 #   # mono, a forced break, then a small flashing warning back in style 1
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_display_text}
-#   data: {value: "Price :s2::font=mono: {{ states('sensor.btc_price') }} :s1::font=roboto: :br: :size=small::flash=0.5: LOW BATTERY"}
+#   data: {value: 'Price <s2>{{ states("sensor.btc_price") }}</s2><br/><span font-size="small" flash-interval="0.5">LOW BATTERY</span>'}
 text:
   # Defined before "Display Text" so it lists first in the HA entities card --
   # see the "Styles" syntax documented above (Home Assistant controls comment).
@@ -697,8 +819,8 @@ text:
     optimistic: true
     restore_value: true
     min_length: 0
-    max_length: 128
-    initial_value: "S1:c255,136,0-b100-roboto S2:c0,190,255-b100-mono"
+    max_length: 255
+    initial_value: '<s1 color="255,136,0" brightness="100%" font="roboto" /><s2 color="0,190,255" brightness="100%" font="mono" />'
     on_value:
       - component.update: matrix_display
   - platform: template
@@ -708,7 +830,7 @@ text:
     optimistic: true
     restore_value: true
     min_length: 0
-    max_length: 128
+    max_length: 255
     initial_value: "iotstack - ${friendly_name}"
     on_value:
       # Redraw immediately so text changes are not delayed to the next update tick.
@@ -757,7 +879,7 @@ number:
 # Reference-only color-wheel light: text color now comes from the "Styles" text
 # box (see the Home Assistant controls comment above), not from a light entity,
 # so this is the one picker kept around purely so the user can dial in an RGB
-# value on the wheel and read it off for a "c<r>,<g>,<b>" style part. It is
+# value on the wheel and read it off for a style's color="r,g,b" attribute. It is
 # never read by the display lambda and drives no pin (the outputs are no-op
 # sinks), so turning it on/off or changing its color has no effect on the panel.
 output:
