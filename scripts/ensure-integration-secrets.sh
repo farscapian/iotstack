@@ -45,6 +45,14 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
   _ies_info() { _ies_log "INFO"  "$*"; echo -e "${BLU}[INFO]${RST} $*" >&2; }
   _ies_warn() { _ies_log "WARN"  "$*"; echo -e "${YLW}[WARN]${RST} $*" >&2; }
 
+  # Same as _ies_info/_ies_ok, but only echoed to the terminal when --verbose
+  # is set -- the session log still gets the line unconditionally. Used for
+  # routine "everything is fine" status (URL redirect resolution, connection
+  # test start/success) that would otherwise print ahead of every
+  # subcommand's own output on every run, verbose or not.
+  _ies_info_v() { _ies_log "INFO" "$*"; [[ "${VERBOSE:-0}" -eq 1 ]] && echo -e "${BLU}[INFO]${RST} $*" >&2; return 0; }
+  _ies_ok_v()   { _ies_log "OK"   "$*"; [[ "${VERBOSE:-0}" -eq 1 ]] && echo -e "${GRN}[OK]${RST} $*" >&2; return 0; }
+
   is_unconfigured() {
     local value="${1:-}"
     value="$(printf '%s' "$value" | xargs)"
@@ -109,14 +117,14 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     while true; do
       local resolved
       if resolved="$(resolve_ha_url_scheme "$HA_URL")" && [[ -n "$resolved" && "$resolved" != "$HA_URL" ]]; then
-        _ies_info "Resolved ${HA_URL} -> ${resolved} (redirect)"
+        _ies_info_v "Resolved ${HA_URL} -> ${resolved} (redirect)"
         HA_URL="$resolved"
         store_pass_secret "$(iotstack_pass_common_path ha_url)" "$(strip_ha_url_scheme "$HA_URL")"
         export HA_URL
       fi
-      _ies_info "Testing Home Assistant WebSocket connection to ${HA_URL}..."
+      _ies_info_v "Testing Home Assistant WebSocket connection to ${HA_URL}..."
       if test_output="$(test_ha_websocket "$HA_URL" "$HA_TOKEN" 2>&1)"; then
-        _ies_ok "Home Assistant connection verified (${test_output})"
+        _ies_ok_v "Home Assistant connection verified (${test_output})"
         export HA_URL HA_TOKEN
         return 0
       fi
