@@ -9,6 +9,16 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "d=\"${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel 2>/dev/null)}\"; for f in \"$d/.agentstack/scripts/claude-stop-autocommit.sh\" \"$d/scripts/claude-stop-autocommit.sh\"; do [ -x \"$f\" ] && { bash \"$f\"; break; }; done; true"
+          }
+        ]
+      }
     ]
   }
 }
