@@ -4123,7 +4123,7 @@ _nvs_update_via_bootstrap_api() {
   if ! _bootstrap_api_reachable "$device_mac"; then
     return 1
   fi
-  info "Updating NVS via ${bootstrap_host}.local (update_nvs_secrets API)..."
+  info "[$device_mac] Updating NVS via ${bootstrap_host}.local (update_nvs_secrets API)..."
   _call_bootstrap_api_service "$device_mac" update_nvs_secrets "$json_vars"
 }
 
