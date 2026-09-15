@@ -273,7 +273,7 @@ display:
 
       // Font = "Font" (family) x "Text Size" -- the *default* style, in effect
       // until a ":font=..:" / ":size=..:" token (see below) overrides it.
-      using FontPtr = decltype(id(font_roboto_m));
+      using FontPtr = std::remove_const<decltype(id(font_roboto_m))>::type;
       auto font_for = [&](const std::string &face, const std::string &sz) -> FontPtr {
         if (face == "mono")
           return (sz == "small") ? id(font_mono_s)
