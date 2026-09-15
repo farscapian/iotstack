@@ -3,12 +3,11 @@ substitutions:
   friendly_name: "Matrix Display"
   boot_button_pin: GPIO0  # ESP32-S3-DevKitC BOOT button
   heartbeat_interval: "10s"   # bootstrap-only aliveness beacon (see interval: below)
-  # Brightness: HA sends a 0-100% level via the "Brightness" number; the device
-  # maps it linearly to pixel brightness. HA owns any adaptive/dimming curve --
-  # compute the percentage from its own sensors + user preference, then push it.
-  matrix_brightness_cap: "170"          # Pixel brightness (0-255) at 100% -- hardware safety ceiling
-  matrix_brightness_default_pct: "50"   # Startup brightness percentage (Brightness number initial_value)
-  matrix_brightness_boot: "85"          # Display brightness at power-on, before on_boot applies the %
+  # Fixed hardware pixel brightness (0-255): panel-wide dimming is no longer a
+  # runtime control -- per-style "b<0-100>" in the Styles DSL (see the display
+  # lambda below) is the only brightness knob now. This is a hardware safety
+  # ceiling, not a taste setting: raise it only if the panel/PSU can take it.
+  matrix_brightness_cap: "170"
   project_version: "0.0.0"
 
 # External components (replaces deprecated custom_components folder)
@@ -27,22 +26,6 @@ packages:
 
 esphome:
   name: matrixdisplay
-  on_boot:
-    - priority: 600
-      then:
-        # Apply the restored brightness immediately at power-on (no fade).
-        - lambda: |-
-            float p = id(brightness_pct).state;
-            if (p < 0.0f) p = 0.0f;
-            if (p > 100.0f) p = 100.0f;
-            const float cap = ${matrix_brightness_cap};
-            float b = p / 100.0f * cap;
-            id(bright_current) = b;
-            id(bright_target) = b;
-            id(bright_start) = b;
-            uint8_t bi = (uint8_t) lroundf(b);
-            id(matrix_display).set_brightness(bi);
-            id(pixel_brightness).publish_state(bi);
 
 esp32:
   board: esp32-s3-devkitc-1
@@ -211,7 +194,7 @@ display:
     default_layout_cols: 1
     max_layout_rows: 2       # panels stacked top-to-bottom
     default_layout_rows: 1
-    brightness: ${matrix_brightness_boot}
+    brightness: ${matrix_brightness_cap}   # fixed; see per-style "b<0-100>" in the Styles DSL
     r1_pin: GPIO18
     g1_pin: GPIO8
     b1_pin: GPIO17
@@ -436,8 +419,9 @@ display:
       };
 
       // Effective draw color: the style's color scaled by its local ":bright=N:"
-      // / style brightness (0-100%, independent of the panel-wide "Brightness"
-      // number, which is the hardware PWM/safety-capped level).
+      // / style brightness (0-100%), on top of the panel's fixed hardware
+      // brightness ceiling (matrix_brightness_cap, set once at the display's
+      // brightness: config, not adjustable at runtime).
       auto eff_color = [&](const Style &sty) -> Color {
         return Color((uint8_t) lroundf(sty.color.r * sty.bright),
                      (uint8_t) lroundf(sty.color.g * sty.bright),
@@ -622,7 +606,7 @@ display:
         draw_line(-off + span, H / 2, body, true);  // second copy -> seamless loop
       }
 
-# Home Assistant controls (entity ids are number./text./select./switch./light.
+# Home Assistant controls (entity ids are number./text./switch./light.
 # matrix_display_<mac>_<slug>):
 #   Styles                (text)   -- defines up to N named styles, referenced from
 #                                     Display Text via ":s1:".."sN:". Syntax is
@@ -659,8 +643,8 @@ display:
 #                                       :flash=N:                blink period in seconds for
 #                                                                subsequent text (0 = steady)
 #                                       :bright=N:               0-100, locally dims subsequent
-#                                                                text (independent of the panel-
-#                                                                wide Brightness number below)
+#                                                                text (on top of the panel's fixed
+#                                                                hardware brightness ceiling)
 #                                     A token stays in effect until overridden by another token of
 #                                     the same kind (:sN:, :font=.., :size=.., :flash=.., or
 #                                     :bright=..) -- there is no "reset to default" token, so end a
@@ -670,9 +654,6 @@ display:
 #                                     "World" in style 2, per the same wrap/scroll rules as plain text.
 #                                     An unrecognized ":...:" (e.g. a clock "3:30", or ":sN:" for an N
 #                                     not defined in Styles) is left as literal text.
-#   Brightness            (number) -- 0-100% panel brightness (HA owns any dimming)
-#   Brightness In (s)     (number) -- fade-up duration to a higher brightness (0 = instant)
-#   Brightness Out (s)    (number) -- fade-down duration to a lower brightness (0 = instant)
 #   Color Picker           (light) -- reference only: does not drive the display. Pick a color
 #                                     on the wheel to read off its RGB values for use in the
 #                                     "Styles" box (see above).
@@ -706,77 +687,6 @@ display:
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_display_text}
 #   data: {value: "Price :s2::font=mono: {{ states('sensor.btc_price') }} :s1::font=roboto: :br: :size=small::flash=0.5: LOW BATTERY"}
-# Brightness fade state (pixel value 0-255). apply_brightness sets a new target;
-# the fade interval ramps bright_current toward it over "Brightness In"/"Out".
-globals:
-  - id: bright_current
-    type: float
-    restore_value: no
-    initial_value: '${matrix_brightness_boot}'
-  - id: bright_target
-    type: float
-    restore_value: no
-    initial_value: '${matrix_brightness_boot}'
-  - id: bright_start
-    type: float
-    restore_value: no
-    initial_value: '${matrix_brightness_boot}'
-  - id: bright_t0
-    type: uint32_t
-    restore_value: no
-    initial_value: '0'
-  - id: bright_dur
-    type: float
-    restore_value: no
-    initial_value: '0'
-
-interval:
-  # Ramp the applied pixel brightness toward the target each tick. A whole
-  # transition takes "Brightness In" seconds when rising / "Brightness Out" when
-  # falling (0 = instant). pixel_brightness is republished only on integer change.
-  - interval: 40ms
-    then:
-      - lambda: |-
-          float target = id(bright_target);
-          float cur = id(bright_current);
-          if (cur == target) return;
-          float b;
-          float dur = id(bright_dur);
-          if (dur <= 0.0f) {
-            b = target;
-          } else {
-            float elapsed = (millis() - id(bright_t0)) / 1000.0f;
-            float f = elapsed / dur;
-            if (f >= 1.0f) b = target;
-            else b = id(bright_start) + (target - id(bright_start)) * f;
-          }
-          uint8_t prev = (uint8_t) lroundf(cur);
-          uint8_t bi = (uint8_t) lroundf(b);
-          id(bright_current) = b;
-          id(matrix_display).set_brightness(bi);
-          if (bi != prev) id(pixel_brightness).publish_state(bi);
-
-script:
-  - id: apply_brightness
-    parameters:
-      percent: float
-    then:
-      - lambda: |-
-          // Set a new brightness target and start a fade toward it. The 0-100%
-          // level maps to a 0-cap pixel value (cap is the hardware safety
-          // ceiling). "Brightness In" is the fade-up time, "Brightness Out" the
-          // fade-down time; the fade interval does the ramp.
-          float p = percent;
-          if (p < 0.0f) p = 0.0f;
-          if (p > 100.0f) p = 100.0f;
-          const float cap = ${matrix_brightness_cap};
-          float target = p / 100.0f * cap;
-          id(bright_start) = id(bright_current);
-          id(bright_target) = target;
-          id(bright_t0) = millis();
-          id(bright_dur) = (target >= id(bright_current)) ? id(bright_in_s).state
-                                                          : id(bright_out_s).state;
-
 text:
   # Defined before "Display Text" so it lists first in the HA entities card --
   # see the "Styles" syntax documented above (Home Assistant controls comment).
@@ -805,45 +715,6 @@ text:
       - component.update: matrix_display
 
 number:
-  - platform: template
-    name: "Brightness"
-    id: brightness_pct
-    optimistic: true
-    restore_value: true
-    initial_value: ${matrix_brightness_default_pct}
-    min_value: 0
-    max_value: 100
-    step: 1
-    unit_of_measurement: "%"
-    mode: slider
-    on_value:
-      - script.execute:
-          id: apply_brightness
-          percent: !lambda 'return x;'
-  - platform: template
-    name: "Brightness In (s)"
-    id: bright_in_s
-    icon: "mdi:transition"
-    optimistic: true
-    restore_value: true
-    initial_value: 2.5
-    min_value: 0
-    max_value: 30
-    step: 0.1
-    unit_of_measurement: "s"
-    mode: box  # seconds to fade UP to a higher brightness; 0 = instant
-  - platform: template
-    name: "Brightness Out (s)"
-    id: bright_out_s
-    icon: "mdi:transition"
-    optimistic: true
-    restore_value: true
-    initial_value: 2.5
-    min_value: 0
-    max_value: 30
-    step: 0.1
-    unit_of_measurement: "s"
-    mode: box  # seconds to fade DOWN to a lower brightness; 0 = instant
   - platform: template
     name: "Flash Interval"
     id: flash_interval
@@ -925,17 +796,6 @@ switch:
       - component.update: matrix_display
     turn_off_action:
       - component.update: matrix_display
-
-sensor:
-  - platform: template
-    name: "Pixel Brightness"
-    id: pixel_brightness
-    icon: "mdi:brightness-6"
-    entity_category: diagnostic
-    accuracy_decimals: 0
-    update_interval: never
-    # Actual applied pixel value; published by the fade interval / on_boot.
-    lambda: 'return 0;'
 
 text_sensor:
   # object_id "panel_count" is the horizontal count and is also read by the CLI
