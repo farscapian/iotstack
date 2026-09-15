@@ -100,3 +100,10 @@ Uses `update_devices.sh --verify`. Discovery and mismatch reporting must use `in
   - `config/entity_registry/update` -- update entity ID
   - `config/label_registry/list` / `config/label_registry/create` -- ensure the MAC-suffix label exists
 - Entity ID security: only updates entities with `platform == 'esphome'`, preventing accidental updates to beacon trackers, iBeacon integrations, etc.
+- Post-registration restart (`iotstack.sh` `_ha_register_esphome_device`): if `finalize-esphome`
+  reports a device rename, a recreated entity ID, or an updated "Display Text" value, the device
+  is restarted immediately over the ESPHome native/device API (`_restart_press_button` ->
+  `scripts/esphome-button.sh` -> the `restart` button every device ships, see
+  `yamls/common/partition_manager_base.yaml`) rather than HA's `button.press` service, so the
+  change is live right away instead of waiting for the device's next unrelated reboot. A failed
+  restart only warns -- it never fails the registration step.
