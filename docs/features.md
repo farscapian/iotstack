@@ -102,8 +102,14 @@ Uses `update_devices.sh --verify`. Discovery and mismatch reporting must use `in
 - Entity ID security: only updates entities with `platform == 'esphome'`, preventing accidental updates to beacon trackers, iBeacon integrations, etc.
 - Post-registration restart (`iotstack.sh` `_ha_register_esphome_device`): if `finalize-esphome`
   reports a device rename, a recreated entity ID, or an updated "Display Text" value, the device
-  is restarted immediately over the ESPHome native/device API (`_restart_press_button` ->
+  is restarted over the ESPHome native/device API (`_restart_press_button` ->
   `scripts/esphome-button.sh` -> the `restart` button every device ships, see
   `yamls/common/partition_manager_base.yaml`) rather than HA's `button.press` service, so the
   change is live right away instead of waiting for the device's next unrelated reboot. A failed
   restart only warns -- it never fails the registration step.
+  - Batched: a multi-device command (`iotstack update <role>`, `iotstack reassign`,
+    `iotstack rotate-secrets`) OTAs every device in the batch first and only runs HA
+    registration/restart afterward, once all of them are back online -- not per-device inside
+    the flashing loop. `_ota_via_bootstrap` defers via `IOTSTACK_DEFER_HA_REGISTRATION` /
+    `IOTSTACK_PENDING_HA_HOSTNAMES`, flushed by `_ota_via_bootstrap_flush_ha` after the loop.
+    A single-device `iotstack flash` still registers/restarts that one device immediately.

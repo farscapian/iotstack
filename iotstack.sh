@@ -12,6 +12,15 @@ export IOTSTACK_FLASH_ROOT_PID=$$
 VERBOSE=0
 QUIET=0
 IOTSTACK_TIMESTAMP=0
+
+# Batch HA registration: when set to 1, _ota_via_bootstrap defers Home
+# Assistant registration/restart to IOTSTACK_PENDING_HA_HOSTNAMES instead of
+# running it inline, so a loop that OTAs several devices in one command
+# (iotstack update <role>, iotstack reassign, iotstack rotate-secrets) can run
+# HA work only after every device in the batch has finished flashing --
+# otherwise device 1's HA restart happens while devices 2..N are still mid-OTA.
+IOTSTACK_DEFER_HA_REGISTRATION=0
+declare -a IOTSTACK_PENDING_HA_HOSTNAMES=()
 # ENV_FILE is defined in config.sh
 
 # Colors (using ANSI-C quoting to properly interpret escape sequences)
@@ -2291,6 +2300,31 @@ _resolve_flash_tty_for_role() {
   return 1
 }
 
+_ota_via_bootstrap_register_ha() {
+  # Run HA registration/restart for a just-OTA'd device now, or defer it to
+  # IOTSTACK_PENDING_HA_HOSTNAMES for the caller's loop to flush once every
+  # device in the batch is done -- see IOTSTACK_DEFER_HA_REGISTRATION above.
+  local yaml_file="$1"
+  local hostname="$2"
+  if [[ "$IOTSTACK_DEFER_HA_REGISTRATION" == "1" ]]; then
+    IOTSTACK_PENDING_HA_HOSTNAMES+=("$hostname")
+    return 0
+  fi
+  _ha_after_production_online "$yaml_file" "$hostname"
+}
+
+_ota_via_bootstrap_flush_ha() {
+  # Run deferred HA registration/restart for every device that finished OTA
+  # in this batch. Call once after a multi-device loop over _ota_via_bootstrap
+  # completes, with IOTSTACK_DEFER_HA_REGISTRATION set for that loop.
+  local yaml_file="$1"
+  local hostname
+  for hostname in ${IOTSTACK_PENDING_HA_HOSTNAMES[@]+"${IOTSTACK_PENDING_HA_HOSTNAMES[@]}"}; do
+    _ha_after_production_online "$yaml_file" "$hostname"
+  done
+  IOTSTACK_PENDING_HA_HOSTNAMES=()
+}
+
 _ota_via_bootstrap() {
   # OTA into the production slot via bootstrap (partition-safe path).
   # Usage: _ota_via_bootstrap <mac> <yaml_file> <ota_password> <post_ota_hostname> [tty_device] [update_args...]
@@ -2358,10 +2392,10 @@ _ota_via_bootstrap() {
       # applies (HA reaches the device over Thread via a border router), so
       # invoke it too. Honors PERFORM_HA_DEVICE_REGISTRATION like the WiFi path;
       # a no-op when HA is unconfigured and registration is not required.
-      _ha_after_production_online "$yaml_file" "$post_ota_hostname"
+      _ota_via_bootstrap_register_ha "$yaml_file" "$post_ota_hostname"
     elif _wait_for_production_online "$post_ota_hostname" 90; then
       ok "[$mac] reassigned and back as $post_ota_hostname"
-      _ha_after_production_online "$yaml_file" "$post_ota_hostname"
+      _ota_via_bootstrap_register_ha "$yaml_file" "$post_ota_hostname"
     else
       warn "[$mac] not seen as $post_ota_hostname yet (may still be booting)"
     fi
@@ -2406,6 +2440,11 @@ _reassign_devices_via_bootstrap() {
 
   info "Reassigning ${#macs[@]} device(s) to '$target_role' via bootstrap..."
   local failed=0 mac dev_pwd
+  # Defer HA registration/restart until every device in this batch has been
+  # reassigned, instead of running it per-device inside the loop -- see
+  # IOTSTACK_DEFER_HA_REGISTRATION.
+  IOTSTACK_DEFER_HA_REGISTRATION=1
+  IOTSTACK_PENDING_HA_HOSTNAMES=()
   for mac in "${macs[@]}"; do
     echo ""
     dev_pwd="$ota_password"
@@ -2417,6 +2456,8 @@ _reassign_devices_via_bootstrap() {
       failed=$((failed + 1))
     fi
   done
+  IOTSTACK_DEFER_HA_REGISTRATION=0
+  _ota_via_bootstrap_flush_ha "$yaml_file"
 
   echo ""
   if [[ $failed -eq 0 ]]; then
@@ -2506,6 +2547,11 @@ _update_via_bootstrap() {
 
   info "iotstack update: ${#macs[@]} '$role' device(s) via bootstrap..."
   local failed=0 mac dev_pwd
+  # Defer HA registration/restart until every device in this batch has been
+  # updated, instead of running it per-device inside the loop -- see
+  # IOTSTACK_DEFER_HA_REGISTRATION.
+  IOTSTACK_DEFER_HA_REGISTRATION=1
+  IOTSTACK_PENDING_HA_HOSTNAMES=()
   for mac in "${macs[@]}"; do
     echo ""
     dev_pwd=$(echo -n "${fs_secret}|${mac}" | sha256sum | cut -c1-32)
@@ -2516,6 +2562,8 @@ _update_via_bootstrap() {
       failed=$((failed + 1))
     fi
   done
+  IOTSTACK_DEFER_HA_REGISTRATION=0
+  _ota_via_bootstrap_flush_ha "$yaml_file"
 
   echo ""
   if [[ $failed -eq 0 ]]; then
@@ -3197,6 +3245,11 @@ cmd_rotate_secrets() {
   declare -a failed_macs=()
   local mac dev_pwd
 
+  # Defer HA registration/restart until every device in this batch has had
+  # its secret rotated, instead of running it per-device inside the loop --
+  # see IOTSTACK_DEFER_HA_REGISTRATION.
+  IOTSTACK_DEFER_HA_REGISTRATION=1
+  IOTSTACK_PENDING_HA_HOSTNAMES=()
   for mac in "${mac_suffixes[@]}"; do
     dev_pwd=$(_bootstrap_device_ota_password "$mac") || err "Could not derive bootstrap OTA password for $mac"
     if _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "$(_device_hostname "$role" "$mac")"; then
@@ -3206,6 +3259,8 @@ cmd_rotate_secrets() {
       failed_macs+=("$mac")
     fi
   done
+  IOTSTACK_DEFER_HA_REGISTRATION=0
+  _ota_via_bootstrap_flush_ha "$yaml_file"
 
   echo
   echo "========================================================"
