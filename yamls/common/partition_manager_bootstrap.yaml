@@ -1,3 +1,11 @@
 # Bootstrap partition controls -- no switch_to_bootstrap API (device is already on bootstrap).
 packages:
   partition_base: !include partition_manager_base.yaml
+
+# Don't let devices "park" in bootstrap indefinitely: after this long with no
+# activity, attempt to boot production (no-ops safely if there is no valid
+# production image yet -- see set_auto_promote_timeout() in partition_manager.h).
+# Production does not set this key, so it stays disabled there (default "0s").
+partition_manager:
+  id: partition_mgr
+  auto_promote_timeout: 5min

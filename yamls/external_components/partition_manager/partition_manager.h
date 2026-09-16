@@ -33,6 +33,21 @@ class PartitionManager : public Component {
   // partition, so updating from bootstrap always targets production).
   void boot_bootstrap();
 
+  // Bootstrap-only (0 = disabled, the production default): if this many ms
+  // elapse with no activity while running on bootstrap (ota_0), loop()
+  // attempts toggle_boot_partition() so devices don't "park" in bootstrap
+  // indefinitely. toggle_boot_partition() already validates the production
+  // image first, so a device with no valid production yet (fresh USB flash)
+  // just logs a warning and stays put. Set from YAML via
+  // partition_manager_bootstrap.yaml's auto_promote_timeout config key.
+  void set_auto_promote_timeout(uint32_t ms) { this->auto_promote_timeout_ms_ = ms; }
+
+  // Resets the auto-promote countdown. Wired to the bootstrap ota: platform's
+  // on_begin/on_progress triggers so an in-flight OTA write -- especially a
+  // slow Thread-mesh transfer -- is never interrupted by the timeout firing
+  // mid-transfer and rebooting into a half-written production image.
+  void notify_ota_activity();
+
   // 8-char lowercase hex ESPHome config_hash values for mDNS TXT records.
   // Both slots are known on either partition: each image records its own hash in
   // the shared "iotstack" NVS namespace, so the running image reads the other
@@ -54,6 +69,9 @@ class PartitionManager : public Component {
   std::string bootstrap_image_hash_;
   std::string production_image_hash_;
   uint32_t bootstrap_partition_size_{0};
+  uint32_t auto_promote_timeout_ms_{0};
+  uint32_t auto_promote_last_activity_ms_{0};
+  bool auto_promote_attempted_{false};
 
   void refresh_image_hashes_();
 };

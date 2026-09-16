@@ -34,6 +34,20 @@ Every path that moves a device into bootstrap today is manual:
   (called by `iotstack update`); see `yamls/common/partition_manager_production.yaml`
 - Script / USB at flash time
 
+The path back out is now partially automatic: bootstrap sets
+`auto_promote_timeout: 5min` (`yamls/common/partition_manager_bootstrap.yaml`),
+so `PartitionManager::loop()` calls `toggle_boot_partition()` after 5 minutes
+of no activity on bootstrap, promoting to production whenever a valid
+production image exists. This is a "don't park unattended" convenience, not
+a health check -- it only verifies production has a valid image header (the
+same check `toggle_boot_partition()` always does), never that production
+actually runs. It does not touch failure mode B below; an operator who parks
+a device in bootstrap deliberately because production is runtime-broken
+should be aware it will still auto-promote back into that same broken image
+after 5 minutes unless the image is invalidated first. The countdown resets
+on bootstrap OTA `on_begin`/`on_progress` (`notify_ota_activity()`), so a
+slow bootstrap-mediated OTA is never interrupted mid-transfer.
+
 There is no boot-failure counter and no rollback config anywhere in the tree.
 A production image that crash-loops just reboots into itself forever. If the
 failure also kills networking (bad NVS, driver panic), the device is

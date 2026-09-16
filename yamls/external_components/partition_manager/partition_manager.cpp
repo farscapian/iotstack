@@ -276,10 +276,18 @@ void PartitionManager::refresh_image_hashes_() {
 
 PartitionManager::PartitionManager() {
   this->refresh_image_hashes_();
+  // Baseline the auto-promote countdown at construction (very early boot, see
+  // the class comment); notify_ota_activity() pushes it later if an OTA
+  // starts before the timeout would otherwise fire.
+  this->auto_promote_last_activity_ms_ = millis();
 }
 
 void PartitionManager::setup() {
   this->refresh_image_hashes_();
+}
+
+void PartitionManager::notify_ota_activity() {
+  this->auto_promote_last_activity_ms_ = millis();
 }
 
 void PartitionManager::handle_button_press() {
@@ -301,6 +309,17 @@ void PartitionManager::handle_button_release() {
 }
 
 void PartitionManager::loop() {
+  if (this->auto_promote_timeout_ms_ > 0 && !this->auto_promote_attempted_ &&
+      millis() - this->auto_promote_last_activity_ms_ >= this->auto_promote_timeout_ms_) {
+    const esp_partition_t *running = esp_ota_get_running_partition();
+    if (running != nullptr && running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0) {
+      this->auto_promote_attempted_ = true;
+      ESP_LOGI(TAG, "Auto-promote: %us with no activity on bootstrap - attempting to boot production",
+               (unsigned) (this->auto_promote_timeout_ms_ / 1000));
+      this->toggle_boot_partition();
+    }
+  }
+
   if (!this->button_held_ || this->long_press_triggered_)
     return;
   if (millis() - this->press_time_ >= 3000) {

@@ -163,6 +163,16 @@ ota:
   - platform: esphome
     id: bootstrap_ota
     password: ""
+    # Keep the auto-promote countdown (see partition_manager_bootstrap.yaml)
+    # from firing mid-transfer: a slow OTA (e.g. Thread mesh, see
+    # docs/architecture.md) must not get interrupted by a reboot into a
+    # half-written production image.
+    on_begin:
+      then:
+        - lambda: "id(partition_mgr).notify_ota_activity();"
+    on_progress:
+      then:
+        - lambda: "id(partition_mgr).notify_ota_activity();"
 
 # Boot button, restart button and partition-toggle button come from the shared
 # partition_manager package (see packages: above).
