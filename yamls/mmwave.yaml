@@ -57,38 +57,51 @@ nvs_secrets:
 api:
   # API encryption key is set dynamically by nvs_secrets component from NVS
   on_client_connected:
+    # Skip if the user has explicitly turned the Status LED off (light off,
+    # no effect running) -- a log/HA reconnect should not fight that choice.
     - if:
         condition:
-          binary_sensor.is_on: presence
+          lambda: |-
+            return id(rgb_led)->remote_values.is_on() || id(rgb_led)->get_effect_name() != "None";
         then:
-          - light.turn_on:
-              id: rgb_led
-              red: 100%
-              green: 0%
-              blue: 0%
-              brightness: 60%
-              effect: "Pulse Heart Rate"
-        else:
-          - light.turn_on:
-              id: rgb_led
-              red: 0%
-              green: 100%
-              blue: 0%
-              brightness: 60%
-              transition_length: 500ms
+          - if:
+              condition:
+                binary_sensor.is_on: presence
+              then:
+                - light.turn_on:
+                    id: rgb_led
+                    red: 100%
+                    green: 0%
+                    blue: 0%
+                    brightness: 60%
+                    effect: "Pulse Heart Rate"
+              else:
+                - light.turn_on:
+                    id: rgb_led
+                    red: 0%
+                    green: 100%
+                    blue: 0%
+                    brightness: 60%
+                    transition_length: 500ms
   on_client_disconnected:
+    # Same manual-off guard as on_client_connected above.
     - if:
         condition:
-          not:
-            api.connected:
+          lambda: |-
+            return id(rgb_led)->remote_values.is_on() || id(rgb_led)->get_effect_name() != "None";
         then:
-          - light.turn_on:
-              id: rgb_led
-              red: 100%
-              green: 50%
-              blue: 0%
-              brightness: 60%
-              effect: "Strobe Red Yellow"
+          - if:
+              condition:
+                not:
+                  api.connected:
+              then:
+                - light.turn_on:
+                    id: rgb_led
+                    red: 100%
+                    green: 50%
+                    blue: 0%
+                    brightness: 60%
+                    effect: "Strobe Red Yellow"
 
 # Status LED effects are controlled via the API / Home Assistant (light entity).
 
@@ -132,45 +145,58 @@ binary_sensor:
     filters:
       - delayed_off: 20s
     on_press:
+      # Skip if the user has explicitly turned the Status LED off (light off,
+      # no effect running) -- presence changes should not fight that choice.
       - if:
           condition:
-            api.connected:
+            lambda: |-
+              return id(rgb_led)->remote_values.is_on() || id(rgb_led)->get_effect_name() != "None";
           then:
-            - light.turn_on:
-                id: rgb_led
-                red: 100%
-                green: 0%
-                blue: 0%
-                brightness: 20%
-                effect: "Pulse Heart Rate"
-          else:
-            - light.turn_on:
-                id: rgb_led
-                red: 100%
-                green: 50%
-                blue: 0%
-                brightness: 20%
-                effect: "Strobe Red Yellow"
+            - if:
+                condition:
+                  api.connected:
+                then:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 100%
+                      green: 0%
+                      blue: 0%
+                      brightness: 20%
+                      effect: "Pulse Heart Rate"
+                else:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 100%
+                      green: 50%
+                      blue: 0%
+                      brightness: 20%
+                      effect: "Strobe Red Yellow"
     on_release:
+      # Same manual-off guard as on_press above.
       - if:
           condition:
-            api.connected:
+            lambda: |-
+              return id(rgb_led)->remote_values.is_on() || id(rgb_led)->get_effect_name() != "None";
           then:
-            - light.turn_on:
-                id: rgb_led
-                red: 0%
-                green: 100%
-                blue: 0%
-                brightness: 20%
-                transition_length: 500ms
-          else:
-            - light.turn_on:
-                id: rgb_led
-                red: 100%
-                green: 50%
-                blue: 0%
-                brightness: 20%
-                effect: "Strobe Red Yellow"
+            - if:
+                condition:
+                  api.connected:
+                then:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 0%
+                      green: 100%
+                      blue: 0%
+                      brightness: 20%
+                      transition_length: 500ms
+                else:
+                  - light.turn_on:
+                      id: rgb_led
+                      red: 100%
+                      green: 50%
+                      blue: 0%
+                      brightness: 20%
+                      effect: "Strobe Red Yellow"
 
 text_sensor:
   - platform: template
