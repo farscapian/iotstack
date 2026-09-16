@@ -382,26 +382,25 @@ sensor:
     on_value:
       then:
         - lambda: |-
-            // "Brightness Level" number > 0 pins the multiplier to a fixed
-            // value, bypassing adaptive brightness entirely; 0 (default)
-            // keeps the illuminance-based behavior below.
+            // Adaptive brightness based on illuminance, scaled between a
+            // fixed minimum floor and an apex. "Brightness Level" > 0 sets
+            // the apex (0 keeps the default full-range apex of 1.0); the
+            // floor stays fixed so dim rooms never fade to imperceptible
+            // even when the apex is set low.
+            const float MIN_FLOOR = 0.16f;
             float override_pct = id(brightness_override).state;
-            if (override_pct > 0) {
-              id(brightness_multiplier) = override_pct / 100.0f;
-              return;
-            }
+            float apex = (override_pct > 0) ? (override_pct / 100.0f) : 1.0f;
+            float trough = (MIN_FLOOR < apex) ? MIN_FLOOR : apex;
 
-            // Adaptive brightness based on illuminance
-            // Dark room (0 lux) = 0.16x, bright daylight (10000+ lux) = 1.0x
             float lux = x;
             float multiplier;
             if (lux < 100) {
-              multiplier = 0.16f;  // Very dark (20% reduction from 0.2)
+              multiplier = trough;  // Very dark
             } else if (lux > 10000) {
-              multiplier = 1.0f;  // Very bright
+              multiplier = apex;  // Very bright
             } else {
-              // Linear interpolation between 100-10000 lux (0.16-1.0 brightness)
-              multiplier = 0.16f + ((lux - 100.0f) / 9900.0f) * 0.84f;
+              // Linear interpolation between 100-10000 lux (trough-apex brightness)
+              multiplier = trough + ((lux - 100.0f) / 9900.0f) * (apex - trough);
             }
             id(brightness_multiplier) = multiplier;
 
@@ -528,9 +527,10 @@ number:
     max_value: 15.0
     step: 0.5
 
-  # Manual override for the illuminance-based auto-brightness below.
-  # 0 (default) = Adaptive Brightness; any other value pins the LED's
-  # brightness multiplier to that fixed percentage instead.
+  # Apex for the illuminance-based auto-brightness below. 0 (default) =
+  # full-range Adaptive Brightness (apex 1.0); any other value caps the
+  # adaptive range's apex at that percentage while illuminance still
+  # drives where the multiplier falls between a fixed floor and the apex.
   - platform: template
     name: "Brightness Level"
     id: brightness_override
