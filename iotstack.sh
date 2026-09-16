@@ -3629,16 +3629,6 @@ _ha_register_esphome_device() {
       --role "$role" 2>&1) || reg_rc=$?
   if [[ $reg_rc -eq 0 ]]; then
     ha_ws_print_result_lines "$reg_out"
-    # Renaming a device, recreating its entity IDs, or pushing new display
-    # text only takes full effect once the device itself reconnects -- press
-    # its native-API "restart" button (not HA's button.press, which would
-    # round-trip through HA) so the change is live immediately instead of
-    # waiting for the device's next unrelated reboot.
-    if grep -qE '^(Updated device:|Recreated:|Set display text:)' <<< "$reg_out"; then
-      info "Home Assistant changed $hostname's name/entities -- restarting it over the device API to apply the change..."
-      _restart_press_button "$hostname" "restart" \
-        || warn "Could not restart $hostname over the device API; the change will apply on its next reboot."
-    fi
     return 0
   fi
 
