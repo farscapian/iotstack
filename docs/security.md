@@ -124,8 +124,14 @@ disable "OTA bootstrap from production" fleet-wide (e.g. after a one-time
 patch campaign) without touching the unrelated recovery-mode secret, and
 keeps `pass show`/audit trails distinguishing the two operations.
 
-Provision it the same way as any other OTA password (see "Pass password
-handling" above -- echo twice):
+Auto-generated on first use: `iotstack_prod_bootstrap_ota_pass_read()` seeds
+it with `openssl rand -hex 16` and logs `[INFO] Generated
+bootstrap-ota-from-production password: <path>` the first time `iotstack
+ota-bootstrap` runs after the entry is missing -- same pattern as the
+bootstrap role's own OTA password (`write-nvs-secrets.sh`'s
+`_get_or_generate_role_ota_password`). No manual provisioning step is
+required. To rotate it manually instead (echo twice, see "Pass password
+handling" above):
 
 ```bash
 { echo "$password"; echo "$password"; } | pass insert -f "iotstack/default/roles/bootstrap-ota-from-production/ota_password"

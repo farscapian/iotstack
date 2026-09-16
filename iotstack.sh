@@ -2722,7 +2722,7 @@ _ota_bootstrap_via_production() {
 
   local dev_pwd
   dev_pwd=$(iotstack_prod_bootstrap_ota_device_password "$mac") || {
-    warn "[$mac] bootstrap-ota-from-production password not found in pass (run: pass insert $(iotstack_prod_bootstrap_ota_pass_path))"
+    warn "[$mac] could not generate/store bootstrap-ota-from-production password in pass (check pass/gpg setup; path: $(iotstack_prod_bootstrap_ota_pass_path))"
     return 1
   }
 

@@ -135,11 +135,25 @@ iotstack_prod_bootstrap_ota_pass_path() {
 }
 
 iotstack_prod_bootstrap_ota_pass_read() {
+  # Auto-generates on first use, like the bootstrap role's own OTA password
+  # (write-nvs-secrets.sh's _get_or_generate_role_ota_password) -- this is a
+  # pure secret with no human-meaningful value, so there is nothing to
+  # prompt for and no reason to make `iotstack ota-bootstrap` a hard failure
+  # on a fresh install. Never seeded with the CONFIGURE_ME placeholder (that
+  # convention is for human-supplied config like ha_token/wifi -- see
+  # ensure-integration-secrets.sh), so an empty pass entry is the only
+  # "unset" state to handle.
   local path secret
   path=$(iotstack_prod_bootstrap_ota_pass_path)
   secret=$(pass show "$path" 2>/dev/null) || true
   [[ -n "$secret" ]] && { printf '%s' "$secret"; return 0; }
-  return 1
+
+  secret=$(openssl rand -hex 16)
+  { echo "$secret"; echo "$secret"; } | pass insert -f "$path" >/dev/null 2>&1 \
+    || return 1
+  echo "[INFO] Generated bootstrap-ota-from-production password: $path" >&2
+  printf '%s' "$secret"
+  return 0
 }
 
 iotstack_prod_bootstrap_ota_device_password() {
