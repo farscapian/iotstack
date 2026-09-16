@@ -765,15 +765,19 @@ except Exception:
     ws.close()
     sys.exit(0)
 
-# Get entity registry
+# Get device registry. The device's Label (name_by_user, falling back to the
+# ESPHome-assigned name) reliably carries the mDNS hostname's MAC suffix even
+# after entities have been renamed/customized, unlike entity_id -- matching on
+# entity_id undercounts registered devices once a user has given entities
+# friendly names that no longer contain the MAC.
 try:
     msg_id += 1
-    ws.send(json.dumps({'id': msg_id, 'type': 'config/entity_registry/list'}))
-    entities_msg = json.loads(ws.recv())
-    if not entities_msg.get('success'):
+    ws.send(json.dumps({'id': msg_id, 'type': 'config/device_registry/list'}))
+    devices_msg = json.loads(ws.recv())
+    if not devices_msg.get('success'):
         ws.close()
         sys.exit(0)
-    all_entities = entities_msg.get('result', [])
+    all_devices = devices_msg.get('result', [])
 except Exception:
     ws.close()
     sys.exit(0)
@@ -788,19 +792,23 @@ for dev in mdns_devices:
         mac = m.group(1).lower()
         mac_to_device[mac] = dev
 
-# Find ESPHome entities whose IDs contain any of these MAC suffixes
+# Find ESPHome-integrated devices whose Label (name_by_user or name) contains
+# any of these MAC suffixes.
 registered_devices = set()
-for entity in all_entities:
-    entity_id = entity.get('entity_id', '').lower()
-    platform = entity.get('platform', '').lower()
-
-    # Only check ESPHome entities
-    if platform != 'esphome':
+for device in all_devices:
+    identifiers = device.get('identifiers', [])
+    is_esphome = any(
+        isinstance(ident, (list, tuple)) and ident and str(ident[0]).lower() == 'esphome'
+        for ident in identifiers
+    )
+    if not is_esphome:
         continue
 
-    for mac, device in mac_to_device.items():
-        if mac in entity_id:
-            registered_devices.add(device)
+    label = (device.get('name_by_user') or device.get('name') or '').lower()
+
+    for mac, device_name in mac_to_device.items():
+        if mac in label:
+            registered_devices.add(device_name)
             break
 
 for d in sorted(registered_devices):
