@@ -8,6 +8,7 @@ Usage:
   iotstack logs [-f] <tty-device>
   iotstack logs [-f] <device>
   iotstack logs [-f] [<MAC>] <role>
+  iotstack logs [-f] <MAC>
 
 Arguments:
   <tty-device>  Serial device (e.g., /dev/ttyACM0) -- raw stream, no YAML
@@ -15,6 +16,8 @@ Arguments:
                 shows it; bootstrap-<mac> for a device booted into bootstrap
   <role>        Device role (e.g., bleproxy) -- streams over the network
   [<MAC>]       MAC suffix for one device; omit for ALL devices in the role
+  <MAC>         MAC suffix alone: role is discovered via mDNS (like
+                'iotstack update <MAC>')
   [-f]          Accepted for familiarity; logs always follow (live stream)
 
 Examples:
@@ -23,6 +26,7 @@ Examples:
   iotstack logs -f bleproxy-8dfcac  # One device by name
   iotstack logs bleproxy            # All bleproxy devices, interleaved
   iotstack logs 1a7cfc bleproxy     # One device, older <MAC> <role> arg order
+  iotstack logs 1a7cfc              # One device, role discovered via mDNS
 
 Notes:
   - Serial streaming needs no YAML and works on a bricked/bootstrap device.

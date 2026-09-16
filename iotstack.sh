@@ -6277,6 +6277,18 @@ cmd_logs() {
     fi
   fi
 
+  # A bare MAC suffix with no role (e.g. 'iotstack logs 199ef4'): discover the
+  # device's current role via mDNS, same as 'iotstack update <mac>'.
+  if [[ ${#pos[@]} -eq 1 && "${pos[0]}" =~ ^[0-9a-fA-F]{6}$ ]]; then
+    local bare_mac bare_role
+    bare_mac=$(echo "${pos[0]}" | tr '[:upper:]' '[:lower:]')
+    if bare_role=$(_resolve_role_for_mac_suffix "$bare_mac"); then
+      pos=("$bare_mac" "$bare_role")
+    else
+      err "Could not determine current role for MAC suffix $bare_mac (device not found via mDNS). Specify the role explicitly: iotstack logs $bare_mac <role>"
+    fi
+  fi
+
   local role="${pos[-1]}"
   local -a macs=("${pos[@]:0:${#pos[@]}-1}")
   if [[ "$role" != "$bootstrap_role" ]] && ! is_valid_role "$role"; then
