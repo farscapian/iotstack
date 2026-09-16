@@ -54,7 +54,7 @@ iotstack_parse_global_argv() {
         export IOTSTACK_COMPILATION_OUTPUT=1
         ;;
       -env=*)
-        ENV_FILE="${HOME}/.iotstack/${1#-env=}"
+        ENV_FILE="${IOTSTACK_ENVIRONMENTS_DIR:-${HOME}/.iotstack/environments}/${1#-env=}"
         ;;
       *)
         IOTSTACK_ARGV+=("$1")

@@ -113,7 +113,7 @@ test_tty_for_role() {
       esp32c6) hint="IOTSTACK_TEST_TTY_C6" ;;
       esp32s3) hint="IOTSTACK_TEST_TTY_S3" ;;
     esac
-    test_fail "No USB device found for ${role} (needs ${variant}). Plug in the board or set ${hint} in ~/.iotstack/.env"
+    test_fail "No USB device found for ${role} (needs ${variant}). Plug in the board or set ${hint} in ~/.iotstack/environments/.env"
     return 1
   }
   printf '%s\n' "$tty"

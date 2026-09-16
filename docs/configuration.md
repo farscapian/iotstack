@@ -3,7 +3,10 @@
 
 ### Environment File Configuration
 
-Environment variables are stored in `~/.iotstack/.env` and loaded automatically on every `iotstack` invocation.
+Environment variables are stored in `~/.iotstack/environments/.env` and loaded
+automatically on every `iotstack` invocation. All environment files (the
+default `.env` plus any `-env=<file>` alternates) live together under
+`~/.iotstack/environments/`.
 
 **Setup:**
 ```bash
@@ -11,16 +14,16 @@ Environment variables are stored in `~/.iotstack/.env` and loaded automatically 
 cat docs/.env.example
 
 # Create default configuration (done automatically by setup.sh)
-cp docs/.env.example ~/.iotstack/.env
+cp docs/.env.example ~/.iotstack/environments/.env
 
 # Edit to customize
-nano ~/.iotstack/.env
+nano ~/.iotstack/environments/.env
 ```
 
 **Using Multiple Configurations:**
 ```bash
 # Create alternate configuration
-cp ~/.iotstack/.env.example ~/.iotstack/pangolin.env
+cp docs/.env.example ~/.iotstack/environments/pangolin.env
 # Edit pangolin.env with specific settings
 
 # Use alternate config for a command

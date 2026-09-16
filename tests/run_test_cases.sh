@@ -8,7 +8,7 @@
 # Test selectors (one or more):
 #   0 / 00 / 00-flash-bleproxy / flash-bleproxy
 #
-# Environment (from ~/.iotstack/.env):
+# Environment (from ~/.iotstack/environments/.env):
 #   IOTSTACK_TEST_TTY_C6=/dev/ttyACM0   optional override
 #   IOTSTACK_TEST_TTY_S3=/dev/ttyACM1   optional override
 

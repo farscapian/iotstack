@@ -6262,7 +6262,7 @@ cmd_clean() {
     "${logs_dir}"
     "${artifacts_dir}"
   )
-  # Honor overrides from ~/.iotstack/.env when paths differ from defaults
+  # Honor overrides from ~/.iotstack/environments/.env when paths differ from defaults
   if [[ "${LOGS_DIR}" != "${logs_dir}" ]]; then
     items_to_clean+=("${LOGS_DIR}")
   fi
@@ -6554,7 +6554,7 @@ main() {
       cmd_matter "$@"
       ;;
     otbr)
-      if [[ "$ENV_FILE" != "${HOME}/.iotstack/.env" ]]; then
+      if [[ "$ENV_FILE" != "${IOTSTACK_ENVIRONMENTS_DIR}/.env" ]]; then
         local _otbr_env_candidate
         _otbr_env_candidate="${HOME}/.otbrstack/env/$(basename "$ENV_FILE")"
         if [[ -f "$_otbr_env_candidate" ]]; then

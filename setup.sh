@@ -15,7 +15,7 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source centralized configuration (resolves IOTSTACK_HOME, GNUPG_HOME,
-# PASS_STORE_DIR, ENV_FILE and loads ~/.iotstack/.env)
+# PASS_STORE_DIR, ENV_FILE and loads ~/.iotstack/environments/.env)
 # shellcheck source=scripts/config.sh
 source "${SCRIPT_DIR}/scripts/config.sh"
 
@@ -178,7 +178,7 @@ if [[ ! -f "$ENV_FILE" ]]; then
     # Fallback if template doesn't exist
     cat > "$ENV_FILE" << 'EOF'
 # iotstack Environment Configuration
-# Location: ~/.iotstack/.env (loaded by default on every invocation)
+# Location: ~/.iotstack/environments/.env (loaded by default on every invocation)
 
 # Force recompilation of firmware on every build (disables compile skip)
 # Values: 0 (default, use cache) or 1 (always recompile)
@@ -492,7 +492,7 @@ export PASSWORD_STORE_DIR="$PASS_DIR"
 declare -a config_items=("wifi_ssid" "wifi_password" "thread_tlv" "ha_url" "ha_token")
 
 # Seed config items under this environment's common/ (always "default" here --
-# setup.sh always seeds the default ~/.iotstack/.env; user can update via:
+# setup.sh always seeds the default ~/.iotstack/environments/.env; user can update via:
 # pass edit iotstack/default/common/wifi_ssid).
 for config_key in "${config_items[@]}"; do
   pass_path="$(iotstack_pass_common_path "$config_key")"

@@ -4,7 +4,7 @@
 #
 # Users can override any variable by:
 # 1. Setting environment variables before sourcing this file
-# 2. Creating ~/.iotstack/.env with custom values
+# 2. Creating ~/.iotstack/environments/.env with custom values
 #
 # Examples:
 #   export IOTSTACK_HOME=/custom/path
@@ -26,8 +26,29 @@ export IOTSTACK_HOME="${IOTSTACK_HOME:-${HOME}/.iotstack}"
 export YAMLS_DIR="${YAMLS_DIR:-${PROJECT_ROOT}/yamls}"
 export TESTS_DIR="${TESTS_DIR:-${PROJECT_ROOT}/tests}"
 
+# Environment files (the default .env plus any -env=<file> alternates) live
+# under IOTSTACK_ENVIRONMENTS_DIR, grouped together since each one picks a
+# distinct pass-store namespace (see iotstack_env_name below).
+export IOTSTACK_ENVIRONMENTS_DIR="${IOTSTACK_ENVIRONMENTS_DIR:-${IOTSTACK_HOME}/environments}"
+mkdir -p "$IOTSTACK_ENVIRONMENTS_DIR" 2>/dev/null || true
+
+# One-time migration from the pre-environments/ layout, where .env files sat
+# directly under IOTSTACK_HOME. dotglob is needed too since the default .env
+# is itself a dotfile that a bare *.env pattern would not match.
+shopt -s nullglob dotglob
+for _legacy_env in "${IOTSTACK_HOME}"/*.env; do
+  [[ -f "$_legacy_env" ]] || continue
+  _legacy_env_target="${IOTSTACK_ENVIRONMENTS_DIR}/$(basename "$_legacy_env")"
+  if [[ ! -e "$_legacy_env_target" ]]; then
+    mv "$_legacy_env" "$_legacy_env_target"
+    echo "[INFO] Migrated environment file: $_legacy_env -> $_legacy_env_target" >&2
+  fi
+done
+shopt -u nullglob dotglob
+unset _legacy_env _legacy_env_target
+
 # Environment file for user configuration
-export ENV_FILE="${ENV_FILE:-${IOTSTACK_HOME}/.env}"
+export ENV_FILE="${ENV_FILE:-${IOTSTACK_ENVIRONMENTS_DIR}/.env}"
 
 # Load user overrides from .env file if it exists
 if [[ -f "$ENV_FILE" ]]; then
@@ -57,7 +78,7 @@ export PASSWORD_STORE_DIR="$PASS_STORE_DIR"
 # so switching -env= files never reuses another environment's device secrets.
 iotstack_env_name() {
   local base
-  base="$(basename "${ENV_FILE:-${IOTSTACK_HOME}/.env}")"
+  base="$(basename "${ENV_FILE:-${IOTSTACK_ENVIRONMENTS_DIR}/.env}")"
   base="${base%.env}"
   [[ -z "$base" ]] && base="default"
   printf '%s\n' "$base"
