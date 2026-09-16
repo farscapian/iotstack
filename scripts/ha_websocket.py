@@ -926,6 +926,288 @@ def finalize_esphome_device(
     return result
 
 
+# -- mmwave area composite metrics -------------------------------------------
+# Creates Home Assistant "Template a sensor" helpers (config-entry based,
+# domain "template") that average each raw instantaneous mmwave metric across
+# every mr60bha2 device placed in a given Area, plus a time-based EMA of each
+# averaged value. "Raw instantaneous" means the per-device sensors named
+# exactly as below -- never mmwave.yaml's own per-device "(EMA)" sensors,
+# which smooth a single device's readings and would double-smooth (and hide
+# multi-device disagreement within an area) if averaged together here.
+
+_MMWAVE_METRIC_ORIGINAL_NAMES: dict[str, str] = {
+    "heart_rate": "Heart Rate",
+    "respiratory_rate": "Respiratory Rate",
+    "illuminance": "Illuminance",
+    "target_count": "Target Count",
+    "distance": "Detection Distance (cm)",
+}
+
+# Metrics that also get a time-based EMA composite (self-referential Jinja,
+# same alpha = 1 - e**(-dt/tau) formula as mmwave.yaml's on-device EMA).
+# Target count and presence likelihood are intentionally excluded.
+_MMWAVE_EMA_METRICS = ("heart_rate", "respiratory_rate", "distance", "illuminance")
+
+_MMWAVE_METRIC_UNITS: dict[str, tuple[str, str]] = {  # metric -> (unit, device_class)
+    "heart_rate": ("bpm", ""),
+    "respiratory_rate": ("brpm", ""),
+    "illuminance": ("lx", "illuminance"),
+    "target_count": ("", ""),
+    "distance": ("cm", "distance"),
+}
+
+_MMWAVE_METRIC_LABELS: dict[str, str] = {
+    "heart_rate": "Avg Heart Rate",
+    "respiratory_rate": "Avg Respiratory Rate",
+    "illuminance": "Avg Illuminance",
+    "target_count": "Avg Target Count",
+    "distance": "Avg Detection Distance",
+}
+
+
+def _slugify(text: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return re.sub(r"_+", "_", slug)
+
+
+def discover_mmwave_area_entities(
+    client: HAWebSocketClient,
+) -> dict[str, dict[str, list[str]]]:
+    """Group raw mmwave metric entity_ids by area_id, then by metric key.
+
+    A device is treated as an mmwave sensor when it carries entities with all
+    three of the "Heart Rate", "Respiratory Rate" and "Target Count" original
+    names -- a capability signature independent of device/entity renames, role
+    hostname prefixes, or friendly names.
+    """
+    try:
+        all_entities = client.send_command("config/entity_registry/list") or []
+    except HAWebSocketError:
+        return {}
+
+    by_device: dict[str, list[dict[str, Any]]] = {}
+    for entity in all_entities:
+        if (entity.get("platform") or "").lower() != "esphome":
+            continue
+        device_id = entity.get("device_id")
+        if not device_id:
+            continue
+        by_device.setdefault(device_id, []).append(entity)
+
+    signature = {"Heart Rate", "Respiratory Rate", "Target Count"}
+    result: dict[str, dict[str, list[str]]] = {}
+    for entities in by_device.values():
+        names = {(e.get("original_name") or "") for e in entities}
+        if not signature.issubset(names):
+            continue
+        for metric, original_name in _MMWAVE_METRIC_ORIGINAL_NAMES.items():
+            match = next(
+                (e for e in entities if (e.get("original_name") or "") == original_name),
+                None,
+            )
+            if match is None:
+                continue
+            area_id = match.get("area_id") or ""
+            if not area_id:
+                continue
+            result.setdefault(area_id, {}).setdefault(metric, []).append(match["entity_id"])
+
+    return result
+
+
+def _area_names(client: HAWebSocketClient) -> dict[str, str]:
+    names: dict[str, str] = {}
+    try:
+        for area in client.send_command("config/area_registry/list") or []:
+            area_id = area.get("area_id")
+            name = (area.get("name") or "").strip()
+            if area_id and name:
+                names[area_id] = name
+    except HAWebSocketError:
+        pass
+    return names
+
+
+def _average_template(entity_ids: list[str]) -> str:
+    ids_repr = "[" + ", ".join(f"'{e}'" for e in entity_ids) + "]"
+    return (
+        "{% set vals = " + ids_repr + " | map('states') | select('is_number') | map('float') | list %}\n"
+        "{{ (vals | sum / vals | length) | round(1) if vals | length > 0 else None }}"
+    )
+
+
+def _presence_likelihood_template(target_count_entity_ids: list[str]) -> str:
+    ids_repr = "[" + ", ".join(f"'{e}'" for e in target_count_entity_ids) + "]"
+    return (
+        "{% set vals = " + ids_repr + " | map('states') | select('is_number') | map('float') | list %}\n"
+        "{% set on = vals | select('gt', 0) | list | count %}\n"
+        "{{ ((on / vals | length) * 100) | round(0) if vals | length > 0 else None }}"
+    )
+
+
+def _ema_template(source_entity_id: str, self_entity_id: str, tau_seconds: float) -> str:
+    """Time-based EMA of `source_entity_id`, self-referencing `self_entity_id`'s
+    own previous state -- same alpha = 1 - e**(-dt/tau) formula as mmwave.yaml's
+    on-device EMA, but computed over the area-level raw average, not any single
+    device's already-smoothed reading.
+    """
+    return (
+        f"{{% set src = states('{source_entity_id}') %}}\n"
+        f"{{% set prev = states['{self_entity_id}'] %}}\n"
+        "{% if src in ['unknown', 'unavailable', none] %}\n"
+        "  {{ prev.state if prev is not none and prev.state not in ['unknown', 'unavailable'] else None }}\n"
+        "{% elif prev is none or prev.state in ['unknown', 'unavailable'] %}\n"
+        "  {{ src | float | round(1) }}\n"
+        "{% else %}\n"
+        f"  {{% set dt = as_timestamp(now()) - as_timestamp(prev.last_changed) %}}\n"
+        f"  {{% set alpha = (1 - e ** (-1 * dt / {tau_seconds})) if dt > 0 else 0 %}}\n"
+        "  {{ (alpha * (src | float) + (1 - alpha) * (prev.state | float)) | round(1) }}\n"
+        "{% endif %}"
+    )
+
+
+def _list_template_entry_titles(client: HAWebSocketClient) -> set[str]:
+    titles: set[str] = set()
+    try:
+        for entry in client.send_command("config_entries/get", domain="template") or []:
+            title = entry.get("title")
+            if title:
+                titles.add(title)
+    except HAWebSocketError:
+        pass
+    return titles
+
+
+def _create_template_sensor_helper(
+    ha_url: str,
+    token: str,
+    *,
+    name: str,
+    state_template: str,
+    unit_of_measurement: str = "",
+    device_class: str = "",
+) -> dict[str, Any]:
+    """Create a UI "Template a sensor" helper via HA's config-flow API.
+
+    Home Assistant helpers are config entries created through the same
+    config-flow machinery as integrations (see register_esphome_device above)
+    -- there is no dedicated "create template sensor" WS command. The flow's
+    exact field names are version-dependent (HA has moved some helper types to
+    a subentries flow across releases), so rather than assuming a fixed step
+    sequence, each form step is filled from whatever fields its own
+    `data_schema` actually asks for -- this keeps working across versions that
+    differ only in field naming/step count, and fails loudly with the
+    unrecognized step's fields listed when it hits a shape it cannot fill in.
+    """
+    values: dict[str, Any] = {
+        "name": name,
+        "template_type": "sensor",
+        "state": state_template,
+        "unit_of_measurement": unit_of_measurement or None,
+        "device_class": device_class or None,
+    }
+    result = _http_flow_start(ha_url, token, {"handler": "template"})
+    for _ in range(10):
+        step_type = result.get("type")
+        if step_type == "create_entry":
+            return result
+        if step_type == "abort":
+            raise HAWebSocketError(f"Template helper flow aborted: {result.get('reason', 'unknown')}")
+        if step_type != "form":
+            raise HAWebSocketError(f"Unexpected template helper flow response: {step_type}")
+
+        flow_id = result["flow_id"]
+        schema_fields = {
+            field.get("name") for field in (result.get("data_schema") or []) if field.get("name")
+        }
+        user_input = {k: v for k, v in values.items() if k in schema_fields and v is not None}
+        if not user_input and schema_fields:
+            raise HAWebSocketError(
+                f"Template helper flow step '{result.get('step_id')}' expects fields "
+                f"{sorted(schema_fields)}, none of which are known -- verify against the "
+                "live HA version and extend _create_template_sensor_helper"
+            )
+        result = _http_config_flow_request(ha_url, token, flow_id, method="POST", user_input=user_input)
+
+    raise HAWebSocketError(f"Template helper flow for '{name}' did not complete")
+
+
+def sync_mmwave_area_composites(
+    ha_url: str,
+    token: str,
+    *,
+    tau_seconds: float = 180.0,
+    dry_run: bool = True,
+    client: HAWebSocketClient | None = None,
+) -> list[str]:
+    """Create per-area composite "template sensor" helpers for every mmwave
+    metric, plus a time-based EMA helper for heart rate, respiratory rate,
+    detection distance and illuminance (never target count or presence
+    likelihood).
+
+    Best-effort and idempotent by title: an area/metric whose helper title
+    already exists in HA is left alone -- updating an existing helper's
+    formula requires HA's options/subentries flow, not implemented here (see
+    docs/features.md). Never raises; returns human-readable status lines.
+    """
+    owns_client = client is None
+    if owns_client:
+        client = HAWebSocketClient(ha_url, token)
+        client.connect()
+
+    lines: list[str] = []
+    try:
+        grouped = discover_mmwave_area_entities(client)
+        if not grouped:
+            return ["No mmwave devices with an assigned Area found -- nothing to sync."]
+
+        area_names = _area_names(client)
+        existing_titles = _list_template_entry_titles(client)
+
+        def _create_or_report(title: str, template: str, unit: str, device_class: str) -> None:
+            if title in existing_titles:
+                lines.append(f"[OK] already exists: {title} (skip)")
+            elif dry_run:
+                lines.append(f"[DRY-RUN] would create: {title}\n{template}")
+            else:
+                try:
+                    _create_template_sensor_helper(
+                        ha_url, token, name=title, state_template=template,
+                        unit_of_measurement=unit, device_class=device_class,
+                    )
+                    lines.append(f"[OK] created: {title}")
+                    existing_titles.add(title)
+                except HAWebSocketError as exc:
+                    lines.append(f"WARNING: Failed to create '{title}': {exc}")
+
+        for area_id, metrics in grouped.items():
+            area_name = area_names.get(area_id, area_id)
+
+            for metric, entity_ids in metrics.items():
+                title = f"{area_name} {_MMWAVE_METRIC_LABELS[metric]}"
+                unit, device_class = _MMWAVE_METRIC_UNITS[metric]
+                _create_or_report(title, _average_template(entity_ids), unit, device_class)
+
+                if metric in _MMWAVE_EMA_METRICS:
+                    ema_title = f"{title} EMA"
+                    source_entity_id = f"sensor.{_slugify(title)}"
+                    self_entity_id = f"sensor.{_slugify(ema_title)}"
+                    ema_template = _ema_template(source_entity_id, self_entity_id, tau_seconds)
+                    _create_or_report(ema_title, ema_template, unit, device_class)
+
+            target_count_ids = metrics.get("target_count")
+            if target_count_ids:
+                pl_title = f"{area_name} Presence Likelihood"
+                _create_or_report(
+                    pl_title, _presence_likelihood_template(target_count_ids), "%", ""
+                )
+    finally:
+        if owns_client:
+            client.close()
+
+    return lines
+
+
 def call_service(
     ha_url: str,
     token: str,
@@ -1038,6 +1320,20 @@ def main() -> int:
     verify_parser.add_argument("--friendly-name", default="")
     verify_parser.set_defaults(func=lambda args: _cmd_verify_entities(args))
 
+    composites_parser = sub.add_parser(
+        "sync-mmwave-composites",
+        help="Create per-area mmwave composite 'template sensor' helpers (averages + EMA)",
+    )
+    composites_parser.add_argument(
+        "--tau-seconds", type=float, default=180.0,
+        help="EMA time constant in seconds (default: 180)",
+    )
+    composites_parser.add_argument(
+        "--apply", action="store_true",
+        help="Actually create missing helpers (default: dry-run, prints what would be created)",
+    )
+    composites_parser.set_defaults(func=lambda args: _cmd_sync_mmwave_composites(args))
+
     args = parser.parse_args()
     try:
         args.func(args)
@@ -1121,6 +1417,13 @@ def _cmd_verify_entities(args: argparse.Namespace) -> None:
                 client, hostnames, args.entity_slug, args.friendly_name
             )
         )
+
+
+def _cmd_sync_mmwave_composites(args: argparse.Namespace) -> None:
+    lines = sync_mmwave_area_composites(
+        args.ha_url, args.ha_token, tau_seconds=args.tau_seconds, dry_run=not args.apply,
+    )
+    _print_lines(lines)
 
 
 def _cmd_call_service(args: argparse.Namespace) -> None:

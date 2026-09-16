@@ -297,13 +297,18 @@ sensor:
 
 
   # 4.4 mmWave -- detection distance
-  # Raw reading stays internal (native cm); the "Detection Distance" text
-  # sensor above is the only raw distance entity exposed to HA.
+  # Exposed as a numeric entity (native cm, device_class: distance) so Home
+  # Assistant can convert/display it in the user's preferred unit and so
+  # area-level composite averages (see docs/features.md) have a raw numeric
+  # value to average -- the "Detection Distance" text sensor above is only a
+  # pre-formatted display string and cannot be averaged.
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     distance:
       id: distance_raw_cm
-      internal: true
+      name: "Detection Distance (cm)"
+      device_class: distance
+      state_class: measurement
       unit_of_measurement: "cm"
       accuracy_decimals: 2
       # Time-based EMA (window tunable from HA) feeds the additive

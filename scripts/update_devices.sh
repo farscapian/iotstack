@@ -1339,6 +1339,22 @@ if [[ "$REASSIGN_MODE" != true ]]; then
       ok "Entity ID consistency: All entity IDs match device names"
     fi
   fi
+
+  # mmwave area composite metrics: after HA has (re)registered every device in
+  # this batch, (re)discover mmwave sensors across ALL areas -- not just the
+  # devices just flashed -- and create any missing per-area composite/EMA
+  # "template sensor" helpers. Best-effort/cosmetic, like the entity-ID steps
+  # above: never runs on a dry run, never fails the update.
+  if [[ "$DRY_RUN" == false && -n "$HA_URL" && -n "$HA_TOKEN" ]]; then
+    DEVICE_ROLE=$(grep -E '^\s*device_role:\s*' "$ORIGINAL_YAML_FILE" 2>/dev/null | head -1 | \
+      sed -E 's/^\s*device_role:\s*"?([^"]*)"?/\1/')
+    if [[ "$DEVICE_ROLE" == "mmwave" ]] && ensure_websocket_client; then
+      COMPOSITE_OUTPUT=$(python3 "${_UPDATE_DEVICES_SCRIPT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/ha_websocket.py" \
+        --ha-url "$HA_URL" --ha-token "$HA_TOKEN" \
+        sync-mmwave-composites --apply 2>&1) || true
+      [[ -n "$COMPOSITE_OUTPUT" ]] && echo "$COMPOSITE_OUTPUT"
+    fi
+  fi
 fi
 
 if [[ ${#FAIL_LIST[@]} -gt 0 ]]; then

@@ -173,3 +173,37 @@ Uses `update_devices.sh --verify`. Discovery and mismatch reporting must use `in
     the flashing loop. `_ota_via_bootstrap` defers via `IOTSTACK_DEFER_HA_REGISTRATION` /
     `IOTSTACK_PENDING_HA_HOSTNAMES`, flushed by `_ota_via_bootstrap_flush_ha` after the loop.
     A single-device `iotstack flash` still registers/restarts that one device immediately.
+
+### 7. mmwave Area Composite Metrics
+After every `iotstack update mmwave` (non-dry-run, HA configured), `update_devices.sh`
+calls `ha_websocket.py sync-mmwave-composites --apply` to create per-Area "template
+sensor" helpers averaging each raw metric across every mmwave device placed in that
+Area, plus a time-based EMA of the average:
+- Raw composites (all mmwave devices in an Area): Avg Heart Rate, Avg Respiratory Rate,
+  Avg Detection Distance, Avg Illuminance, Avg Target Count, Presence Likelihood
+  (percent of the Area's devices currently reporting `target_count > 0`).
+- EMA composites (`<metric> EMA`, `alpha = 1 - e**(-dt/tau)`, default `tau = 180s`,
+  `--tau-seconds` to override): Heart Rate, Respiratory Rate, Detection Distance,
+  Illuminance only -- never Target Count or Presence Likelihood.
+- The EMA is built from the *raw* per-device sensors (via the Area's own raw-average
+  composite above), never from mmwave.yaml's on-device `(EMA)` sensors -- those already
+  smooth a single device's readings and would double-smooth (and hide multi-device
+  disagreement within the Area) if averaged together.
+- mmwave devices are found by capability signature (entities named exactly "Heart Rate",
+  "Respiratory Rate" and "Target Count" all present on the same device), not by hostname
+  or role -- robust to renames.
+- Idempotent by helper title (`"<Area> <label>"`): an existing title is left alone.
+  Updating an existing helper's formula requires HA's options/subentries flow, not
+  implemented yet -- delete and let the next `iotstack update mmwave` recreate it.
+- Created via HA's config-flow API (`handler: "template"`), the same mechanism used for
+  every other HA UI "helper" -- there is no dedicated WS command to create one. The
+  flow's exact field names are version-dependent, so `_create_template_sensor_helper` in
+  `ha_websocket.py` fills each step from its own live `data_schema` instead of assuming a
+  fixed step sequence.
+- `sensor: distance` in `yamls/mmwave.yaml` is exposed as a numeric entity ("Detection
+  Distance (cm)", `device_class: distance`) specifically so this can average it -- the
+  "Detection Distance" text sensor is pre-formatted for the per-device Imperial/Metric
+  select and cannot be averaged.
+- Dry-run by default (`sync-mmwave-composites` without `--apply`) prints the Jinja that
+  would be created for every Area/metric without touching HA -- use this to sanity-check
+  discovery before the first `--apply` run.
