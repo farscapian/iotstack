@@ -6224,6 +6224,18 @@ verify_common_pass_secrets() {
     export HA_URL HA_TOKEN
   fi
 
+  # Seed wifi_ssid/wifi_password/thread_tlv with a CONFIGURE_ME placeholder if
+  # this environment's common/ doesn't have them yet (fresh install/env, or an
+  # existing one that predates a key -- e.g. thread_tlv). setup.sh no longer
+  # seeds these; iotstack.sh owns it here so the discovery scan below always
+  # finds them and prompts to fill them in.
+  local -a seed_keys=(wifi_ssid wifi_password thread_tlv)
+  local seed_key seed_path
+  for seed_key in "${seed_keys[@]}"; do
+    seed_path="$(iotstack_pass_common_path "$seed_key")"
+    pass show "$seed_path" >/dev/null 2>&1 || store_pass_secret "$seed_path" "$PLACEHOLDER_VALUE"
+  done
+
   # Human-friendly prompts for keys this codebase already knows about. Any
   # other file discovered under this environment's common/ (or the legacy
   # unscoped common/) that is missing/CONFIGURE_ME falls back to a generic
