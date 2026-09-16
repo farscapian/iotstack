@@ -78,6 +78,24 @@ iotstack_mdns_retry() {
   return 1
 }
 
+_iotstack_mdns_browse_contains() {
+  # `avahi-browse ... | grep -Fqi "$pattern"` looks safe but is not, under
+  # iotstack.sh's `set -o pipefail`: grep -q exits the instant it finds a
+  # match, which SIGPIPEs avahi-browse if it is still resolving OTHER
+  # entries (e.g. a sibling device whose resolve is slow/timing out).
+  # SIGPIPE gives avahi-browse a non-zero exit, and pipefail then reports
+  # the whole pipeline as failed even though grep already matched -- a
+  # false negative on real mDNS data (confirmed: exit 141 vs 0 for the
+  # identical query depending only on whether pipefail is set). Capture
+  # avahi-browse's output first so nothing ever reads its pipe live.
+  # Usage: _iotstack_mdns_browse_contains <pattern> <avahi-browse-args...>
+  local pattern="$1"
+  shift
+  local out
+  out=$(avahi-browse "$@" 2>/dev/null)
+  grep -Fqi -- "$pattern" <<< "$out"
+}
+
 iotstack_bootstrap_pass_ota_path() {
   local role
   role=$(iotstack_bootstrap_role)

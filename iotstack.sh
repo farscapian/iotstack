@@ -1702,7 +1702,7 @@ _wait_for_device() {
     if [[ "$name" == "$(iotstack_bootstrap_role)-"* ]] && _iotstack_ota_tcp_open "$name" 3232; then
       return 0
     fi
-    if avahi-browse -t -r "$mdns_svc" 2>/dev/null | grep -Fqi "$name"; then
+    if _iotstack_mdns_browse_contains "$name" -t -r "$mdns_svc"; then
       return 0
     fi
     sleep 2
@@ -1729,7 +1729,7 @@ _find_production_hostname_for_mac() {
 
 _device_on_bootstrap() {
   local mac="$1"
-  avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null | grep -Fqi "$(iotstack_bootstrap_hostname "$mac")"
+  _iotstack_mdns_browse_contains "$(iotstack_bootstrap_hostname "$mac")" -t -r "$(iotstack_bootstrap_mdns_service)"
 }
 
 _bootstrap_device_ota_password() {
@@ -1828,7 +1828,7 @@ _wait_for_production_online() {
     if timeout 3 bash -c "echo > /dev/tcp/${hostname}.local/6053" 2>/dev/null; then
       return 0
     fi
-    if avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "$hostname"; then
+    if _iotstack_mdns_browse_contains "$hostname" -t -r _esphomelib._tcp; then
       return 0
     fi
     sleep 3
@@ -1952,7 +1952,7 @@ _production_api_reachable() {
 
 _production_mdns_advertised() {
   local hostname="$1"
-  avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -Fqi "$hostname"
+  _iotstack_mdns_browse_contains "$hostname" -t -r _esphomelib._tcp
 }
 
 _production_reachable_now() {
@@ -2722,7 +2722,7 @@ _bootstrap_target_ota_advertised() {
   # the avahi cache for the opt-in "_iotstack-bootstrap-target._tcp" service?
   # Usage: _bootstrap_target_ota_advertised <hostname>
   local hostname="$1"
-  avahi-browse -t -r "_iotstack-bootstrap-target._tcp" 2>/dev/null | grep -Fqi "$hostname"
+  _iotstack_mdns_browse_contains "$hostname" -t -r "_iotstack-bootstrap-target._tcp"
 }
 
 _ota_bootstrap_via_production() {
@@ -3114,8 +3114,15 @@ cmd_reassign() {
     target_role="$device_or_yaml"
   fi
   for mac in "${reassign_macs[@]}"; do
-    local device_info
-    device_info=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null | grep -i "$mac" | head -1)
+    local device_info avahi_out
+    # Captured first, then grepped locally -- a live
+    # `avahi-browse | grep | head -1` pipeline SIGPIPEs avahi-browse the
+    # instant head reads its one line, and under `set -o pipefail` that
+    # turns into a non-zero pipeline status on a plain (unguarded)
+    # assignment, aborting the whole script via errexit. See
+    # _iotstack_mdns_browse_contains in scripts/iotstack-bootstrap.sh.
+    avahi_out=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+    device_info=$(grep -im1 -- "$mac" <<< "$avahi_out") || device_info=""
     if [[ -n "$device_info" ]]; then
       local device_name
       device_name=$(echo "$device_info" | awk -F' ' '{print $4}' | cut -d'.' -f1)

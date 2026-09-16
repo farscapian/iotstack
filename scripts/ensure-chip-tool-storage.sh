@@ -355,7 +355,14 @@ chip_tool_operational_mdns_visible() {
     [[ -n "${instance}" ]] || return 1
     command -v avahi-browse &>/dev/null || return 1
     # Listen briefly without -t; sleepy ICD devices register intermittently.
-    timeout "${browse_secs}" avahi-browse -r _matter._tcp 2>/dev/null | grep -Fq -- "${instance}"
+    # Captured first, then grepped locally: a live `avahi-browse | grep -q`
+    # pipeline SIGPIPEs avahi-browse the instant grep finds its match, and
+    # under iotstack.sh's `set -o pipefail` (this file runs sourced into
+    # that process) that flips a real match into a false-negative pipeline
+    # failure. See _iotstack_mdns_browse_contains in iotstack-bootstrap.sh.
+    local out
+    out=$(timeout "${browse_secs}" avahi-browse -r _matter._tcp 2>/dev/null)
+    grep -Fq -- "${instance}" <<< "$out"
 }
 
 chip_tool_operational_mdns_instance() {
