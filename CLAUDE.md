@@ -30,7 +30,7 @@ ESP32 ESPHome device management. **Load topic files on demand -- do not read thi
 | File | Load when |
 |------|-----------|
 | [docs/workflow.md](docs/workflow.md) | `sessions.watch`, live flash monitoring, tty guards |
-| [docs/configuration.md](docs/configuration.md) | `~/.iotstack/environments/.env`, compilation cache flags |
+| [docs/configuration.md](docs/configuration.md) | `~/.iotstack/environments/default.env`, compilation cache flags |
 | [docs/architecture.md](docs/architecture.md) | mDNS discovery, compile cache, YAML, project version |
 | [docs/features.md](docs/features.md) | Update subsets, delta OTA, reassign, verify, HA |
 | [docs/cli.md](docs/cli.md) | `iotstack.sh`, `roles.conf`, command examples |

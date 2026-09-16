@@ -27,7 +27,7 @@ Sensitive information (WiFi passwords, API keys, OTA passwords) is managed throu
 
 ### Layer 1: Role-Based Secrets (Encrypted Pass Store)
 
-Each device role (bleproxy, threadrouter, mmwave, etc.) has a master secret stored in the encrypted pass store, namespaced by the active `-env=` environment (the default `~/.iotstack/environments/.env` is namespaced `default`; `-env=pangolin.env` is namespaced `pangolin`, etc. -- see [configuration.md](configuration.md)):
+Each device role (bleproxy, threadrouter, mmwave, etc.) has a master secret stored in the encrypted pass store, namespaced by the active `-env=` environment (the default `~/.iotstack/environments/default.env` is namespaced `default`; `-env=pangolin.env` is namespaced `pangolin`, etc. -- see [configuration.md](configuration.md)):
 
 ```
 ~/.iotstack/.pass/
@@ -119,7 +119,7 @@ When you run `./setup.sh`:
 
 1. Creates GPG key in `~/.iotstack/.gnupg/`
 2. Initializes pass store at `~/.iotstack/.pass/`
-3. Creates default environment file at `~/.iotstack/environments/.env`
+3. Creates default environment file at `~/.iotstack/environments/default.env`
 4. Seeds common configuration items (WiFi SSID, Home Assistant URL, etc.)
 
 ### Creating Role Secrets

@@ -4,7 +4,7 @@
 #
 # Users can override any variable by:
 # 1. Setting environment variables before sourcing this file
-# 2. Creating ~/.iotstack/environments/.env with custom values
+# 2. Creating ~/.iotstack/environments/default.env with custom values
 #
 # Examples:
 #   export IOTSTACK_HOME=/custom/path
@@ -26,9 +26,9 @@ export IOTSTACK_HOME="${IOTSTACK_HOME:-${HOME}/.iotstack}"
 export YAMLS_DIR="${YAMLS_DIR:-${PROJECT_ROOT}/yamls}"
 export TESTS_DIR="${TESTS_DIR:-${PROJECT_ROOT}/tests}"
 
-# Environment files (the default .env plus any -env=<file> alternates) live
-# under IOTSTACK_ENVIRONMENTS_DIR, grouped together since each one picks a
-# distinct pass-store namespace (see iotstack_env_name below).
+# Environment files (the default default.env plus any -env=<file> alternates)
+# live under IOTSTACK_ENVIRONMENTS_DIR, grouped together since each one picks
+# a distinct pass-store namespace (see iotstack_env_name below).
 export IOTSTACK_ENVIRONMENTS_DIR="${IOTSTACK_ENVIRONMENTS_DIR:-${IOTSTACK_HOME}/environments}"
 mkdir -p "$IOTSTACK_ENVIRONMENTS_DIR" 2>/dev/null || true
 
@@ -47,8 +47,20 @@ done
 shopt -u nullglob dotglob
 unset _legacy_env _legacy_env_target
 
+# One-time migration: the default environment file was originally named
+# ".env"; rename it to "default.env" so it matches every other environment
+# file's naming (e.g. pangolin.env) instead of relying on the empty-basename
+# special case in iotstack_env_name() below.
+_legacy_default_env="${IOTSTACK_ENVIRONMENTS_DIR}/.env"
+_new_default_env="${IOTSTACK_ENVIRONMENTS_DIR}/default.env"
+if [[ -f "$_legacy_default_env" && ! -e "$_new_default_env" ]]; then
+  mv "$_legacy_default_env" "$_new_default_env"
+  echo "[INFO] Migrated environment file: $_legacy_default_env -> $_new_default_env" >&2
+fi
+unset _legacy_default_env _new_default_env
+
 # Environment file for user configuration
-export ENV_FILE="${ENV_FILE:-${IOTSTACK_ENVIRONMENTS_DIR}/.env}"
+export ENV_FILE="${ENV_FILE:-${IOTSTACK_ENVIRONMENTS_DIR}/default.env}"
 
 # Load user overrides from .env file if it exists
 if [[ -f "$ENV_FILE" ]]; then
@@ -78,7 +90,7 @@ export PASSWORD_STORE_DIR="$PASS_STORE_DIR"
 # so switching -env= files never reuses another environment's device secrets.
 iotstack_env_name() {
   local base
-  base="$(basename "${ENV_FILE:-${IOTSTACK_ENVIRONMENTS_DIR}/.env}")"
+  base="$(basename "${ENV_FILE:-${IOTSTACK_ENVIRONMENTS_DIR}/default.env}")"
   base="${base%.env}"
   [[ -z "$base" ]] && base="default"
   printf '%s\n' "$base"

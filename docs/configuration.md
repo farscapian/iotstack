@@ -3,10 +3,10 @@
 
 ### Environment File Configuration
 
-Environment variables are stored in `~/.iotstack/environments/.env` and loaded
-automatically on every `iotstack` invocation. All environment files (the
-default `.env` plus any `-env=<file>` alternates) live together under
-`~/.iotstack/environments/`.
+Environment variables are stored in `~/.iotstack/environments/default.env` and
+loaded automatically on every `iotstack` invocation. All environment files
+(the default `default.env` plus any `-env=<file>` alternates) live together
+under `~/.iotstack/environments/`.
 
 **Setup:**
 ```bash
@@ -14,10 +14,10 @@ default `.env` plus any `-env=<file>` alternates) live together under
 cat docs/.env.example
 
 # Create default configuration (done automatically by setup.sh)
-cp docs/.env.example ~/.iotstack/environments/.env
+cp docs/.env.example ~/.iotstack/environments/default.env
 
 # Edit to customize
-nano ~/.iotstack/environments/.env
+nano ~/.iotstack/environments/default.env
 ```
 
 **Using Multiple Configurations:**
@@ -34,8 +34,8 @@ iotstack -v -env=debug.env update bleproxy
 ```
 
 **Pass store scoping:** each `.env` file gets its own namespace in the pass
-store, derived from the `.env` filename (`.env` -> `default`, `pangolin.env` ->
-`pangolin`) -- e.g. `iotstack/default/roles/bleproxy/ota_password` vs.
+store, derived from the `.env` filename (`default.env` -> `default`,
+`pangolin.env` -> `pangolin`) -- e.g. `iotstack/default/roles/bleproxy/ota_password` vs.
 `iotstack/pangolin/roles/bleproxy/ota_password`. WiFi, Home Assistant, and
 per-role secrets are never shared between environments; see
 [secrets.md](secrets.md).

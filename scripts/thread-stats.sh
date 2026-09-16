@@ -317,7 +317,7 @@ EXAMPLES:
 
 CONFIGURATION:
   Load credentials from pass store (namespaced by the active -env= environment;
-  "default" for the default ~/.iotstack/environments/.env):
+  "default" for the default ~/.iotstack/environments/default.env):
     pass insert iotstack/default/common/ha_url
     pass insert iotstack/default/common/ha_token
 
