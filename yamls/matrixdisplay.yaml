@@ -970,16 +970,17 @@ switch:
 text_sensor:
   # object_id "panel_count" is the horizontal count and is also read by the CLI
   # (esphome_text_sensors.py); keep the name slugging to panel_count. "Panel Rows"
-  # -> panel_rows is the vertical count.
+  # -> panel_rows is the vertical count. Friendly names below are cosmetic only --
+  # do not change the ids without updating the CLI reader.
   - platform: template
-    name: "Panel Count"
+    name: "Horizontal Panel Count"
     id: panel_count
     entity_category: diagnostic
     update_interval: 60s
     lambda: |-
       return std::to_string(id(matrix_display).get_layout_cols());
   - platform: template
-    name: "Panel Rows"
+    name: "Vertical Panel Count"
     id: panel_rows
     entity_category: diagnostic
     update_interval: 60s
@@ -1000,7 +1001,7 @@ text_sensor:
     lambda: |-
       return std::to_string(id(matrix_display).get_panel_height());
   - platform: template
-    name: "Matrix Display Size"
+    name: "Matrix Display Total Size"
     id: matrix_display_size
     entity_category: diagnostic
     update_interval: 60s
