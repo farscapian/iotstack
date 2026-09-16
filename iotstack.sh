@@ -2651,6 +2651,14 @@ _prod_bootstrap_ota_upload_yaml() {
   printf '\nota:\n  - platform: esphome\n    password: "%s"\n' "$ota_password" >> "$out_yaml"
 }
 
+_bootstrap_target_ota_advertised() {
+  # discover_fn for iotstack_mdns_retry: does <hostname> currently show up in
+  # the avahi cache for the opt-in "_iotstack-bootstrap-target._tcp" service?
+  # Usage: _bootstrap_target_ota_advertised <hostname>
+  local hostname="$1"
+  avahi-browse -t -r "_iotstack-bootstrap-target._tcp" 2>/dev/null | grep -Fqi "$hostname"
+}
+
 _ota_bootstrap_via_production() {
   # Usage: _ota_bootstrap_via_production <role> <mac> <force> <is_dry_run>
   local role="$1"
@@ -2662,7 +2670,13 @@ _ota_bootstrap_via_production() {
 
   # Don't trust the local .env alone -- a fleet may be mid-rollout. Only a
   # device whose OWN firmware was compiled with the flag on advertises this.
-  if ! avahi-browse -t -r "_iotstack-bootstrap-target._tcp" 2>/dev/null | grep -Fqi "$hostname"; then
+  # "_iotstack-bootstrap-target._tcp" is a distinct mDNS service type from
+  # "_esphomelib._tcp" (already browsed above to discover $mac in the first
+  # place), so the avahi-daemon cache for THIS service type may still be
+  # empty on the first query -- retry instead of a single snapshot, same
+  # race iotstack_mdns_retry already covers for --reassign.
+  if ! iotstack_mdns_retry "bootstrap-target OTA advertisement from $hostname" info \
+    _bootstrap_target_ota_advertised "$hostname"; then
     warn "[$mac] $hostname does not advertise bootstrap-target OTA (built without IOTSTACK_ENABLE_BOOTSTRAP_OTA=1) -- skipping"
     return 1
   fi
