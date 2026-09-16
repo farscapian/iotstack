@@ -208,6 +208,21 @@ sensor:
       unit_of_measurement: "brpm"
       state_class: measurement
       accuracy_decimals: 0
+      # Time-based EMA (window tunable from HA) feeds the additive
+      # breath_rate_ema_sensor below. Raw reading above is unchanged.
+      on_value:
+        - lambda: |-
+            uint32_t now = millis();
+            float tau = id(breath_rate_ema_window).state;
+            if (std::isnan(id(breath_rate_ema))) {
+              id(breath_rate_ema) = x;
+            } else {
+              float dt = (now - id(breath_rate_ema_last_ms)) / 1000.0f;
+              float alpha = 1.0f - std::exp(-dt / tau);
+              id(breath_rate_ema) = alpha * x + (1.0f - alpha) * id(breath_rate_ema);
+            }
+            id(breath_rate_ema_last_ms) = now;
+            id(breath_rate_ema_sensor).publish_state(id(breath_rate_ema));
 
 
   # 4.3 mmWave -- heart rate
@@ -220,11 +235,26 @@ sensor:
       unit_of_measurement: "bpm"
       state_class: measurement
       accuracy_decimals: 0
+      # Time-based EMA (window tunable from HA) feeds the additive
+      # heart_rate_ema_sensor below. Raw reading above is unchanged.
+      on_value:
+        - lambda: |-
+            uint32_t now = millis();
+            float tau = id(heart_rate_ema_window).state;
+            if (std::isnan(id(heart_rate_ema))) {
+              id(heart_rate_ema) = x;
+            } else {
+              float dt = (now - id(heart_rate_ema_last_ms)) / 1000.0f;
+              float alpha = 1.0f - std::exp(-dt / tau);
+              id(heart_rate_ema) = alpha * x + (1.0f - alpha) * id(heart_rate_ema);
+            }
+            id(heart_rate_ema_last_ms) = now;
+            id(heart_rate_ema_sensor).publish_state(id(heart_rate_ema));
 
 
   # 4.4 mmWave -- detection distance
   # Raw reading stays internal (native cm); the "Detection Distance" text
-  # sensor above is the only distance entity exposed to HA.
+  # sensor above is the only raw distance entity exposed to HA.
   - platform: seeed_mr60bha2
     mr60bha2_id: my_mr60bha2
     distance:
@@ -232,10 +262,54 @@ sensor:
       internal: true
       unit_of_measurement: "cm"
       accuracy_decimals: 2
+      # Time-based EMA (window tunable from HA) feeds the additive
+      # distance_ema_sensor below. Raw reading above is unchanged.
+      on_value:
+        - lambda: |-
+            uint32_t now = millis();
+            float tau = id(distance_ema_window).state;
+            if (std::isnan(id(distance_ema))) {
+              id(distance_ema) = x;
+            } else {
+              float dt = (now - id(distance_ema_last_ms)) / 1000.0f;
+              float alpha = 1.0f - std::exp(-dt / tau);
+              id(distance_ema) = alpha * x + (1.0f - alpha) * id(distance_ema);
+            }
+            id(distance_ema_last_ms) = now;
+            id(distance_ema_sensor).publish_state(id(distance_ema));
     num_targets:
       name: "Target Count"
       id: target_count
       state_class: measurement
+
+  # 4.5 mmWave -- EMA-smoothed readings, additive alongside the raw
+  # instantaneous sensors above. Time-based (not sample-count-based) so
+  # smoothing stays correct despite the component's irregular push rate;
+  # each window is independently tunable from HA via the EMA Window
+  # number controls below.
+  - platform: template
+    id: breath_rate_ema_sensor
+    name: "Respiratory Rate (EMA)"
+    device_class: ""
+    unit_of_measurement: "brpm"
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: template
+    id: heart_rate_ema_sensor
+    name: "Heart Rate (EMA)"
+    device_class: ""
+    unit_of_measurement: "bpm"
+    state_class: measurement
+    accuracy_decimals: 1
+
+  - platform: template
+    id: distance_ema_sensor
+    name: "Detection Distance (EMA)"
+    icon: "mdi:tape-measure"
+    unit_of_measurement: "cm"
+    state_class: measurement
+    accuracy_decimals: 2
 
   - platform: uptime
     name: "Uptime"
@@ -277,6 +351,33 @@ globals:
   - id: brightness_multiplier
     type: float
     initial_value: '0.5'  # Default to 50%
+    restore_value: no
+
+  # EMA state (previous value + last-update timestamp) per smoothed metric.
+  # NAN sentinel means "no reading yet"; seeded from the first raw reading.
+  - id: breath_rate_ema
+    type: float
+    initial_value: 'NAN'
+    restore_value: no
+  - id: breath_rate_ema_last_ms
+    type: uint32_t
+    initial_value: '0'
+    restore_value: no
+  - id: heart_rate_ema
+    type: float
+    initial_value: 'NAN'
+    restore_value: no
+  - id: heart_rate_ema_last_ms
+    type: uint32_t
+    initial_value: '0'
+    restore_value: no
+  - id: distance_ema
+    type: float
+    initial_value: 'NAN'
+    restore_value: no
+  - id: distance_ema_last_ms
+    type: uint32_t
+    initial_value: '0'
     restore_value: no
 
 # 7. Buttons
@@ -323,6 +424,49 @@ select:
       - "Metric"
     initial_option: "Imperial"
     restore_value: true
+
+# EMA smoothing windows, one per metric, independently tunable from HA
+# (entity_category: config). Each is the exponential time constant in
+# seconds -- e.g. 2-5s -- fed into the on_value lambdas above.
+number:
+  - platform: template
+    name: "Respiratory Rate EMA Window"
+    id: breath_rate_ema_window
+    icon: "mdi:timer-outline"
+    entity_category: config
+    unit_of_measurement: "s"
+    optimistic: true
+    restore_value: true
+    initial_value: 3.0
+    min_value: 1.0
+    max_value: 15.0
+    step: 0.5
+
+  - platform: template
+    name: "Heart Rate EMA Window"
+    id: heart_rate_ema_window
+    icon: "mdi:timer-outline"
+    entity_category: config
+    unit_of_measurement: "s"
+    optimistic: true
+    restore_value: true
+    initial_value: 3.0
+    min_value: 1.0
+    max_value: 15.0
+    step: 0.5
+
+  - platform: template
+    name: "Detection Distance EMA Window"
+    id: distance_ema_window
+    icon: "mdi:timer-outline"
+    entity_category: config
+    unit_of_measurement: "s"
+    optimistic: true
+    restore_value: true
+    initial_value: 3.0
+    min_value: 1.0
+    max_value: 15.0
+    step: 0.5
 
 # 7. RGB LED (onboard WS2812, GPIO1)
 light:
