@@ -197,6 +197,24 @@ text_sensor:
       }
       return std::string(buf);
 
+  # EMA-smoothed counterpart of "Detection Distance" above, formatted the
+  # same way per the "Distance Units" select. distance_ema (native cm) is
+  # the internal state; see the distance_ema_sensor numeric sensor below.
+  - platform: template
+    name: "Detection Distance (EMA)"
+    icon: "mdi:tape-measure"
+    update_interval: 1s
+    lambda: |-
+      if (std::isnan(id(distance_ema)))
+        return {};
+      char buf[16];
+      if (id(units_select).current_option() == "Metric") {
+        snprintf(buf, sizeof(buf), "%.2f m", id(distance_ema) / 100.0f);
+      } else {
+        snprintf(buf, sizeof(buf), "%.2f ft", id(distance_ema) * 0.0328084f);
+      }
+      return std::string(buf);
+
 sensor:
   # 4.2 mmWave -- respiratory rate
   - platform: seeed_mr60bha2
@@ -303,10 +321,12 @@ sensor:
     state_class: measurement
     accuracy_decimals: 1
 
+  # Native-cm state backing the "Detection Distance (EMA)" text sensor
+  # above; not itself exposed to HA (fixed cm unit would ignore the
+  # "Distance Units" select).
   - platform: template
     id: distance_ema_sensor
-    name: "Detection Distance (EMA)"
-    icon: "mdi:tape-measure"
+    internal: true
     unit_of_measurement: "cm"
     state_class: measurement
     accuracy_decimals: 2
