@@ -2556,8 +2556,10 @@ _update_via_bootstrap() {
   done
 
   local -a macs=()
+  local explicit_macs=0
   if [[ ${#want_macs[@]} -gt 0 ]]; then
     macs=("${want_macs[@]}")
+    explicit_macs=1
   else
     local node
     # Match the ESPHome node name, not the role -- they differ for roles that
@@ -2601,7 +2603,13 @@ _update_via_bootstrap() {
     warn "$failed '$role' device(s) failed to update"
     return 1
   fi
-  ok "All '$role' device(s) updated via bootstrap"
+  if [[ $explicit_macs -eq 1 ]]; then
+    local macs_joined
+    macs_joined=$(IFS=', '; echo "${macs[*]}")
+    ok "'$role' device(s) $macs_joined updated via bootstrap"
+  else
+    ok "All '$role' device(s) updated via bootstrap"
+  fi
 }
 
 # -- OTA the bootstrap partition FROM a running production device ------------
