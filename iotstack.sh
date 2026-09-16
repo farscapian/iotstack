@@ -1689,27 +1689,41 @@ list_yaml_configs() {
 
 # -- Bootstrap-mediated production updates -------------------------------------
 
+_iotstack_wait_online() {
+  # Shared poll loop for "is <hostname> reachable yet": TCP connect on
+  # <port> (skipped when <port> is empty) OR mDNS advertisement on
+  # <mdns_service>, retried every <interval>s up to <timeout>s, logging
+  # <log_msg> every <log_interval>s. Common shape behind _wait_for_device
+  # (bootstrap, conditional port) and _wait_for_production_online
+  # (production, always port 6053) -- they differ only in which
+  # port/service/cadence to poll, not in the poll mechanics.
+  # Usage: _iotstack_wait_online <hostname> <port> <mdns_service> <timeout> <interval> <log_interval> <log_msg>
+  local hostname="$1" port="$2" mdns_service="$3" timeout="$4"
+  local interval="$5" log_interval="$6" log_msg="$7"
+  local waited=0
+  while (( waited < timeout )); do
+    [[ -n "$port" ]] && _iotstack_ota_tcp_open "$hostname" "$port" && return 0
+    _iotstack_mdns_browse_contains "$hostname" -t -r "$mdns_service" && return 0
+    sleep "$interval"
+    waited=$((waited + interval))
+    (( waited % log_interval == 0 )) && info "$log_msg ($waited/${timeout}s)"
+  done
+  return 1
+}
+
 _wait_for_device() {
   # Wait for an mDNS device name (e.g. bootstrap-1a7cfc) to appear, up to timeout
   # seconds. Returns 0 if found, 1 on timeout.
   local name="$1"
   local timeout="${2:-60}"
-  local waited=0
-  # Bootstrap devices advertise _iotstack-bootstrap._tcp; production uses _esphomelib._tcp
-  local mdns_svc="_esphomelib._tcp"
-  [[ "$name" == "$(iotstack_bootstrap_role)-"* ]] && mdns_svc="$(iotstack_bootstrap_mdns_service)"
-  while (( waited < timeout )); do
-    if [[ "$name" == "$(iotstack_bootstrap_role)-"* ]] && _iotstack_ota_tcp_open "$name" 3232; then
-      return 0
-    fi
-    if _iotstack_mdns_browse_contains "$name" -t -r "$mdns_svc"; then
-      return 0
-    fi
-    sleep 2
-    waited=$((waited + 2))
-    (( waited % 20 == 0 )) && info "  ...still waiting for $name ($waited/${timeout}s)"
-  done
-  return 1
+  # Bootstrap devices advertise _iotstack-bootstrap._tcp and OTA on 3232;
+  # production advertises _esphomelib._tcp only (no TCP check to make here).
+  local mdns_svc="_esphomelib._tcp" port=""
+  if [[ "$name" == "$(iotstack_bootstrap_role)-"* ]]; then
+    mdns_svc="$(iotstack_bootstrap_mdns_service)"
+    port=3232
+  fi
+  _iotstack_wait_online "$name" "$port" "$mdns_svc" "$timeout" 2 20 "  ...still waiting for $name"
 }
 
 _find_production_hostname_for_mac() {
@@ -1823,19 +1837,7 @@ _wait_for_production_online() {
   # (6053) and/or _esphomelib._tcp mDNS -- not the bootstrap IP/OTA port.
   local hostname="$1"
   local max_wait="${2:-90}"
-  local waited=0
-  while (( waited < max_wait )); do
-    if timeout 3 bash -c "echo > /dev/tcp/${hostname}.local/6053" 2>/dev/null; then
-      return 0
-    fi
-    if _iotstack_mdns_browse_contains "$hostname" -t -r _esphomelib._tcp; then
-      return 0
-    fi
-    sleep 3
-    waited=$((waited + 3))
-    (( waited % 15 == 0 )) && info "  Still rebooting... ($waited/${max_wait}s)"
-  done
-  return 1
+  _iotstack_wait_online "$hostname" 6053 "_esphomelib._tcp" "$max_wait" 3 15 "  Still rebooting..."
 }
 
 _mdns_config_hash_for_hostname() {
