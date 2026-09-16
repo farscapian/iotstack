@@ -109,7 +109,7 @@ otbr_docker_is_installed() { command -v docker &>/dev/null; }
 
 # Minimal Docker Engine install (Docker CE + compose plugin). The full
 # OTBR container/nginx/reverse-proxy configuration happens later, on demand,
-# in otbr/otbrstack-docker-setup.sh (invoked by `iotstack otbr docker`).
+# in otbr/scripts/otbrstack-docker-setup.sh (invoked by `iotstack otbr docker`).
 install_otbr_docker() {
     if otbr_docker_is_installed; then
         echo "[OK] Docker already installed: $(docker --version)"

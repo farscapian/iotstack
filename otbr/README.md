@@ -346,16 +346,15 @@ Key variables:
 
 ```
 otbr.sh                    # iotstack subcommand dispatcher (sourced by ../iotstack.sh's cmd_otbr)
-otbrstack.sh                # Deprecated shim -- exec's `iotstack otbr ...`
-flash-piotbr.sh             # Raspberry Pi SD card flasher (called by iotstack otbr flash)
-provision_incus.sh          # Incus VM/container provisioner (called by iotstack otbr vm)
-otbrstack-snap-setup.sh     # Bare-metal snap provisioner (called by iotstack otbr snap)
-otbrstack-docker-setup.sh   # Bare-metal Docker provisioner (called by iotstack otbr docker)
-commission.sh               # Standalone dev tool: commission a Thread network over SSH
-run_rpiotbr_cycle.sh        # Standalone dev tool: flash + boot-probe + log-stream cycle
 scripts/
-  flash_rcp.sh          # ESP32-C6 RCP firmware builder and flasher
-  verify_rcp.py         # Spinel probe (checks if RCP firmware responds correctly)
+  flash-piotbr.sh             # Raspberry Pi SD card flasher (called by iotstack otbr flash)
+  provision_incus.sh          # Incus VM/container provisioner (called by iotstack otbr vm)
+  otbrstack-snap-setup.sh     # Bare-metal snap provisioner (called by iotstack otbr snap)
+  otbrstack-docker-setup.sh   # Bare-metal Docker provisioner (called by iotstack otbr docker)
+  commission.sh               # Standalone dev tool: commission a Thread network over SSH
+  run_rpiotbr_cycle.sh        # Standalone dev tool: flash + boot-probe + log-stream cycle
+  flash_rcp.sh                # ESP32-C6 RCP firmware builder and flasher
+  verify_rcp.py               # Spinel probe (checks if RCP firmware responds correctly)
 tests/
   test_otbr_vm.sh       # Integration test suite for Incus provisioning
 

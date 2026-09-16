@@ -131,7 +131,7 @@ trap _cleanup EXIT
 # ---------------------------------------------------------------------------
 if [[ "$SKIP_PROVISION" -eq 0 ]]; then
     section "Provisioning $INSTANCE_MODE ($INSTANCE_ARCH): $INSTANCE_NAME"
-    "${REPO_DIR}/provision_incus.sh" \
+    "${REPO_DIR}/scripts/provision_incus.sh" \
         "--${INSTANCE_MODE}" \
         "--arch=${INSTANCE_ARCH}" \
         "--name=${INSTANCE_NAME}" \

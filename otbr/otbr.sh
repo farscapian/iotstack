@@ -260,9 +260,9 @@ cmd_otbr_dispatch() {
                     echo "[otbr] Incus VM (native x86_64)  (scripts: ${_OTBR_DIR})"
                     {
                         if [[ "$_use_sg" -eq 1 ]]; then
-                            sg incus-admin -c "\"$_OTBR_DIR/provision_incus.sh\" ${_vm_args[*]+"${_vm_args[*]}"}"
+                            sg incus-admin -c "\"$_OTBR_DIR/scripts/provision_incus.sh\" ${_vm_args[*]+"${_vm_args[*]}"}"
                         else
-                            "$_OTBR_DIR/provision_incus.sh" "${_vm_args[@]+"${_vm_args[@]}"}"
+                            "$_OTBR_DIR/scripts/provision_incus.sh" "${_vm_args[@]+"${_vm_args[@]}"}"
                         fi
                     } 2>&1 | tee -a "$_otbr_log"
                     ;;
@@ -270,9 +270,9 @@ cmd_otbr_dispatch() {
                     echo "[otbr] Incus VM (arm64)  (scripts: ${_OTBR_DIR})"
                     {
                         if [[ "$_use_sg" -eq 1 ]]; then
-                            sg incus-admin -c "\"$_OTBR_DIR/provision_incus.sh\" --arch=arm64 ${_vm_args[*]+"${_vm_args[*]}"}"
+                            sg incus-admin -c "\"$_OTBR_DIR/scripts/provision_incus.sh\" --arch=arm64 ${_vm_args[*]+"${_vm_args[*]}"}"
                         else
-                            "$_OTBR_DIR/provision_incus.sh" --arch=arm64 "${_vm_args[@]+"${_vm_args[@]}"}"
+                            "$_OTBR_DIR/scripts/provision_incus.sh" --arch=arm64 "${_vm_args[@]+"${_vm_args[@]}"}"
                         fi
                     } 2>&1 | tee -a "$_otbr_log"
                     ;;
@@ -325,7 +325,7 @@ cmd_otbr_dispatch() {
                 "$_flash_branch" \
                 "$_flash_log_dir" \
                 | tee -a "$_otbr_log"
-            { "$_flash_wt/otbr/flash-piotbr.sh" "${_pass_args[@]+"${_pass_args[@]}"}"; } 2>&1 \
+            { "$_flash_wt/otbr/scripts/flash-piotbr.sh" "${_pass_args[@]+"${_pass_args[@]}"}"; } 2>&1 \
                 | tee -a "$_otbr_log"
             local _flash_rc="${PIPESTATUS[0]}"
             git -C "$_OTBR_REPO_ROOT" worktree remove --force "$_flash_wt" \
@@ -350,7 +350,7 @@ cmd_otbr_dispatch() {
                 "$(date '+%Y-%m-%d %H:%M:%S')" \
                 "$(_otbr_git_head)" \
                 | tee -a "$_otbr_log"
-            { "$_OTBR_DIR/otbrstack-docker-setup.sh" "${_pass_args[@]+"${_pass_args[@]}"}"; } 2>&1 \
+            { "$_OTBR_DIR/scripts/otbrstack-docker-setup.sh" "${_pass_args[@]+"${_pass_args[@]}"}"; } 2>&1 \
                 | tee -a "$_otbr_log"
             ;;
         snap)
@@ -363,7 +363,7 @@ cmd_otbr_dispatch() {
                 "$(date '+%Y-%m-%d %H:%M:%S')" \
                 "$(_otbr_git_head)" \
                 | tee -a "$_otbr_log"
-            { "$_OTBR_DIR/otbrstack-snap-setup.sh" "${_pass_args[@]+"${_pass_args[@]}"}"; } 2>&1 \
+            { "$_OTBR_DIR/scripts/otbrstack-snap-setup.sh" "${_pass_args[@]+"${_pass_args[@]}"}"; } 2>&1 \
                 | tee -a "$_otbr_log"
             ;;
         shutdown)
