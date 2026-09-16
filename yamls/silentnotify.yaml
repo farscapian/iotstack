@@ -39,3 +39,5 @@ api:
 
 nvs_secrets:
   api_nvs_key: prod_api_key
+  # Zero-trust, matches bootstrap.yaml: refuse to run/update without an active PSK
+  require_api_encryption: true

@@ -53,6 +53,8 @@ network:
 # Custom NVS secrets component -- reads API key and Thread TLV from NVS at startup
 nvs_secrets:
   api_nvs_key: prod_api_key
+  # Zero-trust, matches bootstrap.yaml: refuse to run/update without an active PSK
+  require_api_encryption: true
 
 api:
   # Encryption key loaded from NVS by nvs_secrets at runtime
