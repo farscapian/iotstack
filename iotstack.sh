@@ -331,6 +331,28 @@ _device_hostname() {
   printf '%s-%s\n' "$(_device_node_name "$role")" "$mac"
 }
 
+_resolve_role_for_mac_suffix() {
+  # Discover which configured role a device is currently running, by MAC
+  # suffix alone, via mDNS. Lets "iotstack update <mac>" work without the
+  # caller naming a role -- the device keeps whatever role it already has.
+  # Matches each role's real esphome.name (via _device_node_name), not the
+  # role string itself -- see the _device_hostname note above.
+  # Usage: _resolve_role_for_mac_suffix <mac_suffix>; echoes role on match.
+  local mac="$1"
+  local mdns_out role node
+  mdns_out=$(avahi-browse -t -r _esphomelib._tcp 2>/dev/null)
+  [[ -z "$mdns_out" ]] && return 1
+  while IFS= read -r role; do
+    [[ -z "$role" ]] && continue
+    node=$(_device_node_name "$role")
+    if grep -qi "${node}-${mac}" <<<"$mdns_out"; then
+      printf '%s\n' "$role"
+      return 0
+    fi
+  done < <(list_roles_from_conf)
+  return 1
+}
+
 _flash_sync_update_devices_cache() {
   # After smart_compile, write update_devices.sh's build cache so --reassign skips recompile.
   local yaml_file="$1"
@@ -2628,6 +2650,24 @@ cmd_update() {
         ;;
     esac
   done
+
+  # No role given, just MAC suffix(es) -- discover the device's current role
+  # via mDNS so "iotstack update <mac>" is enough; the role is left as-is.
+  if [[ -z "$device_or_yaml" && ${#mac_suffixes[@]} -gt 0 ]]; then
+    local _mac _role_for_mac _resolved_role=""
+    for _mac in "${mac_suffixes[@]}"; do
+      if ! _role_for_mac=$(_resolve_role_for_mac_suffix "$_mac"); then
+        err "Could not determine current role for MAC suffix $_mac (device not found via mDNS). Specify the role explicitly: iotstack update <role> $_mac"
+      fi
+      if [[ -z "$_resolved_role" ]]; then
+        _resolved_role="$_role_for_mac"
+      elif [[ "$_resolved_role" != "$_role_for_mac" ]]; then
+        err "MAC suffixes resolve to different roles ($_resolved_role vs $_role_for_mac) -- update them separately"
+      fi
+    done
+    device_or_yaml="$_resolved_role"
+    info "Resolved MAC suffix(es) to current role '$device_or_yaml' via mDNS"
+  fi
 
   if [[ -z "$device_or_yaml" ]]; then
     help_update

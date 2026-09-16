@@ -7,12 +7,15 @@ once in parallel.
 Usage:
   iotstack update [options] [<device>|<yaml>|all]
   iotstack update [options] [<MAC1> [MAC2 ...]] <device|yaml>
+  iotstack update [options] <MAC1> [MAC2 ...]
 
 Arguments:
   <device>      Device role (e.g., bleproxy, mmwave)
   <yaml>        Path to device config (e.g., yamls/bleproxy.yaml)
   all           Update all device configs in the project
-  <MAC1> [MAC2...]  MAC suffix(es) to update (6 hex digits each)
+  <MAC1> [MAC2...]  MAC suffix(es) to update (6 hex digits each). If no
+                    role/yaml is given, the role is discovered via mDNS
+                    from the device's current firmware and left unchanged.
 
 Options:
   --ota-password <pwd>  OTA password for device authentication
@@ -37,6 +40,7 @@ Examples:
   iotstack update a1a7b0 8e1aa8 bleproxy             # Specific devices by MAC
   iotstack update 135b60 1a7b00 1af95c threadrouter  # 3 specific Thread devices
   iotstack update bleproxy --ota-password <pwd>      # Update with OTA password
+  iotstack update 199ef4                             # By MAC only; role via mDNS
 
 For detailed help including security best practices, see:
   docs/help/iotstack-update-detailed.txt
