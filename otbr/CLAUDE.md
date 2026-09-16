@@ -1,60 +1,71 @@
-# raspi-otbrstack
+# otbr (OpenThread Border Router)
 
 Flash a Raspberry Pi 4B with Ubuntu Server 26.04 LTS pre-configured as an OpenThread Border Router (OTBR), using an ESP32-C6 as the Radio Co-Processor (RCP). Combined with a UPS Hat, batteries, and a small USB keypad, this makes a purpose-built Thread OTBR with Bluetooth+Thread commissioning capability via the chiptool snap.
+
+Part of iotstack -- invoked as `iotstack otbr <command>`, not as a standalone project.
 
 ## Key commands
 
 ```bash
 # Full flash (or cloud-init-only if Ubuntu Server already present)
-otbrstack flash /dev/sdX
+iotstack otbr flash /dev/sdX
 
 # Force full reflash
-otbrstack flash -f /dev/sdX
+iotstack otbr flash -f /dev/sdX
 
 # Skip confirmation prompt
-otbrstack flash -y /dev/sdX
+iotstack otbr flash -y /dev/sdX
 
-# Use a specific env file
-otbrstack flash --env-file=.env /dev/sdX
+# Use an alternate iotstack environment (~/.iotstack/environments/pangolin.env)
+iotstack -env=pangolin.env otbr flash /dev/sdX
 
 # Incus VM test (native x86_64, faster)
-otbrstack vm x64
+iotstack otbr vm x64
 
 # Incus system container test
-otbrstack vm x64 --container
+iotstack otbr vm x64 --container
 
 # Tear down Incus instance
-incus delete otbrstackvm64 --force   # or otbrstack-ct
+incus delete otbr-test-x64 --force   # or otbr-test-ct
 
 # Docker on bare metal (Ubuntu Server/Desktop; installs Docker CE + nginx)
-otbrstack docker
+iotstack otbr docker
 
 # Snap on bare metal (Ubuntu Server/Desktop; installs/configures openthread-border-router snap)
-otbrstack snap
+iotstack otbr snap
 ```
 
 ## Environment setup
 
-Env files live in `~/.otbrstack/env/`. Copy an example and fill it in:
+There is no otbr-specific env file. Configuration comes from the same
+iotstack environment as everything else:
 
-```bash
-cp .env ~/.otbrstack/env/.env   # or tvpc.env -- pick the closest example
-# Edit it: set THREAD_DATASET_TLV, WIFI_SSID, WIFI_PASSWORD, etc.
-# For the default, name it after your hostname or just .env:
-cp .env ~/.otbrstack/env/$(hostname).env
-```
+- **Settings** (`OTBR_HOSTNAME`, snap channels, MQTT, dongle IDs, etc.) live
+  in `~/.iotstack/environments/default.env` -- see `docs/.env.example` for
+  the full annotated list. Any setting can also be overridden by exporting
+  the same variable in your shell before running `iotstack`.
+- **Network secrets** (`WIFI_SSID`, `WIFI_PASSWORD`, `THREAD_DATASET_TLV`)
+  come from the iotstack pass store, namespaced by the active `-env=`
+  environment and seeded (as `CONFIGURE_ME` placeholders) by `setup.sh`:
+  ```bash
+  pass edit iotstack/default/common/wifi_ssid
+  pass edit iotstack/default/common/wifi_password
+  pass edit iotstack/default/common/thread_tlv
+  ```
 
-The env file is sourced automatically -- no `export` or `sudo -E` needed.
-`otbrstack` looks for `~/.otbrstack/env/$(hostname).env` first, then `~/.otbrstack/env/.env`.
+`otbr/otbr.sh`'s `_otbr_load_config()` resolves and exports all of this
+before an operational command (`vm`, `flash`, `docker`, `snap`) runs.
 
-### Relevant .env variables
+### Relevant settings
 
 | Variable | Scripts | Purpose |
 |----------|---------|---------|
-| `THREAD_DATASET_TLV` | all | Thread Active Operational Dataset (hex). Required. |
+| `THREAD_DATASET_TLV` | all | Thread Active Operational Dataset (hex). From pass store (`common/thread_tlv`); required. |
+| `WIFI_SSID` / `WIFI_PASSWORD` | flash | From pass store (`common/wifi_ssid`/`wifi_password`); optional if using Ethernet. |
+| `OTBR_HOSTNAME` | flash | Device hostname (default: `otbr-raspi4`) |
 | `SSH_PUBKEY` | flash, incus | SSH public key to inject into VM/image |
 | `SSH_MGMT_CIDRS` | flash | Space-separated IPs/CIDRs allowed SSH inbound via UFW (empty = allow all) |
-| `IDF_PATH` | snap, incus | Path to existing ESP-IDF install (optional); if unset and `idf.py` not in PATH, ESP-IDF is auto-cloned to `~/.otbrstack/cache/esp-idf` |
+| `IDF_PATH` | snap, incus | Path to existing ESP-IDF install (optional); if unset and `idf.py` not in PATH, ESP-IDF is auto-cloned to `~/.iotstack/otbr/cache/esp-idf` |
 | `DONGLE_VENDOR` | docker | USB vendor ID for Thread dongle (from `udevadm info`) |
 | `DONGLE_PRODUCT` | docker | USB product ID for Thread dongle |
 | `DONGLE_SERIAL` | docker | USB serial string for Thread dongle (unique; creates stable symlink) |
@@ -66,73 +77,68 @@ The env file is sourced automatically -- no `export` or `sudo -E` needed.
 | `MQTT_PORT` | flash | MQTT broker port (default: `1883`) |
 | `MQTT_USER` | flash | MQTT username (optional) |
 | `MQTT_PASSWORD` | flash | MQTT password (optional) |
-| `OT_REPO_PATH` | -- | **Removed.** |
-| `SIM_RCP_BIN` | -- | **Removed.** Sim binary is built automatically from `~/.otbrstack/cache/openthread/` by `otbrstack vm`. |
-| `SIM_RCP_URL` | -- | **Removed.** |
-| `SIM_CLI_BIN` | -- | **Removed.** `ot-cli` is built alongside `ot-rcp` and cached at `~/.otbrstack/cache/ot-rcp-sim/ot-cli`. |
-| `SIM_CLI_URL` | -- | **Removed.** |
 
 ## Architecture
 
-Four deployment paths share the same `.env` file and `THREAD_DATASET_TLV` variable:
+Four deployment paths share the same iotstack environment and pass-store secrets:
 
 | Command | Target OS | Runtime | RCP detection |
 |---------|-----------|---------|---------------|
-| `otbrstack flash` | Ubuntu Server 26.04 (Raspberry Pi) | snap (cloud-init) | ESP32-C6 via USB |
-| `otbrstack snap` | Ubuntu Server/Desktop (bare metal) | snap (live) | ESP32-C6 or Sonoff |
-| `otbrstack docker` | Ubuntu Server/Desktop (bare metal) | Docker CE + nginx | any USB dongle via udev symlink |
-| `otbrstack vm x64` / `otbrstack vm arm64` | Incus VM or container (test) | snap | simulated or USB passthrough |
+| `iotstack otbr flash` | Ubuntu Server 26.04 (Raspberry Pi) | snap (cloud-init) | ESP32-C6 via USB |
+| `iotstack otbr snap` | Ubuntu Server/Desktop (bare metal) | snap (live) | ESP32-C6 or Sonoff |
+| `iotstack otbr docker` | Ubuntu Server/Desktop (bare metal) | Docker CE + nginx | any USB dongle via udev symlink |
+| `iotstack otbr vm x64` / `iotstack otbr vm arm64` | Incus VM or container (test) | snap | simulated or USB passthrough |
 
-- `otbrstack flash` -- downloads Ubuntu Server 26.04 arm64+raspi image, verifies SHA-256, flashes to SD, injects cloud-init NoCloud payload into the `system-boot` partition
-- `otbrstack snap` -- detects USB RCP, verifies Spinel firmware, installs and configures the OTBR snap; runs as normal user (`sudo` invoked internally)
-- `otbrstack docker` -- installs Docker CE, pulls `openthread/otbrstack`, writes udev rule for stable dongle symlink, sets up nginx reverse proxy, joins Thread network; requires root
-- `otbrstack vm x64` / `otbrstack vm arm64` -- Incus VM or system container test; native x86_64 or arm64
+- `iotstack otbr flash` -- downloads Ubuntu Server 26.04 arm64+raspi image, verifies SHA-256, flashes to SD, injects cloud-init NoCloud payload into the `system-boot` partition
+- `iotstack otbr snap` -- detects USB RCP, verifies Spinel firmware, installs and configures the OTBR snap; runs as normal user (`sudo` invoked internally)
+- `iotstack otbr docker` -- installs Docker CE, pulls the OTBR image, writes udev rule for stable dongle symlink, sets up nginx reverse proxy, joins Thread network; requires root
+- `iotstack otbr vm x64` / `iotstack otbr vm arm64` -- Incus VM or system container test; native x86_64 or arm64
 - `incus/` -- cloud-init template for Incus VM and container
 - `cache/` -- all third-party downloaded content (see layout below)
 - `artifacts/` -- generated shared artifacts (cloud-init output, pyspinel venv)
 
 ### Docker architecture notes
 
-`otbrstack docker` is designed for **any USB Thread dongle** (Sonoff, ESP32-C6, Silicon Labs, etc.). The dongle is identified by USB vendor/product/serial via udev, which creates a stable `/dev/ttyTHREAD` symlink. nginx exposes the OTBR REST API on `:8080` and the web UI on `:8088`, both proxied from the container's `127.0.0.1` ports.
+`iotstack otbr docker` is designed for **any USB Thread dongle** (Sonoff, ESP32-C6, Silicon Labs, etc.). The dongle is identified by USB vendor/product/serial via udev, which creates a stable `/dev/ttyTHREAD` symlink. nginx exposes the OTBR REST API on `:8080` and the web UI on `:8088`, both proxied from the container's `127.0.0.1` ports.
 
 ### Snap architecture notes
 
-`otbrstack snap` prefers an **ESP32-C6** (Espressif vendor ID `303a`) and falls back to a Sonoff dongle (Silicon Labs `10c4:ea60`). It verifies RCP firmware via pyspinel before configuring the snap. The pyspinel venv is shared with other scripts at `~/.otbrstack/artifacts/pyspinel-venv/`.
+`iotstack otbr snap` prefers an **ESP32-C6** (Espressif vendor ID `303a`) and falls back to a Sonoff dongle (Silicon Labs `10c4:ea60`). It verifies RCP firmware via pyspinel before configuring the snap. The pyspinel venv is shared with other scripts at `~/.iotstack/otbr/artifacts/pyspinel-venv/`.
 
 ### Home directory layout
 
-All runtime data lives in `~/.otbrstack/` -- separate from the repo so the repo stays clean and shareable.
+Runtime data lives under `~/.iotstack/otbr/` -- inside the shared iotstack
+home, but namespaced away from ESP32 device artifacts (`~/.iotstack/artifacts/`
+etc.) so the two subsystems don't collide.
 
 ```
-~/.otbrstack/
-  env/
-    .env              <- default env (loaded if no hostname-specific file found)
-    <hostname>.env    <- per-machine env (takes priority over .env)
+~/.iotstack/otbr/
   cache/
-    ubuntu/server/    <- Ubuntu Server 26.04 arm64+raspi .img.xz and .img (otbrstack flash)
+    ubuntu/server/    <- Ubuntu Server 26.04 arm64+raspi .img.xz and .img (otbr flash)
     snap/             <- openthread-border-router .snap + .assert (all provisioners)
     esp32/rcp/        <- ESP32-C6 RCP app binary (built from esp-thread-br source)
     esp-idf/          <- shallow clone of espressif/esp-idf (auto-cloned if IDF_PATH unset)
     openthread/       <- shallow clone of openthread/openthread; cmake simulation build produces ot-rcp + ot-cli
-    ot-rcp-sim/       <- ot-rcp and ot-cli sim binaries (built from cache/openthread/ by otbrstack vm)
+    ot-rcp-sim/       <- ot-rcp and ot-cli sim binaries (built from cache/openthread/ by otbr vm)
   logs/
     <hostname>/       <- per-device log directories (flash sessions, vm runs, etc.)
   artifacts/
-    rpi/<hostname>/   <- cloud-init payloads from otbrstack flash
-    x64vm/            <- cloud-init payloads from otbrstack vm x64 runs
-    arm64vm/          <- cloud-init payloads from otbrstack vm arm64 runs
+    rpi/<hostname>/   <- cloud-init payloads from otbr flash
+    x64vm/            <- cloud-init payloads from otbr vm x64 runs
+    arm64vm/          <- cloud-init payloads from otbr vm arm64 runs
     pyspinel-venv/    <- auto-created Python venv for RCP Spinel probing
+    esptool-venv/     <- auto-created Python venv for ESP32-C6 RCP flashing
 ```
 
 ## Testing (Incus)
 
-`otbrstack vm x64` provisions an Incus VM or system container with the same OTBR first-boot sequence, but on native x86_64 -- no emulation overhead.
+`iotstack otbr vm x64` provisions an Incus VM or system container with the same OTBR first-boot sequence, but on native x86_64 -- no emulation overhead.
 
 ```bash
-otbrstack vm x64                          # VM (default), name=otbrstackvm64
-otbrstack vm x64 --container             # system container, name=otbrstack-ct
-otbrstack vm x64 --vm --name=otbrstack-test   # custom name
-otbrstack vm x64 --reprovision           # delete and reprovision
+iotstack otbr vm x64                          # VM (default), name=otbrvm64
+iotstack otbr vm x64 --container              # system container, name=otbr-ct
+iotstack otbr vm x64 --vm --name=otbr-test    # custom name
+iotstack otbr vm x64 --reprovision            # delete and reprovision
 ```
 
 **Container-only constraints:**
@@ -140,7 +146,9 @@ otbrstack vm x64 --reprovision           # delete and reprovision
 - `modprobe` in the container is a no-op; host kernel must have `cdc_acm`/`cp210x` loaded
 - If the OTBR snap's AppArmor profile blocks `/dev/pts/N` for the sim PTY, reconnect the interface manually: `incus exec <name> -- snap connect openthread-border-router:serial-port`
 
-**Prerequisite:** Run `setup.sh` first to populate `~/.otbrstack/cache/snap/`. The Incus provisioner reuses that cache.
+**Prerequisite:** Run `iotstack otbr setup` first (or say yes to incus during
+the main `setup.sh`) to install and initialize incus and populate
+`~/.iotstack/otbr/cache/snap/`. The Incus provisioner reuses that cache.
 
 ## RCP firmware flashing
 

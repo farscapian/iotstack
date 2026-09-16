@@ -10,7 +10,7 @@ _IOTSTACK_OTBR_LOADED=1
 
 _OTBR_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 _OTBR_REPO_ROOT="$(cd "${_OTBR_DIR}/.." && pwd)"
-_OTBR_HOME="${HOME}/.otbrstack"
+_OTBR_HOME="${IOTSTACK_HOME:-${HOME}/.iotstack}/otbr"
 
 # Append a minimal Host block to ~/.ssh/config for $1 if none exists.
 _otbr_ensure_ssh_config() {
@@ -52,11 +52,11 @@ _otbr_remove_known_host() {
     fi
 }
 
-# Ensure ~/.otbrstack exists and create convenience symlink in otbr/.
+# Ensure ~/.iotstack/otbr exists and create convenience symlink in otbr/.
 _otbr_ensure_home_symlink() {
     mkdir -p "$_OTBR_HOME"
 
-    local _symlink="${_OTBR_DIR}/.otbrstack"
+    local _symlink="${_OTBR_DIR}/.iotstack"
     if [[ -L "$_symlink" && "$(readlink -f "$_symlink")" == "$_OTBR_HOME" ]]; then
         return 0
     elif [[ -e "$_symlink" && ! -L "$_symlink" ]]; then
@@ -72,12 +72,55 @@ _otbr_git_head() {
     git -C "$_OTBR_REPO_ROOT" log -1 --oneline 2>/dev/null || echo 'no git'
 }
 
+# Resolve and export OTBR configuration for operational commands (vm, flash,
+# docker, snap). Non-secret settings come from the iotstack environment file
+# (~/.iotstack/environments/*.env, see the global -env= flag) and can be
+# overridden by exporting the same variable before invoking iotstack --
+# iotstack_env_name/iotstack_pass_common_read come from scripts/config.sh,
+# already sourced by iotstack.sh before cmd_otbr runs. Network secrets (WiFi,
+# Thread dataset) come from the iotstack pass store, seeded under
+# iotstack/<env>/common/* by setup.sh; an explicit export overrides those too.
+_otbr_load_config() {
+    export OTBR_HOSTNAME="${OTBR_HOSTNAME:-otbr-raspi4}"
+    export DEPLOY_MATTER_SERVER="${DEPLOY_MATTER_SERVER:-1}"
+    export SSH_PUBKEY="${SSH_PUBKEY:-}"
+    export SSH_MGMT_CIDRS="${SSH_MGMT_CIDRS:-}"
+    export OTBR_SNAP_CHANNEL="${OTBR_SNAP_CHANNEL:-latest/edge}"
+    export CHIP_TOOL_SNAP_CHANNEL="${CHIP_TOOL_SNAP_CHANNEL:-latest/stable}"
+    export SKIP_IMAGE_VERIFICATION="${SKIP_IMAGE_VERIFICATION:-0}"
+    export PULL_LATEST_REPOS="${PULL_LATEST_REPOS:-1}"
+    export SKIP_RCP_VERIFY="${SKIP_RCP_VERIFY:-0}"
+    export SKIP_CHROOT="${SKIP_CHROOT:-0}"
+    export MQTT_BROKER="${MQTT_BROKER:-}"
+    export MQTT_PORT="${MQTT_PORT:-1883}"
+    export MQTT_USER="${MQTT_USER:-}"
+    export MQTT_PASSWORD="${MQTT_PASSWORD:-}"
+
+    export WIFI_SSID="${WIFI_SSID:-$(iotstack_pass_common_read wifi_ssid 2>/dev/null || echo "")}"
+    export WIFI_PASSWORD="${WIFI_PASSWORD:-$(iotstack_pass_common_read wifi_password 2>/dev/null || echo "")}"
+    export THREAD_DATASET_TLV="${THREAD_DATASET_TLV:-$(iotstack_pass_common_read thread_tlv 2>/dev/null || echo "")}"
+    [[ "$WIFI_SSID" == "CONFIGURE_ME" ]] && WIFI_SSID=""
+    [[ "$WIFI_PASSWORD" == "CONFIGURE_ME" ]] && WIFI_PASSWORD=""
+    [[ "$THREAD_DATASET_TLV" == "CONFIGURE_ME" ]] && THREAD_DATASET_TLV=""
+
+    if [[ -n "${HTTP_PROXY:-}" ]]; then
+        export http_proxy="$HTTP_PROXY" https_proxy="$HTTP_PROXY"
+        local _proxy_hostport="${HTTP_PROXY#*://}"
+        _proxy_hostport="${_proxy_hostport%/}"
+        if command -v wait-for-it &>/dev/null; then
+            if ! wait-for-it --timeout=5 "$_proxy_hostport" -- true 2>/dev/null; then
+                echo "[otbr] WARNING: HTTP proxy ${_proxy_hostport} is not reachable; network operations may fail" >&2
+            fi
+        fi
+    fi
+}
+
 _otbr_show_help() {
     cat <<'EOF'
 iotstack otbr -- OpenThread Border Router provisioning
 
 Usage:
-  iotstack otbr [--env-file=PATH] <command> [args]
+  iotstack otbr <command> [args]
 
 Commands:
   setup             Install apt packages, esptool, incus (one-time)
@@ -91,21 +134,26 @@ Commands:
   restart <host>    Reboot a remote OTBR device
   help              Show this help
 
-Env files live in ~/.otbrstack/env/ (see otbr/.env.example).
-Use --env-file=PATH or iotstack -env=<name>.env otbr ... when the file is under ~/.otbrstack/env/.
+Configuration comes from the iotstack environment (~/.iotstack/environments/
+default.env, or an alternate selected with the global iotstack -env=<name>.env
+flag) -- see docs/.env.example for OTBR settings (OTBR_HOSTNAME, snap
+channels, MQTT, etc.). Any of those can also be overridden by exporting the
+same variable in your shell before running iotstack.
+
+Network secrets (WiFi, Thread dataset) come from the iotstack pass store,
+seeded under iotstack/<env>/common/{wifi_ssid,wifi_password,thread_tlv} by
+setup.sh. Edit them with: pass edit iotstack/<env>/common/thread_tlv
 EOF
 }
 
 cmd_otbr_dispatch() {
     _otbr_ensure_home_symlink
 
-    local _env_file="${IOTSTACK_OTBR_ENV_FILE:-}"
     local _pass_args=()
     local _arg _cmd=""
 
     for _arg in "$@"; do
         case "$_arg" in
-            --env-file=*) _env_file="${_arg#--env-file=}" ;;
             help) [[ -z "$_cmd" ]] && _cmd="help" ;;
             setup|vm|flash|docker|snap|shutdown|restart|logs)
                 [[ -z "$_cmd" ]] && _cmd="$_arg"
@@ -132,57 +180,39 @@ cmd_otbr_dispatch() {
             return 0
             ;;
         setup)
-            bash "$_OTBR_DIR/setup.sh"
-            return $?
+            # shellcheck source=scripts/ensure-otbr-deps.sh
+            source "${_OTBR_REPO_ROOT}/scripts/ensure-otbr-deps.sh"
+            install_otbr_apt_packages
+            install_otbr_esptool
+            install_otbr_incus
+            echo ""
+            echo "============================================================"
+            echo "  OTBR setup complete."
+            echo "  Run:  iotstack otbr help"
+            echo ""
+            echo "  Configure network settings in:"
+            echo "    ~/.iotstack/environments/default.env (see docs/.env.example)"
+            echo "  Configure WiFi/Thread secrets with:"
+            echo "    pass edit iotstack/default/common/wifi_ssid"
+            echo "    pass edit iotstack/default/common/wifi_password"
+            echo "    pass edit iotstack/default/common/thread_tlv"
+            echo "============================================================"
+            return 0
             ;;
     esac
 
-    # Resolve and export env for operational commands (not logs/shutdown/restart).
+    # Resolve config and secrets for operational commands (not logs/shutdown/restart).
     if [[ "$cmd" != "logs" && "$cmd" != "shutdown" && "$cmd" != "restart" ]]; then
-        if [[ -n "$_env_file" ]]; then
-            if [[ ! -f "$_env_file" ]]; then
-                echo "[otbr] env file not found: $_env_file" >&2
-                return 1
-            fi
-        else
-            local _hostname_env
-            _hostname_env="${_OTBR_HOME}/env/$(hostname).env"
-            if [[ -f "$_hostname_env" ]]; then
-                _env_file="$_hostname_env"
-            elif [[ -f "${_OTBR_HOME}/env/.env" ]]; then
-                _env_file="${_OTBR_HOME}/env/.env"
-            else
-                echo "[otbr] No $(hostname).env or .env found in ${_OTBR_HOME}/env/; create one or use --env-file=PATH" >&2
-                return 1
-            fi
-        fi
-        while IFS= read -r _eline; do
-            [[ "$_eline" =~ ^[[:space:]]*(#|$) ]] && continue
-            _evar="${_eline%%=*}"; _evar="${_evar%%[[:space:]]*}"
-            [[ -n "$_evar" ]] && unset "$_evar"
-        done < "${_OTBR_DIR}/.env.example"
-        echo "[otbr] Loading env from ${_env_file}"
-        set -o allexport
-        # shellcheck source=/dev/null
-        source "$_env_file"
-        set +o allexport
-        if [[ -n "${HTTP_PROXY:-}" ]]; then
-            export http_proxy="$HTTP_PROXY" https_proxy="$HTTP_PROXY"
-            local _proxy_hostport="${HTTP_PROXY#*://}"
-            _proxy_hostport="${_proxy_hostport%/}"
-            if command -v wait-for-it &>/dev/null; then
-                if ! wait-for-it --timeout=5 "$_proxy_hostport" -- true 2>/dev/null; then
-                    echo "[otbr] WARNING: HTTP proxy ${_proxy_hostport} is not reachable; network operations may fail" >&2
-                fi
-            fi
-        fi
+        _otbr_load_config
     fi
 
     case "$cmd" in
         vm)
             if ! command -v incus &>/dev/null; then
-                echo "[otbr] incus not found -- running setup to install and initialize it ..."
-                bash "$_OTBR_DIR/setup.sh"
+                echo "[otbr] incus not found -- installing and initializing it ..."
+                # shellcheck source=scripts/ensure-otbr-deps.sh
+                source "${_OTBR_REPO_ROOT}/scripts/ensure-otbr-deps.sh"
+                install_otbr_incus
                 if ! command -v incus &>/dev/null; then
                     echo "[otbr] ERROR: incus still not available after setup. Aborting." >&2
                     return 1

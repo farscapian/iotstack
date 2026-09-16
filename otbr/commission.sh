@@ -10,8 +10,12 @@
 #   --otbr      Use openthread-border-router snap (ot-ctl)  -- Thread only
 #   --chiptool  Use chip-tool snap -- Thread or Bluetooth+Thread
 #
-# ENV (set in .env or exported):
-#   THREAD_DATASET_TLV    Active dataset hex TLV            (required)
+#   --env-file=PATH is optional and layers on top of the iotstack environment
+#   (~/.iotstack/environments/default.env, or -env=<name>.env's target).
+#
+# ENV (from the iotstack environment, --env-file, or exported):
+#   THREAD_DATASET_TLV    Active dataset hex TLV (falls back to the pass
+#                         store: iotstack/<env>/common/thread_tlv)
 #   SSH_HOST              Target hostname or IP             (default: localhost)
 #   SSH_PORT              SSH port                          (default: 22)
 #   SSH_USER              SSH username                      (default: ubuntu)
@@ -57,17 +61,24 @@ fi
 # Env file
 # ---------------------------------------------------------------------------
 
+# shellcheck source=scripts/config.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/scripts/config.sh"
+
 if [[ -n "$_ENV_FILE" ]]; then
     [[ -f "$_ENV_FILE" ]] || { echo "env file not found: $_ENV_FILE" >&2; exit 1; }
-else
-    _ENV_FILE="${HOME}/.otbrstack/env/.env"
-    [[ -f "$_ENV_FILE" ]] || { echo "No .env found in ${HOME}/.otbrstack/env/; use --env-file=PATH" >&2; exit 1; }
+    set -a
+    # shellcheck source=/dev/null
+    source "$_ENV_FILE"
+    set +a
 fi
-set -a
-# shellcheck source=/dev/null
-source "$_ENV_FILE"
-set +a
 unset _ENV_FILE
+
+# THREAD_DATASET_TLV, if not exported or set above, falls back to the
+# iotstack pass store (iotstack/<env>/common/thread_tlv).
+if [[ -z "${THREAD_DATASET_TLV:-}" ]]; then
+    THREAD_DATASET_TLV="$(iotstack_pass_common_read thread_tlv 2>/dev/null || echo "")"
+    [[ "$THREAD_DATASET_TLV" == "CONFIGURE_ME" ]] && THREAD_DATASET_TLV=""
+fi
 
 # ---------------------------------------------------------------------------
 # SSH setup

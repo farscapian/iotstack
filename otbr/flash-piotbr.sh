@@ -37,9 +37,9 @@ IMAGE_URL="https://cdimage.ubuntu.com/releases/26.04/release/${IMAGE_FILENAME}"
 # SHA-256 of the compressed .xz as published by Canonical
 IMAGE_SHA256="10604098a0c4eeb7359e58e12b01badbce8c74b0d53b414e633ba0b047b512cd"
 
-# 1.2 All artefacts live under ~/.otbrstack/cache/ and ~/.otbrstack/artifacts/
+# 1.2 All artefacts live under ~/.iotstack/otbr/cache/ and ~/.iotstack/otbr/artifacts/
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OTBR_HOME="${OTBR_HOME:-${HOME}/.otbrstack}"
+OTBR_HOME="${OTBR_HOME:-${HOME}/.iotstack/otbr}"
 mkdir -p "${OTBR_HOME}/cache/ubuntu/server"
 IMAGE_XZ="${OTBR_HOME}/cache/ubuntu/server/${IMAGE_FILENAME}"
 IMAGE_IMG="${OTBR_HOME}/cache/ubuntu/server/${IMAGE_FILENAME%.xz}"

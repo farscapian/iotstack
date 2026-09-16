@@ -1,7 +1,8 @@
-# Symlink to ~/.otbr/ data home (local convenience; not shared)
-.otbr
+# Symlink to ~/.iotstack/otbr/ data home (local convenience; not shared)
+.iotstack
 
-# Legacy data dirs -- now live in ~/.otbr/ but may still exist here from before migration
+# Legacy data dirs -- now live in ~/.iotstack/otbr/ but may still exist here
+# from before migration (or from the earlier ~/.otbrstack/ layout)
 cache/
 artifacts/
 logs/

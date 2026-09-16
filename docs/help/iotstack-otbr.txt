@@ -1,11 +1,11 @@
 iotstack otbr -- OpenThread Border Router provisioning
 
 Provision Raspberry Pi OTBR devices, Incus test VMs, and bare-metal snap/Docker
-installations. Runtime data (cache, logs, artifacts) lives in ~/.otbrstack/.
+installations. Runtime data (cache, logs, artifacts) lives in ~/.iotstack/otbr/.
 
 Usage:
-  iotstack otbr [--env-file=PATH] <command> [args]
-  iotstack -env=<name>.env otbr <command>   # when file is in ~/.otbrstack/env/
+  iotstack otbr <command> [args]
+  iotstack -env=<name>.env otbr <command>   # use an alternate environment
 
 Commands:
   setup             One-time setup (apt packages, esptool, incus)
@@ -19,8 +19,13 @@ Commands:
   restart <host>    Reboot a remote OTBR device
   help              Show this help
 
-Env files:
-  Copy otbr/.env.example to ~/.otbrstack/env/.env or ~/.otbrstack/env/$(hostname).env
+Configuration:
+  Settings (OTBR_HOSTNAME, snap channels, MQTT, etc.) live in
+  ~/.iotstack/environments/default.env -- see docs/.env.example. WiFi and
+  Thread network secrets come from the pass store, seeded by setup.sh:
+    pass edit iotstack/default/common/wifi_ssid
+    pass edit iotstack/default/common/wifi_password
+    pass edit iotstack/default/common/thread_tlv
 
 Examples:
   iotstack otbr setup

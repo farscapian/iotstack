@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOSTNAME_FLAG="dev-piotbr"
 DEVICE=""   # auto-detected from SD_CARD_PATHS unless --device= is given
 YES=0
-ENV_FILE="${HOME}/.otbrstack/env/.env"
+ENV_FILE="${HOME}/.iotstack/environments/default.env"
 
 for _arg in "$@"; do
     case "$_arg" in
@@ -18,7 +18,7 @@ for _arg in "$@"; do
             echo "  -y             Skip prompt; sleep 2m with audible alert instead"
             echo "  --device=      Block device to flash (overrides auto-detect)"
             echo "  --hostname=    Target hostname (default: $HOSTNAME_FLAG)"
-            echo "  --env-file=    Env file to source (default: .env)"
+            echo "  --env-file=    Env file to source (default: ~/.iotstack/environments/default.env)"
             exit 0
             ;;
     esac
@@ -71,7 +71,7 @@ if [[ -z "$DEVICE" ]]; then
 fi
 
 # Unified log: all output goes to terminal AND logs/<host>/cycle.log (fresh each run)
-LOG="${HOME}/.otbrstack/logs/${HOSTNAME_FLAG}/cycle.log"
+LOG="${HOME}/.iotstack/otbr/logs/${HOSTNAME_FLAG}/cycle.log"
 mkdir -p "$(dirname "$LOG")"
 exec > >(tee "$LOG") 2>&1
 

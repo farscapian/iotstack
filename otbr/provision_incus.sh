@@ -32,7 +32,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-OTBR_HOME="${OTBR_HOME:-${HOME}/.otbrstack}"
+OTBR_HOME="${OTBR_HOME:-${HOME}/.iotstack/otbr}"
 PYSPINEL_VENV="${PYSPINEL_VENV:-${OTBR_HOME}/artifacts/pyspinel-venv}"
 INCUS_DIR="${SCRIPT_DIR}/incus"
 

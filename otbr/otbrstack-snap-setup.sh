@@ -9,7 +9,7 @@ set -euo pipefail
 # 1. Configuration
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OTBR_HOME="${OTBR_HOME:-${HOME}/.otbrstack}"
+OTBR_HOME="${OTBR_HOME:-${HOME}/.iotstack/otbr}"
 BAUD=460800
 IDF_PATH="${IDF_PATH:-}"
 INFRA_IF="${INFRA_IF:-$(ip route show default | awk '/default/ {print $5; exit}')}"

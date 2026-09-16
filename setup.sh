@@ -362,6 +362,47 @@ else
   ok "All Matter commissioning and Home Assistant integration dependencies installed"
 fi
 
+# -- OTBR (OpenThread Border Router) dependencies ---------------------------
+echo
+echo "========================================================"
+echo "OTBR (OpenThread Border Router) dependencies"
+echo "========================================================"
+echo
+
+# shellcheck source=scripts/ensure-otbr-deps.sh
+source "${SCRIPT_DIR}/scripts/ensure-otbr-deps.sh"
+
+install_otbr_apt_packages
+install_otbr_esptool
+
+read -p "Install incus (for 'iotstack otbr vm' test VMs)? (Y/n) " -n 1 -r
+echo
+if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+  install_otbr_incus
+else
+  dim "Skipping incus -- 'iotstack otbr vm' will offer to install it when run."
+fi
+
+read -p "Install Docker (for 'iotstack otbr docker')? (y/N) " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  install_otbr_docker
+else
+  dim "Skipping Docker -- 'iotstack otbr docker' installs it automatically when run."
+fi
+
+if ! command -v snap &>/dev/null; then
+  read -p "snapd not found. Install it (for 'iotstack otbr snap')? (Y/n) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+    ensure_otbr_snapd
+  else
+    dim "Skipping snapd -- 'iotstack otbr snap' requires it."
+  fi
+else
+  ok "snapd already installed"
+fi
+
 # -- chip-tool layout + snap interfaces -----------------------------------
 # shellcheck source=scripts/ensure-chip-tool-storage.sh
 source "${SCRIPT_DIR}/scripts/ensure-chip-tool-storage.sh"

@@ -7001,13 +7001,6 @@ main() {
       cmd_matter "$@"
       ;;
     otbr)
-      if [[ "$ENV_FILE" != "${IOTSTACK_ENVIRONMENTS_DIR}/default.env" ]]; then
-        local _otbr_env_candidate
-        _otbr_env_candidate="${HOME}/.otbrstack/env/$(basename "$ENV_FILE")"
-        if [[ -f "$_otbr_env_candidate" ]]; then
-          export IOTSTACK_OTBR_ENV_FILE="$_otbr_env_candidate"
-        fi
-      fi
       shift
       cmd_otbr "$@"
       ;;

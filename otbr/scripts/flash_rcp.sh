@@ -12,12 +12,12 @@
 #
 # Environment variables (all optional with sensible defaults)
 #   IDF_DIR          Path to the ESP-IDF clone
-#                    default: ~/.otbrstack/cache/esp-idf
+#                    default: ~/.iotstack/otbr/cache/esp-idf
 #   IDF_TOOLS_PATH   Path where esp-idf stores downloaded toolchains
 #                    default: ~/.espressif  (esp-idf default)
 #   RCP_BIN_CACHE    Path used to track the last-flashed binary
 #                    (sha256 comparison skips unnecessary reflashes)
-#                    default: ~/.otbrstack/cache/esp32/rcp/esp_ot_rcp.bin
+#                    default: ~/.iotstack/otbr/cache/esp32/rcp/esp_ot_rcp.bin
 #
 # Exit codes
 #   0  success (flashed or already up to date)
@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-_OTBR_HOME="${OTBR_HOME:-${HOME}/.otbrstack}"
+_OTBR_HOME="${OTBR_HOME:-${HOME}/.iotstack/otbr}"
 IDF_DIR="${IDF_DIR:-${_OTBR_HOME}/cache/esp-idf}"
 IDF_TOOLS_PATH="${IDF_TOOLS_PATH:-${HOME}/.espressif}"
 RCP_BIN_CACHE="${RCP_BIN_CACHE:-${_OTBR_HOME}/cache/esp32/rcp/esp_ot_rcp.bin}"

@@ -39,3 +39,9 @@ store, derived from the `.env` filename (`default.env` -> `default`,
 `iotstack/pangolin/roles/bleproxy/ota_password`. WiFi, Home Assistant, and
 per-role secrets are never shared between environments; see
 [secrets.md](secrets.md).
+
+**OTBR:** `iotstack otbr ...` reads the same environment file for its own
+settings (OTBR_HOSTNAME, snap channels, MQTT, etc. -- see `docs/.env.example`)
+and the same pass store for network secrets
+(`iotstack/<env>/common/{wifi_ssid,wifi_password,thread_tlv}`). There is no
+separate otbr env file or `--env-file` flag.
