@@ -2514,6 +2514,21 @@ _update_via_bootstrap_discover_macs() {
   [[ ${#macs[@]} -gt 0 ]]
 }
 
+_bootstrap_parked_hostnames() {
+  # bootstrap-<mac> hostnames currently advertised on the network, one per
+  # line. These devices do not advertise _esphomelib._tcp (removed on WiFi
+  # connect, see yamls/bootstrap.yaml), so _update_via_bootstrap_discover_macs
+  # never sees them -- this is the counterpart browse for bootstrap-parked
+  # devices, used to find ones whose production slot already matches a role.
+  local bs_role line
+  bs_role=$(iotstack_bootstrap_role)
+  while IFS= read -r line; do
+    if [[ $line =~ (${bs_role}-[0-9a-f]{6}) ]]; then
+      printf '%s\n' "${BASH_REMATCH[1]}"
+    fi
+  done < <(avahi-browse -t -r "$(iotstack_bootstrap_mdns_service)" 2>/dev/null) | sort -u
+}
+
 _update_via_bootstrap() {
   # iotstack update core path: switch to bootstrap if needed, OTA into production slot.
   # OTA never overwrites the bootstrap partition. Used by cmd_update and iotstack flash.
@@ -2557,6 +2572,20 @@ _update_via_bootstrap() {
     shift
   done
 
+  # -- Compile once, before discovery and fanning out per-device OTA jobs -----
+  # All macs below share this role's yaml_file. Each parallel job runs
+  # update_devices.sh --reassign for its one mac, which has its own
+  # compile-cache check -- but without this, several concurrent cache misses
+  # would each spawn an `esphome compile` into the SAME build directory.
+  # Compiling serially here first means every parallel --reassign call below
+  # sees a cache hit instead of racing on the build dir. Discovery (below)
+  # also needs this build's config_hash to recognize bootstrap-parked devices
+  # that already hold it, so compile happens before discovery now.
+  local device_name
+  device_name=$(basename "$yaml_file" .yaml)
+  smart_compile "$yaml_file" "$device_name" || err "Compile failed for '$role'."
+  _flash_sync_update_devices_cache "$yaml_file"
+
   local -a macs=()
   local explicit_macs=0
   if [[ ${#want_macs[@]} -gt 0 ]]; then
@@ -2568,6 +2597,35 @@ _update_via_bootstrap() {
     # shorten esphome.name, and matching "<role>-<mac>" finds nothing at all.
     node=$(_device_node_name "$role")
     iotstack_mdns_retry "'$role' device(s)" info _update_via_bootstrap_discover_macs || true
+
+    # The discovery above only sees devices currently running production
+    # (_esphomelib._tcp). A device parked on bootstrap -- e.g. a prior OTA
+    # left it there -- is invisible to it even when its production OTA slot
+    # already holds this exact role's image, so it would otherwise be
+    # silently skipped by a bare "iotstack update <role>" forever. Fold in
+    # any bootstrap-parked device whose advertised production_image_hash
+    # (PartitionManager::get_production_image_hash(), see
+    # docs/architecture.md) matches this build's config_hash -- strong
+    # evidence it already belongs to this role. A bootstrap-parked device
+    # with a non-matching hash is left alone: there is no network-visible
+    # device_role signal from bootstrap, so a mismatch could just as easily
+    # mean "a different role's device happens to be on bootstrap right now"
+    # -- recover those explicitly with "iotstack update <role> <mac>".
+    local expected_hash=""
+    expected_hash=$(_build_image_hash_for_yaml "$yaml_file" 2>/dev/null) || expected_hash=""
+    if [[ -n "$expected_hash" ]]; then
+      local bs_host bs_mac bs_hash
+      while IFS= read -r bs_host; do
+        [[ -z "$bs_host" ]] && continue
+        bs_mac="${bs_host##*-}"
+        [[ " ${macs[*]:-} " == *" ${bs_mac} "* ]] && continue
+        bs_hash=$(_mdns_txt_field_for_hostname "$bs_host" "$(iotstack_bootstrap_mdns_service)" production_image_hash 2>/dev/null) || bs_hash=""
+        if [[ -n "$bs_hash" && "$bs_hash" == "$expected_hash" ]]; then
+          info "[$bs_mac] parked on bootstrap, but production slot already matches '$role' ($bs_hash) -- including"
+          macs+=("$bs_mac")
+        fi
+      done < <(_bootstrap_parked_hostnames)
+    fi
   fi
 
   if [[ ${#macs[@]} -eq 0 ]]; then
@@ -2577,18 +2635,6 @@ _update_via_bootstrap() {
   local fs_secret
   fs_secret=$(iotstack_bootstrap_pass_ota_read) \
     || err "Bootstrap role OTA password not found in pass (provision a device first)."
-
-  # -- Compile once, before fanning out per-device OTA jobs -------------------
-  # All macs below share this role's yaml_file. Each parallel job runs
-  # update_devices.sh --reassign for its one mac, which has its own
-  # compile-cache check -- but without this, several concurrent cache misses
-  # would each spawn an `esphome compile` into the SAME build directory.
-  # Compiling serially here first means every parallel --reassign call below
-  # sees a cache hit instead of racing on the build dir.
-  local device_name
-  device_name=$(basename "$yaml_file" .yaml)
-  smart_compile "$yaml_file" "$device_name" || err "Compile failed for '$role'."
-  _flash_sync_update_devices_cache "$yaml_file"
 
   # -- Determine parallelism ---------------------------------------------
   # Mirrors update_devices.sh's own --jobs default/handling: up to 4

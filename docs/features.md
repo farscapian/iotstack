@@ -30,6 +30,20 @@ iotstack update a1a7b0 8e1aa8 bleproxy --dry-run
 - Only flashes devices with mismatched hashes (`--upgrade-delta`, default in `update_devices.sh`)
 - Fallback to `project_version` comparison if `config_hash` unavailable in mDNS
 - **`--erase` is not a valid `iotstack update` flag** -- it is USB-only and belongs to `iotstack flash` only
+- **Bootstrap-parked devices are folded in when their production image already matches.**
+  A bare `iotstack update <role>` (no explicit MACs) only discovers devices currently
+  running production (`_esphomelib._tcp`) -- a device parked on bootstrap (e.g. left
+  there by a prior interrupted OTA) is otherwise silently skipped forever, even if its
+  production OTA slot already holds this exact role's build. `_update_via_bootstrap`
+  (`iotstack.sh`) compiles first, then also browses `_iotstack-bootstrap._tcp` and
+  compares each `bootstrap-<mac>`'s advertised `production_image_hash` TXT
+  (`PartitionManager::get_production_image_hash()`, same 8-char `config_hash` format)
+  against the freshly compiled hash; a match is added to the batch and OTA'd via the
+  normal bootstrap-mediated path (`_ensure_device_on_bootstrap` already treats "already
+  on bootstrap" as a no-op switch). A bootstrap-parked device whose production slot does
+  **not** match is left alone -- bootstrap advertises no `device_role` TXT, so a mismatch
+  could mean "belongs to this role but stale" or "a different role's device is on
+  bootstrap right now," and only an explicit `iotstack update <role> <mac>` disambiguates.
 
 
 ### 3. Device Reassignment (`iotstack reassign` / `--reassign`)
