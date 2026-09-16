@@ -2576,13 +2576,26 @@ _update_via_bootstrap() {
   # IOTSTACK_DEFER_HA_REGISTRATION.
   IOTSTACK_DEFER_HA_REGISTRATION=1
   IOTSTACK_PENDING_HA_HOSTNAMES=()
+  # Every device is confirmed individually before its OTA runs -- a
+  # multi-device match (e.g. an mDNS-discovered role with many units) must
+  # never flash the whole fleet on one blanket "yes".
+  local skipped=0 hostname
   for mac in "${macs[@]}"; do
     echo ""
+    hostname="$(_device_hostname "$role" "$mac")"
+    warn "About to OTA-update device: $hostname (mac $mac, role $role)"
+    read -p "Proceed with this device? (y/N) " -n 1 -r
+    echo ""
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      info "Skipped $hostname"
+      skipped=$((skipped + 1))
+      continue
+    fi
     dev_pwd=$(echo -n "${fs_secret}|${mac}" | sha256sum | cut -c1-32)
     if [[ -n "$tty_device" ]]; then
-      _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "$(_device_hostname "$role" "$mac")" "$tty_device" "${ota_update_args[@]}" \
+      _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "$hostname" "$tty_device" "${ota_update_args[@]}" \
         || failed=$((failed + 1))
-    elif ! _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "$(_device_hostname "$role" "$mac")" "${ota_update_args[@]}"; then
+    elif ! _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "$hostname" "${ota_update_args[@]}"; then
       failed=$((failed + 1))
     fi
   done
@@ -2590,11 +2603,20 @@ _update_via_bootstrap() {
   _ota_via_bootstrap_flush_ha "$yaml_file"
 
   echo ""
-  if [[ $failed -eq 0 ]]; then
-    ok "All '$role' device(s) updated via bootstrap"
-  else
-    warn "$failed '$role' device(s) failed to update"
+  if [[ $failed -gt 0 ]]; then
+    if [[ $skipped -gt 0 ]]; then
+      warn "$failed '$role' device(s) failed to update ($skipped skipped by user)"
+    else
+      warn "$failed '$role' device(s) failed to update"
+    fi
     return 1
+  fi
+  if [[ $skipped -eq 0 ]]; then
+    ok "All '$role' device(s) updated via bootstrap"
+  elif [[ $skipped -eq ${#macs[@]} ]]; then
+    info "No '$role' device(s) updated -- all ${#macs[@]} skipped by user"
+  else
+    ok "Updated $(( ${#macs[@]} - skipped )) '$role' device(s) via bootstrap ($skipped skipped by user)"
   fi
 }
 
