@@ -40,6 +40,7 @@ iotstack update yamls/custom.yaml
 
 # Restart devices: one device, a whole role, or the fleet
 iotstack restart bleproxy-8dfcac
+iotstack restart 8dfcac
 iotstack restart bleproxy
 iotstack restart all
 
@@ -50,14 +51,15 @@ iotstack restart all --next
 
 ### Restarting devices
 
-`iotstack restart <device>|<role>|all [--next]` reboots live devices over the
-ESPHome native API. It presses buttons that every image already ships (see
-`yamls/common/partition_manager_base.yaml`), so it needs no firmware change and
-no USB cable -- only that the device is on the network.
+`iotstack restart <device>|<mac_suffix>|<role>|all [--next]` reboots live
+devices over the ESPHome native API. It presses buttons that every image
+already ships (see `yamls/common/partition_manager_base.yaml`), so it needs no
+firmware change and no USB cable -- only that the device is on the network.
 
 | Target | Meaning |
 |--------|---------|
 | `bleproxy-8dfcac` | One device (`<role>-<mac>`, or `bootstrap-<mac>` when it is booted into bootstrap) |
+| `8dfcac` | One device by MAC alone, role unspecified -- matched against whatever is live |
 | `bleproxy` | Every live device currently running that role |
 | `all` | Every live device, across all roles |
 

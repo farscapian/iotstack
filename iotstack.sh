@@ -4424,6 +4424,22 @@ _restart_resolve_targets() {
     return 0
   fi
 
+  # Bare <mac_suffix>: a single device, role unspecified -- same convenience as
+  # 'iotstack update <mac>' / 'iotstack logs <mac>'. Matched directly against
+  # the live set rather than via _resolve_role_for_mac_suffix, since that only
+  # sees production devices and we also need to reach bootstrap-booted ones.
+  if [[ "$target" =~ ^[0-9a-fA-F]{6}$ ]]; then
+    local want_mac
+    want_mac=$(echo "$target" | tr '[:upper:]' '[:lower:]')
+    for host in "${live[@]}"; do
+      if [[ "$host" == *"-${want_mac}" ]]; then
+        hosts_ref=("$host")
+        return 0
+      fi
+    done
+    err "Device not found on the network: MAC suffix ${want_mac}. Run 'iotstack devices'."
+  fi
+
   # <role|node>-<mac>: a single device.
   if [[ "$target" =~ ^(.+)-([0-9a-fA-F]{6})$ ]]; then
     local want_node="${BASH_REMATCH[1]}" want_mac want_host

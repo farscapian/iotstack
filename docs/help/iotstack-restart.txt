@@ -9,13 +9,15 @@ By default the device reboots into the partition it is already running. With
 on bootstrap, and a bootstrap device comes back on production.
 
 Usage:
-  iotstack restart <device>|<role>|all [--next]
+  iotstack restart <device>|<mac_suffix>|<role>|all [--next]
 
 Arguments:
-  <device>   A single device, as <role>-<mac> (e.g. bleproxy-8dfcac) or
-             bootstrap-<mac> for a device currently booted into bootstrap
-  <role>     Every live device currently running that role (e.g. bleproxy)
-  all        Every live device, across all roles
+  <device>      A single device, as <role>-<mac> (e.g. bleproxy-8dfcac) or
+                bootstrap-<mac> for a device currently booted into bootstrap
+  <mac_suffix>  A single device by MAC alone (e.g. 8dfcac), role unspecified --
+                matched against whatever is live on the network right now
+  <role>        Every live device currently running that role (e.g. bleproxy)
+  all           Every live device, across all roles
 
 Options:
   --next     Switch to the other boot partition, then reboot into it
@@ -23,6 +25,8 @@ Options:
 Examples:
   iotstack restart bleproxy-8dfcac          # Reboot one device in place
   iotstack restart bleproxy-8dfcac --next   # Reboot it into the other partition
+  iotstack restart 8dfcac                   # Reboot one device by MAC alone
+  iotstack restart 8dfcac --next            # Same, into the other partition
   iotstack restart bleproxy                 # Reboot every live bleproxy
   iotstack restart all                      # Reboot the whole fleet
   iotstack restart all --next               # Boot the whole fleet to the other slot
