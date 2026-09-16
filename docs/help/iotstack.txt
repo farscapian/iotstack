@@ -9,6 +9,8 @@ Commands:
 
   update              Compile and flash device(s) over-the-air (OTA)
   reassign            Flash specific devices to a different configuration
+  ota-bootstrap       OTA a new bootstrap image into fielded devices (opt-in,
+                      see IOTSTACK_ENABLE_BOOTSTRAP_OTA in docs/.env.example)
   verify              Check if devices match the current build hash
   verify-flash        Compare on-device flash checksums to build artifacts (USB)
   flash               Flash device via serial/USB (for bricked devices)

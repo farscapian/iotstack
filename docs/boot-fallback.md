@@ -13,8 +13,19 @@ flash layout predates the current ota_0/ota_1 table), [partitions.md](partitions
 ## The gap
 
 The partition table is two app slots: `bootstrap` (ota_0, permanent) and
-`production` (ota_1, the only OTA target). See
+`production` (ota_1, the only OTA target -- except when
+`IOTSTACK_ENABLE_BOOTSTRAP_OTA` is opted in, see `docs/features.md`
+"OTA the bootstrap partition from production"). See
 `yamls/iotstack_partition_table.csv`.
+
+That opt-in feature raises the stakes of everything below: bootstrap is
+described throughout this doc as "the floor" precisely because nothing can
+normally write a bad image into it. With the flag on, something can. There
+is still no boot-health watchdog (Layer 2, below) to catch a bootstrap image
+that boots but later crash-loops -- `iotstack ota-bootstrap` mitigates this
+with a one-time mDNS-hash confirmation right after the OTA, but that is not
+a substitute for an on-device watchdog. Do not treat the opt-in feature as
+safe to use unattended on a fleet until Layer 2 exists.
 
 Every path that moves a device into bootstrap today is manual:
 

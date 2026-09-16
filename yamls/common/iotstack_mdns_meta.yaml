@@ -8,3 +8,9 @@ mdns:
       txt:
         bootstrap_image_hash: !lambda 'return id(partition_mgr).get_bootstrap_image_hash();'
         production_image_hash: !lambda 'return id(partition_mgr).get_production_image_hash();'
+        # On-device ota_0 size, in bytes, as actually provisioned in this
+        # device's partition table -- not the locally-generated CSV, which
+        # may since have been regenerated with a different size. Used by
+        # `iotstack ota-bootstrap` to preflight-check a new bootstrap image
+        # fits before attempting to OTA it in.
+        bootstrap_partition_size: !lambda 'return to_string(id(partition_mgr).get_bootstrap_partition_size());'

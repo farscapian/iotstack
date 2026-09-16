@@ -141,6 +141,9 @@ void NVSSecrets::setup() {
   // initialized the stack by the time this setup runs.
   apply_thread_dataset_();
   apply_api_encryption_key_();
+#ifdef USE_OTA
+  apply_ota_password_();
+#endif
 #ifdef USE_LOGGER
   apply_log_level_();
 #endif
@@ -190,6 +193,24 @@ void NVSSecrets::apply_api_encryption_key_() {
   ESP_LOGI(TAG, "[NVS] API encryption enabled (key loaded from '%s')", api_nvs_key_.c_str());
 #endif
 }
+
+#ifdef USE_OTA
+void NVSSecrets::apply_ota_password_() {
+  if (ota_password_.empty()) {
+    ESP_LOGW(TAG, "[NVS] No OTA password '%s' in NVS -- OTA server is running WITHOUT a password check",
+             ota_nvs_key_.c_str());
+    return;
+  }
+  if (ota_component_ == nullptr) {
+    ESP_LOGW(TAG, "[NVS] OTA password loaded from NVS but no ota: component is wired via "
+                  "nvs_secrets' 'ota_id' -- password is NOT being enforced. Add 'ota_id: <id>' "
+                  "to this device's nvs_secrets config.");
+    return;
+  }
+  ota_component_->set_auth_password(ota_password_);
+  ESP_LOGI(TAG, "[NVS] OTA auth password applied from NVS key '%s'", ota_nvs_key_.c_str());
+}
+#endif
 
 void NVSSecrets::apply_thread_dataset_() {
 #ifdef USE_OPENTHREAD

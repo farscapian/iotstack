@@ -169,6 +169,18 @@ export CLEAN_BUILD_DIRECTORY="${CLEAN_BUILD_DIRECTORY:-0}"
 # 1: complete ESPHome discovery via WebSocket + device api_encryption_key from pass
 export PERFORM_HA_DEVICE_REGISTRATION="${PERFORM_HA_DEVICE_REGISTRATION:-0}"
 
+# Compile production firmware with an opt-in OTA endpoint that lets
+# `iotstack ota-bootstrap` push a new bootstrap image to devices already in
+# the field, without a USB trip. 0 (default): production firmware has no OTA
+# server at all, matching today's "bootstrap is never overwritten" invariant.
+# 1: production builds also accept an OTA write, which -- per ESP-IDF's
+# next-update-partition semantics -- always lands in ota_0 (bootstrap), never
+# ota_1 (production, still running). See docs/features.md and
+# docs/boot-fallback.md before enabling: this is the fleet's only recovery
+# floor with no boot-health watchdog yet, so a bad bootstrap image is not
+# remotely recoverable.
+export IOTSTACK_ENABLE_BOOTSTRAP_OTA="${IOTSTACK_ENABLE_BOOTSTRAP_OTA:-0}"
+
 # websocat buffer for Home Assistant WebSocket replies. A message larger than the
 # buffer (default 65536) is emitted as several newline-separated chunks, which
 # splits a JSON string mid-value and makes jq fail on the whole reply -- a device

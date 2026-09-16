@@ -53,7 +53,67 @@ scripts/update_devices.sh --reassign 19b164 199ef4 yamls/mmwave.yaml
 - Updates Home Assistant entity IDs if HA integration is configured
 - Warns if any requested MACs are offline
 
-### 4. Verify (`iotstack verify`)
+### 4. OTA the Bootstrap Partition from Production (`iotstack ota-bootstrap`)
+
+Opt-in. Pushes a new bootstrap image directly to devices that are currently
+running production, so bootstrap can be refreshed across a fleet without a
+USB trip. Requires `IOTSTACK_ENABLE_BOOTSTRAP_OTA=1` in the active `.env`
+(see `docs/.env.example`) -- off by default, in which case production
+firmware has no OTA server at all, matching the pre-existing invariant that
+OTA never overwrites bootstrap:
+
+```bash
+iotstack ota-bootstrap bleproxy              # All bleproxy devices, skip up-to-date
+iotstack ota-bootstrap 199ef4                # By MAC only; role via mDNS
+iotstack ota-bootstrap all --dry-run         # Preview across the whole fleet
+iotstack ota-bootstrap bleproxy --force      # Re-flash bootstrap even if unchanged
+```
+
+**How it works:**
+- With the flag on, `iotstack_prepare_compile_yaml()` (`scripts/iotstack-version.sh`)
+  injects `yamls/common/production_bootstrap_ota.yaml` as a `packages:` sibling
+  into the temp compile copy of every production role -- the checked-in role
+  YAML (e.g. `yamls/bleproxy.yaml`) is never edited, and a build with the flag
+  off has zero trace of the package.
+- ESP-IDF's `esp_ota_get_next_update_partition()` always targets the OTA slot
+  that is NOT currently running. Since production firmware runs from `ota_1`,
+  any OTA write it accepts automatically and unavoidably lands in `ota_0`
+  (bootstrap) -- that IS the mechanism, nothing custom-built.
+- `_ota_bootstrap_via_production` (`iotstack.sh`) drives one device at a time:
+  confirms the device advertises `_iotstack-bootstrap-target._tcp` (built with
+  the flag on -- a fleet may be mid-rollout, so this is checked per-device,
+  not assumed from the local `.env`), preflight-checks the new bootstrap
+  firmware's size against the device's own reported `ota_0` size
+  (`bootstrap_partition_size` mDNS TXT, from
+  `PartitionManager::get_bootstrap_partition_size()`), skips devices whose
+  `bootstrap_image_hash` TXT already matches unless `--force`, then runs
+  `esphome upload` against the production hostname with a distinct
+  per-device password (see `docs/security.md`).
+- ESPHome's OTA component always boots what it just wrote, so the device
+  reboots into the new bootstrap image automatically. The command then
+  confirms the new image re-advertised the expected `config_hash` over
+  `_iotstack-bootstrap._tcp` -- a mandatory, non-skippable gate, since there
+  is no automatic rollback if a bad-but-not-corrupt image boots and
+  crash-loops (no boot-health watchdog exists yet, see `docs/boot-fallback.md`).
+  Only after that confirmation does it flip the device back to production by
+  pressing the same "Toggle Boot Partition" button entity `iotstack restart
+  <device> --next` already uses (no new API surface).
+- If the confirmation step fails, or the flip-back step is interrupted, the
+  device is left parked on bootstrap rather than touched further -- recover
+  it with `iotstack update <role> <mac>` or `iotstack restart <device> --next`,
+  exactly as for any other device on bootstrap. No new recovery machinery
+  was added for this; the existing bootstrap-mediated recovery flow already
+  covers it.
+- Uses a distinct pass-store secret (`bootstrap-ota-from-production`), never
+  the existing bootstrap-mode OTA secret -- see `docs/security.md` for why.
+
+**Residual risk:** unlike a bad production image (survivable -- bootstrap is
+still there), a bad-but-not-corrupt bootstrap image that boots and later
+crash-loops is not remotely recoverable, since bootstrap is the fleet's own
+recovery floor. The mDNS-hash confirmation above is the only mitigation
+today. Test on one device before rolling out to a fleet.
+
+### 5. Verify (`iotstack verify`)
 Compile (or cache-hit) and compare each device's runtime `config_hash` against the build -- no flashing:
 
 ```bash
@@ -63,7 +123,7 @@ iotstack verify all
 
 Uses `update_devices.sh --verify`. Discovery and mismatch reporting must use `info()` / `ok()` / `err()`, not `log()` alone (see gotchas).
 
-### 5. Home Assistant Integration
+### 6. Home Assistant Integration
 - Uses WebSocket API (NOT REST API -- REST endpoints are internal, not public)
 - Recreates entity IDs after reassignment to reflect new device configuration
 - Filters updates to ESPHome platform only (`platform == 'esphome'`)

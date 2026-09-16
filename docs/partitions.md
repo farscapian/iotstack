@@ -1,7 +1,9 @@
 # Partition Configuration
 
 
-**Two-partition scheme:** permanent **bootstrap** (`ota_0`) + **production** (`ota_1`). All production OTA runs from bootstrap so the bootstrap image is never overwritten. Partition sizes are calculated from actual compiled firmware binary sizes.
+**Two-partition scheme:** permanent **bootstrap** (`ota_0`) + **production** (`ota_1`). All production OTA runs from bootstrap so the bootstrap image is never overwritten -- true by default; see the "OTA the bootstrap partition from production" caveat below for the opt-in exception. Partition sizes are calculated from actual compiled firmware binary sizes.
+
+**Opt-in exception (`IOTSTACK_ENABLE_BOOTSTRAP_OTA`, `iotstack ota-bootstrap`):** when enabled, production firmware gets its own OTA endpoint that -- per ESP-IDF's next-update-partition semantics -- writes directly into `ota_0`. Off by default, in which case the invariant above holds exactly as stated. See `docs/features.md` and `docs/boot-fallback.md`. This also means bootstrap's dynamically-sized partition (see below) has no reserved slack for accepting a larger bootstrap image over OTA: a new bootstrap build only fits a given device's `ota_0` if it is no larger than that device's original margin allowed for.
 
 ### Calculation Process
 

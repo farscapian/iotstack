@@ -149,12 +149,20 @@ nvs_secrets:
   update_api_nvs_key: prod_api_key
   # Refuse update_nvs_secrets unless the bootstrap PSK is active (no plaintext).
   require_api_encryption: true
+  # Keep this ota: instance's auth password in sync with the ota_password NVS
+  # key at boot (apply_ota_password_() in nvs_secrets.cpp).
+  ota_id: bootstrap_ota
 
 # OTA Configuration for bootstrap partition
-# Password is dynamically set by nvs_secrets component from NVS
-# Each device has a unique OTA password derived at flash time
+# Password is dynamically set by nvs_secrets component from NVS (see ota_id
+# above). The literal "" placeholder below is required to compile in
+# ESPHome's password-auth code path (USE_OTA_PASSWORD) at all -- it is
+# overwritten at runtime by apply_ota_password_(), never used as-is.
+# Each device has a unique OTA password derived at flash time.
 ota:
   - platform: esphome
+    id: bootstrap_ota
+    password: ""
 
 # Boot button, restart button and partition-toggle button come from the shared
 # partition_manager package (see packages: above).

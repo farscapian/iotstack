@@ -1,0 +1,46 @@
+# Opt-in: lets a running production device accept an OTA write targeting its
+# own bootstrap (ota_0) partition. Only included at compile time when
+# IOTSTACK_ENABLE_BOOTSTRAP_OTA=1 (see iotstack_prepare_compile_yaml() in
+# scripts/iotstack-version.sh, which injects this file as a sibling under
+# this role's `packages:` key into the temp compile copy -- the checked-in
+# per-role YAML, e.g. yamls/bleproxy.yaml, is never edited). When the flag
+# is off (default), none of this is compiled into production firmware at
+# all: zero attack surface.
+#
+# ESP-IDF's esp_ota_get_next_update_partition() always targets whichever OTA
+# slot is NOT currently running. Since this firmware runs from ota_1
+# (production), any OTA write accepted here automatically and unavoidably
+# lands in ota_0 (bootstrap) -- that's the whole mechanism, not something
+# built here. See docs/features.md ("OTA the bootstrap partition from
+# production") for the full flow driven by `iotstack ota-bootstrap`.
+#
+# password: "" is a required placeholder (never used as-is) to compile in
+# ESPHome's password-auth code path (USE_OTA_PASSWORD) at all -- the real
+# per-device password is applied at runtime from NVS by nvs_secrets'
+# apply_ota_password_(), same mechanism as bootstrap.yaml's own ota: block.
+ota:
+  - platform: esphome
+    id: bootstrap_ota_from_production
+    password: ""
+
+nvs_secrets:
+  # Deliberately a DISTINCT NVS key (and pass-store secret, see
+  # docs/security.md) from bootstrap.yaml's own "ota_password" -- this
+  # endpoint is reachable while the device is in normal service, a
+  # different and higher-stakes trust boundary than the existing
+  # bootstrap-mode OTA endpoint (which requires the device to already have
+  # been deliberately switched into recovery mode).
+  ota_nvs_key: bootstrap_ota_from_prod_pw
+  ota_id: bootstrap_ota_from_production
+
+# Advertise that this specific build accepts bootstrap-target OTA, so
+# `iotstack ota-bootstrap` can tell a flag-enabled build apart from one
+# where the flag was off at compile time -- a fleet may be mid-rollout, so
+# the CLI must not just trust the operator's local .env.
+mdns:
+  services:
+    - service: "_iotstack-bootstrap-target"
+      protocol: "_tcp"
+      port: 3232
+      txt:
+        bootstrap_ota_ready: "1"

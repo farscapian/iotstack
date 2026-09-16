@@ -125,6 +125,17 @@ iotstack_prepare_compile_yaml() {
   version=$(iotstack_project_version)
   sed -i "s/project_version: \"[^\"]*\"/project_version: \"${version}\"/" "$compile_yaml"
 
+  # Opt-in: fold the bootstrap-target OTA endpoint into production builds only
+  # (never bootstrap itself, which already has its own ota:). Off by default --
+  # see docs/.env.example. Injected here, not into the checked-in role YAML, so
+  # flipping the flag needs no per-role edits and a build with it off has zero
+  # trace of the package. ESPHome's config_hash naturally differs once the
+  # resolved config differs, so no separate cache-key handling is needed.
+  if [[ "${IOTSTACK_ENABLE_BOOTSTRAP_OTA:-0}" == "1" ]] \
+      && ! { declare -F _is_bootstrap_yaml &>/dev/null && _is_bootstrap_yaml "$src_yaml"; }; then
+    sed -i '/^packages:/a\  bootstrap_ota_endpoint: !include common/production_bootstrap_ota.yaml' "$compile_yaml"
+  fi
+
   printf '%s\n' "$compile_yaml"
 }
 

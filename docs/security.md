@@ -78,3 +78,55 @@ never exposed on the wire.
 > before it is relied upon in the field (no ESP32 available at implementation
 > time). Validate: encrypted `update_nvs_secrets` succeeds on a keyed device, and
 > is refused on an erased device.
+
+## OTA password is now actually enforced on-device
+
+`nvs_secrets` reads an OTA password from NVS on every image (`ota_password`
+key on bootstrap; `bootstrap_ota_from_prod_pw` on the opt-in production
+endpoint -- see below), but historically never applied it to ESPHome's `ota:`
+component -- the value was read into `ota_password_` and never used, so the
+OTA endpoint accepted uploads authenticated by network reachability alone.
+`apply_ota_password_()` (`nvs_secrets.cpp`, called from `setup()`) now pushes
+it into the `ota:` component via `set_auth_password()`, mirroring the
+existing `apply_api_encryption_key_()` pattern. This requires the `ota:`
+block to declare a `password: ""` placeholder (never used as-is -- it just
+compiles in ESPHome's `USE_OTA_PASSWORD` code path) and `nvs_secrets` to be
+told which `ota:` instance to apply to via a new `ota_id:` config key.
+
+> **Status:** same caveat as above -- requires hardware validation (a wrong
+> or missing OTA password must now be genuinely rejected, not silently
+> accepted).
+
+## Bootstrap-from-production OTA secret (`iotstack ota-bootstrap`)
+
+Opt-in feature (`IOTSTACK_ENABLE_BOOTSTRAP_OTA`, see `docs/.env.example` and
+`docs/features.md`) that lets a running production device accept an OTA
+write into its own bootstrap partition. Uses a **distinct** pass-store
+secret from the existing bootstrap-mode OTA secret
+(`iotstack_bootstrap_pass_ota_read` / `iotstack/<env>/roles/<bootstrap-role>/ota_password`):
+
+```
+iotstack/<env>/roles/bootstrap-ota-from-production/ota_password
+```
+
+(`iotstack_prod_bootstrap_ota_pass_path` / `_read` in
+`scripts/iotstack-bootstrap.sh`; per-device password is
+`sha256(secret|mac)[:32]`, same derivation as everywhere else.)
+
+**Why a separate secret, not reuse:** the existing bootstrap-mode secret's
+trust boundary is "the operator already deliberately switched this device
+into recovery mode" (itself gated behind `switch_to_bootstrap`, which
+requires production's encrypted API). This new secret's trust boundary is
+"leaking it lets anyone on the LAN overwrite the recovery partition of an
+otherwise healthy, in-service production device" -- a materially different
+and higher-stakes boundary. Keeping them separate lets an operator rotate or
+disable "OTA bootstrap from production" fleet-wide (e.g. after a one-time
+patch campaign) without touching the unrelated recovery-mode secret, and
+keeps `pass show`/audit trails distinguishing the two operations.
+
+Provision it the same way as any other OTA password (see "Pass password
+handling" above -- echo twice):
+
+```bash
+{ echo "$password"; echo "$password"; } | pass insert -f "iotstack/default/roles/bootstrap-ota-from-production/ota_password"
+```

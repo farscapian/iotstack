@@ -121,6 +121,36 @@ iotstack_bootstrap_pass_ota_read() {
   return 0
 }
 
+iotstack_prod_bootstrap_ota_pass_path() {
+  # Secret authorizing bootstrap-partition OTA FROM a running production
+  # device (IOTSTACK_ENABLE_BOOTSTRAP_OTA / `iotstack ota-bootstrap`).
+  # Deliberately distinct from iotstack_bootstrap_pass_ota_path(): that
+  # secret's trust boundary is "device already deliberately switched into
+  # bootstrap/recovery mode"; this one's is "leaking it lets anyone on the
+  # LAN overwrite the recovery partition of an otherwise healthy, in-service
+  # production device" -- keep them independently rotatable. See
+  # docs/security.md. Fleet-wide (like the bootstrap role's own OTA secret),
+  # not per-device-role, hence the synthetic "role" name below.
+  iotstack_pass_role_path "bootstrap-ota-from-production" ota_password
+}
+
+iotstack_prod_bootstrap_ota_pass_read() {
+  local path secret
+  path=$(iotstack_prod_bootstrap_ota_pass_path)
+  secret=$(pass show "$path" 2>/dev/null) || true
+  [[ -n "$secret" ]] && { printf '%s' "$secret"; return 0; }
+  return 1
+}
+
+iotstack_prod_bootstrap_ota_device_password() {
+  # Per-device OTA password: sha256(secret|mac)[:32]. Mirrors the derivation
+  # in iotstack.sh's _update_via_bootstrap / iotstack_bootstrap_device_api_key.
+  local mac="$1" base
+  base=$(iotstack_prod_bootstrap_ota_pass_read 2>/dev/null) || return 1
+  [[ -z "$base" ]] && return 1
+  printf '%s' "$(echo -n "${base}|${mac}" | sha256sum | cut -c1-32)"
+}
+
 iotstack_bootstrap_pass_api_path() {
   # Role master secret from which per-device bootstrap API PSKs are derived.
   local role

@@ -9,6 +9,10 @@
 #include "esphome/components/logger/logger.h"
 #endif
 
+#ifdef USE_OTA
+#include "esphome/components/esphome/ota/ota_esphome.h"
+#endif
+
 namespace esphome {
 namespace nvs_secrets {
 
@@ -38,6 +42,12 @@ class NVSSecrets : public Component
   void set_api_nvs_key(const std::string &key) { api_nvs_key_ = key; }
   void set_update_api_nvs_key(const std::string &key) { update_api_nvs_key_ = key; }
   void set_require_api_encryption(bool v) { require_api_encryption_ = v; }
+#ifdef USE_OTA
+  // Optional: the ota: (platform: esphome) instance whose auth password should
+  // be kept in sync with ota_nvs_key_'s NVS value. Without this wired up, the
+  // NVS-loaded password is read but never enforced by the OTA server.
+  void set_ota_component(ESPHomeOTAComponent *c) { ota_component_ = c; }
+#endif
 
   std::string get_wifi_ssid() const { return wifi_ssid_; }
   std::string get_wifi_password() const { return wifi_password_; }
@@ -85,6 +95,10 @@ class NVSSecrets : public Component
   // stack at runtime. No-op build unless USE_OPENTHREAD is defined.
   void apply_thread_dataset_();
   void apply_api_encryption_key_();
+#ifdef USE_OTA
+  void apply_ota_password_();
+  ESPHomeOTAComponent *ota_component_{nullptr};
+#endif
 #ifdef USE_LOGGER
   // Reads the "log_level" NVS key (u8) and applies it to the logger, then
   // registers this component as a level listener so later changes (e.g. from

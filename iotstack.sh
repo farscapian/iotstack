@@ -1009,6 +1009,7 @@ _iotstack_command_help_if_requested() {
       flash)    help_flash ;;
       update)   help_update ;;
       reassign) help_reassign ;;
+      ota-bootstrap) help_ota_bootstrap ;;
       verify)   help_verify ;;
       restart)  help_restart ;;
       *)        return 1 ;;
@@ -1057,6 +1058,10 @@ EOF
 
 help_reassign() {
   cat "${HELP_DIR}/iotstack-reassign.txt"
+}
+
+help_ota_bootstrap() {
+  cat "${HELP_DIR}/iotstack-ota-bootstrap.txt"
 }
 
 help_flash() {
@@ -2620,6 +2625,167 @@ _update_via_bootstrap() {
   fi
 }
 
+# -- OTA the bootstrap partition FROM a running production device ------------
+# Opt-in (IOTSTACK_ENABLE_BOOTSTRAP_OTA); see docs/features.md "OTA the
+# bootstrap partition from production" and docs/boot-fallback.md. This is the
+# mirror image of _ota_via_bootstrap above: instead of using bootstrap to OTA
+# production, it uses a running production device's own opt-in OTA endpoint
+# (yamls/common/production_bootstrap_ota.yaml) to write ota_0 directly. ESP-IDF
+# always targets the slot that is NOT currently running, so this automatically
+# and unavoidably lands in ota_0 (bootstrap), never ota_1 (production).
+
+_mdns_txt_field_for_hostname() {
+  # Generic mDNS TXT-field reader, parametrized version of
+  # _mdns_config_hash_for_hostname (which is hardcoded to config_hash=).
+  # Usage: _mdns_txt_field_for_hostname <hostname> <mdns_service> <field>
+  local hostname="$1"
+  local mdns_service="$2"
+  local field="$3"
+  local line current_hostname="" value=""
+  while IFS= read -r line; do
+    if [[ $line =~ hostname\ =\ \[([^\]]+)\] ]]; then
+      current_hostname="${BASH_REMATCH[1]%.local}"
+    fi
+    if [[ $line =~ txt\ = ]] && [[ "$current_hostname" == "$hostname" ]]; then
+      if [[ $line =~ ${field}=([^\"]*) ]]; then
+        value="${BASH_REMATCH[1]}"
+        echo "$value"
+        return 0
+      fi
+    fi
+  done < <(avahi-browse -t -r "$mdns_service" 2>/dev/null)
+  return 1
+}
+
+_prod_bootstrap_ota_upload_yaml() {
+  # Throwaway "upload yaml" so `esphome upload` knows how to authenticate
+  # against the bootstrap-target OTA endpoint compiled into this role's
+  # production firmware (production_bootstrap_ota.yaml). Deliberately does
+  # NOT reuse update_devices.sh's create_ota_upload_yaml -- that script is a
+  # top-level CLI (executes procedurally when run), not a sourceable library.
+  # A production role YAML never contains a literal 'ota:' block (enforced
+  # elsewhere), so this can always append one.
+  local yaml_file="$1"
+  local ota_password="$2"
+  local out_yaml="$3"
+  cp "$yaml_file" "$out_yaml"
+  printf '\nota:\n  - platform: esphome\n    password: "%s"\n' "$ota_password" >> "$out_yaml"
+}
+
+_ota_bootstrap_via_production() {
+  # Usage: _ota_bootstrap_via_production <role> <mac> <force> <is_dry_run>
+  local role="$1"
+  local mac="$2"
+  local force="$3"
+  local is_dry_run="$4"
+  local hostname variant build_name bootstrap_bin expected_hash
+  hostname=$(_device_hostname "$role" "$mac")
+
+  # Don't trust the local .env alone -- a fleet may be mid-rollout. Only a
+  # device whose OWN firmware was compiled with the flag on advertises this.
+  if ! avahi-browse -t -r "_iotstack-bootstrap-target._tcp" 2>/dev/null | grep -Fqi "$hostname"; then
+    warn "[$mac] $hostname does not advertise bootstrap-target OTA (built without IOTSTACK_ENABLE_BOOTSTRAP_OTA=1) -- skipping"
+    return 1
+  fi
+
+  variant=$(yaml_variant_for_role "$role" 2>/dev/null) || variant=""
+  if [[ -z "$variant" ]]; then
+    warn "[$mac] could not determine chip variant for role '$role' -- skipping"
+    return 1
+  fi
+  build_name=$(iotstack_bootstrap_build_name "$variant")
+  bootstrap_bin=$(iotstack_build_ota_bin "$build_name")
+  if [[ ! -f "$bootstrap_bin" ]]; then
+    warn "[$mac] no compiled bootstrap firmware for variant '$variant' ($bootstrap_bin)"
+    return 1
+  fi
+  expected_hash=$(_config_hash_from_build_dir "$build_name" 2>/dev/null) || expected_hash=""
+
+  # Partition-size preflight against the DEVICE's own reported ota_0 size
+  # (bootstrap_partition_size mDNS TXT, from get_bootstrap_partition_size())
+  # -- not the local partition-table CSV, which may have since been
+  # regenerated with a different size for a different device's first flash.
+  local dev_size new_size
+  dev_size=$(_mdns_txt_field_for_hostname "$hostname" "_esphomelib._tcp" bootstrap_partition_size 2>/dev/null) || dev_size=""
+  new_size=$(stat -c%s "$bootstrap_bin" 2>/dev/null) || new_size=""
+  if [[ -n "$dev_size" && "$dev_size" =~ ^[0-9]+$ && -n "$new_size" && "$new_size" -gt "$dev_size" ]]; then
+    warn "[$mac] new bootstrap ($new_size bytes) does not fit this device's ota_0 ($dev_size bytes) -- re-flash it via USB instead"
+    return 1
+  fi
+
+  # Skip-if-unchanged (production already exposes the other slot's hash via
+  # the shared iotstack_mdns_meta.yaml package).
+  local current_hash
+  current_hash=$(_mdns_txt_field_for_hostname "$hostname" "_esphomelib._tcp" bootstrap_image_hash 2>/dev/null) || current_hash=""
+  if [[ "$force" != true && -n "$current_hash" && -n "$expected_hash" && "$current_hash" == "$expected_hash" ]]; then
+    info "[$mac] bootstrap already up to date ($current_hash) -- skipping (use --force to re-flash)"
+    return 0
+  fi
+
+  if [[ "$is_dry_run" == true ]]; then
+    ok "[$mac] would OTA bootstrap on $hostname: ${current_hash:-unknown} -> ${expected_hash:-unknown}"
+    return 0
+  fi
+
+  local dev_pwd
+  dev_pwd=$(iotstack_prod_bootstrap_ota_device_password "$mac") || {
+    warn "[$mac] bootstrap-ota-from-production password not found in pass (run: pass insert $(iotstack_prod_bootstrap_ota_pass_path))"
+    return 1
+  }
+
+  local yaml_file upload_yaml
+  yaml_file=$(resolve_device "$role" false 2>/dev/null) || yaml_file=""
+  if [[ -z "$yaml_file" ]]; then
+    warn "[$mac] could not resolve YAML for role '$role'"
+    return 1
+  fi
+  upload_yaml="$(dirname "$yaml_file")/.temp-bootstrap-ota-upload-$(basename "$yaml_file")"
+  _prod_bootstrap_ota_upload_yaml "$yaml_file" "$dev_pwd" "$upload_yaml"
+
+  info "[$mac] 1/4 OTA new bootstrap image into $hostname (writes ota_0)..."
+  local upload_ok=1
+  timeout 60 esphome upload "$upload_yaml" --device "${hostname}.local" --file "$bootstrap_bin" || upload_ok=0
+  rm -f "$upload_yaml"
+  if [[ "$upload_ok" != 1 ]]; then
+    warn "[$mac] bootstrap OTA upload failed; production is untouched (OTA never wrote its running partition)"
+    return 1
+  fi
+
+  local bs_host
+  bs_host=$(iotstack_bootstrap_hostname "$mac")
+  info "[$mac] 2/4 waiting for $bs_host to boot the new image..."
+  if ! _wait_for_device "$bs_host" 90; then
+    warn "[$mac] $bs_host did not appear after bootstrap OTA -- recover with 'iotstack update $role $mac' once it reappears"
+    return 1
+  fi
+
+  info "[$mac] 3/4 confirming new bootstrap hash..."
+  local new_bs_hash
+  new_bs_hash=$(_mdns_config_hash_for_hostname "$bs_host" "$(iotstack_bootstrap_mdns_service)" 2>/dev/null) || new_bs_hash=""
+  if [[ -z "$expected_hash" || -z "$new_bs_hash" || "$new_bs_hash" != "$expected_hash" ]]; then
+    # Mandatory gate, not skippable: there is no automatic rollback if a
+    # bad-but-not-corrupt image boots and crash-loops (see docs/features.md).
+    # Leave the device on bootstrap for inspection rather than flip it back.
+    warn "[$mac] $bs_host reports hash '${new_bs_hash:-unknown}', expected '${expected_hash:-unknown}' -- NOT flipping back to production automatically"
+    warn "[$mac] device is left on bootstrap; recover with 'iotstack update $role $mac' if this bootstrap turns out unusable"
+    return 1
+  fi
+  ok "[$mac] new bootstrap confirmed ($new_bs_hash)"
+
+  info "[$mac] 4/4 switching back to production..."
+  if ! _restart_press_button "$bs_host" "$_RESTART_BUTTON_NEXT"; then
+    warn "[$mac] could not press toggle_boot_partition on $bs_host -- device is left on a verified-good bootstrap"
+    warn "[$mac] recover with 'iotstack update $role $mac' or 'iotstack restart $bs_host --next'"
+    return 1
+  fi
+  if ! _wait_for_production_online "$hostname" 90; then
+    warn "[$mac] $hostname not seen back online yet (may still be booting)"
+    return 1
+  fi
+  ok "[$mac] bootstrap updated and $hostname back on production"
+  return 0
+}
+
 # -- Command Handlers ---------------------------------------------------------
 
 cmd_update() {
@@ -2880,6 +3046,138 @@ cmd_reassign() {
   echo
 
   _reassign_devices_via_bootstrap "$yaml_file" "$api_key" "${reassign_macs[@]}" -- "${update_args[@]}"
+}
+
+cmd_ota_bootstrap() {
+  _iotstack_command_help_if_requested ota-bootstrap "$@" && return 0
+
+  if [[ "${IOTSTACK_ENABLE_BOOTSTRAP_OTA:-0}" != "1" ]]; then
+    err "iotstack ota-bootstrap is disabled. Set IOTSTACK_ENABLE_BOOTSTRAP_OTA=1 in your .env to enable it (see docs/.env.example), then recompile/redeploy production firmware with the flag on before using this."
+  fi
+
+  local device_or_yaml=""
+  local force=false
+  local is_dry_run=false
+  declare -a mac_suffixes=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --force)
+        force=true
+        shift
+        ;;
+      --dry-run)
+        is_dry_run=true
+        shift
+        ;;
+      all)
+        [[ -z "$device_or_yaml" ]] && device_or_yaml="all"
+        shift
+        ;;
+      *)
+        if [[ "$1" =~ ^[0-9a-fA-F]{6}$ ]]; then
+          mac_suffixes+=("${1,,}")
+          shift
+        elif [[ -z "$device_or_yaml" ]]; then
+          device_or_yaml="$1"
+          shift
+        else
+          shift
+        fi
+        ;;
+    esac
+  done
+
+  # No role given, just MAC suffix(es) -- discover the device's current role
+  # via mDNS, mirroring cmd_update.
+  if [[ -z "$device_or_yaml" && ${#mac_suffixes[@]} -gt 0 ]]; then
+    local _mac _role_for_mac _resolved_role=""
+    for _mac in "${mac_suffixes[@]}"; do
+      if ! _role_for_mac=$(_resolve_role_for_mac_suffix "$_mac"); then
+        err "Could not determine current role for MAC suffix $_mac (device not found via mDNS). Specify the role explicitly: iotstack ota-bootstrap <role> $_mac"
+      fi
+      if [[ -z "$_resolved_role" ]]; then
+        _resolved_role="$_role_for_mac"
+      elif [[ "$_resolved_role" != "$_role_for_mac" ]]; then
+        err "MAC suffixes resolve to different roles ($_resolved_role vs $_role_for_mac) -- run them separately"
+      fi
+    done
+    device_or_yaml="$_resolved_role"
+    info "Resolved MAC suffix(es) to current role '$device_or_yaml' via mDNS"
+  fi
+
+  if [[ -z "$device_or_yaml" ]]; then
+    help_ota_bootstrap
+    exit 1
+  fi
+
+  if [[ "$device_or_yaml" == "$(iotstack_bootstrap_role)" ]]; then
+    err "'iotstack ota-bootstrap' targets production devices (it writes THEIR bootstrap slot) -- not the bootstrap role itself."
+  fi
+
+  declare -a target_roles=()
+  if [[ "$device_or_yaml" == "all" ]]; then
+    local role yaml_path
+    while IFS='=' read -r role yaml_path; do
+      [[ -z "$role" || "$role" =~ ^[[:space:]]*# || -z "$yaml_path" ]] && continue
+      [[ "$role" == "$(iotstack_bootstrap_role)" ]] && continue
+      target_roles+=("$role")
+    done < "$ROLES_CONF"
+  else
+    is_valid_role "$device_or_yaml" || err "Unknown role: $device_or_yaml. Run 'iotstack roles' for available roles."
+    target_roles=("$device_or_yaml")
+  fi
+
+  declare -A compiled_variants=()
+  local overall_failed=0 overall_ok=0
+  local role
+
+  for role in "${target_roles[@]}"; do
+    local variant
+    variant=$(yaml_variant_for_role "$role" 2>/dev/null) || variant=""
+    if [[ -z "$variant" ]]; then
+      warn "Could not determine chip variant for role '$role' -- skipping"
+      overall_failed=$((overall_failed + 1))
+      continue
+    fi
+    if [[ -z "${compiled_variants[$variant]:-}" ]]; then
+      info "Compiling bootstrap for variant '$variant'..."
+      smart_compile "$(iotstack_bootstrap_template_path)" "$(iotstack_bootstrap_build_name "$variant")" \
+        || err "Bootstrap compile failed for variant '$variant'"
+      compiled_variants[$variant]=1
+    fi
+
+    local -a macs=()
+    if [[ ${#mac_suffixes[@]} -gt 0 ]]; then
+      macs=("${mac_suffixes[@]}")
+    else
+      local node
+      node=$(_device_node_name "$role")
+      iotstack_mdns_retry "'$role' device(s)" info _update_via_bootstrap_discover_macs || true
+    fi
+
+    if [[ ${#macs[@]} -eq 0 ]]; then
+      warn "No '$role' device(s) found on production mDNS -- skipping"
+      continue
+    fi
+
+    local mac
+    for mac in "${macs[@]}"; do
+      echo ""
+      if _ota_bootstrap_via_production "$role" "$mac" "$force" "$is_dry_run"; then
+        overall_ok=$((overall_ok + 1))
+      else
+        overall_failed=$((overall_failed + 1))
+      fi
+    done
+  done
+
+  echo ""
+  if [[ $overall_failed -gt 0 ]]; then
+    warn "$overall_failed device(s) failed or were skipped; $overall_ok succeeded"
+    return 1
+  fi
+  ok "$overall_ok device(s) processed"
 }
 
 cmd_verify() {
@@ -6512,6 +6810,10 @@ main() {
     reassign)
       shift
       cmd_reassign "$@"
+      ;;
+    ota-bootstrap)
+      shift
+      cmd_ota_bootstrap "$@"
       ;;
     devices)
       shift

@@ -191,6 +191,13 @@ void PartitionManager::refresh_image_hashes_() {
   const esp_partition_t *alt = alternate_ota_partition_(running);
   const bool on_bootstrap = running != nullptr && running->subtype == ESP_PARTITION_SUBTYPE_APP_OTA_0;
 
+  // Unconditional (not relative to "running"): ota_0 is always bootstrap, on
+  // either firmware, so this is the same lookup and the same true on-device
+  // size regardless of which slot is currently booted.
+  const esp_partition_t *bs_part =
+      esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, nullptr);
+  bootstrap_partition_size_ = bs_part != nullptr ? bs_part->size : 0;
+
   const SlotKeys &running_keys = on_bootstrap ? BOOTSTRAP_KEYS : PRODUCTION_KEYS;
   const SlotKeys &alt_keys = on_bootstrap ? PRODUCTION_KEYS : BOOTSTRAP_KEYS;
 
@@ -265,6 +272,10 @@ void PartitionManager::refresh_image_hashes_() {
            bootstrap_image_hash_.empty() ? "-" : bootstrap_image_hash_.c_str(),
            production_image_hash_.empty() ? "-" : production_image_hash_.c_str(),
            on_bootstrap ? "bootstrap" : "production");
+}
+
+PartitionManager::PartitionManager() {
+  this->refresh_image_hashes_();
 }
 
 void PartitionManager::setup() {

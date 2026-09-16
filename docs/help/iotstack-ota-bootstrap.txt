@@ -1,0 +1,64 @@
+iotstack ota-bootstrap -- OTA a new bootstrap image into fielded devices
+
+Opt-in. Requires IOTSTACK_ENABLE_BOOTSTRAP_OTA=1 in the active .env (see
+docs/.env.example) AND the target device's own production firmware to have
+been compiled with that flag on -- a fleet may be mid-rollout, so this
+command trusts the device's own mDNS advertisement, not just your local
+.env. Off by default: production firmware then has no OTA server at all,
+same as before this command existed.
+
+Writes the fleet's ONLY recovery partition (bootstrap/ota_0) from a running,
+in-service production device -- no USB trip needed, but also no automatic
+fallback if the new image is bad and crash-loops. Read docs/features.md
+and docs/boot-fallback.md before using this on more than a test device.
+
+Usage:
+  iotstack ota-bootstrap <device|MAC|all> [options]
+
+Arguments:
+  <device>      Device role (e.g., bleproxy, mmwave)
+  <MAC>         MAC suffix of a single device (6 hex digits); role is
+                discovered via mDNS from the device's current firmware
+  all           All roles in roles.conf
+
+Options:
+  --force       Re-OTA even if the device's bootstrap already matches the
+                new build (default: skip devices already up to date)
+  --dry-run     Discover and preflight-check devices; do not touch the network
+
+What it does, per device:
+  1. Confirms the device advertises _iotstack-bootstrap-target._tcp (built
+     with the flag on) -- refuses otherwise.
+  2. Compares the new bootstrap firmware's size against the device's own
+     reported ota_0 partition size (bootstrap_partition_size mDNS TXT);
+     refuses if it will not fit (re-flash that device via USB instead).
+  3. Skips the device if its current bootstrap_image_hash (mDNS TXT) already
+     matches the new build, unless --force.
+  4. OTAs the new bootstrap image directly into the device -- ESP-IDF's OTA
+     always targets the slot that is NOT currently running, so this
+     automatically and unavoidably lands in ota_0 (bootstrap), never ota_1
+     (production, which keeps running until the reboot below).
+  5. The device reboots into the freshly-written bootstrap image (ESPHome's
+     OTA component always boots what it just wrote).
+  6. Confirms the new bootstrap actually came up and re-advertised the
+     expected config_hash over _iotstack-bootstrap._tcp -- mandatory gate,
+     not skippable, since there is no automatic rollback if a bad-but-not-
+     corrupt image boots and crash-loops.
+  7. Flips the device back to production by pressing the same "Toggle Boot
+     Partition" button entity `iotstack restart <device> --next` already
+     uses -- no new API surface.
+  8. Waits for the device to reappear on production; reports success/failure.
+
+If step 7 or 8 never completes (script interrupted, network drop), the
+device is left on a verified-good bootstrap with production untouched --
+recover it with `iotstack update <role>` or `iotstack restart <device> --next`,
+exactly as you would for any other device parked on bootstrap.
+
+Examples:
+  iotstack ota-bootstrap bleproxy              # All bleproxy devices, skip up-to-date
+  iotstack ota-bootstrap 199ef4                # By MAC only; role via mDNS
+  iotstack ota-bootstrap all --dry-run         # Preview across the whole fleet
+  iotstack ota-bootstrap bleproxy --force      # Re-flash bootstrap even if unchanged
+
+See docs/security.md for the distinct pass-store secret this command uses
+(separate from the normal bootstrap-mode OTA secret).
