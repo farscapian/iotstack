@@ -3121,7 +3121,18 @@ cmd_ota_bootstrap() {
     fi
     if [[ -z "${compiled_variants[$variant]:-}" ]]; then
       info "Compiling bootstrap for variant '$variant'..."
-      smart_compile "$(iotstack_bootstrap_template_path)" "$(iotstack_bootstrap_build_name "$variant")" \
+      local profile board flash_size framework bootstrap_yaml build_name
+      profile=$(bootstrap_profile_emit_from_role "$role") \
+        || err "Could not resolve chip profile for role '$role'"
+      board=$(echo "$profile" | cut -d'|' -f2)
+      flash_size=$(echo "$profile" | cut -d'|' -f3)
+      framework=$(echo "$profile" | cut -d'|' -f4)
+      bootstrap_yaml="${YAMLS_DIR}/$(iotstack_bootstrap_artifact_name "$variant")"
+      bootstrap_render_yaml "$variant" "$board" "$flash_size" "$framework" >/dev/null \
+        || err "Could not render bootstrap YAML for variant '$variant'"
+      iotstack_register_yaml_cleanup_trap
+      build_name=$(iotstack_bootstrap_build_name "$variant")
+      smart_compile "$bootstrap_yaml" "$build_name" \
         || err "Bootstrap compile failed for variant '$variant'"
       compiled_variants[$variant]=1
     fi
