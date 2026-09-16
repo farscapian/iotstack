@@ -3637,7 +3637,7 @@ cmd_rotate_secrets() {
     return 0
   fi
 
-  local role="$1"
+  local role="${1:-}"
   local new_password="${2:-}"
 
   if [[ -z "$role" ]]; then
