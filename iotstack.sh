@@ -6224,12 +6224,18 @@ verify_common_pass_secrets() {
     export HA_URL HA_TOKEN
   fi
 
-  # Seed wifi_ssid/wifi_password/thread_tlv with a CONFIGURE_ME placeholder if
-  # this environment's common/ doesn't have them yet (fresh install/env, or an
-  # existing one that predates a key -- e.g. thread_tlv). setup.sh no longer
-  # seeds these; iotstack.sh owns it here so the discovery scan below always
-  # finds them and prompts to fill them in.
-  local -a seed_keys=(wifi_ssid wifi_password thread_tlv)
+  # Seed common config items with a CONFIGURE_ME placeholder if this
+  # environment's common/ doesn't have them yet (fresh install/env, or an
+  # existing one that predates a key -- e.g. thread_tlv). setup.sh only
+  # installs and configures pass -- it does not seed entries; iotstack.sh owns
+  # that here. ha_url/ha_token are seeded only as a fallback: when HA
+  # integration is enabled, ensure_ha_integration above already stored real
+  # values, so this is a no-op for them; when it's disabled, this still leaves
+  # the entries present (empty/CONFIGURE_ME) for `pass edit`/`pass ls`. The
+  # discovery scan below always finds wifi_ssid/wifi_password/thread_tlv and
+  # prompts to fill them in; ha_url/ha_token are excluded from that scan since
+  # ensure_ha_integration already owns prompting for them.
+  local -a seed_keys=(wifi_ssid wifi_password thread_tlv ha_url ha_token)
   local seed_key seed_path
   for seed_key in "${seed_keys[@]}"; do
     seed_path="$(iotstack_pass_common_path "$seed_key")"

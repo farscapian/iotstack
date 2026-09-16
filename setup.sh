@@ -523,30 +523,6 @@ else
   fi
 fi
 
-# Seed pass repository with configuration
-echo
-echo "Seeding pass repository with configuration..."
-export GNUPGHOME="${IOTSTACK_HOME}/.gnupg"
-export PASSWORD_STORE_DIR="$PASS_DIR"
-
-# Config items that should exist but can be empty (seeded with placeholder).
-# wifi_ssid/wifi_password/thread_tlv are seeded by iotstack.sh instead (see
-# verify_common_pass_secrets), not here.
-declare -a config_items=("ha_url" "ha_token")
-
-# Seed config items under this environment's common/ (always "default" here --
-# setup.sh always seeds the default ~/.iotstack/environments/default.env; user can update via:
-# pass edit iotstack/default/common/ha_url).
-for config_key in "${config_items[@]}"; do
-  pass_path="$(iotstack_pass_common_path "$config_key")"
-  if ! pass show "$pass_path" >/dev/null 2>&1; then
-    {
-      echo "CONFIGURE_ME"
-      echo "CONFIGURE_ME"
-    } | pass insert -f "$pass_path" 2>&1 | grep -v "^mkdir:" || true
-  fi
-done
-
 # -- Create Desktop Taskbar Application ------------------------------------
 echo
 echo "Creating taskbar application..."
