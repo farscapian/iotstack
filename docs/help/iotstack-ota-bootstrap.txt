@@ -12,6 +12,12 @@ in-service production device -- no USB trip needed, but also no automatic
 fallback if the new image is bad and crash-loops. Read docs/features.md
 and docs/boot-fallback.md before using this on more than a test device.
 
+Each matched device is confirmed individually (y/N) before its bootstrap is
+overwritten -- a multi-device match (e.g. an mDNS-discovered role with many
+units) never gets rewritten on one blanket "yes". Declining skips just that
+device and continues with the rest. --dry-run does not prompt (it touches
+nothing).
+
 Usage:
   iotstack ota-bootstrap <device|MAC|all> [options]
 
