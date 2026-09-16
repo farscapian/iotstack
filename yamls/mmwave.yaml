@@ -351,6 +351,15 @@ sensor:
     on_value:
       then:
         - lambda: |-
+            // "Brightness Level" number > 0 pins the multiplier to a fixed
+            // value, bypassing adaptive brightness entirely; 0 (default)
+            // keeps the illuminance-based behavior below.
+            float override_pct = id(brightness_override).state;
+            if (override_pct > 0) {
+              id(brightness_multiplier) = override_pct / 100.0f;
+              return;
+            }
+
             // Adaptive brightness based on illuminance
             // Dark room (0 lux) = 0.16x, bright daylight (10000+ lux) = 1.0x
             float lux = x;
@@ -487,6 +496,22 @@ number:
     min_value: 1.0
     max_value: 15.0
     step: 0.5
+
+  # Manual override for the illuminance-based auto-brightness below.
+  # 0 (default) = Adaptive Brightness; any other value pins the LED's
+  # brightness multiplier to that fixed percentage instead.
+  - platform: template
+    name: "Brightness Level"
+    id: brightness_override
+    icon: "mdi:brightness-6"
+    entity_category: config
+    unit_of_measurement: "%"
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+    min_value: 0
+    max_value: 100
+    step: 5
 
 # 7. RGB LED (onboard WS2812, GPIO1)
 light:
