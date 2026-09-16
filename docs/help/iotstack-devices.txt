@@ -1,4 +1,4 @@
-iotstack devices -- Show discovered ESPHome devices on network
+iotstack devices -- Show discovered iotstack devices on network
 
 Lists ESPHome devices visible on the network via a fast mDNS cache scan, then
 verifies each candidate in parallel with a TCP port check before listing

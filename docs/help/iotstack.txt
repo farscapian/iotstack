@@ -16,7 +16,7 @@ Commands:
                       into the other boot partition
   logs                Stream device logs (serial, or over the network by role)
   query               Query Home Assistant device and entity registry
-  devices             Show discovered ESPHome devices on network (production
+  devices             Show discovered iotstack devices on network (production
                       and bootstrap by default; use --production or --bootstrap)
   device              Read per-device NVS secrets from USB-connected hardware
   roles               Show available device roles and their configurations

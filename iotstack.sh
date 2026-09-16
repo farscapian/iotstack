@@ -1561,9 +1561,9 @@ list_devices() {
       fi
     else
       if [[ "$device_mode" == "all" ]]; then
-        info "Discovered ESPHome devices on network (production and bootstrap):"
+        info "Discovered iotstack devices on network (production and bootstrap):"
       elif [[ "$device_mode" == "production" ]]; then
-        info "Discovered ESPHome devices on network:"
+        info "Discovered iotstack devices on network:"
       else
         info "Discovered bootstrap devices on network:"
       fi
