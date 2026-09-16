@@ -2576,25 +2576,83 @@ _update_via_bootstrap() {
   fs_secret=$(iotstack_bootstrap_pass_ota_read) \
     || err "Bootstrap role OTA password not found in pass (provision a device first)."
 
-  info "iotstack update: ${#macs[@]} '$role' device(s) via bootstrap..."
-  local failed=0 mac dev_pwd
-  # Defer HA registration/restart until every device in this batch has been
-  # updated, instead of running it per-device inside the loop -- see
-  # IOTSTACK_DEFER_HA_REGISTRATION.
-  IOTSTACK_DEFER_HA_REGISTRATION=1
-  IOTSTACK_PENDING_HA_HOSTNAMES=()
-  local hostname
-  for mac in "${macs[@]}"; do
-    echo ""
-    hostname="$(_device_hostname "$role" "$mac")"
-    dev_pwd=$(echo -n "${fs_secret}|${mac}" | sha256sum | cut -c1-32)
-    if [[ -n "$tty_device" ]]; then
-      _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "$hostname" "$tty_device" "${ota_update_args[@]}" \
-        || failed=$((failed + 1))
-    elif ! _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "$hostname" "${ota_update_args[@]}"; then
-      failed=$((failed + 1))
+  # -- Compile once, before fanning out per-device OTA jobs -------------------
+  # All macs below share this role's yaml_file. Each parallel job runs
+  # update_devices.sh --reassign for its one mac, which has its own
+  # compile-cache check -- but without this, several concurrent cache misses
+  # would each spawn an `esphome compile` into the SAME build directory.
+  # Compiling serially here first means every parallel --reassign call below
+  # sees a cache hit instead of racing on the build dir.
+  local device_name
+  device_name=$(basename "$yaml_file" .yaml)
+  smart_compile "$yaml_file" "$device_name" || err "Compile failed for '$role'."
+  _flash_sync_update_devices_cache "$yaml_file"
+
+  # -- Determine parallelism ---------------------------------------------
+  # Mirrors update_devices.sh's own --jobs default/handling: up to 4
+  # devices at once, forced to 1 for Thread devices (OTA over the mesh is
+  # slow and parallelism causes contention) unless --jobs was explicit.
+  local max_jobs=4 jobs_explicit=false _oi
+  for ((_oi = 0; _oi < ${#ota_update_args[@]}; _oi++)); do
+    if [[ "${ota_update_args[$_oi]}" == "--jobs" ]]; then
+      max_jobs="${ota_update_args[$((_oi + 1))]:-4}"
+      jobs_explicit=true
     fi
   done
+  local network_type
+  network_type=$(get_yaml_device_info "$yaml_file" | cut -d'|' -f3)
+  if [[ "$network_type" == "thread" && "$jobs_explicit" == false ]]; then
+    max_jobs=1
+  fi
+  [[ "$max_jobs" =~ ^[1-9][0-9]*$ ]] || max_jobs=1
+
+  info "iotstack update: ${#macs[@]} '$role' device(s) via bootstrap (up to ${max_jobs} in parallel)..."
+  local failed=0 mac dev_pwd hostname
+  # Defer HA registration/restart until every device in this batch has been
+  # updated, instead of running it per-device inside the loop -- see
+  # IOTSTACK_DEFER_HA_REGISTRATION. Each background job below runs in its own
+  # subshell, so it cannot append to this array directly (the mutation would
+  # be lost when the subshell exits) -- each job writes its pending hostname
+  # to a per-mac file instead, and the parent collects them after `wait`.
+  IOTSTACK_DEFER_HA_REGISTRATION=1
+  IOTSTACK_PENDING_HA_HOSTNAMES=()
+
+  local work_dir
+  work_dir=$(mktemp -d)
+  local slot_count=0
+  for mac in "${macs[@]}"; do
+    while [[ $slot_count -ge $max_jobs ]]; do
+      wait -n 2>/dev/null || true
+      slot_count=$((slot_count - 1))
+    done
+
+    hostname="$(_device_hostname "$role" "$mac")"
+    dev_pwd=$(echo -n "${fs_secret}|${mac}" | sha256sum | cut -c1-32)
+
+    (
+      if _ota_via_bootstrap "$mac" "$yaml_file" "$dev_pwd" "$hostname" ${tty_device:+"$tty_device"} "${ota_update_args[@]}"; then
+        echo ok > "${work_dir}/${mac}.result"
+      else
+        echo fail > "${work_dir}/${mac}.result"
+      fi
+      printf '%s\n' ${IOTSTACK_PENDING_HA_HOSTNAMES[@]+"${IOTSTACK_PENDING_HA_HOSTNAMES[@]}"} > "${work_dir}/${mac}.ha"
+    ) &
+    slot_count=$((slot_count + 1))
+  done
+  wait 2>/dev/null || true
+
+  for mac in "${macs[@]}"; do
+    if [[ "$(cat "${work_dir}/${mac}.result" 2>/dev/null)" != ok ]]; then
+      failed=$((failed + 1))
+    fi
+    if [[ -f "${work_dir}/${mac}.ha" ]]; then
+      while IFS= read -r _ha_host; do
+        [[ -n "$_ha_host" ]] && IOTSTACK_PENDING_HA_HOSTNAMES+=("$_ha_host")
+      done < "${work_dir}/${mac}.ha"
+    fi
+  done
+  rm -rf "$work_dir"
+
   IOTSTACK_DEFER_HA_REGISTRATION=0
   _ota_via_bootstrap_flush_ha "$yaml_file"
 
