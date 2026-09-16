@@ -2940,35 +2940,75 @@ cmd_update() {
 
     found=0
     failed=0
-    # Parse roles from roles.conf (format: role=yamls/role.yaml)
+
+    # Parse roles from roles.conf (format: role=yamls/role.yaml) into ordered
+    # arrays first, so compilation and OTA can be pipelined across roles below.
+    declare -a _fleet_roles=() _fleet_yamls=()
     while IFS='=' read -r role yaml_path; do
       # Skip empty lines and comments
       [[ -z "$role" ]] && continue
       [[ "$role" =~ ^[[:space:]]*# ]] && continue
       [[ -z "$yaml_path" ]] && continue
 
-      # Resolve full path
       yaml="${SCRIPT_DIR}/$yaml_path"
-
-      # Verify file exists and is valid ESPHome YAML
       if [[ -f "$yaml" ]] && grep -q '^esphome:' "$yaml" 2>/dev/null; then
-        # Build update command with MACs and OTA password if specified
-        declare -a cmd=()
-        mapfile -t _inh < <(_update_devices_inherited_flags)
-        [[ ${#_inh[@]} -gt 0 ]] && cmd+=("${_inh[@]}")
-        cmd+=("${update_args[@]}")
-        [[ -n "$ota_password" ]] && cmd+=("--ota-password" "$ota_password")
-        [[ ${#mac_suffixes[@]} -gt 0 ]] && cmd+=("--macs" "${mac_suffixes[@]}")
-        cmd+=("$yaml")
-
-        if _run_update_devices "${cmd[@]}"; then
-          found=$((found + 1))
-        else
-          failed=$((failed + 1))
-        fi
-        echo
+        _fleet_roles+=("$role")
+        _fleet_yamls+=("$yaml")
       fi
     done < <(cat "$ROLES_CONF" 2>/dev/null || echo "")
+
+    # Compile roles one at a time, in roles.conf order (esphome compiles are
+    # CPU-heavy -- keep that part serial), but don't wait for a role's devices
+    # to finish OTA-ing before compiling the next role's image: as soon as a
+    # role's build is ready, its OTA is routed through _update_via_bootstrap
+    # (the same safe, per-device-parallel path 'iotstack update <role>' uses)
+    # in the background, while the next role's compile starts immediately.
+    local _fleet_work_dir
+    _fleet_work_dir=$(mktemp -d)
+    declare -a _fleet_pids=()
+    local _fi role yaml device_name
+    for ((_fi = 0; _fi < ${#_fleet_roles[@]}; _fi++)); do
+      role="${_fleet_roles[$_fi]}"
+      yaml="${_fleet_yamls[$_fi]}"
+      device_name=$(basename "$yaml" .yaml)
+
+      if ! smart_compile "$yaml" "$device_name"; then
+        warn "[$role] compile failed -- skipping"
+        echo fail > "${_fleet_work_dir}/${role}.result"
+        continue
+      fi
+      _flash_sync_update_devices_cache "$yaml"
+      info "[$role] compiled -- OTA queued in the background"
+
+      (
+        declare -a _ub_args=("$role" "$yaml")
+        [[ ${#mac_suffixes[@]} -gt 0 ]] && _ub_args+=("${mac_suffixes[@]}")
+        _ub_args+=(--)
+        _ub_args+=("${update_args[@]}")
+        if _update_via_bootstrap "${_ub_args[@]}"; then
+          echo ok > "${_fleet_work_dir}/${role}.result"
+        else
+          echo fail > "${_fleet_work_dir}/${role}.result"
+        fi
+      ) > "${_fleet_work_dir}/${role}.log" 2>&1 &
+      _fleet_pids+=("$!")
+    done
+
+    wait ${_fleet_pids[@]+"${_fleet_pids[@]}"} 2>/dev/null || true
+
+    for role in "${_fleet_roles[@]}"; do
+      if [[ -f "${_fleet_work_dir}/${role}.log" ]]; then
+        echo "-- $role --"
+        cat "${_fleet_work_dir}/${role}.log"
+      fi
+      if [[ "$(cat "${_fleet_work_dir}/${role}.result" 2>/dev/null)" == ok ]]; then
+        found=$((found + 1))
+      else
+        failed=$((failed + 1))
+      fi
+      echo
+    done
+    rm -rf "$_fleet_work_dir"
 
     echo "------------------------------------------------------------"
     if [[ $failed -eq 0 ]]; then
