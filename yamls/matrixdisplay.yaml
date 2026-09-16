@@ -440,36 +440,48 @@ display:
 
       // Applies one attr="value" pair to a (color, brightness, font, font-size,
       // flash-interval) tuple, shared by style-definition parsing below and by
-      // the <sN>/<span> attribute overlay in Display Text.
+      // the <sN>/<span> attribute overlay in Display Text. Each attribute also
+      // accepts a short alias (c/b/f/fs/fi) and color additionally accepts
+      // "#RRGGBB" hex -- both exist purely to fit more style definitions into
+      // the 255-char "Styles" text box.
       auto apply_kv = [&](Color &color, float &bright, std::string &face_, std::string &size_,
                           float &flash_s, const std::string &key, const std::string &val) {
-        if (key == "color") {
-          char *endp = nullptr;
-          long r = strtol(val.c_str(), &endp, 10);
-          long g = (endp != nullptr && *endp == ',') ? strtol(endp + 1, &endp, 10) : 255;
-          long b = (endp != nullptr && *endp == ',') ? strtol(endp + 1, &endp, 10) : 255;
-          color = Color((uint8_t) r, (uint8_t) g, (uint8_t) b);
-        } else if (key == "brightness") {
+        if (key == "color" || key == "c") {
+          if (!val.empty() && val[0] == '#') {
+            long hex = strtol(val.c_str() + 1, nullptr, 16);
+            color = Color((uint8_t) (hex >> 16), (uint8_t) (hex >> 8), (uint8_t) hex);
+          } else {
+            char *endp = nullptr;
+            long r = strtol(val.c_str(), &endp, 10);
+            long g = (endp != nullptr && *endp == ',') ? strtol(endp + 1, &endp, 10) : 255;
+            long b = (endp != nullptr && *endp == ',') ? strtol(endp + 1, &endp, 10) : 255;
+            color = Color((uint8_t) r, (uint8_t) g, (uint8_t) b);
+          }
+        } else if (key == "brightness" || key == "b") {
           float pct = strtof(val.c_str(), nullptr);
           if (pct < 0) pct = 0;
           if (pct > 100) pct = 100;
           bright = pct / 100.0f;
-        } else if (key == "font") {
-          face_ = val;
-        } else if (key == "font-size") {
-          size_ = val;
-        } else if (key == "flash-interval") {
+        } else if (key == "font" || key == "f") {
+          face_ = (val == "r") ? "roboto" : (val == "m") ? "mono" : (val == "s") ? "slab" : val;
+        } else if (key == "font-size" || key == "fs") {
+          size_ = (val == "s") ? "small" : (val == "m") ? "medium" : (val == "l") ? "large" : val;
+        } else if (key == "flash-interval" || key == "fi") {
           flash_s = strtof(val.c_str(), nullptr);
         }
       };
 
-      // --- Style definitions (from the "Styles" text box) --------------------
+      // --- Style definitions (from the "Styles" + "Styles 2" text boxes) -----
       // Syntax: one self-closing tag per style, e.g.
       //   <s1 color="255,20,7" brightness="50%" font="roboto" font-size="medium" flash-interval="0" />
-      // All attributes are optional; an omitted one falls back to a default
+      //   <s2 c="#2621ff" b="80" f="m" fs="l" />
+      // (both lines define equivalent-weight styles -- the second uses the
+      // short attribute aliases and hex color; see apply_kv above). All
+      // attributes are optional; an omitted one falls back to a default
       // (color: white, brightness: 100%, font: roboto, font-size: medium,
       // flash-interval: the "Flash Interval" number below). Re-defining "sN"
-      // later in the box overrides an earlier definition of the same number.
+      // later overrides an earlier definition of the same number -- "Styles 2"
+      // is treated as a continuation appended after "Styles", so it wins ties.
       struct StyleDef {
         int n; bool set = false;
         Color color{255, 255, 255}; float bright = 1.0f;
@@ -478,7 +490,7 @@ display:
       };
       std::vector<StyleDef> styles;
       {
-        std::string spec = id(display_styles).state;
+        std::string spec = id(display_styles).state + id(display_styles_2).state;
         size_t i = 0;
         while ((i = spec.find('<', i)) != std::string::npos) {
           Tag t = parse_tag(spec, i);
@@ -488,7 +500,7 @@ display:
           sd.n = n;
           sd.set = true;
           for (const auto &kv : t.attrs) {
-            if (kv.key == "flash-interval") sd.has_flash = true;
+            if (kv.key == "flash-interval" || kv.key == "fi") sd.has_flash = true;
             apply_kv(sd.color, sd.bright, sd.face, sd.size, sd.flash_s, kv.key, kv.val);
           }
           styles.push_back(sd);
@@ -731,12 +743,14 @@ display:
 #                                     HTML-like tag per style, any order, all
 #                                     attributes optional:
 #                                       <s1 color="255,20,7" brightness="50%" font="roboto" font-size="medium" flash-interval="0" />
-#                                       <s2 color="38,31,255" brightness="80%" font="mono" font-size="large" />
-#                                     Attributes and their defaults when omitted:
-#                                       color="r,g,b"            RGB 0-255 (default white)
+#                                       <s2 c="#2621ff" b="80" f="mono" fs="large" />
+#                                     Attributes and their defaults when omitted (each has a short
+#                                     alias -- color/c, brightness/b, font/f, font-size/fs,
+#                                     flash-interval/fi -- to help fit more styles in 255 chars):
+#                                       color="r,g,b" or "#RRGGBB"  RGB 0-255, decimal or hex (default white)
 #                                       brightness="0-100"       "%" suffix optional (default 100)
-#                                       font="roboto|mono|slab"  (default roboto)
-#                                       font-size="small|medium|large" (default medium)
+#                                       font="roboto|mono|slab" or short "r|m|s" (default roboto)
+#                                       font-size="small|medium|large" or short "s|m|l" (default medium)
 #                                       flash-interval="Ns"      blink period in seconds, "s" suffix
 #                                                                optional (default: the panel-wide
 #                                                                "Flash Interval" number below)
@@ -744,6 +758,13 @@ display:
 #                                     it on, pick a color on the wheel, then read off the R/G/B
 #                                     numbers HA shows and drop them into color="r,g,b" here. The
 #                                     picker itself does not affect the display.
+#   Styles 2              (text)   -- overflow for "Styles" once it fills its 255-char cap (both
+#                                     ESPHome's text component and HA's text entity hard-cap length
+#                                     at 255, a uint8_t limit -- a single box cannot go higher).
+#                                     Its content is appended after "Styles" before parsing: same
+#                                     tag syntax, same sN numbers, and a later "sN" here overrides
+#                                     an earlier one of the same number in "Styles". Leave empty if
+#                                     "Styles" alone is enough.
 #   Display Text          (text)   -- the string to show. Everything below is HTML-like
 #                                     tags mixed with plain text, ASCII only:
 #                                       :btc:                    Bitcoin roundel (full-color image)
@@ -768,6 +789,9 @@ display:
 #                                                                text, e.g. <span brightness="50%">
 #                                       <span attr="val" .../>   same, but sticks from here on instead
 #                                                                of reverting on a closing tag
+#                                     attr="val" pairs on <sN> and <span> take the same names,
+#                                     short aliases and hex colors as the "Styles" box above
+#                                     (e.g. <span b="50" /> is the same as <span brightness="50%" />).
 #                                     A closing "</...>" always reverts to whatever was active just
 #                                     before its matching open; the tag name doesn't have to match
 #                                     (so </span> and </s2> are interchangeable), and one with no
@@ -790,6 +814,12 @@ display:
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_styles}
 #   data: {value: '<s1 color="255,20,7" brightness="50%" font="roboto" /><s2 color="38,31,255" brightness="80%" font="mono" font-size="large" />'}
+#
+#   # same two styles as above, using the short aliases + hex color -- roughly
+#   # half the length, so more styles fit before spilling into "Styles 2"
+#   action: text.set_value
+#   target: {entity_id: text.matrix_display_<mac>_styles}
+#   data: {value: '<s1 c="#ff1407" b="50" f="r" /><s2 c="#261fff" b="80" f="m" fs="l" />'}
 #
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_display_text}
@@ -823,6 +853,22 @@ text:
     min_length: 0
     max_length: 255
     initial_value: '<s1 color="255,136,0" brightness="100%" font="roboto" /><s2 color="0,190,255" brightness="100%" font="mono" />'
+    on_value:
+      - component.update: matrix_display
+  # Overflow box for style definitions once "Styles" fills up its 255-char cap
+  # (both ESPHome's text component and HA's text entity hard-cap at 255, a
+  # uint8_t limit, so a single box cannot go higher). Its content is appended
+  # after "Styles" before parsing, so treat it as a continuation, not a
+  # separate namespace -- sN numbers and override order span both boxes.
+  - platform: template
+    name: "Styles 2"
+    id: display_styles_2
+    mode: text
+    optimistic: true
+    restore_value: true
+    min_length: 0
+    max_length: 255
+    initial_value: ""
     on_value:
       - component.update: matrix_display
   - platform: template
