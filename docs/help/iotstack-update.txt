@@ -1,18 +1,18 @@
 iotstack update -- Compile and flash device(s) over-the-air (OTA)
 
 Compiles firmware and flashes it to ESPHome devices over the network. Detects
-which devices need updates by build hash and can update by role, MAC, or all at
-once in parallel.
+which devices need updates by build hash and can update by role, MAC, or the
+whole fleet at once in parallel.
 
 Usage:
-  iotstack update [options] [<device>|<yaml>|all]
+  iotstack update [options] [<device>|<yaml>|fleet]
   iotstack update [options] [<MAC1> [MAC2 ...]] <device|yaml>
   iotstack update [options] <MAC1> [MAC2 ...]
 
 Arguments:
   <device>      Device role (e.g., bleproxy, mmwave)
   <yaml>        Path to device config (e.g., yamls/bleproxy.yaml)
-  all           Update all device configs in the project
+  fleet         Update all device configs in the project
   <MAC1> [MAC2...]  MAC suffix(es) to update (6 hex digits each). If no
                     role/yaml is given, the role is discovered via mDNS
                     from the device's current firmware and left unchanged.
@@ -33,7 +33,7 @@ Per-role help (flash, update, reassign, verify share one file per role):
 
 Examples:
   iotstack update bleproxy                           # All bleproxy devices
-  iotstack update all                                # All devices
+  iotstack update fleet                              # All devices
   iotstack update --dry-run mmwave                   # Preview, no flash
   iotstack update --erase bleproxy                   # Wipe and reflash, ignore version
   iotstack update --jobs 8 bleproxy                  # 8 parallel OTA jobs

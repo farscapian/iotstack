@@ -58,8 +58,8 @@ source ~/.bashrc
 This creates a symlink in `~/.local/bin/` and configures your environment. Now you can use `iotstack` from any directory:
 
 ```bash
-iotstack help         # Show available commands
-iotstack update all   # Update all devices
+iotstack help          # Show available commands
+iotstack update fleet  # Update all devices
 ```
 
 ### Device Files
@@ -136,7 +136,7 @@ iotstack update bleproxy                # Update all BLE Proxies
 iotstack update mmwave --dry-run        # Preview what would change
 
 # Update everything
-iotstack update all
+iotstack update fleet
 
 # Reassign a device to a different configuration
 iotstack reassign 8dfcac 0f4df4 to mmwave

@@ -48,11 +48,11 @@ Parallel Flashing
 =================
 
 By default, iotstack flashes up to 4 devices in parallel:
-  iotstack update all              # Flashes up to 4 devices at once
+  iotstack update fleet             # Flashes up to 4 devices at once
 
 To change parallel jobs:
-  iotstack update all --jobs 8     # Up to 8 devices in parallel
-  iotstack update all --jobs 1     # Sequential (one at a time)
+  iotstack update fleet --jobs 8    # Up to 8 devices in parallel
+  iotstack update fleet --jobs 1    # Sequential (one at a time)
 
 Thread devices use --jobs 1 automatically (Thread OTA is slow and parallelism
 causes mesh contention). This is enforced transparently.

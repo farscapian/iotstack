@@ -982,7 +982,7 @@ _iotstack_extract_role_from_args() {
     [[ "$arg" =~ ^/dev/ ]] && continue
     [[ "$arg" =~ ^[0-9a-fA-F]{6}$ ]] && continue
     [[ -f "$arg" ]] && continue
-    [[ "$arg" == "all" ]] && continue
+    [[ "$arg" == "all" || "$arg" == "fleet" ]] && continue
     if is_valid_role "$arg"; then
       printf '%s\n' "$arg"
       return 0
@@ -2794,9 +2794,9 @@ cmd_update() {
         err "--erase is not valid for 'iotstack update'; use 'iotstack flash' to erase and reinstall from USB"
         exit 1
         ;;
-      all)
+      fleet)
         if [[ -z "$device_or_yaml" ]]; then
-          device_or_yaml="all"
+          device_or_yaml="fleet"
         fi
         shift
         ;;
@@ -2843,8 +2843,8 @@ cmd_update() {
 
   # Resolve device name to YAML if needed
   local yaml_file
-  if [[ "$device_or_yaml" == "all" ]]; then
-    yaml_file="all"
+  if [[ "$device_or_yaml" == "fleet" ]]; then
+    yaml_file="fleet"
   elif [[ -f "$device_or_yaml" ]]; then
     # Already a file path
     yaml_file="$device_or_yaml"
@@ -2854,7 +2854,7 @@ cmd_update() {
   fi
 
   # Handle normal update mode
-  if [[ "$yaml_file" == "all" ]]; then
+  if [[ "$yaml_file" == "fleet" ]]; then
     info "Updating all device configurations..."
     echo
 

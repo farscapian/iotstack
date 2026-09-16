@@ -30,7 +30,7 @@ iotstack update bleproxy
 iotstack update threadrouter
 
 # Update all devices listed in roles.conf
-iotstack update all
+iotstack update fleet
 
 # Reassign devices to different config
 iotstack reassign 8dfcac 0f4df4 mmwave
