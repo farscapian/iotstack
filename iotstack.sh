@@ -4045,7 +4045,7 @@ list_roles() {
 
 
     echo
-    ok "Consider running 'iotstack devices' next."
+    ok 'Consider running 'iotstack devices' next.'
     echo
   fi
 }
