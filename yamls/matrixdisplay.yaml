@@ -636,9 +636,8 @@ display:
         if (stops.size() >= 2) gradients.push_back(NamedGradient{n, stops});
       });
 
-      // "Flash Intervals": f1:10 f2:20 -- seconds per blink cycle, same
-      // unit/format as the panel-wide "Flash Interval" number ("s" suffix
-      // optional).
+      // "Flash Intervals": f1:10 f2:20 -- seconds per blink cycle ("s" suffix
+      // optional). A style with no fN of its own is steady (no flash).
       std::vector<NamedFloat> flash_defs;
       for_each_entry(id(display_flash).state, [&](const std::string &name, const std::string &val) {
         int n;
@@ -657,10 +656,13 @@ display:
       //   fN                  flash interval   (Flash Intervals box)
       //   roboto | mono | slab            font family (default: roboto)
       //   small | medium | large          font size   (default: medium)
+      //   roboto-s|m|l | mono-s|m|l | slab-s|m|l (case-insensitive suffix)
+      //                                    family + size in one token, e.g.
+      //                                    "mono-m" == "mono,medium"
       // An unresolved or unrecognized token is ignored, falling back to that
       // attribute's default (color: white, brightness: 100%, flash-interval:
-      // the "Flash Interval" number below). Re-defining "sN" later overrides
-      // an earlier definition of the same number -- "Styles 2" is treated as
+      // steady/no flash). Re-defining "sN" later overrides an earlier
+      // definition of the same number -- "Styles 2" is treated as
       // a continuation appended after "Styles", so it wins ties.
       struct StyleDef {
         int n; bool set = false;
@@ -695,10 +697,23 @@ display:
             } else if (named_num('f', tok, tn)) {
               const float *found = find_float(flash_defs, tn);
               if (found != nullptr) { sd.has_flash = true; sd.flash_s = *found; }
-            } else if (tok == "roboto" || tok == "mono" || tok == "slab") {
-              sd.face = tok;
             } else if (tok == "small" || tok == "medium" || tok == "large") {
               sd.size = tok;
+            } else {
+              // "roboto" / "mono" / "slab", optionally with a "-s"/"-m"/"-l"
+              // (case-insensitive) size suffix, e.g. "mono-m" or "roboto-L" --
+              // shorthand for the family token plus a separate size token.
+              size_t dash = tok.find('-');
+              std::string fam = tok.substr(0, dash);
+              if (fam == "roboto" || fam == "mono" || fam == "slab") {
+                sd.face = fam;
+                if (dash != std::string::npos && dash + 2 == tok.size()) {
+                  char c = tok[dash + 1];
+                  if (c == 's' || c == 'S') sd.size = "small";
+                  else if (c == 'm' || c == 'M') sd.size = "medium";
+                  else if (c == 'l' || c == 'L') sd.size = "large";
+                }
+              }
             }
             if (comma == std::string::npos) break;
             start = comma + 1;
@@ -774,15 +789,15 @@ display:
 
       // Resolves "<sN>" to a Frame from scratch: a *named* style is a fixed
       // look, independent of wherever it's used, so this starts from the
-      // global default (white/100%/roboto/medium/Flash Interval) and layers
-      // sN's own definition on top -- never the currently active style.
+      // global default (white/100%/roboto/medium/steady) and layers sN's own
+      // definition on top -- never the currently active style.
       auto resolve_named = [&](int n) -> Frame {
-        Frame f{Style{font_for("roboto", "medium"), Color(255, 255, 255), id(flash_interval).state, 1.0f, -1},
+        Frame f{Style{font_for("roboto", "medium"), Color(255, 255, 255), 0.0f, 1.0f, -1},
                 "roboto", "medium"};
         if (const StyleDef *def = find_style(n)) {
           f.face_ = def->face; f.size_ = def->size;
           f.style.bright = def->bright;
-          f.style.flash_s = def->has_flash ? def->flash_s : id(flash_interval).state;
+          f.style.flash_s = def->has_flash ? def->flash_s : 0.0f;
           f.style.font = font_for(f.face_, f.size_);
           if (def->has_gradient) {
             grad_runs.push_back(def->gradient);
@@ -1014,22 +1029,26 @@ display:
       }
 
 # Home Assistant controls (entity ids are number./text./switch./light.
-# matrix_display_<mac>_<slug>):
+# matrix_display_<mac>_<slug>), listed here in the same order they're declared
+# in and appear in the HA device controls list:
+#   Color Picker           (light) -- reference only: does not drive the display. Pick a color
+#                                     on the wheel to read off its RGB values for use in the
+#                                     "Colors" box (below).
+#   Brightness Levels     (text)   -- defines named brightness levels, referenced from "Styles"
+#                                     below as bN. Whitespace-separated "bN:value" entries:
+#                                       b1:50% b2:10%
+#                                     Value is 0-100, "%" suffix optional. A later "bN" overrides
+#                                     an earlier definition of the same number.
 #   Colors                (text)   -- defines named colors, referenced from "Gradients" and
 #                                     "Styles" below as cN. Whitespace-separated "cN:value"
 #                                     entries, any order:
 #                                       c1:255,255,255 c2:128,128,128 c3:#000000
 #                                     Value is "r,g,b" (decimal 0-255) or "#RRGGBB" hex. A later
 #                                     "cN" overrides an earlier definition of the same number.
-#                                     Use the "Color Picker" light below to find RGB values: turn
+#                                     Use the "Color Picker" light above to find RGB values: turn
 #                                     it on, pick a color on the wheel, then read off the R/G/B
 #                                     numbers HA shows and drop them into cN:r,g,b here. The
 #                                     picker itself does not affect the display.
-#   Brightness Levels     (text)   -- defines named brightness levels, referenced from "Styles"
-#                                     below as bN. Whitespace-separated "bN:value" entries:
-#                                       b1:50% b2:10%
-#                                     Value is 0-100, "%" suffix optional. A later "bN" overrides
-#                                     an earlier definition of the same number.
 #   Gradients              (text)  -- defines named gradients, referenced from "Styles" below as
 #                                     gN. Whitespace-separated "gN:cA,cB,.." entries, each a list
 #                                     of 2 or more color refs from "Colors" above:
@@ -1045,8 +1064,7 @@ display:
 #                                     below as fN. Whitespace-separated "fN:value" entries, each a
 #                                     blink period in seconds:
 #                                       f1:10 f2:20
-#                                     Same unit as the panel-wide "Flash Interval" number below,
-#                                     which a style with no fN of its own falls back to.
+#                                     A style with no fN of its own is steady (no flash).
 #   Styles                (text)   -- composes named styles from the four boxes above, referenced
 #                                     from Display Text via <s1>..<sN>. Whitespace-separated
 #                                     "sN:token,token,.." entries, any order, tokens in any order:
@@ -1060,10 +1078,12 @@ display:
 #                                       bN                    brightness, from "Brightness Levels"
 #                                                              (default: 100%)
 #                                       fN                    flash interval, from "Flash Intervals"
-#                                                              (default: the panel-wide "Flash
-#                                                              Interval" number below)
+#                                                              (default: steady, no flash)
 #                                       roboto | mono | slab           font family (default: roboto)
 #                                       small | medium | large         font size (default: medium)
+#                                       roboto-s|m|l / mono-s|m|l / slab-s|m|l (case-insensitive)
+#                                                                       family + size in one token,
+#                                                                       e.g. "mono-m" == "mono,medium"
 #                                     An unrecognized or unresolved token (e.g. a cN/gN/bN/fN name
 #                                     not defined in its box) is ignored, falling back to that
 #                                     attribute's default. A later "sN" overrides an earlier
@@ -1133,13 +1153,13 @@ display:
 #                                     "br", "span" or "sN") is left as literal text -- so is a plain
 #                                     "<"/">" in ordinary text (e.g. "5 < 10"), as long as what
 #                                     follows doesn't happen to look like one of these tag names.
-#   Color Picker           (light) -- reference only: does not drive the display. Pick a color
-#                                     on the wheel to read off its RGB values for use in the
-#                                     "Colors" box (see above).
-#   Word Wrap             (switch) -- on: wrap to lines; off: horizontal scroll if wide
-#   Flash Interval        (number) -- seconds per blink cycle; 0 = steady. Fallback for any
-#                                     style with no flash-interval attribute of its own.
-#   Horizontal Scroll Speed (number) -- px/s when a line is wider than the panel
+#   Word Wrap             (switch) -- on: wrap to lines; off: horizontal scroll if wide.
+#                                     Declared right before the two scroll-speed numbers below,
+#                                     rather than between them: a YAML mapping can only have one
+#                                     "number:" key, so splitting them across two would silently
+#                                     drop one instead of merging (verified) -- this is the closest
+#                                     safe approximation to the requested "in between" ordering.
+#   Horizontal Scroll Speed (number) -- px/s when a line is wider than the panel (Word Wrap off)
 #   Vertical Scroll Speed   (number) -- px/s when wrapped text is taller than the
 #                                       panel (Word Wrap must be on)
 # Examples:
@@ -1153,7 +1173,7 @@ display:
 #
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_styles}
-#   data: {value: 's1:c1,b1,roboto s2:c2,b2,mono,large'}
+#   data: {value: 's1:c1,b1,roboto s2:c2,b2,mono-l'}
 #
 #   # gradient style: text fades from c1 to c2 to c3 across its own width
 #   action: text.set_value
@@ -1188,22 +1208,44 @@ display:
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_display_text}
 #   data: {value: 'Price <s2>{{ states("sensor.btc_price") }}</s2><br/><span font-size="small" flash-interval="0.5">LOW BATTERY</span>'}
-text:
-  # Defined before "Styles"/"Display Text" so they list first in the HA
-  # entities card, in the order a user would fill them in -- see the
-  # "Colors" / "Brightness Levels" / "Gradients" / "Flash Intervals" / "Styles"
-  # syntax documented above (Home Assistant controls comment).
+# Reference-only color-wheel light: text color now comes from the "Styles" text
+# box (see the Home Assistant controls comment above), not from a light entity,
+# so this is the one picker kept around purely so the user can dial in an RGB
+# value on the wheel and read it off for a style's color="r,g,b" attribute. It is
+# never read by the display lambda and drives no pin (the outputs are no-op
+# sinks), so turning it on/off or changing its color has no effect on the panel.
+# Declared first so it lists first in the HA device controls -- see the "Home
+# Assistant controls" comment above for the full intended order.
+output:
   - platform: template
-    name: "Colors"
-    id: display_colors
-    mode: text
-    optimistic: true
-    restore_value: true
-    min_length: 0
-    max_length: 255
-    initial_value: 'c1:255,136,0 c2:0,190,255'
-    on_value:
-      - component.update: matrix_display
+    type: float
+    id: color_ref_r
+    write_action: []
+  - platform: template
+    type: float
+    id: color_ref_g
+    write_action: []
+  - platform: template
+    type: float
+    id: color_ref_b
+    write_action: []
+
+light:
+  - platform: rgb
+    name: "Color Picker"
+    id: color_ref
+    icon: "mdi:eyedropper-variant"
+    red: color_ref_r
+    green: color_ref_g
+    blue: color_ref_b
+    default_transition_length: 0s
+    gamma_correct: 0
+
+text:
+  # Order here matches the desired HA device controls order (Brightness
+  # Levels, Colors, Gradients, Flash Intervals, Styles, Styles 2, then
+  # Display Text, right after "Color Picker" above) -- see the "Home
+  # Assistant controls" comment above for each box's syntax.
   - platform: template
     name: "Brightness Levels"
     id: display_brightness
@@ -1212,7 +1254,18 @@ text:
     restore_value: true
     min_length: 0
     max_length: 255
-    initial_value: ""
+    initial_value: 'b1:50% b2:80% b3:30%'
+    on_value:
+      - component.update: matrix_display
+  - platform: template
+    name: "Colors"
+    id: display_colors
+    mode: text
+    optimistic: true
+    restore_value: true
+    min_length: 0
+    max_length: 255
+    initial_value: 'c1:255,255,0 c2:0,0,255 c3:128,128,128'
     on_value:
       - component.update: matrix_display
   - platform: template
@@ -1223,7 +1276,7 @@ text:
     restore_value: true
     min_length: 0
     max_length: 255
-    initial_value: ""
+    initial_value: 'g1:c1,c2 g2:c1,c2,c3'
     on_value:
       - component.update: matrix_display
   - platform: template
@@ -1234,7 +1287,7 @@ text:
     restore_value: true
     min_length: 0
     max_length: 255
-    initial_value: ""
+    initial_value: 'f1:1 f2:3'
     on_value:
       - component.update: matrix_display
   - platform: template
@@ -1245,7 +1298,7 @@ text:
     restore_value: true
     min_length: 0
     max_length: 255
-    initial_value: 's1:c1,roboto s2:c2,mono'
+    initial_value: 's1:g2,f1,b1,mono-m s2:c3,b2,roboto-L'
     on_value:
       - component.update: matrix_display
   # Overflow box for style definitions once "Styles" fills up its 255-char cap
@@ -1272,82 +1325,17 @@ text:
     restore_value: true
     min_length: 0
     max_length: 255
-    initial_value: "iotstack - ${friendly_name}"
+    initial_value: "<s1>iotstack - ${friendly_name}</s1><br /><s2>:datetime+5: :smile:</s2>"
     on_value:
       # Redraw immediately so text changes are not delayed to the next update tick.
       - component.update: matrix_display
 
-number:
-  - platform: template
-    name: "Flash Interval"
-    id: flash_interval
-    icon: "mdi:flash"
-    optimistic: true
-    restore_value: true
-    initial_value: 0
-    min_value: 0
-    max_value: 10
-    step: 0.1
-    unit_of_measurement: "s"
-    mode: box  # seconds per blink cycle; 0 = steady (no flashing)
-  - platform: template
-    name: "Horizontal Scroll Speed"
-    id: hscroll_speed
-    icon: "mdi:arrow-right-thin"
-    optimistic: true
-    restore_value: true
-    initial_value: 15
-    min_value: 0
-    max_value: 60
-    step: 1
-    unit_of_measurement: "px/s"
-    mode: box  # scroll rate when a single line is wider than the panel; 0 = static
-  - platform: template
-    name: "Vertical Scroll Speed"
-    id: vscroll_speed
-    icon: "mdi:arrow-down-thin"
-    optimistic: true
-    restore_value: true
-    initial_value: 8
-    min_value: 0
-    max_value: 60
-    step: 1
-    unit_of_measurement: "px/s"
-    # Only applies with Word Wrap on: scrolls when wrapped text is taller than the
-    # panel. 0 = static (tall text is clipped).
-    mode: box
-
-# Reference-only color-wheel light: text color now comes from the "Styles" text
-# box (see the Home Assistant controls comment above), not from a light entity,
-# so this is the one picker kept around purely so the user can dial in an RGB
-# value on the wheel and read it off for a style's color="r,g,b" attribute. It is
-# never read by the display lambda and drives no pin (the outputs are no-op
-# sinks), so turning it on/off or changing its color has no effect on the panel.
-output:
-  - platform: template
-    type: float
-    id: color_ref_r
-    write_action: []
-  - platform: template
-    type: float
-    id: color_ref_g
-    write_action: []
-  - platform: template
-    type: float
-    id: color_ref_b
-    write_action: []
-
-light:
-  - platform: rgb
-    name: "Color Picker"
-    id: color_ref
-    icon: "mdi:eyedropper-variant"
-    red: color_ref_r
-    green: color_ref_g
-    blue: color_ref_b
-    default_transition_length: 0s
-    gamma_correct: 0
-
+# NOTE: "Word Wrap" cannot be interleaved between these two the way it
+# appears in the HA device controls list (a YAML mapping can only have one
+# "number:" key -- a second one would silently overwrite the first, dropping
+# "Horizontal Scroll Speed" entirely, not merge with it). "switch:" is
+# declared first instead, right before both numbers, as the closest safe
+# approximation -- see the "Home Assistant controls" comment above.
 switch:
   - platform: template
     name: "Word Wrap"
@@ -1359,6 +1347,34 @@ switch:
       - component.update: matrix_display
     turn_off_action:
       - component.update: matrix_display
+
+number:
+  - platform: template
+    name: "Horizontal Scroll Speed"
+    id: hscroll_speed
+    icon: "mdi:arrow-right-thin"
+    optimistic: true
+    restore_value: true
+    initial_value: 20
+    min_value: 0
+    max_value: 60
+    step: 1
+    unit_of_measurement: "px/s"
+    mode: box  # scroll rate when a single line is wider than the panel; 0 = static
+  - platform: template
+    name: "Vertical Scroll Speed"
+    id: vscroll_speed
+    icon: "mdi:arrow-down-thin"
+    optimistic: true
+    restore_value: true
+    initial_value: 20
+    min_value: 0
+    max_value: 60
+    step: 1
+    unit_of_measurement: "px/s"
+    # Only applies with Word Wrap on: scrolls when wrapped text is taller than the
+    # panel. 0 = static (tall text is clipped).
+    mode: box
 
 text_sensor:
   # object_id "panel_count" is the horizontal count and is also read by the CLI
