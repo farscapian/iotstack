@@ -112,4 +112,4 @@ Both use esp-idf + esp32_rmt_led_strip:
 - Shared strip definition: `yamls/common/ledstrip_light.yaml` (both variants).
 - C6 external u.FL antenna via `yamls/common/xiao_c6_ext_antenna.yaml` (GPIO3/GPIO14); S3 has no antenna GPIO.
 - PSU: 5V 20A external supply; XIAO powered from same PSU (5V pin); 330 Ohm on data, 1000 uF at strip input.
-- See [docs/ledlightstrip.md](../docs/ledlightstrip.md) and [docs/led-light-strip-diagram.svg](../docs/led-light-strip-diagram.svg)
+- See [docs/lightstrip.md](../docs/lightstrip.md) and [docs/led-light-strip-diagram.svg](../docs/led-light-strip-diagram.svg)

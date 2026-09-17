@@ -1,5 +1,5 @@
 # SK6812 RGBW LED Strip -- Thread end device (XIAO ESP32-C6)
-# See docs/ledlightstrip.md for wiring diagram and safety notes.
+# See docs/lightstrip.md for wiring diagram and safety notes.
 
 substitutions:
   device_role: "ledstrip-c6-thread"
