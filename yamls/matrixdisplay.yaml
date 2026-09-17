@@ -362,6 +362,57 @@ display:
         }
       }
 
+      // --- Date/time tokens ----------------------------------------------------
+      // ":date:" / ":time:" / ":datetime:", each optionally followed by a signed
+      // whole-hour offset, e.g. ":time+5:" (UTC+5), ":date-3:" (UTC-3),
+      // ":datetime:" (bare UTC). device_time (see common/sntp_time.yaml) has no
+      // timezone: configured, so it reports UTC -- the offset here is applied
+      // on top of that, once, per token; a plain ":date:"/":time:"/":datetime:"
+      // is UTC. Expands to:
+      //   date      YYYY-MM-DD
+      //   time      HH:MM (24h)
+      //   datetime  YYYY-MM-DD HH:MM
+      // A token is left as literal text (like an unrecognized "<...>" tag) if
+      // SNTP hasn't synced yet, its offset digits are malformed, or it has no
+      // closing ':'.
+      {
+        auto expand_time_token = [&](const std::string &name, int offset_hours) -> std::string {
+          if (!id(device_time).now().is_valid()) return "";
+          time_t adjusted = id(device_time).now().timestamp + offset_hours * 3600;
+          ESPTime dt = ESPTime::from_epoch_utc(adjusted);
+          if (name == "date") return dt.strftime("%Y-%m-%d");
+          if (name == "time") return dt.strftime("%H:%M");
+          return dt.strftime("%Y-%m-%d %H:%M");   // "datetime"
+        };
+
+        // Longest name first: "datetime" must be tried before "date"/"time" so
+        // ":datetime:" isn't mistaken for ":date" followed by literal "time:".
+        static const char *TIME_TOKEN_NAMES[] = {"datetime", "date", "time"};
+        size_t at = 0;
+        while ((at = text.find(':', at)) != std::string::npos) {
+          const char *matched_name = nullptr;
+          size_t name_len = 0;
+          for (const char *cand : TIME_TOKEN_NAMES) {
+            size_t clen = strlen(cand);
+            if (text.compare(at + 1, clen, cand) == 0) { matched_name = cand; name_len = clen; break; }
+          }
+          if (matched_name == nullptr) { at++; continue; }
+
+          size_t i = at + 1 + name_len;
+          int sign = 0;
+          if (i < text.size() && (text[i] == '+' || text[i] == '-')) { sign = (text[i] == '+') ? 1 : -1; i++; }
+          size_t digits_start = i;
+          while (i < text.size() && text[i] >= '0' && text[i] <= '9') i++;
+          if (sign != 0 && i == digits_start) { at++; continue; }   // "+"/"-" with no digits
+          if (i >= text.size() || text[i] != ':') { at++; continue; }   // no closing ':'
+
+          int offset_hours = (digits_start == i) ? 0 : sign * (int) strtol(text.c_str() + digits_start, nullptr, 10);
+          std::string replacement = expand_time_token(matched_name, offset_hours);
+          text.replace(at, (i + 1) - at, replacement);
+          at += replacement.size();
+        }
+      }
+
       // --- Tag parsing (shared by the "Styles" box and Display Text) ---------
       // A single attr="value" pair inside a tag.
       struct Attr { std::string key, val; };
@@ -1034,6 +1085,16 @@ display:
 #                                                                Unicode emoji, rendered as text glyphs
 #                                                                (these two stay ":colon:" tokens --
 #                                                                they're glyph substitutions, not styling)
+#                                       :date: :time: :datetime:
+#                                                                current UTC date/time:
+#                                                                  date      YYYY-MM-DD
+#                                                                  time      HH:MM (24h)
+#                                                                  datetime  YYYY-MM-DD HH:MM
+#                                                                Each optionally takes a signed whole-hour
+#                                                                offset for a timezone, e.g. :time+5: (UTC+5),
+#                                                                :date-3: (UTC-3), :datetime+2:. Renders blank
+#                                                                until SNTP has synced; a malformed offset or
+#                                                                missing closing ':' is left as literal text.
 #                                       <br/> or <br>            forced line break (a literal newline
 #                                                                in the string works too, but is not
 #                                                                typeable in the HA box)
@@ -1116,6 +1177,11 @@ display:
 #   action: text.set_value
 #   target: {entity_id: text.matrix_display_<mac>_display_text}
 #   data: {value: "Door open :sad:"}
+#
+#   # date/time tokens: UTC time, and local time at UTC-5
+#   action: text.set_value
+#   target: {entity_id: text.matrix_display_<mac>_display_text}
+#   data: {value: "UTC :time: / Local :time-5:"}
 #
 #   # mixed styling: "Price" in style 1 (default), the value in style 2 and
 #   # mono, a forced break, then a small flashing warning back in style 1

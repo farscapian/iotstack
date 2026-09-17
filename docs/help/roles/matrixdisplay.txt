@@ -13,7 +13,9 @@ Display Text may also contain inline icons: ":btc:" draws the full-color
 Bitcoin logo, and the Unicode BITCOIN SIGN (U+20BF) renders as a text glyph
 that takes the active style's color. Emoji tokens (:smile: :sad: :cry: :heart:
 :thumbsup: :thumbsdown: :sun: :cloud: :rain:) also render as text glyphs,
-low-res but following the same style color. See docs/devices.md (Matrix
+low-res but following the same style color. Date/time tokens (:date: :time:
+:datetime:, each taking an optional signed whole-hour offset, e.g. :time+5:)
+expand to the current UTC date/time, shifted by that offset. See docs/devices.md (Matrix
 Display) for how to add icons or emoji.
 
 Config: yamls/matrixdisplay.yaml
