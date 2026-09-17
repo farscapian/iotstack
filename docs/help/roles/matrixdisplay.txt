@@ -4,9 +4,11 @@ ESP32-S3 HUB75 LED matrix. Panel geometry is stored in NVS at flash time
 (panels cannot self-report wiring).
 
 Display content is set from Home Assistant (the "Display Text" entity), not from
-the CLI. Colors, brightness and font come from the "Styles" entity, a small
-HTML-like tag syntax (e.g. '<s1 color="255,20,7" brightness="50%" font="roboto" />')
-applied inline in Display Text via <s1>text</s1> .. <sN>text</sN>.
+the CLI. Colors, brightness, gradients and flash intervals are each defined in
+their own text entity ("Colors", "Brightness Levels", "Gradients", "Flash
+Intervals": e.g. 'c1:255,20,7 c2:0,190,255'), then composed into named styles
+via the "Styles" entity (e.g. 's1:c1,roboto s2:c2,mono,large'), applied inline
+in Display Text via <s1>text</s1> .. <sN>text</sN>.
 Display Text may also contain inline icons: ":btc:" draws the full-color
 Bitcoin logo, and the Unicode BITCOIN SIGN (U+20BF) renders as a text glyph
 that takes the active style's color. Emoji tokens (:smile: :sad: :cry: :heart:
