@@ -199,6 +199,25 @@ _bootstrap_part_size() {
   printf '0x%x' "$total"
 }
 
+_IOTSTACK_ESPHOME_BIN=""
+_iotstack_esphome_bin() {
+  # esphome only lives in its dedicated venv after a fresh setup.sh install;
+  # a bare `esphome` silently breaks (command not found, no captured output,
+  # fails in ~1s) whenever PATH doesn't include that venv. Mirrors
+  # update_devices.sh's ESPHOME_BIN resolution so every entry point behaves
+  # the same way -- see docs/pitfalls.md.
+  #
+  # Returns 1 with no output if esphome can't be found; callers must check
+  # and err() themselves. (err()'s own exit, called from here, would only
+  # kill this function's command-substitution subshell, not the script.)
+  if [[ -z "$_IOTSTACK_ESPHOME_BIN" ]]; then
+    _IOTSTACK_ESPHOME_BIN="${HOME}/.local/esphome/venv/bin/esphome"
+    [[ -x "$_IOTSTACK_ESPHOME_BIN" ]] || _IOTSTACK_ESPHOME_BIN=$(command -v esphome 2>/dev/null || true)
+    [[ -n "$_IOTSTACK_ESPHOME_BIN" ]] || return 1
+  fi
+  printf '%s' "$_IOTSTACK_ESPHOME_BIN"
+}
+
 _esphome_compile_show_failure() {
   local compile_yaml="$1"
   local compile_log="$2"
@@ -222,24 +241,26 @@ _esphome_compile() {
   local compile_yaml compile_log rc=0
   compile_yaml=$(iotstack_prepare_compile_yaml "$yaml_file") || return 1
   compile_log=$(mktemp)
+  local esphome_bin
+  esphome_bin=$(_iotstack_esphome_bin) || err "esphome not found. Expected ${HOME}/.local/esphome/venv/bin/esphome or on PATH."
   info "Compiling $(basename "$compile_yaml")..."
-  debug "esphome compilation command: esphome compile ${compile_yaml}"
+  debug "esphome compilation command: ${esphome_bin} compile ${compile_yaml}"
   if iotstack_compilation_output_enabled; then
     local -a compile_tee_targets=("$compile_log")
     [[ -e /dev/tty && -w /dev/tty ]] && compile_tee_targets+=("/dev/tty")
     if create_log_child_output_piped; then
       create_log_subprocess_indent_env
-      if ! env PYTHONUNBUFFERED=1 stdbuf -oL -eL esphome compile "$compile_yaml" 2>&1 \
+      if ! env PYTHONUNBUFFERED=1 stdbuf -oL -eL "$esphome_bin" compile "$compile_yaml" 2>&1 \
           | stdbuf -oL -eL tee "${compile_tee_targets[@]}" \
           | create_log_tee_console "esphome:compile"; then
         rc=1
       fi
-    elif ! env PYTHONUNBUFFERED=1 stdbuf -oL -eL esphome compile "$compile_yaml" 2>&1 \
+    elif ! env PYTHONUNBUFFERED=1 stdbuf -oL -eL "$esphome_bin" compile "$compile_yaml" 2>&1 \
         | stdbuf -oL -eL tee "$compile_log"; then
       rc=1
     fi
     [[ $rc -eq 1 ]] && _esphome_compile_show_failure "$compile_yaml" "$compile_log"
-  elif ! esphome compile "$compile_yaml" >"$compile_log" 2>&1; then
+  elif ! "$esphome_bin" compile "$compile_yaml" >"$compile_log" 2>&1; then
     rc=1
     _esphome_compile_show_failure "$compile_yaml" "$compile_log"
   fi
@@ -2765,6 +2786,22 @@ _prod_bootstrap_ota_upload_yaml() {
   printf '\nota:\n  - platform: esphome\n    password: "%s"\n' "$ota_password" >> "$out_yaml"
 }
 
+_esphome_upload_show_failure() {
+  # Mirrors _esphome_compile_show_failure: persist the raw esphome upload
+  # output into the session log so a failure here is diagnosable after the
+  # fact instead of leaving only the synthesized [WARN] line.
+  local mac="$1"
+  local upload_log="$2"
+  local line
+  [[ -f "$upload_log" && -s "$upload_log" ]] || return 0
+  if declare -F create_log_stamp_line &>/dev/null && create_log_enabled; then
+    create_log_stamp_line "esphome:upload" "--- [$mac] bootstrap-from-production upload failed ---"
+    while IFS= read -r line; do
+      create_log_stamp_line "esphome:upload" "$line"
+    done <"$upload_log"
+  fi
+}
+
 _bootstrap_target_ota_advertised() {
   # discover_fn for iotstack_mdns_retry: does <hostname> currently show up in
   # the avahi cache for the opt-in "_iotstack-bootstrap-target._tcp" service?
@@ -2849,14 +2886,27 @@ _ota_bootstrap_via_production() {
   upload_yaml="$(dirname "$yaml_file")/.temp-bootstrap-ota-upload-$(basename "$yaml_file")"
   _prod_bootstrap_ota_upload_yaml "$yaml_file" "$dev_pwd" "$upload_yaml"
 
+  local esphome_bin
+  esphome_bin=$(_iotstack_esphome_bin) || {
+    warn "[$mac] esphome not found. Expected ${HOME}/.local/esphome/venv/bin/esphome or on PATH."
+    rm -f "$upload_yaml"
+    return 1
+  }
+
   info "[$mac] 1/4 OTA new bootstrap image into $hostname (writes ota_0)..."
-  local upload_ok=1
-  timeout 60 esphome upload "$upload_yaml" --device "${hostname}.local" --file "$bootstrap_bin" || upload_ok=0
+  local upload_ok=1 upload_log
+  upload_log=$(mktemp)
+  if ! timeout 60 "$esphome_bin" upload "$upload_yaml" --device "${hostname}.local" --file "$bootstrap_bin" 2>&1 | tee "$upload_log"; then
+    upload_ok=0
+  fi
   rm -f "$upload_yaml"
   if [[ "$upload_ok" != 1 ]]; then
+    _esphome_upload_show_failure "$mac" "$upload_log"
+    rm -f "$upload_log"
     warn "[$mac] bootstrap OTA upload failed; production is untouched (OTA never wrote its running partition)"
     return 1
   fi
+  rm -f "$upload_log"
 
   local bs_host
   bs_host=$(iotstack_bootstrap_hostname "$mac")
