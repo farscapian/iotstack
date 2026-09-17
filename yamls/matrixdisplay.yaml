@@ -1028,8 +1028,12 @@ display:
       }
 
 # Home Assistant controls (entity ids are number./text./switch./light.
-# matrix_display_<mac>_<slug>), listed here in the same order they're declared
-# in and appear in the HA device controls list:
+# matrix_display_<mac>_<slug>), listed here in the intended HA device controls
+# order. That order is enforced via a "01 ".."10 " prefix on each entity's
+# name: below (HA's device controls list sorts by name, not YAML declaration
+# order -- see the NOTE further down) -- the bullets here use the un-prefixed
+# name since that's what "Colors"/"Styles"/etc. refer to elsewhere in this file
+# (ids, on_value targets, cross-references between boxes):
 #   Color Picker           (light) -- reference only: does not drive the display. Pick a color
 #                                     on the wheel to read off its RGB values for use in the
 #                                     "Colors" box (below).
@@ -1207,8 +1211,10 @@ display:
 # value on the wheel and read it off for a style's color="r,g,b" attribute. It is
 # never read by the display lambda and drives no pin (the outputs are no-op
 # sinks), so turning it on/off or changing its color has no effect on the panel.
-# Declared first so it lists first in the HA device controls -- see the "Home
-# Assistant controls" comment above for the full intended order.
+# Its name: below is prefixed "01 " to sort first in the HA device controls
+# list -- see the "Home Assistant controls" comment above for the full
+# intended order and the NOTE near "switch:"/"number:" for why a name prefix,
+# not declaration order, is what actually controls it.
 output:
   - platform: template
     type: float
@@ -1225,7 +1231,7 @@ output:
 
 light:
   - platform: rgb
-    name: "Color Picker"
+    name: "01 Color Picker"
     id: color_ref
     icon: "mdi:eyedropper-variant"
     red: color_ref_r
@@ -1235,12 +1241,12 @@ light:
     gamma_correct: 0
 
 text:
-  # Order here matches the desired HA device controls order (Brightness
-  # Levels, Colors, Gradients, Flash Intervals, Styles, then Display Text,
-  # right after "Color Picker" above) -- see the "Home Assistant controls"
-  # comment above for each box's syntax.
+  # Declared in the intended HA device controls order too, for readability,
+  # but the "02 ".."07 " prefix on each name: below is what actually enforces
+  # it in HA -- see the NOTE near "switch:"/"number:" further down, and the
+  # "Home Assistant controls" comment above for each box's syntax.
   - platform: template
-    name: "Brightness Levels"
+    name: "02 Brightness Levels"
     id: display_brightness
     mode: text
     optimistic: true
@@ -1251,7 +1257,7 @@ text:
     on_value:
       - component.update: matrix_display
   - platform: template
-    name: "Colors"
+    name: "03 Colors"
     id: display_colors
     mode: text
     optimistic: true
@@ -1262,7 +1268,7 @@ text:
     on_value:
       - component.update: matrix_display
   - platform: template
-    name: "Gradients"
+    name: "04 Gradients"
     id: display_gradients
     mode: text
     optimistic: true
@@ -1273,7 +1279,7 @@ text:
     on_value:
       - component.update: matrix_display
   - platform: template
-    name: "Flash Intervals"
+    name: "05 Flash Intervals"
     id: display_flash
     mode: text
     optimistic: true
@@ -1284,7 +1290,7 @@ text:
     on_value:
       - component.update: matrix_display
   - platform: template
-    name: "Styles"
+    name: "06 Styles"
     id: display_styles
     mode: text
     optimistic: true
@@ -1295,7 +1301,7 @@ text:
     on_value:
       - component.update: matrix_display
   - platform: template
-    name: "Display Text"
+    name: "07 Display Text"
     id: display_text
     mode: text
     optimistic: true
@@ -1307,15 +1313,21 @@ text:
       # Redraw immediately so text changes are not delayed to the next update tick.
       - component.update: matrix_display
 
-# NOTE: "Word Wrap" cannot be interleaved between these two the way it
-# appears in the HA device controls list (a YAML mapping can only have one
-# "number:" key -- a second one would silently overwrite the first, dropping
-# "Horizontal Scroll Speed" entirely, not merge with it). "switch:" is
-# declared first instead, right before both numbers, as the closest safe
-# approximation -- see the "Home Assistant controls" comment above.
+# NOTE on ordering: HA's device controls list did not honor plain YAML
+# declaration order for this device (observed: "Color Picker" stayed 2nd
+# despite being declared first) -- it appears to sort entities alphabetically
+# by name instead. So every control's name: above/below is prefixed "01 ".."10"
+# to force the intended order that way instead (see the "Home Assistant
+# controls" comment for the full intended sequence); a YAML mapping can also
+# only have one "number:" key per file (a second one silently overwrites the
+# first rather than merging, verified), which is a second, independent reason
+# "switch:"/"number:" declaration order alone couldn't interleave "Word Wrap"
+# between the two scroll speeds. Physical declaration order below is no longer
+# load-bearing for HA's display order, only the "NN " name prefixes are --
+# kept in this order anyway for readability.
 switch:
   - platform: template
-    name: "Word Wrap"
+    name: "09 Word Wrap"
     id: word_wrap
     icon: "mdi:wrap"
     optimistic: true
@@ -1327,7 +1339,7 @@ switch:
 
 number:
   - platform: template
-    name: "Horizontal Scroll Speed"
+    name: "08 Horizontal Scroll Speed"
     id: hscroll_speed
     icon: "mdi:arrow-right-thin"
     optimistic: true
@@ -1339,7 +1351,7 @@ number:
     unit_of_measurement: "px/s"
     mode: box  # scroll rate when a single line is wider than the panel; 0 = static
   - platform: template
-    name: "Vertical Scroll Speed"
+    name: "10 Vertical Scroll Speed"
     id: vscroll_speed
     icon: "mdi:arrow-down-thin"
     optimistic: true
