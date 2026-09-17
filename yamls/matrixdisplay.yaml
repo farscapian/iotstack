@@ -307,7 +307,7 @@ display:
       // placeholder, overwritten below (see "Gradient resolution") with a
       // color interpolated from grad_runs[grad_id] by this character's
       // pixel position within its contiguous gradient run.
-      struct Style { FontPtr font; Color color; float flash_s; float bright; int grad_id = -1; };
+      struct Style { FontPtr font; Color color; float flash_s; float bright; int grad_id = -1; std::string align = "left"; };
 
       // Text laid out with a Style attached to every byte (1:1 with the bytes in
       // .s, repeated across a codepoint's continuation bytes). Every helper below
@@ -667,6 +667,7 @@ display:
         int n; bool set = false;
         Color color{255, 255, 255}; float bright = 1.0f;
         std::string face = "roboto"; std::string size = "medium";
+        std::string align = "left";
         bool has_flash = false; float flash_s = 0.0f;
         bool has_gradient = false; std::vector<Color> gradient;
       };
@@ -698,6 +699,8 @@ display:
               if (found != nullptr) { sd.has_flash = true; sd.flash_s = *found; }
             } else if (tok == "small" || tok == "medium" || tok == "large") {
               sd.size = tok;
+            } else if (tok == "left" || tok == "center" || tok == "right") {
+              sd.align = tok;
             } else {
               // "roboto" / "mono" / "slab", optionally with a "-s"/"-m"/"-l"
               // (case-insensitive) size suffix, e.g. "mono-m" or "roboto-L" --
@@ -775,6 +778,37 @@ display:
         }
       };
 
+      // Horizontal alignment for one rendered line: taken from the style of the
+      // line's first character (a line normally starts with the <sN> that owns
+      // it -- see the "Styles" box's left/center/right token). *conflict is set
+      // if a later character on the same line carries a different alignment,
+      // e.g. two differently-aligned <sN> spans sharing one line; the caller
+      // draws an error indicator instead of guessing which one wins.
+      auto line_align_x0 = [&](const SText &line, int width, bool *conflict) -> int {
+        *conflict = false;
+        if (line.st.empty()) return 0;
+        const std::string &al = line.st.front().align;
+        for (const auto &sty : line.st) {
+          if (sty.align != al) { *conflict = true; break; }
+        }
+        int x0 = 0;
+        if (al == "center") x0 = (W - width) / 2;
+        else if (al == "right") x0 = W - width;
+        return (x0 < 0) ? 0 : x0;
+      };
+
+      // Drawn in place of a line whose styles disagree on alignment, so a
+      // misconfigured Styles/Display Text combo fails visibly on the panel
+      // itself rather than silently picking a winner.
+      auto draw_align_error = [&](int y, bool center_v) {
+        TextAlign al = center_v ? TextAlign::CENTER_LEFT : TextAlign::TOP_LEFT;
+        FontPtr ef = font_for("roboto", "medium");
+        int bx, by, cw, ch;
+        it.get_text_bounds(0, 0, "!", ef, al, &bx, &by, &cw, &ch);
+        int x0 = (W - cw) / 2;
+        it.print((x0 < 0) ? 0 : x0, y, ef, Color(255, 0, 0), al, "!");
+      };
+
       // --- Inline style tags ---------------------------------------------------
       // A style-carrying frame: Style plus the font/size strings it was built
       // from (font_for() needs both strings whenever either one changes).
@@ -796,6 +830,7 @@ display:
         if (const StyleDef *def = find_style(n)) {
           f.face_ = def->face; f.size_ = def->size;
           f.style.bright = def->bright;
+          f.style.align = def->align;
           f.style.flash_s = def->has_flash ? def->flash_s : 0.0f;
           f.style.font = font_for(f.face_, f.size_);
           if (def->has_gradient) {
@@ -1004,18 +1039,29 @@ display:
           int voff = (int) fmodf(millis() / 1000.0f * vspeed, (float) span);
           for (int copy = 0; copy < 2; copy++) {
             int base = -voff + copy * span;
-            for (size_t k = 0; k < lines.size(); k++)
-              draw_line(0, base + (int) k * th, lines[k], false);
+            for (size_t k = 0; k < lines.size(); k++) {
+              int y = base + (int) k * th;
+              bool conflict;
+              int x0 = line_align_x0(lines[k], measure(lines[k]), &conflict);
+              if (conflict) draw_align_error(y, false); else draw_line(x0, y, lines[k], false);
+            }
           }
         } else {
-          // Fits (or vscroll off): vertically centered, top-aligned lines.
+          // Fits (or vscroll off): vertically centered, each line horizontally
+          // aligned per its own style (left by default).
           int y0 = (total < H) ? (H - total) / 2 : 0;
-          for (size_t k = 0; k < lines.size(); k++)
-            draw_line(0, y0 + (int) k * th, lines[k], false);
+          for (size_t k = 0; k < lines.size(); k++) {
+            int y = y0 + (int) k * th;
+            bool conflict;
+            int x0 = line_align_x0(lines[k], measure(lines[k]), &conflict);
+            if (conflict) draw_align_error(y, false); else draw_line(x0, y, lines[k], false);
+          }
         }
       } else if (tw <= W) {
-        // Fits on one line: vertically centered, left-aligned.
-        draw_line(0, H / 2, body, true);
+        // Fits on one line: vertically centered, horizontally aligned per style.
+        bool conflict;
+        int x0 = line_align_x0(body, tw, &conflict);
+        if (conflict) draw_align_error(H / 2, true); else draw_line(x0, H / 2, body, true);
       } else {
         // Wider than the panel: scroll horizontally at hscroll_speed px/s.
         float speed = id(hscroll_speed).state;
@@ -1087,6 +1133,11 @@ display:
 #                                       roboto-s|m|l / mono-s|m|l / slab-s|m|l (case-insensitive)
 #                                                                       family + size in one token,
 #                                                                       e.g. "mono-m" == "mono,medium"
+#                                       left | center | right           horizontal alignment
+#                                                                       (default: left) of whichever
+#                                                                       rendered line this style
+#                                                                       starts -- see "Alignment
+#                                                                       conflicts" below.
 #                                     An unrecognized or unresolved token (e.g. a cN/gN/bN/fN name
 #                                     not defined in its box) is ignored, falling back to that
 #                                     attribute's default. A later "sN" overrides an earlier
@@ -1094,6 +1145,14 @@ display:
 #                                     (both ESPHome's text component and HA's text entity, a uint8_t
 #                                     limit) with no overflow box -- token composition keeps each
 #                                     style short, so this is expected to be enough in practice.
+#                                     Alignment conflicts: a rendered line's horizontal position
+#                                     comes from whichever style started that line (the first
+#                                     <sN> on it, or Style 1's default before the first tag). If a
+#                                     later style on the *same* line declares a different left/
+#                                     center/right, the alignment is ambiguous and that whole line
+#                                     is replaced on the panel with a single red "!" instead of
+#                                     guessing which one to use -- fix by giving the whole line one
+#                                     alignment, or splitting it onto separate lines with <br/>.
 #   Display Text          (text)   -- the string to show. Everything below is HTML-like
 #                                     tags mixed with plain text, ASCII only:
 #                                       :btc:                    Bitcoin roundel (full-color image)
