@@ -18,6 +18,7 @@ Project-specific agent guidance. Generic workflow, `ask`, conventions, and secur
 | NVS / secrets / WiFi | `nvs-secrets.md`, `security.md` |
 | New shell script | `.agentstack/docs/conventions.md`, `code-quality.md`, `implementation.md` |
 | New device role | `cli.md`, `devices.md`, `architecture.md` |
+| HA automations (`automations/` dir) | `automations.md`, `features.md` (HA Integration) |
 | CI / commit hygiene | `.agentstack/docs/workflow.md`, `code-quality.md`, `testing.md` |
 | Human local-sync handoff | `.agentstack/docs/ask.md`, `workflow.md` |
 

@@ -1,0 +1,96 @@
+blueprint:
+  name: "Activity feed -> matrixdisplay"
+  description: >-
+    Mirrors Home Assistant's Activity panel onto a matrixdisplay's "Display
+    Text" entity. Watches state changes across the given domains and writes
+    a one-line summary of each change to the target display.
+
+    Not a full replacement for the Activity panel: only the single most
+    recent matching event is ever shown, since a matrixdisplay has one
+    "Display Text" entity and no scrollback of its own. Use `exclude_entities`
+    to silence noisy sources (e.g. the matrixdisplay's own diagnostic
+    entities, or a sensor that updates every few seconds).
+  domain: automation
+  input:
+    display_text_entity:
+      name: Target "Display Text" entity
+      description: >-
+        The text.<hostname>_display_text entity of the matrixdisplay to
+        write events to.
+      selector:
+        entity:
+          domain: text
+    watched_domains:
+      name: Watched domains
+      description: >-
+        Entity domains whose state changes should be shown. Matches what
+        the Activity panel reports for that domain (occupancy/motion,
+        presence, etc).
+      default:
+        - binary_sensor
+        - device_tracker
+      selector:
+        select:
+          multiple: true
+          mode: list
+          options:
+            - binary_sensor
+            - device_tracker
+            - person
+            - sensor
+            - switch
+            - light
+            - lock
+            - cover
+            - alarm_control_panel
+    exclude_entities:
+      name: Entities to ignore
+      description: >-
+        Entities to never report, even if their domain is watched (e.g. the
+        matrixdisplay's own entities, or a fast-changing sensor).
+      default: []
+      selector:
+        entity:
+          multiple: true
+    message_template:
+      name: Message template
+      description: >-
+        Jinja template for the line pushed to Display Text. The triggering
+        event is available as `trigger.event.data` (`new_state` / `old_state`
+        / `entity_id`). Keep it short: the matrixdisplay's text entities are
+        capped at 255 characters, and the panel itself only shows a handful
+        of characters at once.
+      default: "{{ trigger.event.data.new_state.name }}: {{ trigger.event.data.new_state.state }}"
+      selector:
+        text:
+          multiline: true
+
+mode: queued
+max: 10
+
+variables:
+  display_text_entity: !input display_text_entity
+  watched_domains: !input watched_domains
+  exclude_entities: !input exclude_entities
+
+trigger:
+  - trigger: event
+    event_type: state_changed
+
+condition:
+  - condition: template
+    value_template: >-
+      {{ trigger.event.data.entity_id.split('.')[0] in watched_domains
+         and trigger.event.data.entity_id != display_text_entity
+         and trigger.event.data.entity_id not in exclude_entities
+         and trigger.event.data.new_state is not none
+         and trigger.event.data.new_state.state not in ['unknown', 'unavailable']
+         and (trigger.event.data.old_state is none
+              or trigger.event.data.old_state.state != trigger.event.data.new_state.state) }}
+
+action:
+  - action: text.set_value
+    target:
+      entity_id: !input display_text_entity
+    data:
+      value: !input message_template

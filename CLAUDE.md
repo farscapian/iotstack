@@ -45,6 +45,7 @@ ESP32 ESPHome device management. **Load topic files on demand -- do not read thi
 | [docs/flash-encryption.md](docs/flash-encryption.md) | eFuses / flash encryption (TODO) |
 | [docs/testing.md](docs/testing.md) | Pre-handoff device testing checklist |
 | [docs/references.md](docs/references.md) | External docs and key source files |
+| [docs/automations.md](docs/automations.md) | `automations/` dir: generic HA automations, blueprints vs plain, activity-to-matrixdisplay |
 
 Full catalog: [docs/README.md](docs/README.md).
 

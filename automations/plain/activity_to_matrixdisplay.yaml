@@ -1,0 +1,43 @@
+# Plain (non-blueprint) counterpart to
+# automations/blueprints/activity_to_matrixdisplay.yaml.
+#
+# Same logic, no inputs: replace the two placeholders below and paste the
+# automation into your automations.yaml (or a packages/ file). Use this
+# instead of the blueprint when you want one fixed instance and don't want
+# to manage it through Settings > Automations > Blueprints.
+#
+# Replace:
+#   text.matrix_display_REPLACE_MAC_display_text  -- target matrixdisplay's
+#                                                     Display Text entity
+#   REPLACE_DOMAINS                                -- Jinja list literal of domains to
+#                                                     watch, e.g. ['binary_sensor', 'device_tracker']
+#
+# Add entries to the "not in [...]" list in the condition below to silence
+# specific noisy entities.
+
+- alias: "Activity feed -> matrixdisplay"
+  description: >-
+    Mirrors the Home Assistant Activity panel onto a matrixdisplay's
+    Display Text entity: shows the most recent state change from the
+    watched domains.
+  mode: queued
+  max: 10
+  trigger:
+    - trigger: event
+      event_type: state_changed
+  condition:
+    - condition: template
+      value_template: >-
+        {{ trigger.event.data.entity_id.split('.')[0] in REPLACE_DOMAINS
+           and trigger.event.data.entity_id != 'text.matrix_display_REPLACE_MAC_display_text'
+           and trigger.event.data.entity_id not in []
+           and trigger.event.data.new_state is not none
+           and trigger.event.data.new_state.state not in ['unknown', 'unavailable']
+           and (trigger.event.data.old_state is none
+                or trigger.event.data.old_state.state != trigger.event.data.new_state.state) }}
+  action:
+    - action: text.set_value
+      target:
+        entity_id: text.matrix_display_REPLACE_MAC_display_text
+      data:
+        value: "{{ trigger.event.data.new_state.name }}: {{ trigger.event.data.new_state.state }}"
