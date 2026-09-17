@@ -644,7 +644,7 @@ display:
         if (named_num('f', name, n)) flash_defs.push_back(NamedFloat{n, strtof(val.c_str(), nullptr)});
       });
 
-      // --- Style definitions (from the "Styles" + "Styles 2" text boxes) -----
+      // --- Style definitions (from the "Styles" text box) ---------------------
       // Syntax: one "sN:token,token,..." entry per style, e.g.
       //   s1:g1,f2,b2,mono s2:c2,b1,roboto
       // Each token is either a reference into one of the four boxes above, or
@@ -662,8 +662,7 @@ display:
       // An unresolved or unrecognized token is ignored, falling back to that
       // attribute's default (color: white, brightness: 100%, flash-interval:
       // steady/no flash). Re-defining "sN" later overrides an earlier
-      // definition of the same number -- "Styles 2" is treated as
-      // a continuation appended after "Styles", so it wins ties.
+      // definition of the same number.
       struct StyleDef {
         int n; bool set = false;
         Color color{255, 255, 255}; float bright = 1.0f;
@@ -673,7 +672,7 @@ display:
       };
       std::vector<StyleDef> styles;
       {
-        std::string spec = id(display_styles).state + id(display_styles_2).state;
+        std::string spec = id(display_styles).state;
         for_each_entry(spec, [&](const std::string &name, const std::string &val) {
           int n;
           if (!style_num(name, n)) return;
@@ -1087,16 +1086,10 @@ display:
 #                                     An unrecognized or unresolved token (e.g. a cN/gN/bN/fN name
 #                                     not defined in its box) is ignored, falling back to that
 #                                     attribute's default. A later "sN" overrides an earlier
-#                                     definition of the same number.
-#   Styles 2              (text)   -- overflow for "Styles" once it fills its 255-char cap (both
-#                                     ESPHome's text component and HA's text entity hard-cap length
-#                                     at 255, a uint8_t limit -- a single box cannot go higher).
-#                                     Its content is appended after "Styles" before parsing: same
-#                                     "sN:token,.." syntax, same sN numbers, and a later "sN" here
-#                                     overrides an earlier one of the same number in "Styles".
-#                                     Leave empty if "Styles" alone is enough. (The "Colors",
-#                                     "Brightness Levels", "Gradients" and "Flash Intervals" boxes
-#                                     have no overflow box of their own -- keep within 255 chars.)
+#                                     definition of the same number. This box hard-caps at 255 chars
+#                                     (both ESPHome's text component and HA's text entity, a uint8_t
+#                                     limit) with no overflow box -- token composition keeps each
+#                                     style short, so this is expected to be enough in practice.
 #   Display Text          (text)   -- the string to show. Everything below is HTML-like
 #                                     tags mixed with plain text, ASCII only:
 #                                       :btc:                    Bitcoin roundel (full-color image)
@@ -1243,9 +1236,9 @@ light:
 
 text:
   # Order here matches the desired HA device controls order (Brightness
-  # Levels, Colors, Gradients, Flash Intervals, Styles, Styles 2, then
-  # Display Text, right after "Color Picker" above) -- see the "Home
-  # Assistant controls" comment above for each box's syntax.
+  # Levels, Colors, Gradients, Flash Intervals, Styles, then Display Text,
+  # right after "Color Picker" above) -- see the "Home Assistant controls"
+  # comment above for each box's syntax.
   - platform: template
     name: "Brightness Levels"
     id: display_brightness
@@ -1299,22 +1292,6 @@ text:
     min_length: 0
     max_length: 255
     initial_value: 's1:g2,f1,b1,mono-m s2:c3,b2,roboto-L'
-    on_value:
-      - component.update: matrix_display
-  # Overflow box for style definitions once "Styles" fills up its 255-char cap
-  # (both ESPHome's text component and HA's text entity hard-cap at 255, a
-  # uint8_t limit, so a single box cannot go higher). Its content is appended
-  # after "Styles" before parsing, so treat it as a continuation, not a
-  # separate namespace -- sN numbers and override order span both boxes.
-  - platform: template
-    name: "Styles 2"
-    id: display_styles_2
-    mode: text
-    optimistic: true
-    restore_value: true
-    min_length: 0
-    max_length: 255
-    initial_value: ""
     on_value:
       - component.update: matrix_display
   - platform: template
