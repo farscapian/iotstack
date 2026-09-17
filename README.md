@@ -72,8 +72,8 @@ yamls/
 |--- bleproxy.yaml                    # BLE Proxy (WiFi)
 |--- threadrouter.yaml                # Thread Router (Thread mesh)
 |--- mmwave.yaml                      # Presence sensor (WiFi)
-|--- ledlightstrip-c6-thread.yaml     # LED strip controller (C6/Thread)
-|--- ledlightstrip-s3-wifi.yaml       # LED strip controller (S3/WiFi)
+|--- lightstrip-c6-thread.yaml       # LED strip controller (C6/Thread)
+|--- lightstrip-s3-wifi.yaml         # LED strip controller (S3/WiFi)
 |--- sendspin.yaml                    # Multi-room speaker (WiFi)
 `--- external_components/             # Custom ESPHome components
     |--- nvs_secrets/                 # Reads device credentials from NVS
@@ -122,7 +122,7 @@ Deploy devices in this order to build up your infrastructure:
 3. **Other devices** (presence sensors, LED strips, etc.)
    ```bash
    iotstack flash mmwave /dev/ttyACM0
-   iotstack flash ledlightstrip-c6-thread /dev/ttyACM0
+   iotstack flash lightstrip-c6-thread /dev/ttyACM0
    ```
 
 ### Quick Commands

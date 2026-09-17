@@ -7,7 +7,7 @@ Roles are listed in `scripts/roles.conf`. Examples:
 > external u.FL antenna. Only the C6 needs software to get there:
 >
 > - **XIAO ESP32-C6** -- RF passes through an FM8625H switch on GPIO3/GPIO14, so
->   the C6 roles (bleproxy, threadrouter, mmwave, ledlightstrip-c6-thread)
+>   the C6 roles (bleproxy, threadrouter, mmwave, lightstrip-c6-thread)
 >   include `yamls/common/xiao_c6_ext_antenna.yaml` to select the u.FL connector
 >   (GPIO3 LOW + GPIO14 HIGH at boot). A unit running such a build **must have a
 >   u.FL pigtail attached** -- without it the board has no usable antenna
@@ -106,8 +106,8 @@ Both use esp-idf + esp32_rmt_led_strip:
 
 | Role | Board | Network | mDNS | Data pin |
 |------|-------|---------|------|----------|
-| `ledlightstrip-c6-thread` | XIAO ESP32-C6 | Thread (FTD) | `ledstrip-c6-thread-<mac>` | D0 = GPIO0 |
-| `ledlightstrip-s3-wifi` | XIAO ESP32-S3 | WiFi | `ledstrip-s3-wifi-<mac>` | D0 = GPIO1 |
+| `lightstrip-c6-thread` | XIAO ESP32-C6 | Thread (FTD) | `ledstrip-c6-thread-<mac>` | D0 = GPIO0 |
+| `lightstrip-s3-wifi` | XIAO ESP32-S3 | WiFi | `ledstrip-s3-wifi-<mac>` | D0 = GPIO1 |
 
 - Shared strip definition: `yamls/common/ledstrip_light.yaml` (both variants).
 - C6 external u.FL antenna via `yamls/common/xiao_c6_ext_antenna.yaml` (GPIO3/GPIO14); S3 has no antenna GPIO.

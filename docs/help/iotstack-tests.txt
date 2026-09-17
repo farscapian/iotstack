@@ -24,16 +24,16 @@ Environment (~/.iotstack/.env):
   IOTSTACK_TEST_TTY_S3=/dev/ttyACM1   Optional override for ESP32-S3
 
 Role -> chip mapping (from iotstack roles / YAML variant):
-  esp32c6: bleproxy, mmwave, threadrouter, bootstrap, ledlightstrip-c6-thread
-  esp32s3: ledlightstrip-s3-wifi, sendspin, silentnotify, matrixdisplay
+  esp32c6: bleproxy, mmwave, threadrouter, bootstrap, lightstrip-c6-thread
+  esp32s3: lightstrip-s3-wifi, sendspin, silentnotify, matrixdisplay
 
 Test suites (regression gate -- hardware-validated builds only):
   00-06  ESP32-C6 bleproxy: flash / verify / update (delta,force) / list / bootstrap list
   10-14  ESP32-C6 boot-partition toggle + bootstrap flash/reassign
   15-16  Compile skip via iotstack flash (hit/miss, build_info.json config_hash)
 
-  Cases for not-yet-hardware-validated builds (mmwave, ledlightstrip-c6-thread,
-  ledlightstrip-s3-wifi, silentnotify, matrixdisplay) were pruned. Re-add a build's
+  Cases for not-yet-hardware-validated builds (mmwave, lightstrip-c6-thread,
+  lightstrip-s3-wifi, silentnotify, matrixdisplay) were pruned. Re-add a build's
   cases only once it is proven on hardware -- the suite is meant to stay a trusted
   regression gate for validated builds, so a fresh agent can rely on green == no
   regression. Pruned cases remain in git history to rewrite from.

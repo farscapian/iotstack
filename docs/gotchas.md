@@ -96,12 +96,12 @@ shorten that name to stay under ESPHome's 31-char node-name limit once
 
 | Role (YAML basename) | `esphome.name` -> build dir |
 |----------------------|-----------------------------|
-| `ledlightstrip-c6-thread` | `ledstrip-c6-thread` |
-| `ledlightstrip-s3-wifi` | `ledstrip-s3-wifi` |
+| `lightstrip-c6-thread` | `ledstrip-c6-thread` |
+| `lightstrip-s3-wifi` | `ledstrip-s3-wifi` |
 
 Keeping role == `esphome.name` avoids the whole class of bug, which is why the
 `sendspinspeaker` role was renamed to `sendspin` (its `esphome.name`). Prefer that
-when adding a role. The resolver below still exists because the `ledlightstrip`
+when adding a role. The resolver below still exists because the `lightstrip`
 roles cannot do it -- their names would exceed the 31-char limit.
 
 Anything that touches a **build dir or firmware path** must resolve the name with

@@ -1,5 +1,5 @@
 # SK6812 RGBW LED Strip -- WiFi end device (XIAO ESP32-S3, esp-idf).
-# S3 has no 802.15.4 radio, so this variant is WiFi (ledlightstrip-c6-thread.yaml
+# S3 has no 802.15.4 radio, so this variant is WiFi (lightstrip-c6-thread.yaml
 # is the Thread variant). Shares the strip + effects via common/ledstrip_light.yaml.
 # See docs/lightstrip.md for the (shared) wiring diagram and safety notes.
 

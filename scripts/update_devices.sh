@@ -469,7 +469,7 @@ fi
 # This ensures cache is consistent across reassign runs with different OTA passwords
 YAML_NAME="$(basename "${ORIGINAL_YAML_FILE%.yaml}")"
 # Build dir / firmware paths key on esphome.name, which differs from the role for
-# roles that shorten it (ledlightstrip-s3-wifi -> ledstrip-s3-wifi). Cache file
+# roles that shorten it (lightstrip-s3-wifi -> ledstrip-s3-wifi). Cache file
 # stays role-keyed.
 BUILD_NAME="$(_esphome_build_name_for_yaml "$ORIGINAL_YAML_FILE" "$YAML_NAME")"
 BASE_LOG_DIR="${HOME}/.iotstack/logs"

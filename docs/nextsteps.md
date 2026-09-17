@@ -54,7 +54,7 @@ This gate is also the way to validate this session's still-unexercised tooling f
 - No flash should print "Matrix layout ... to NVS" for bleproxy (db69ff5).
 - A stalled C6 connect should print the RESET prompt (a3aa368).
 
-Pruned cases (mmwave reassign cycle, ledlightstrip-* , silentnotify, matrixdisplay)
+Pruned cases (mmwave reassign cycle, lightstrip-* , silentnotify, matrixdisplay)
 are in git history; restore + update them per build as each is validated.
 
 ---
@@ -64,9 +64,9 @@ are in git history; restore + update them per build as each is validated.
 Validated on hardware: **bleproxy on XIAO C6** (devices 1a6374, 137284), antenna attached.
 
 NOT validated (no tests until they are):
-- `ledlightstrip-c6-thread` -- never flashed; the esp-idf + esp32_rmt_led_strip +
+- `lightstrip-c6-thread` -- never flashed; the esp-idf + esp32_rmt_led_strip +
   Thread + SK6812 RGBW path is the biggest unknown.
-- `ledlightstrip-s3-wifi` -- never flashed; also unverified 8MB S3 partitioning.
+- `lightstrip-s3-wifi` -- never flashed; also unverified 8MB S3 partitioning.
 - mmwave / threadrouter / silentnotify / sendspin / matrixdisplay -- not
   flashed this session (regression risk from the shared-package + rename changes).
 
@@ -77,7 +77,7 @@ When the human validates one of these, that's the trigger to (re)write its cases
 ## Carry-forward gotchas
 - **External u.FL antenna REQUIRED** on any C6 built with
   `common/xiao_c6_ext_antenna.yaml` (bleproxy, threadrouter, mmwave,
-  ledlightstrip-c6-thread). No pigtail -> ~-69 dBm, mDNS discovery fails, flash
+  lightstrip-c6-thread). No pigtail -> ~-69 dBm, mDNS discovery fails, flash
   "can't find device". Onboard ceramic only if you drop that package.
 - **C6 USB auto-reset is unreliable** -- on an esptool connect stall, the new prompt
   asks you to press RESET (or hold BOOT + tap RESET). A flashed C6 that "won't
