@@ -1264,7 +1264,7 @@ text:
     restore_value: true
     min_length: 0
     max_length: 255
-    initial_value: 'c1:255,255,0 c2:0,0,255 c3:128,128,128'
+    initial_value: 'c1:255,137,14 c2:255,0,0 c3:128,128,128 c4:255,0,200'
     on_value:
       - component.update: matrix_display
   - platform: template
@@ -1275,7 +1275,7 @@ text:
     restore_value: true
     min_length: 0
     max_length: 255
-    initial_value: 'g1:c1,c2 g2:c1,c2,c3'
+    initial_value: 'g1:c1,c2 g2:c1,c4'
     on_value:
       - component.update: matrix_display
   - platform: template
@@ -1297,7 +1297,7 @@ text:
     restore_value: true
     min_length: 0
     max_length: 255
-    initial_value: 's1:g2,f1,b1,mono-m s2:c3,b2,roboto-L'
+    initial_value: 's1:g1,b2,roboto-m s2:c3,b2,mono s3:g2'
     on_value:
       - component.update: matrix_display
   - platform: template
@@ -1308,7 +1308,7 @@ text:
     restore_value: true
     min_length: 0
     max_length: 255
-    initial_value: "<s1>iotstack - ${friendly_name}</s1><br /><s2>:datetime+5: :smile:</s2>"
+    initial_value: "<s1>iotstack - matrixdisplay</s1> <br /> <s2> :date: :time: </s2> <br /> <s3> :smile: :heart: </s3>"
     on_value:
       # Redraw immediately so text changes are not delayed to the next update tick.
       - component.update: matrix_display
