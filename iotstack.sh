@@ -2810,12 +2810,19 @@ _bootstrap_target_ota_advertised() {
   _iotstack_mdns_browse_contains "$hostname" -t -r "_iotstack-bootstrap-target._tcp"
 }
 
-_ota_bootstrap_via_production() {
-  # Usage: _ota_bootstrap_via_production <role> <mac> <force> <is_dry_run>
+_ota_bootstrap_precheck() {
+  # Usage: _ota_bootstrap_precheck <role> <mac> <force>
+  # Determines whether a production device's bootstrap slot actually needs
+  # updating, without prompting or touching the device. Callers MUST run this
+  # before showing any "About to OTA-bootstrap..." confirmation -- otherwise
+  # an already-current device gets prompted for an update that was never
+  # going to happen, and counts as failed/skipped if the prompt is declined.
+  #   rc 0: update needed -- echoes "<bootstrap_bin>|<expected_hash>|<current_hash>"
+  #   rc 1: error -- already logged (warn)
+  #   rc 2: already up to date -- already logged (info), not a failure
   local role="$1"
   local mac="$2"
   local force="$3"
-  local is_dry_run="$4"
   local hostname variant build_name bootstrap_bin expected_hash
   hostname=$(_device_hostname "$role" "$mac")
 
@@ -2863,13 +2870,22 @@ _ota_bootstrap_via_production() {
   current_hash=$(_mdns_txt_field_for_hostname "$hostname" "_esphomelib._tcp" bootstrap_image_hash 2>/dev/null) || current_hash=""
   if [[ "$force" != true && -n "$current_hash" && -n "$expected_hash" && "$current_hash" == "$expected_hash" ]]; then
     info "[$mac] bootstrap already up to date ($current_hash) -- skipping (use --force to re-flash)"
-    return 0
+    return 2
   fi
 
-  if [[ "$is_dry_run" == true ]]; then
-    ok "[$mac] would OTA bootstrap on $hostname: ${current_hash:-unknown} -> ${expected_hash:-unknown}"
-    return 0
-  fi
+  echo "${bootstrap_bin}|${expected_hash}|${current_hash}"
+  return 0
+}
+
+_ota_bootstrap_via_production() {
+  # Usage: _ota_bootstrap_via_production <role> <mac> <bootstrap_bin> <expected_hash>
+  # Assumes _ota_bootstrap_precheck already confirmed an update is needed.
+  local role="$1"
+  local mac="$2"
+  local bootstrap_bin="$3"
+  local expected_hash="$4"
+  local hostname
+  hostname=$(_device_hostname "$role" "$mac")
 
   local dev_pwd
   dev_pwd=$(iotstack_prod_bootstrap_ota_device_password "$mac") || {
@@ -3379,21 +3395,41 @@ cmd_ota_bootstrap() {
     local mac hostname
     for mac in "${macs[@]}"; do
       echo ""
+      # Check currency BEFORE prompting -- an already-current device must
+      # never trigger "About to OTA-bootstrap..." (and must not count as
+      # failed/skipped if that prompt is declined for an update that was
+      # never going to happen).
+      local precheck_out precheck_rc bootstrap_bin expected_hash current_hash
+      precheck_out=$(_ota_bootstrap_precheck "$role" "$mac" "$force")
+      precheck_rc=$?
+      if [[ $precheck_rc -eq 2 ]]; then
+        overall_ok=$((overall_ok + 1))
+        continue
+      elif [[ $precheck_rc -ne 0 ]]; then
+        overall_failed=$((overall_failed + 1))
+        continue
+      fi
+      IFS='|' read -r bootstrap_bin expected_hash current_hash <<< "$precheck_out"
+
+      hostname="$(_device_hostname "$role" "$mac")"
+      if [[ "$is_dry_run" == true ]]; then
+        ok "[$mac] would OTA bootstrap on $hostname: ${current_hash:-unknown} -> ${expected_hash:-unknown}"
+        overall_ok=$((overall_ok + 1))
+        continue
+      fi
+
       # Writes the fleet's ONLY recovery partition -- confirm individually so
       # a multi-device role match never rewrites the whole fleet's bootstrap
-      # on one blanket "yes". Dry-run touches nothing, so skip the prompt.
-      if [[ "$is_dry_run" != true ]]; then
-        hostname="$(_device_hostname "$role" "$mac")"
-        warn "About to OTA-bootstrap device: $hostname (mac $mac, role $role)"
-        read -p "Proceed with this device? (y/N) " -n 1 -r
-        echo ""
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-          info "Skipped $hostname"
-          overall_failed=$((overall_failed + 1))
-          continue
-        fi
+      # on one blanket "yes".
+      warn "About to OTA-bootstrap device: $hostname (mac $mac, role $role)"
+      read -p "Proceed with this device? (y/N) " -n 1 -r
+      echo ""
+      if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        info "Skipped $hostname"
+        overall_failed=$((overall_failed + 1))
+        continue
       fi
-      if _ota_bootstrap_via_production "$role" "$mac" "$force" "$is_dry_run"; then
+      if _ota_bootstrap_via_production "$role" "$mac" "$bootstrap_bin" "$expected_hash"; then
         overall_ok=$((overall_ok + 1))
       else
         overall_failed=$((overall_failed + 1))
