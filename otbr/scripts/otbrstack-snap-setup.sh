@@ -624,6 +624,56 @@ join_thread_network() {
 }
 
 # ---------------------------------------------------------------------------
+# 12b. Advertise the border router as $(hostname).local
+# The snap's otbr-agent uses OpenThread's built-in mDNS (not avahi) and
+# publishes _meshcop._udp -- the entry Home Assistant lists -- under
+# "ot<extaddr>.local". Override the local host name via ot-ctl. The mDNS
+# module must be disabled while the name changes; it is always re-enabled.
+# The name is not persisted by the snap, so this runs on every setup.
+# ---------------------------------------------------------------------------
+set_otbr_mdns_hostname() {
+    local ot="sudo openthread-border-router.ot-ctl"
+    local want ifindex cur out
+    want="$(hostname)"
+    want="${want%%.*}"
+
+    ifindex=$(cat "/sys/class/net/${INFRA_IF}/ifindex" 2>/dev/null || true)
+    if [[ -z "$ifindex" ]]; then
+        warn "Cannot determine ifindex of infra interface '${INFRA_IF}' -- leaving OTBR mDNS name unchanged."
+        return 0
+    fi
+
+    cur=$($ot mdns localhostname 2>/dev/null | head -1 | tr -d '\r' || true)
+    if [[ "${cur,,}" == "${want,,}" ]]; then
+        log "OTBR mDNS host name already correct: ${want}.local"
+        return 0
+    fi
+
+    log "Setting OTBR mDNS host name: ${cur:-<unknown>} -> ${want}"
+    $ot mdns disable >/dev/null 2>&1 || true
+    out=$($ot mdns localhostname "$want" 2>&1 | tr -d '\r' | tr '\n' ' ' || true)
+    $ot mdns enable "$ifindex" >/dev/null 2>&1 \
+        || warn "Failed to re-enable OTBR mDNS -- run: $ot mdns enable $ifindex"
+
+    if [[ "$out" != *Done* ]]; then
+        warn "ot-ctl mdns localhostname failed: ${out:-<no output>}"
+        return 0
+    fi
+
+    # Confirm the _meshcop._udp record Home Assistant reads now carries the new name.
+    local i
+    for (( i = 0; i < 15; i++ )); do
+        if avahi-browse -rtp _meshcop._udp 2>/dev/null | grep -qiF ";${want}.local;"; then
+            log "OTBR now advertises ${want}.local (_meshcop._udp)."
+            return 0
+        fi
+        sleep 1
+    done
+    warn "ot-ctl accepted the name but no _meshcop._udp record shows ${want}.local yet."
+    warn "Check: avahi-browse -rt _meshcop._udp"
+}
+
+# ---------------------------------------------------------------------------
 # 13. Install chip-tool snap (Matter commissioning -- BLE+Thread and Thread-only)
 # ---------------------------------------------------------------------------
 install_chiptool() {
@@ -712,6 +762,7 @@ main() {
     ensure_snap_connections
     configure_ufw
     join_thread_network "$THREAD_DATASET_TLV"
+    set_otbr_mdns_hostname
     install_chiptool
 
     log "Done."
