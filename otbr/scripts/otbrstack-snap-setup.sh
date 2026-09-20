@@ -290,7 +290,7 @@ verify_rcp() {
     local port="$1"
     ensure_pyspinel_venv
     log "Verifying RCP firmware on $port via spinel..."
-    if "${PYSPINEL_VENV}/bin/python3" "${SCRIPT_DIR}/scripts/verify_rcp.py" "$port"; then
+    if "${PYSPINEL_VENV}/bin/python3" "${SCRIPT_DIR}/verify_rcp.py" "$port"; then
         log "RCP firmware verified."
         return 0
     else

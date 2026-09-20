@@ -561,8 +561,8 @@ fi
 
 # Base64-encode the canonical probe script so it can be embedded in the
 # cloud-init YAML without escaping issues (cloud-init decodes it on the Pi).
-_VERIFY_RCP_B64=$(base64 -w 0 "${SCRIPT_DIR}/scripts/verify_rcp.py")
-_FLASH_RCP_B64=$(base64 -w 0 "${SCRIPT_DIR}/scripts/flash_rcp.sh")
+_VERIFY_RCP_B64=$(base64 -w 0 "${SCRIPT_DIR}/verify_rcp.py")
+_FLASH_RCP_B64=$(base64 -w 0 "${SCRIPT_DIR}/flash_rcp.sh")
 
 # Conditionally build the cloud-init apt proxy stanza and the chroot proxy
 # command.  Both are empty when HTTP_PROXY is unset, so users without a

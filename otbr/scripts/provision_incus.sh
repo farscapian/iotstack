@@ -300,7 +300,7 @@ ensure_pyspinel_venv() {
 _probe_rcp() {
     local port="$1"
     ensure_pyspinel_venv
-    "${PYSPINEL_VENV}/bin/python3" "${SCRIPT_DIR}/scripts/verify_rcp.py" "$port"
+    "${PYSPINEL_VENV}/bin/python3" "${SCRIPT_DIR}/verify_rcp.py" "$port"
 }
 
 verify_rcp() {
