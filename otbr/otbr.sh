@@ -179,6 +179,7 @@ Commands:
   flash             Flash Ubuntu Server 26.04 to SD card (needs /dev/sdX)
   docker            Docker bare-metal provisioner
   snap              Snap bare-metal provisioner
+  snap stop         Gracefully leave the Thread network and stop the local OTBR snap
   logs [-f] <host>  Tail cloud-init + firstboot + OTBR snap logs over SSH
   shutdown <host>   Graceful shutdown of a remote OTBR device
   restart <host>    Reboot a remote OTBR device
@@ -243,8 +244,10 @@ cmd_otbr_dispatch() {
             ;;
     esac
 
-    # Resolve config and secrets for operational commands (not logs/shutdown/restart).
-    if [[ "$cmd" != "logs" && "$cmd" != "shutdown" && "$cmd" != "restart" ]]; then
+    # Resolve config and secrets for operational commands (not logs/shutdown/restart
+    # or 'snap stop', which needs no Thread dataset).
+    if [[ "$cmd" != "logs" && "$cmd" != "shutdown" && "$cmd" != "restart" \
+          && ! ( "$cmd" == "snap" && "${_pass_args[0]:-}" == "stop" ) ]]; then
         _otbr_load_config
         case "$cmd" in
             vm|flash|docker|snap) _otbr_verify_thread_dataset_with_ha || return 1 ;;
@@ -399,17 +402,30 @@ cmd_otbr_dispatch() {
                 | tee -a "$_otbr_log"
             ;;
         snap)
-            echo "[otbr] Snap bare-metal provisioner"
+            local _snap_script="otbrstack-snap-setup.sh" _snap_label=""
+            case "${_pass_args[0]:-}" in
+                stop)
+                    _snap_script="otbrstack-snap-stop.sh"
+                    _snap_label=" stop"
+                    _pass_args=("${_pass_args[@]:1}")
+                    echo "[otbr] Snap graceful stop (leave Thread network)"
+                    ;;
+                *)
+                    echo "[otbr] Snap bare-metal provisioner"
+                    ;;
+            esac
             local _otbr_log
             _otbr_log="${_OTBR_HOME}/logs/$(hostname)/snap.log"
             mkdir -p "$(dirname "$_otbr_log")"
             echo "[otbr] Logging to: ${_otbr_log}"
-            printf '\n=== iotstack otbr snap %s -- %s ===\n' \
+            printf '\n=== iotstack otbr snap%s %s -- %s ===\n' \
+                "$_snap_label" \
                 "$(date '+%Y-%m-%d %H:%M:%S')" \
                 "$(_otbr_git_head)" \
                 | tee -a "$_otbr_log"
-            { "$_OTBR_DIR/scripts/otbrstack-snap-setup.sh" "${_pass_args[@]+"${_pass_args[@]}"}"; } 2>&1 \
+            { "$_OTBR_DIR/scripts/${_snap_script}" "${_pass_args[@]+"${_pass_args[@]}"}"; } 2>&1 \
                 | tee -a "$_otbr_log"
+            return "${PIPESTATUS[0]}"
             ;;
         shutdown)
             local _host="${_pass_args[0]:-}"

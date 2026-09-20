@@ -303,6 +303,19 @@ dataset. Optional settings (`~/.iotstack/environments/default.env`):
 | `INFRA_IF` | auto (default route) | Backbone network interface |
 | `THREAD_IF` | `wpan0` | Thread virtual interface name |
 
+### Taking the border router offline
+
+```bash
+iotstack otbr snap stop
+```
+
+Gracefully removes this host from the Thread network: `ot-ctl detach` (a router
+releases its router ID and tells its neighbours; a child tells its parent to drop
+it), then `thread stop`, `ifconfig down`, and `snap stop`. It needs no Thread
+dataset or Home Assistant check, and does not unprovision anything -- bring the
+border router back with `iotstack otbr snap`. The snap is not disabled, so it
+starts again on the next reboot.
+
 ---
 
 ## Bare-metal Docker (`iotstack otbr docker`)
