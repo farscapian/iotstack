@@ -567,7 +567,7 @@ main() {
             if [[ "${ans,,}" == "y" ]]; then
                 IDF_DIR="${OTBR_HOME}/cache/esp-idf" \
                 RCP_BIN_CACHE="${OTBR_HOME}/cache/esp32/rcp/esp_ot_rcp.bin" \
-                    "${SCRIPT_DIR}/scripts/flash_rcp.sh" --port "$THREAD_DEVICE_PORT" --force \
+                    "${SCRIPT_DIR}/flash_rcp.sh" --port "$THREAD_DEVICE_PORT" --force \
                     || die "Flashing failed."
                 log "Re-detecting Thread device after flash..."
                 find_thread_device || true
