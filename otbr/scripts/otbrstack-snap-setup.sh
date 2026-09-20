@@ -476,6 +476,54 @@ configure_ufw() {
 }
 
 # ---------------------------------------------------------------------------
+# 11. Ensure avahi advertises this host as $(hostname).local
+# avahi takes its mDNS name from the system hostname unless host-name= is set
+# in avahi-daemon.conf, and appends -2, -3, ... when it sees a name conflict.
+# ---------------------------------------------------------------------------
+_avahi_dbus() {
+    busctl --system call org.freedesktop.Avahi / org.freedesktop.Avahi.Server "$1" 2>/dev/null \
+        | awk -F'"' '/^s / {print $2} /^i / {print $2}'
+}
+
+ensure_mdns_hostname() {
+    local conf=/etc/avahi/avahi-daemon.conf
+    local want
+    want="$(hostname)"
+    want="${want%%.*}.local"
+
+    if ! systemctl cat avahi-daemon.service &>/dev/null; then
+        log "avahi-daemon not installed -- installing..."
+        sudo apt-get install -y avahi-daemon \
+            || die "Failed to install avahi-daemon."
+    fi
+
+    # An explicit host-name= overrides the system hostname -- drop it.
+    if grep -qE '^[[:space:]]*host-name[[:space:]]*=' "$conf" 2>/dev/null; then
+        log "Removing host-name override from $conf so avahi follows the hostname..."
+        sudo sed -i -E 's/^([[:space:]]*host-name[[:space:]]*=)/#\1/' "$conf"
+        sudo systemctl restart avahi-daemon
+    elif ! systemctl is-active --quiet avahi-daemon; then
+        log "Starting avahi-daemon..."
+        sudo systemctl enable --now avahi-daemon
+    fi
+
+    local have="" i
+    for (( i = 0; i < 10; i++ )); do
+        have="$(_avahi_dbus GetHostNameFqdn || true)"
+        [[ "${have,,}" == "${want,,}" ]] && { log "mDNS name OK: $have"; return 0; }
+        (( i == 0 )) && [[ -n "$have" ]] && {
+            log "avahi advertises '$have', expected '$want' -- restarting avahi-daemon..."
+            sudo systemctl restart avahi-daemon
+        }
+        sleep 1
+    done
+
+    warn "avahi is advertising '${have:-<unknown>}', expected '$want'."
+    warn "A '-2' style suffix means another device on the LAN already answers to '$want'."
+    warn "Check: avahi-resolve-host-name -4 $want   /   journalctl -u avahi-daemon -n 30"
+}
+
+# ---------------------------------------------------------------------------
 # 12. Join Thread network using Active Dataset from .env
 # ---------------------------------------------------------------------------
 join_thread_network() {
@@ -597,6 +645,7 @@ main() {
     configure_otbr "$THREAD_DEVICE_PORT"
     ensure_snap_connections
     configure_ufw
+    ensure_mdns_hostname
     join_thread_network "$THREAD_DATASET_TLV"
     install_chiptool
 
