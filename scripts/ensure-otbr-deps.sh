@@ -89,11 +89,9 @@ install_otbr_incus() {
         echo "[OK] incus already installed: $(incus --version)"
     fi
 
-    if ! groups | grep -qw incus-admin; then
-        echo "[INFO] Adding ${USER} to the incus-admin group ..."
-        sudo usermod -aG incus-admin "$USER"
-        echo "[WARN] Group membership change takes effect in a new login session."
-        echo "[WARN] For this session, commands will run via 'sudo -g incus-admin incus ...' if needed."
+    # Group membership is managed only by setup.sh -- check, never change.
+    if ! id -nG "$USER" | tr ' ' '\n' | grep -qx incus-admin; then
+        echo "[WARN] ${USER} is not in the incus-admin group -- run ./setup.sh to add it."
     fi
 
     if ! incus info &>/dev/null 2>&1; then

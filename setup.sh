@@ -42,6 +42,38 @@ ok()   { echo -e "${GRN}[OK]${RST} $*"; }
 warn() { echo -e "${YLW}[WARN]${RST} $*"; }
 dim()  { echo -e "${YLW}$*${RST}"; }
 
+# ensure_group_member GROUP REASON
+# The ONLY place iotstack changes group membership. Every other script must
+# only check membership and tell the user to run ./setup.sh -- never call
+# usermod/gpasswd/adduser itself.
+ensure_group_member() {
+  local group="$1" reason="$2"
+
+  if ! getent group "$group" &>/dev/null; then
+    warn "Group '$group' does not exist on this system -- skipping ($reason)"
+    return 0
+  fi
+
+  # `id -nG USER` reads the user database, so it sees membership that was
+  # added but is not yet active in the current login session.
+  if id -nG "$USER" | tr ' ' '\n' | grep -qx "$group"; then
+    ok "User $USER is already a member of the $group group"
+    return 0
+  fi
+
+  warn "User $USER is not a member of the $group group ($reason)"
+  read -p "Add $USER to the $group group now? (y/N) " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    sudo usermod -aG "$group" "$USER"
+    ok "Added $USER to the $group group"
+    warn "Log out and back in (or run: newgrp $group) for the group change to take effect"
+  else
+    dim "Skipping -- re-run ./setup.sh, or run manually:"
+    echo "  sudo usermod -aG $group \$USER"
+  fi
+}
+
 # Verify iotstack.sh exists
 if [[ ! -f "$IOTSTACK_SCRIPT" ]]; then
   err "iotstack.sh not found at $IOTSTACK_SCRIPT"
@@ -58,21 +90,7 @@ echo "Checking dialout group membership"
 echo "========================================================"
 echo
 
-if id -nG "$USER" | tr ' ' '\n' | grep -qx dialout; then
-  ok "User $USER is already a member of the dialout group"
-else
-  warn "User $USER is not a member of the dialout group (required for /dev/ttyACM* access)"
-  read -p "Add $USER to the dialout group now? (y/N) " -n 1 -r
-  echo
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
-    sudo usermod -aG dialout "$USER"
-    ok "Added $USER to the dialout group"
-    warn "Log out and back in (or run: newgrp dialout) for the group change to take effect"
-  else
-    dim "Skipping -- flashing over /dev/ttyACM* will fail with a permissions error until you run:"
-    echo "  sudo usermod -aG dialout \$USER"
-  fi
-fi
+ensure_group_member dialout "required for /dev/ttyACM* access (flashing, 'iotstack otbr snap')"
 
 # -- avahi-utils (mDNS discovery CLI) ---------------------------------------
 echo
@@ -381,6 +399,10 @@ if [[ ! $REPLY =~ ^[Nn]$ ]]; then
   install_otbr_incus
 else
   dim "Skipping incus -- 'iotstack otbr vm' will offer to install it when run."
+fi
+
+if command -v incus &>/dev/null; then
+  ensure_group_member incus-admin "required to run 'iotstack otbr vm' without sudo"
 fi
 
 read -p "Install Docker (for 'iotstack otbr docker')? (y/N) " -n 1 -r

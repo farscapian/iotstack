@@ -214,13 +214,13 @@ cmd_otbr_dispatch() {
             if ! incus info &>/dev/null 2>&1; then
                 if getent group incus-admin 2>/dev/null | grep -qw "$USER"; then
                     echo "[otbr] NOTE: ${USER} is in the incus-admin group but it is not active" \
-                         "in this shell session (group was added this run or before a re-login)." >&2
+                         "in this shell session (it was added since your last login)." >&2
                     echo "[otbr] Using 'sg incus-admin' to activate the group for this command." \
                          "Open a new terminal after this to avoid the message in future runs." >&2
                     _use_sg=1
                 else
                     echo "[otbr] ERROR: cannot reach incus daemon and ${USER} is not in incus-admin." \
-                         "Run: iotstack otbr setup" >&2
+                         "Run: ./setup.sh" >&2
                     return 1
                 fi
             fi

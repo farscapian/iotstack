@@ -6,6 +6,7 @@ ESP32 ESPHome device management. **Load topic files on demand -- do not read thi
 
 - Branding: always lowercase `iotstack` (never IoT Stack / iotStack)
 - Text: ASCII-only in docs, logs, help, and code comments
+- Group membership (`usermod`, `gpasswd`, etc.) changes ONLY in `setup.sh` (`ensure_group_member`); every other script (incl. `iotstack otbr snap`) must only check membership and tell the user to run `./setup.sh`
 - Agents work in session clones, NOT in the canonical local repo: Grok -> `~/.grok/worktrees/mini-projects-iotstack/<session-id>/`; Claude Code -> `~/.claude/worktrees/mini-projects-iotstack/<session-id>/`; CLI runs from the canonical local repo `~/Sync/mini_projects/iotstack`
 - Claude Code: NEVER edit files under the canonical local repo (`~/Sync/mini_projects/iotstack`) -- use absolute paths to your session clone only
 - New Grok session: run `scripts/init_grok_session.sh`; new Claude Code session: run `scripts/init_claude_session.sh` (see `.agentstack/docs/workflow.md`)

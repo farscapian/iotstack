@@ -134,18 +134,9 @@ check_serial_group() {
         return
     fi
 
-    # Check permanent membership in /etc/group
+    # Group membership is managed only by setup.sh -- check, never change.
     if ! id -nG "$USER" | grep -qw "$group"; then
-        log "Adding $USER to group '$group'..."
-        sudo usermod -aG "$group" "$USER"
-        echo ""
-        echo "  +========================================================+"
-        echo "  |  Added $USER to '$group'.                            "
-        echo "  |  You must log out and log back in for this           "
-        echo "  |  to take effect, then re-run this script.            "
-        echo "  +========================================================+"
-        echo ""
-        exit 0
+        die "$USER is not in the '$group' group (needed for serial port access). Run ./setup.sh to add it, then log out and back in."
     fi
 
     # Permanent membership exists -- check if active session reflects it
