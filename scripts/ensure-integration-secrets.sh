@@ -382,19 +382,13 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
     python3 "${_SCRIPT_DIR}/ha_websocket.py" "${args[@]}"
   }
 
-  load_ha_credentials_optional() {
-    # PERFORM_HA_DEVICE_REGISTRATION=0 (the default, and what "no" to the
-    # verify_common_pass_secrets prompt writes to .env) is authoritative:
-    # don't let a stale ha_url/ha_token left over from before the user opted
-    # out get picked up by a later best-effort HA step in the same run
-    # (device registration, entity ID recreation, etc.).
-    if [[ "${PERFORM_HA_DEVICE_REGISTRATION:-0}" != "1" ]]; then
-      HA_URL=""
-      HA_TOKEN=""
-      export HA_URL HA_TOKEN
-      return 1
-    fi
-
+  load_ha_credentials_from_pass() {
+    # Read ha_url/ha_token from pass into $HA_URL/$HA_TOKEN (exported), never
+    # prompting and never consulting PERFORM_HA_DEVICE_REGISTRATION. Returns 0
+    # only when BOTH hold a real value (not empty, not CONFIGURE_ME); a missing
+    # one is left as "". For callers that act on whatever is on file rather
+    # than on the device-registration opt-in (e.g. the otbr Thread dataset
+    # check).
     HA_URL="$(iotstack_pass_common_read "ha_url")" || HA_URL=""
     HA_TOKEN="$(iotstack_pass_common_read "ha_token")" || HA_TOKEN=""
 
@@ -421,7 +415,23 @@ if [[ -z "${_IOTSTACK_ENSURE_SECRETS_LOADED:-}" ]]; then
 
     export HA_URL HA_TOKEN
 
-    if [[ -n "$HA_URL" && -n "$HA_TOKEN" ]]; then
+    [[ -n "$HA_URL" && -n "$HA_TOKEN" ]]
+  }
+
+  load_ha_credentials_optional() {
+    # PERFORM_HA_DEVICE_REGISTRATION=0 (the default, and what "no" to the
+    # verify_common_pass_secrets prompt writes to .env) is authoritative:
+    # don't let a stale ha_url/ha_token left over from before the user opted
+    # out get picked up by a later best-effort HA step in the same run
+    # (device registration, entity ID recreation, etc.).
+    if [[ "${PERFORM_HA_DEVICE_REGISTRATION:-0}" != "1" ]]; then
+      HA_URL=""
+      HA_TOKEN=""
+      export HA_URL HA_TOKEN
+      return 1
+    fi
+
+    if load_ha_credentials_from_pass; then
       return 0
     fi
 

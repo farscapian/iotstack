@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import ssl
 import sys
@@ -1233,6 +1234,133 @@ def call_service(
         return client.send_command("call_service", **fields)
 
 
+class ThreadDatasetMismatch(Exception):
+    """Raised when a local Thread dataset differs from Home Assistant's."""
+
+
+# Thread MeshCoP TLV types, for naming the fields that differ. Names only are ever
+# reported -- the values include the network key and PSKc, which are secrets.
+_THREAD_TLV_NAMES = {
+    0x00: "channel",
+    0x01: "pan_id",
+    0x02: "extended_pan_id",
+    0x03: "network_name",
+    0x04: "pskc",
+    0x05: "network_key",
+    0x07: "mesh_local_prefix",
+    0x0C: "security_policy",
+    0x0E: "active_timestamp",
+    0x35: "channel_mask",
+}
+
+# HA's otbr/info active_dataset_tlvs may prefix a non-MeshCoP TLV (type 0x4a) that
+# is not part of the dataset itself (see canonical_thread_dataset in
+# matter-commission.sh); it is ignored when comparing.
+_THREAD_TLV_IGNORED = frozenset({0x4A})
+
+
+def _parse_thread_tlvs(hex_tlv: str) -> dict[int, bytes]:
+    """Parse a Thread operational dataset (hex TLVs) into {type: value}."""
+    text = re.sub(r"\s+", "", hex_tlv)
+    text = re.sub(r"^0x", "", text, flags=re.IGNORECASE)
+    if not text or not re.fullmatch(r"[0-9a-fA-F]+", text) or len(text) % 2:
+        raise ValueError("not a valid hex string")
+
+    raw = bytes.fromhex(text)
+    tlvs: dict[int, bytes] = {}
+    pos = 0
+    while pos < len(raw):
+        if pos + 2 > len(raw):
+            raise ValueError("truncated TLV header")
+        tlv_type, length = raw[pos], raw[pos + 1]
+        pos += 2
+        if length == 0xFF:  # extended TLV: 2-byte big-endian length follows
+            if pos + 2 > len(raw):
+                raise ValueError("truncated extended TLV length")
+            length = int.from_bytes(raw[pos : pos + 2], "big")
+            pos += 2
+        if pos + length > len(raw):
+            raise ValueError(f"TLV 0x{tlv_type:02x} runs past end of dataset")
+        tlvs[tlv_type] = raw[pos : pos + length]
+        pos += length
+    return tlvs
+
+
+def _thread_tlv_name(tlv_type: int) -> str:
+    return _THREAD_TLV_NAMES.get(tlv_type, f"tlv_0x{tlv_type:02x}")
+
+
+def fetch_ha_thread_dataset(client: HAWebSocketClient) -> tuple[str, str]:
+    """Return (tlv_hex, description) of the Thread dataset Home Assistant uses.
+
+    Prefers the Thread integration's preferred dataset, which is what HA hands to
+    devices being commissioned and is available even while the border router is
+    offline. Falls back to the OTBR integration's live active dataset.
+    """
+    try:
+        datasets = (client.send_command("thread/list_datasets") or {}).get("datasets", [])
+    except HAWebSocketError:
+        datasets = []  # Thread integration not loaded; try otbr/info below
+    for dataset in datasets:
+        if dataset.get("preferred"):
+            result = client.send_command(
+                "thread/get_dataset_tlv", dataset_id=dataset["dataset_id"]
+            )
+            tlv = (result or {}).get("tlv", "")
+            if tlv:
+                return tlv, "preferred Thread dataset"
+
+    try:
+        info = client.send_command("otbr/info") or {}
+    except HAWebSocketError:
+        info = {}
+    for border_router in info.values():
+        tlv = border_router.get("active_dataset_tlvs", "")
+        if tlv:
+            return tlv, "OTBR active dataset"
+
+    raise HAWebSocketError(
+        "Home Assistant has no Thread dataset (no preferred network, no OTBR)"
+    )
+
+
+def verify_thread_dataset(client: HAWebSocketClient, local_tlv: str) -> str:
+    """Check local_tlv against Home Assistant's dataset; return a status line.
+
+    Raises ThreadDatasetMismatch if they differ, HAWebSocketError if Home
+    Assistant's dataset cannot be obtained.
+    """
+    ha_hex, source = fetch_ha_thread_dataset(client)
+    try:
+        ha_tlvs = _parse_thread_tlvs(ha_hex)
+    except ValueError as exc:
+        raise HAWebSocketError(
+            f"Home Assistant returned an invalid Thread dataset: {exc}"
+        ) from exc
+
+    name_raw = ha_tlvs.get(0x03)
+    network = f' (network "{name_raw.decode("utf-8", "replace")}")' if name_raw else ""
+    label = f"Home Assistant {source}{network}"
+
+    try:
+        local_tlvs = _parse_thread_tlvs(local_tlv)
+    except ValueError as exc:
+        raise ThreadDatasetMismatch(f"local Thread dataset is invalid: {exc}") from exc
+
+    ha_cmp = {k: v for k, v in ha_tlvs.items() if k not in _THREAD_TLV_IGNORED}
+    local_cmp = {k: v for k, v in local_tlvs.items() if k not in _THREAD_TLV_IGNORED}
+    if ha_cmp == local_cmp:
+        return f"local Thread dataset matches {label}"
+
+    differing = sorted(
+        k for k in ha_cmp.keys() | local_cmp.keys() if ha_cmp.get(k) != local_cmp.get(k)
+    )
+    fields = ", ".join(_thread_tlv_name(k) for k in differing)
+    raise ThreadDatasetMismatch(
+        f"local Thread dataset differs from {label}; differing fields: {fields}"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Home Assistant WebSocket API client")
     parser.add_argument("--ha-url", required=True)
@@ -1246,6 +1374,19 @@ def main() -> int:
     query_parser.add_argument("--type", required=True, dest="msg_type")
     query_parser.add_argument("--data", default="{}", help="JSON object with extra fields")
     query_parser.set_defaults(func=lambda args: _cmd_query(args))
+
+    thread_parser = sub.add_parser(
+        "verify-thread-dataset",
+        help="Check a local Thread dataset against Home Assistant's "
+        "(exit 0 match, 3 mismatch, 1 could not verify)",
+    )
+    thread_parser.add_argument(
+        "--local-tlv-env",
+        default="THREAD_DATASET_TLV",
+        help="Environment variable holding the local dataset hex (kept off argv; "
+        "it contains the network key)",
+    )
+    thread_parser.set_defaults(func=lambda args: _cmd_verify_thread_dataset(args))
 
     service_parser = sub.add_parser("call-service", help="Call a Home Assistant service")
     service_parser.add_argument("domain")
@@ -1338,9 +1479,20 @@ def main() -> int:
     try:
         args.func(args)
         return 0
+    except ThreadDatasetMismatch as exc:
+        print(f"[error] {exc}", file=sys.stderr)
+        return 3
     except HAWebSocketError as exc:
         print(f"[error] {exc}", file=sys.stderr)
         return 1
+
+
+def _cmd_verify_thread_dataset(args: argparse.Namespace) -> None:
+    local_tlv = os.environ.get(args.local_tlv_env, "")
+    if not local_tlv.strip():
+        raise HAWebSocketError(f"${args.local_tlv_env} is empty; nothing to verify")
+    with HAWebSocketClient(args.ha_url, args.ha_token) as client:
+        print(verify_thread_dataset(client, local_tlv))
 
 
 def _cmd_auth_test(args: argparse.Namespace) -> None:
