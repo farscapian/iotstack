@@ -32,13 +32,13 @@ incus delete otbr-test-x64 --force   # or otbr-test-ct
 iotstack otbr docker
 
 # Snap on bare metal (Ubuntu Server/Desktop; installs/configures openthread-border-router snap)
-iotstack otbr snap [help|start|stop|restart|ufw|info]   # bare 'snap' prints help
+iotstack otbr snap [help|start|stop|restart|purge|ufw|info]   # bare 'snap' prints help
 
 # OTBR instances running on this host: snap, docker, incus vm x64/arm64 (-a: include stopped)
 iotstack otbr list [-a]
 
 # Manage which hosts (Home Assistant, Matter server, other OTBRs) may talk to the Thread mesh
-iotstack otbr snap ufw [apply|list|add <name> <addr>...|remove <name> [addr...]]
+iotstack otbr snap ufw [apply|purge|list|add <name> <addr>...|remove <name> [addr...]]
 ```
 
 ## Environment setup
@@ -177,8 +177,9 @@ Every `apply` deletes all tagged rules (found via `ufw show added`, since
 versions added (`route allow in|out on wpan0`, `allow in on wpan0`,
 `allow 5353/udp`, the blanket ICMPv6 block), then rebuilds. Hostnames are
 re-resolved on each apply. The `home-assistant` peer also gets the host from
-pass `ha_url` (`THREAD_HA_HOST`). `snap ufw` skips the HA Thread dataset
-check. The mesh is IPv6: an IPv4-only peer never matches Thread traffic.
+pass `ha_url` (`THREAD_HA_HOST`). `snap ufw` and `snap purge` skip the HA Thread
+dataset check. `purge` (= `snap stop`, then `ufw purge`) removes the tagged rules and the
+ICMPv6 block but keeps `thread-peers.conf`. The mesh is IPv6: an IPv4-only peer never matches Thread traffic.
 
 `deny in on wpan0` also blocks Thread devices reaching services on this host
 (e.g. SRP registrations to otbr-agent); if that is ever needed, add an explicit

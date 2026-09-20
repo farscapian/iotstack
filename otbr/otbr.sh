@@ -190,7 +190,7 @@ Commands:
   vm arm64          Incus VM (arm64)
   flash             Flash Ubuntu Server 26.04 to SD card (needs /dev/sdX)
   docker            Docker bare-metal provisioner
-  snap [help|start|stop|restart|ufw|info]
+  snap [help|start|stop|restart|purge|ufw|info]
                     Local OTBR snap (bare metal); 'iotstack otbr snap help' for details
   list [-a]         Show OTBR instances running on this host (snap, docker, incus vm)
   logs [-f] <host>  Tail cloud-init + firstboot + OTBR snap logs over SSH
@@ -207,14 +207,15 @@ _otbr_snap_show_help() {
 iotstack otbr snap -- OpenThread Border Router snap on this host (bare metal)
 
 Usage:
-  iotstack otbr snap [help|start|stop|restart|ufw|info]
+  iotstack otbr snap [help|start|stop|restart|purge|ufw|info]
 
 Commands:
   help      Show this help (default)
   start     Install/configure the OTBR snap, apply the ufw rules, and start it
   stop      Gracefully leave the Thread network and stop the snap
   restart   stop, then start
-  ufw [apply|list|add <name> <addr>...|remove <name> [addr...]]
+  purge     stop, then remove the OTBR ufw rules (peers file is kept)
+  ufw [apply|purge|list|add <name> <addr>...|remove <name> [addr...]]
             Ensure the ufw rules for the Thread interface (wpan0) are in place
             (also done by start), or manage the peers allowed to reach it
   info      Show 'snap info openthread-border-router'
@@ -300,15 +301,15 @@ cmd_otbr_dispatch() {
     fi
 
     # Resolve config and secrets only for operational commands. logs, shutdown,
-    # restart, list and 'snap help|stop|info' need neither; 'snap ufw' needs the
-    # HA host (from config) but not the Thread dataset check.
+    # restart, list and 'snap help|stop|info' need neither; 'snap ufw|purge' need
+    # config (HA host, interface names) but not the Thread dataset check.
     local _need_config=0 _need_verify=0
     case "$cmd" in
         vm|flash|docker) _need_config=1; _need_verify=1 ;;
         snap)
             case "$_snap_sub" in
                 start|restart) _need_config=1; _need_verify=1 ;;
-                ufw)           _need_config=1 ;;
+                ufw|purge)     _need_config=1 ;;
             esac
             ;;
     esac
@@ -480,6 +481,12 @@ cmd_otbr_dispatch() {
                     # fails before the snap is stopped.
                     _otbr_snap_run stop || return $?
                     _otbr_snap_run start
+                    return $?
+                    ;;
+                purge)
+                    # stop first so the mesh is never left running without its firewall
+                    _otbr_snap_run stop || return $?
+                    _otbr_snap_run ufw purge
                     return $?
                     ;;
                 info)

@@ -3,7 +3,7 @@
 # Manages the UFW rules for the local OTBR snap's Thread interface.
 # Run as normal user -- sudo is invoked only when needed for ufw commands.
 #
-# Usage: otbrstack-snap-firewall.sh [apply|list|add <name> <addr>...|remove <name> [addr...]]
+# Usage: otbrstack-snap-firewall.sh [apply|purge|list|add <name> <addr>...|remove <name> [addr...]]
 #
 # Policy: the Thread mesh (THREAD_IF) only talks to its named peers -- the other
 # border routers, Home Assistant and the Matter server.
@@ -30,6 +30,7 @@ OTBR_HOME="${OTBR_HOME:-${HOME}/.iotstack/otbr}"
 THREAD_PEERS_FILE="${THREAD_PEERS_FILE:-${OTBR_HOME}/thread-peers.conf}"
 INFRA_IF="${INFRA_IF:-$(ip route show default | awk '/default/ {print $5; exit}')}"
 THREAD_IF="${THREAD_IF:-wpan0}"
+UFW_BEFORE6="${UFW_BEFORE6:-/etc/ufw/before6.rules}"
 UFW_TAG="iotstack otbr"
 HA_PEER_NAME="home-assistant"
 
@@ -54,7 +55,7 @@ _ensure_peers_file() {
 # One line per named group: <name> <address-or-hostname> [<address-or-hostname> ...]
 # Addresses are IPs, CIDRs or hostnames (resolved on every apply). Use IPv6
 # addresses or prefixes -- the mesh is IPv6. Full-line comments only.
-# Manage with: iotstack otbr snap ufw [apply|list|add|remove]
+# Manage with: iotstack otbr snap ufw [apply|purge|list|add|remove]
 #
 # home-assistant  homeassistant.local 2001:db8:1::/64
 # matter-server   192.168.4.40 fd00:4::40
@@ -165,24 +166,28 @@ _ufw_purge_otbr_rules() {
 # ICMPv6 (NDP, MLD, ping) is accepted on INFRA_IF only, via a marked block in
 # before6.rules that is rewritten on every run. It also replaces the blanket
 # ICMPv6 accept older versions injected (input and forward, all interfaces).
+# '_ufw_sync_icmpv6 remove' drops the block (and the old blanket accept) instead.
 # Returns 0 if the file changed (caller reloads ufw), 1 if it was up to date.
 _ufw_sync_icmpv6() {
-    local before6=/etc/ufw/before6.rules tmp
+    local mode="${1:-add}" before6="$UFW_BEFORE6" tmp
     tmp=$(mktemp)
-    sudo cat "$before6" | awk -v infra="$INFRA_IF" '
+    sudo cat "$before6" | awk -v infra="$INFRA_IF" -v mode="$mode" '
         /^# OTBR ICMPv6/ { skip = 1; next }
         skip && /^-A ufw6-before-(input|forward) .*-p icmpv6/ { next }
         { skip = 0 }
         /^\*/ { table = $0 }
         /^COMMIT$/ && table == "*filter" && !done {
-            print "# OTBR ICMPv6 (iotstack otbr: infra interface only)"
-            print "-A ufw6-before-input -i " infra " -p icmpv6 -j ACCEPT"
+            if (mode == "add") {
+                print "# OTBR ICMPv6 (iotstack otbr: infra interface only)"
+                print "-A ufw6-before-input -i " infra " -p icmpv6 -j ACCEPT"
+            }
             done = 1
         }
         { print }
     ' > "$tmp"
 
-    if ! grep -q '^COMMIT$' "$tmp" || ! grep -q '^# OTBR ICMPv6' "$tmp"; then
+    if ! grep -q '^COMMIT$' "$tmp" \
+        || { [[ "$mode" == "add" ]] && ! grep -q '^# OTBR ICMPv6' "$tmp"; }; then
         rm -f "$tmp"
         die "Refusing to rewrite $before6: no *filter COMMIT found."
     fi
@@ -270,6 +275,24 @@ cmd_apply() {
     fi
 
     log "UFW configuration done."
+}
+
+# Removes every ufw rule 'apply' added, plus the ICMPv6 block in before6.rules.
+# The peers file is left alone, so a later apply rebuilds the same policy.
+cmd_purge() {
+    command -v ufw &>/dev/null || { log "ufw not found -- no OTBR firewall rules to remove."; return 0; }
+
+    log "Removing UFW rules for OTBR (thread: $THREAD_IF)..."
+    _ufw_purge_otbr_rules
+
+    if _ufw_sync_icmpv6 remove; then
+        log "Reloading UFW to drop the ICMPv6 rules..."
+        _ufw reload
+    else
+        log "No OTBR ICMPv6 rules in $UFW_BEFORE6."
+    fi
+
+    log "OTBR UFW rules removed. Peers kept in $THREAD_PEERS_FILE (re-add the rules with 'apply')."
 }
 
 # ---------------------------------------------------------------------------
@@ -371,9 +394,10 @@ cmd_remove() {
 
 usage() {
     cat << EOF
-Usage: iotstack otbr snap ufw [apply|list|add <name> <addr>...|remove <name> [addr...]]
+Usage: iotstack otbr snap ufw [apply|purge|list|add <name> <addr>...|remove <name> [addr...]]
 
   apply                       Rebuild the ufw rules from the peers (default)
+  purge                       Remove all the OTBR ufw rules (peers file is kept)
   list                        Show peers, resolved addresses and the active rules
   add <name> <addr>...        Add IPs, CIDRs or hostnames to a named peer, then apply
   remove <name> [addr...]     Remove addresses from a peer (or the whole peer), then apply
@@ -388,6 +412,7 @@ main() {
     [[ $# -gt 0 ]] && shift
     case "$cmd" in
         apply)  cmd_apply ;;
+        purge)  cmd_purge ;;
         list)   cmd_list ;;
         add)    cmd_add "$@" ;;
         remove) cmd_remove "$@" ;;

@@ -302,7 +302,8 @@ iotstack otbr snap start
 | `snap start` | Install/configure the snap, apply the ufw rules, start it |
 | `snap stop` | Gracefully leave the Thread network and stop the snap |
 | `snap restart` | `stop`, then `start` |
-| `snap ufw [apply\|list\|add\|remove]` | Ensure the `wpan0` ufw rules / manage the allowed peers |
+| `snap purge` | `stop`, then remove the OTBR ufw rules (the peers file is kept) |
+| `snap ufw [apply\|purge\|list\|add\|remove]` | Ensure the `wpan0` ufw rules / manage the allowed peers |
 | `snap info` | Show `snap info openthread-border-router` |
 
 The script detects the radio, verifies its Spinel firmware (flashing the
@@ -336,6 +337,7 @@ iotstack otbr snap ufw add matter-server fd00:4::40 matter.local
 iotstack otbr snap ufw remove matter-server matter.local   # one address
 iotstack otbr snap ufw remove matter-server                # the whole peer
 iotstack otbr snap ufw apply                               # re-resolve hostnames
+iotstack otbr snap ufw purge                               # remove all the OTBR ufw rules
 ```
 
 The mesh is IPv6, so give each peer IPv6 addresses (or its IPv6 prefix, e.g.
@@ -354,6 +356,15 @@ it), then `thread stop`, `ifconfig down`, and `snap stop`. It needs no Thread
 dataset or Home Assistant check, and does not unprovision anything -- bring the
 border router back with `iotstack otbr snap start`. The snap is not disabled, so it
 starts again on the next reboot.
+
+```bash
+iotstack otbr snap purge
+```
+
+`snap stop`, then removes the OTBR ufw rules (the tagged `wpan0` rules and the
+ICMPv6 block in `/etc/ufw/before6.rules`). `~/.iotstack/otbr/thread-peers.conf` is
+kept, so `iotstack otbr snap start` (or `snap ufw`) rebuilds the same policy. If
+`stop` fails, the rules are left in place.
 
 ---
 

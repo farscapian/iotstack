@@ -13,13 +13,14 @@ Commands:
   vm arm64          Incus VM (arm64)
   flash             Flash Ubuntu Server 26.04 to SD card (/dev/sdX)
   docker            Docker bare-metal provisioner
-  snap [help|start|stop|restart|ufw|info]
+  snap [help|start|stop|restart|purge|ufw|info]
                     Local OTBR snap on bare metal (help is the default):
                       start    install/configure/start the snap (+ ufw rules)
                       stop     gracefully leave the Thread network and stop it
                       restart  stop, then start
+                      purge    stop, then remove the OTBR ufw rules
                       ufw      ensure the wpan0 ufw rules / manage allowed peers
-                               [apply|list|add|remove]
+                               [apply|purge|list|add|remove]
                       info     show 'snap info openthread-border-router'
   list [-a]         Show OTBR instances running on this host: snap, docker,
                     incus vm (x64 or arm64). -a also shows stopped ones
@@ -49,6 +50,7 @@ Examples:
   iotstack otbr snap start
   iotstack otbr snap restart
   iotstack otbr snap stop
+  iotstack otbr snap purge
   iotstack otbr snap ufw add matter-server fd00:4::40 matter.local
   iotstack otbr snap ufw list
 
