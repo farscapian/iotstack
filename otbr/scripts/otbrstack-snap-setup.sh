@@ -300,6 +300,27 @@ verify_rcp() {
 }
 
 # ---------------------------------------------------------------------------
+# 8a. Stable serial path for the snap radio URL
+# /dev/ttyACM* numbering is not stable across unplug/replug; the udev-provided
+# /dev/serial/by-id/ symlink follows the device. Echoes the by-id path that
+# resolves to <tty_dev>, or <tty_dev> itself (with a warning) if there is none.
+# ---------------------------------------------------------------------------
+stable_port_path() {
+    local tty_dev="$1"
+    local real link
+    real=$(readlink -f "$tty_dev")
+    for link in /dev/serial/by-id/*; do
+        [[ -L "$link" ]] || continue
+        if [[ "$(readlink -f "$link")" == "$real" ]]; then
+            echo "$link"
+            return 0
+        fi
+    done
+    warn "No /dev/serial/by-id link for $tty_dev -- using it directly; replugging may renumber it."
+    echo "$tty_dev"
+}
+
+# ---------------------------------------------------------------------------
 # 8b. Keep retrying otbr-agent while the radio is unplugged
 # With the RCP pulled, otbr-agent exits on open() of the serial port; systemd
 # hits its start limit ("Start request repeated too quickly") and leaves the
@@ -329,7 +350,8 @@ ensure_agent_retry_dropin() {
 # 9. Configure and restart OTBR snap
 # ---------------------------------------------------------------------------
 configure_otbr() {
-    local port="$1"
+    local port
+    port=$(stable_port_path "$1")
     local radio_url="spinel+hdlc+uart://${port}?uart-baudrate=${BAUD}"
     local changed=0
 
