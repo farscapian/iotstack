@@ -394,7 +394,6 @@ ensure_snap_connections() {
         "firewall-control::firewall-control"
         "network-control::network-control"
         "raw-usb::raw-usb"
-        "avahi-control::avahi-control"
     )
 
     local reconnected=0
@@ -402,8 +401,13 @@ ensure_snap_connections() {
         local plug slot
         plug="${entry%%:*}"
         slot="${entry##*:}"
-        local connected
-        connected=$(snap connections openthread-border-router | awk -v plug="openthread-border-router:$plug" '$1!="" && $2==plug {print $3}')
+        local declared connected
+        declared=$(snap connections openthread-border-router | awk -v plug="openthread-border-router:$plug" '$2==plug {print "y"; exit}')
+        if [[ -z "$declared" ]]; then
+            log "Snap declares no plug named $plug -- skipping."
+            continue
+        fi
+        connected=$(snap connections openthread-border-router | awk -v plug="openthread-border-router:$plug" '$2==plug {print $3}')
         if [[ -z "$connected" || "$connected" == "-" ]]; then
             log "Connecting interface: $plug -> :$slot"
             sudo snap connect "openthread-border-router:$plug" ":$slot"
