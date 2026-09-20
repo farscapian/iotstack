@@ -147,6 +147,15 @@ if ! ls "${IDF_TOOLS_PATH}/python_env"/*/bin/python3 &>/dev/null; then
     "${IDF_DIR}/install.sh" esp32c6
 fi
 
+# ESP-IDF 6.x no longer installs cmake/ninja by default on Linux (they are
+# "on_request" tools).  Use system copies when present, else install the
+# IDF-managed ones (no sudo); export.sh puts them on PATH for the build.
+if ! command -v cmake &>/dev/null || ! command -v ninja &>/dev/null; then
+    log "cmake/ninja not on PATH -- installing via idf_tools.py ..."
+    _idf_py=$(ls "${IDF_TOOLS_PATH}/python_env"/*/bin/python3 | head -1)
+    "$_idf_py" "${IDF_DIR}/tools/idf_tools.py" install cmake ninja
+fi
+
 _ot_rcp_dir="${IDF_DIR}/examples/openthread/ot_rcp"
 [[ -d "$_ot_rcp_dir" ]] || die "ot_rcp example not found at $_ot_rcp_dir"
 

@@ -184,6 +184,17 @@ CONFIG_OPENTHREAD_RADIO_NATIVE=y
 CONFIG_ESP_COEX_SW_COEXIST_ENABLE=n
 SDKEOF
 
+    # ESP-IDF 6.x no longer installs cmake/ninja by default on Linux (they are
+    # "on_request" tools).  Install the IDF-managed ones (no sudo) when the
+    # system has none; export.sh puts them on PATH for the build.
+    if [[ -f "${_idf_path:-}/tools/idf_tools.py" ]] \
+        && { ! command -v cmake &>/dev/null || ! command -v ninja &>/dev/null; }; then
+        info "cmake/ninja not on PATH -- installing via idf_tools.py ..."
+        local _idf_py
+        _idf_py=$(ls "${IDF_TOOLS_PATH:-${HOME}/.espressif}/python_env"/*/bin/python3 | head -1)
+        "$_idf_py" "${_idf_path}/tools/idf_tools.py" install cmake ninja
+    fi
+
     # ------------------------------------------------------------------
     # 3. Build only if source changed or no prior build exists.
     # ------------------------------------------------------------------
