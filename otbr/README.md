@@ -303,6 +303,34 @@ dataset. Optional settings (`~/.iotstack/environments/default.env`):
 | `INFRA_IF` | auto (default route) | Backbone network interface |
 | `THREAD_IF` | `wpan0` | Thread virtual interface name |
 
+### Firewall (ufw) and Thread peers
+
+`iotstack otbr snap` configures ufw so the Thread interface (`wpan0`) only talks
+to named **peers** -- the other border routers, Home Assistant and the Matter
+server:
+
+- traffic is routed between `wpan0` and the LAN only to/from a peer address;
+- TREL (UDP) from a peer, and mDNS multicast, are allowed on the LAN interface;
+- everything else routed into `wpan0`, and all traffic arriving on `wpan0`, is denied.
+
+Peers are named groups in `~/.iotstack/otbr/thread-peers.conf` (one line per
+name: the name, then IPs, CIDRs or hostnames; hostnames are re-resolved every
+time the rules are applied). Home Assistant's host is added automatically to
+`home-assistant` from the pass `ha_url`. Manage the list on an ongoing basis
+without re-running the whole snap setup:
+
+```bash
+iotstack otbr snap firewall list
+iotstack otbr snap firewall add matter-server fd00:4::40 matter.local
+iotstack otbr snap firewall remove matter-server matter.local   # one address
+iotstack otbr snap firewall remove matter-server                # the whole peer
+iotstack otbr snap firewall apply                               # re-resolve hostnames
+```
+
+The mesh is IPv6, so give each peer IPv6 addresses (or its IPv6 prefix, e.g.
+`2001:db8:1::/64` -- useful when SLAAC privacy addresses rotate). An IPv4-only
+peer gets rules that never match Thread traffic, and a warning is printed.
+
 ### Taking the border router offline
 
 ```bash

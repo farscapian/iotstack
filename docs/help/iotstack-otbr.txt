@@ -15,6 +15,8 @@ Commands:
   docker            Docker bare-metal provisioner
   snap              Snap bare-metal provisioner
   snap stop         Gracefully leave the Thread network and stop the local OTBR snap
+  snap firewall     Manage the ufw peers (Home Assistant, Matter server, other OTBRs)
+                    that may talk to the Thread mesh: [apply|list|add|remove]
   logs [-f] <host>  Remote logs over SSH (cloud-init, firstboot, OTBR snap)
   shutdown <host>   Graceful shutdown of a remote OTBR device
   restart <host>    Reboot a remote OTBR device
@@ -39,6 +41,8 @@ Examples:
   iotstack otbr vm x64
   iotstack otbr snap
   iotstack otbr snap stop
+  iotstack otbr snap firewall add matter-server fd00:4::40 matter.local
+  iotstack otbr snap firewall list
 
 See otbr/README.md for full documentation.
 

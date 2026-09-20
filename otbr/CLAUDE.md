@@ -33,6 +33,9 @@ iotstack otbr docker
 
 # Snap on bare metal (Ubuntu Server/Desktop; installs/configures openthread-border-router snap)
 iotstack otbr snap
+
+# Manage which hosts (Home Assistant, Matter server, other OTBRs) may talk to the Thread mesh
+iotstack otbr snap firewall [apply|list|add <name> <addr>...|remove <name> [addr...]]
 ```
 
 ## Environment setup
@@ -84,6 +87,8 @@ before an operational command (`vm`, `flash`, `docker`, `snap`) runs.
 | `BAUD_RATE` | docker | Serial baud rate (default: `460800`) |
 | `INFRA_IF` | snap | Backbone/infrastructure network interface (default: auto-detected) |
 | `THREAD_IF` | snap | Thread virtual interface (default: `wpan0`) |
+| `THREAD_PEERS_FILE` | snap | Named Thread peers for the ufw rules (default: `~/.iotstack/otbr/thread-peers.conf`) |
+| `THREAD_HA_HOST` | snap | Home Assistant host for the `home-assistant` peer (default: pass `ha_url`, exported by `_otbr_load_config`) |
 | `MQTT_BROKER` | flash | MQTT broker hostname/IP. When set, Pi registers with HA via MQTT Discovery (restart/shutdown buttons, OTBR agent status, Thread role, uptime). Leave empty to disable. |
 | `MQTT_PORT` | flash | MQTT broker port (default: `1883`) |
 | `MQTT_USER` | flash | MQTT username (optional) |
@@ -139,6 +144,33 @@ Four deployment paths share the same iotstack environment and pass-store secrets
 
 `iotstack otbr snap` prefers an **ESP32-C6** (Espressif vendor ID `303a`) and falls back to a Sonoff dongle (Silicon Labs `10c4:ea60`). It verifies RCP firmware via pyspinel before configuring the snap. The pyspinel venv is shared with other scripts at `~/.iotstack/otbr/artifacts/pyspinel-venv/`.
 
+### Snap firewall (ufw)
+
+`otbrstack-snap-firewall.sh` owns the ufw rules for the Thread interface;
+`otbrstack-snap-setup.sh` just calls its `apply`. Policy: `wpan0` only talks to
+named peers. ufw has no named address sets, so peers live in
+`~/.iotstack/otbr/thread-peers.conf` (`<name> <ip|cidr|hostname>...`, full-line
+comments only) and each address is expanded into ufw rules whose comment is
+tagged `iotstack otbr: <name> ...`:
+
+- `route allow in on wpan0 out on $INFRA_IF to <addr>` and the reverse `from <addr>`
+- `allow in on $INFRA_IF proto udp from <addr>` (TREL, ephemeral ports)
+- mDNS multicast (`224.0.0.251`, `ff02::fb`, port 5353) on `$INFRA_IF` only
+- `route deny out on wpan0` after the peer allows; `insert 1 deny in on wpan0`
+- an infra-only ICMPv6 accept in a marked block of `/etc/ufw/before6.rules`
+
+Every `apply` deletes all tagged rules (found via `ufw show added`, since
+`ufw status` does not show comments) plus the untagged broad rules earlier
+versions added (`route allow in|out on wpan0`, `allow in on wpan0`,
+`allow 5353/udp`, the blanket ICMPv6 block), then rebuilds. Hostnames are
+re-resolved on each apply. The `home-assistant` peer also gets the host from
+pass `ha_url` (`THREAD_HA_HOST`). `snap firewall` skips the HA Thread dataset
+check. The mesh is IPv6: an IPv4-only peer never matches Thread traffic.
+
+`deny in on wpan0` also blocks Thread devices reaching services on this host
+(e.g. SRP registrations to otbr-agent); if that is ever needed, add an explicit
+allow for that port -- it must sit before the deny, so use `ufw insert 1`.
+
 ### Home directory layout
 
 Runtime data lives under `~/.iotstack/otbr/` -- inside the shared iotstack
@@ -154,6 +186,7 @@ etc.) so the two subsystems don't collide.
     esp-idf/          <- shallow clone of espressif/esp-idf (auto-cloned if IDF_PATH unset)
     openthread/       <- shallow clone of openthread/openthread; cmake simulation build produces ot-rcp + ot-cli
     ot-rcp-sim/       <- ot-rcp and ot-cli sim binaries (built from cache/openthread/ by otbr vm)
+  thread-peers.conf   <- named Thread peers for the snap ufw rules (snap firewall)
   logs/
     <hostname>/       <- per-device log directories (flash sessions, vm runs, etc.)
   artifacts/

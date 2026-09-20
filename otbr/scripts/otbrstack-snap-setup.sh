@@ -540,53 +540,12 @@ ensure_snap_connections() {
 
 # ---------------------------------------------------------------------------
 # 10. Configure UFW rules for OTBR
+# Named peer groups (Home Assistant, Matter server, other OTBRs) and the rules
+# built from them live in otbrstack-snap-firewall.sh; re-apply them on their
+# own with 'iotstack otbr snap firewall'.
 # ---------------------------------------------------------------------------
 configure_ufw() {
-    if ! command -v ufw &>/dev/null; then
-        log "ufw not found -- skipping firewall configuration."
-        return 0
-    fi
-
-    log "Configuring UFW rules for OTBR..."
-
-    # IPv6 forwarding: Thread (wpan0) <-> upstream interface
-    # UFW persists route rules in its own config -- no extra step needed.
-    if ! sudo ufw status verbose | grep -q "Anywhere on wpan0"; then
-        log "Adding UFW route rules for wpan0..."
-        sudo ufw route allow in on wpan0
-        sudo ufw route allow out on wpan0
-    else
-        log "UFW route rules for wpan0 already present."
-    fi
-
-    # ICMPv6: required for NDP / router advertisements.
-    # Injected into /etc/ufw/before6.rules (UFW re-applies on reload/boot),
-    # avoiding any dependency on iptables-persistent.
-    local before6=/etc/ufw/before6.rules
-    local ufw_changed=0
-    if ! sudo grep -q "# OTBR ICMPv6" "$before6" 2>/dev/null; then
-        log "Injecting ICMPv6 rules into $before6..."
-        sudo sed -i '/^COMMIT$/i # OTBR ICMPv6\n-A ufw6-before-forward -p icmpv6 -j ACCEPT\n-A ufw6-before-input  -p icmpv6 -j ACCEPT' "$before6"
-        ufw_changed=1
-    else
-        log "ICMPv6 rules already present in $before6."
-    fi
-
-    if [[ "$ufw_changed" -eq 1 ]]; then
-        log "Reloading UFW to apply ICMPv6 rules..."
-        sudo ufw reload
-    fi
-
-    # mDNS: needed for Thread SRP / service discovery
-    # UFW persists allow rules in its own config -- no extra step needed.
-    if ! sudo ufw status | grep -q "5353/udp"; then
-        log "Allowing mDNS (UDP 5353)..."
-        sudo ufw allow 5353/udp
-    else
-        log "mDNS rule already present."
-    fi
-
-    log "UFW configuration done."
+    "${SCRIPT_DIR}/otbrstack-snap-firewall.sh" apply
 }
 
 # ---------------------------------------------------------------------------

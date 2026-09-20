@@ -112,6 +112,11 @@ _otbr_load_config() {
     OTBR_PORT_PATHS_ENTRY="$(iotstack_pass_otbr_path port_paths/stable_port_path)"
     export OTBR_PORT_PATHS="${OTBR_PORT_PATHS:-$(pass show "$OTBR_PORT_PATHS_ENTRY" 2>/dev/null || echo "")}"
 
+    # Home Assistant's host (bare host[:port] from pass ha_url): the snap firewall
+    # adds it to the "home-assistant" Thread peer (see otbrstack-snap-firewall.sh).
+    export THREAD_HA_HOST="${THREAD_HA_HOST:-$(iotstack_pass_common_read ha_url 2>/dev/null || echo "")}"
+    [[ "$THREAD_HA_HOST" == "CONFIGURE_ME" ]] && THREAD_HA_HOST=""
+
     if [[ -n "${HTTP_PROXY:-}" ]]; then
         export http_proxy="$HTTP_PROXY" https_proxy="$HTTP_PROXY"
         local _proxy_hostport="${HTTP_PROXY#*://}"
@@ -257,7 +262,11 @@ cmd_otbr_dispatch() {
           && ! ( "$cmd" == "snap" && "${_pass_args[0]:-}" == "stop" ) ]]; then
         _otbr_load_config
         case "$cmd" in
-            vm|flash|docker|snap) _otbr_verify_thread_dataset_with_ha || return 1 ;;
+            vm|flash|docker) _otbr_verify_thread_dataset_with_ha || return 1 ;;
+            snap)
+                # 'snap firewall' only edits ufw rules; it needs the HA host, not the dataset check.
+                [[ "${_pass_args[0]:-}" == "firewall" ]] || _otbr_verify_thread_dataset_with_ha || return 1
+                ;;
         esac
     fi
 
@@ -416,6 +425,12 @@ cmd_otbr_dispatch() {
                     _snap_label=" stop"
                     _pass_args=("${_pass_args[@]:1}")
                     echo "[otbr] Snap graceful stop (leave Thread network)"
+                    ;;
+                firewall)
+                    _snap_script="otbrstack-snap-firewall.sh"
+                    _snap_label=" firewall"
+                    _pass_args=("${_pass_args[@]:1}")
+                    echo "[otbr] Snap Thread firewall (ufw peers)"
                     ;;
                 *)
                     echo "[otbr] Snap bare-metal provisioner"
