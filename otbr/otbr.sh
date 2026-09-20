@@ -123,7 +123,6 @@ Usage:
   iotstack otbr <command> [args]
 
 Commands:
-  setup             Install apt packages, esptool, incus (one-time)
   vm x64            Incus VM test (native x86_64)
   vm arm64          Incus VM (arm64)
   flash             Flash Ubuntu Server 26.04 to SD card (needs /dev/sdX)
@@ -134,15 +133,7 @@ Commands:
   restart <host>    Reboot a remote OTBR device
   help              Show this help
 
-Configuration comes from the iotstack environment (~/.iotstack/environments/
-default.env, or an alternate selected with the global iotstack -env=<name>.env
-flag) -- see docs/.env.example for OTBR settings (OTBR_HOSTNAME, snap
-channels, MQTT, etc.). Any of those can also be overridden by exporting the
-same variable in your shell before running iotstack.
 
-Network secrets (WiFi, Thread dataset) come from the iotstack pass store,
-seeded under iotstack/<env>/common/{wifi_ssid,wifi_password,thread_tlv} by
-setup.sh. Edit them with: pass edit iotstack/<env>/common/thread_tlv
 EOF
 }
 
