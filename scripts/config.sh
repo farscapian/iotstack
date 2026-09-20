@@ -98,6 +98,7 @@ iotstack_env_name() {
 
 iotstack_pass_common_path() { printf 'iotstack/%s/common/%s\n' "$(iotstack_env_name)" "$1"; }
 iotstack_pass_role_path()   { printf 'iotstack/%s/roles/%s/%s\n' "$(iotstack_env_name)" "$1" "$2"; }
+iotstack_pass_otbr_path()   { printf 'iotstack/%s/otbr/%s\n' "$(iotstack_env_name)" "$1"; }
 
 # Pre-migration (unscoped) equivalents -- read-time fallback only, never written to.
 iotstack_pass_common_legacy_path() { printf 'iotstack/common/%s\n' "$1"; }

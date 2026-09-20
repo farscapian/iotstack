@@ -105,6 +105,13 @@ _otbr_load_config() {
     [[ "$WIFI_PASSWORD" == "CONFIGURE_ME" ]] && WIFI_PASSWORD=""
     [[ "$THREAD_DATASET_TLV" == "CONFIGURE_ME" ]] && THREAD_DATASET_TLV=""
 
+    # Known radio co-processors: newline-separated /dev/serial/by-id paths that
+    # earlier runs verified and cached (written by otbrstack-snap-setup.sh).
+    # Provision scripts pick the first one that is currently plugged in.
+    export OTBR_PORT_PATHS_ENTRY
+    OTBR_PORT_PATHS_ENTRY="$(iotstack_pass_otbr_path port_paths/stable_port_path)"
+    export OTBR_PORT_PATHS="${OTBR_PORT_PATHS:-$(pass show "$OTBR_PORT_PATHS_ENTRY" 2>/dev/null || echo "")}"
+
     if [[ -n "${HTTP_PROXY:-}" ]]; then
         export http_proxy="$HTTP_PROXY" https_proxy="$HTTP_PROXY"
         local _proxy_hostport="${HTTP_PROXY#*://}"

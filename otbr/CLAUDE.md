@@ -53,6 +53,16 @@ iotstack environment as everything else:
   pass edit iotstack/default/common/thread_tlv
   ```
 
+- **Known radios** are cached in pass at
+  `iotstack/<env>/otbr/port_paths/stable_port_path`: one
+  `/dev/serial/by-id/...` path per line, appended by `iotstack otbr snap`
+  after it verifies a radio (never removed automatically -- `pass edit` to
+  prune). `_otbr_load_config()` exports them as `OTBR_PORT_PATHS` (and the
+  entry name as `OTBR_PORT_PATHS_ENTRY`); `otbrstack-snap-setup.sh` and
+  `flash_rcp.sh` try these before falling back to the vendor-ID scan of
+  `/dev/ttyACM*`/`ttyUSB*`, and the snap's `radio-url` uses the by-id path so
+  it survives ttyACM renumbering on replug.
+
 `otbr/otbr.sh`'s `_otbr_load_config()` resolves and exports all of this
 before an operational command (`vm`, `flash`, `docker`, `snap`) runs.
 

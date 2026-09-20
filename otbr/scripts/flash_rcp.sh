@@ -59,7 +59,15 @@ die() { echo "[flash-rcp] ERROR: $*" >&2; exit 1; }
 # Port detection
 # ---------------------------------------------------------------------------
 if [[ -z "$_PORT" ]]; then
-    for _dev in /dev/ttyACM*; do
+    # Radios cached in pass by 'iotstack otbr snap' (OTBR_PORT_PATHS, one
+    # /dev/serial/by-id path per line) are tried before the /dev/ttyACM* scan.
+    _candidates=()
+    while IFS= read -r _cached; do
+        [[ -n "$_cached" && "$_cached" != \#* && -e "$_cached" ]] || continue
+        _candidates+=("$(readlink -f "$_cached")")
+    done <<< "${OTBR_PORT_PATHS:-}"
+    _candidates+=(/dev/ttyACM*)
+    for _dev in "${_candidates[@]}"; do
         [[ -c "$_dev" ]] || continue
         _base=$(basename "$_dev")
         _link=$(readlink -f "/sys/class/tty/${_base}/device" 2>/dev/null) || true

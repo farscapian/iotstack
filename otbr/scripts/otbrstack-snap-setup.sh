@@ -59,6 +59,21 @@ EOF
 # 4. Find Thread radio device (ESP32-C6 preferred, Sonoff fallback)
 # ---------------------------------------------------------------------------
 
+# Usage: _tty_usb_ids <tty_dev>
+# Prints "<idVendor> <idProduct>" of the USB device behind a tty, or fails.
+_tty_usb_ids() {
+    local check_path
+    check_path=$(readlink -f /sys/class/tty/"$(basename "$1")"/device 2>/dev/null || true)
+    while [[ -n "$check_path" && "$check_path" != "/" ]]; do
+        if [[ -f "$check_path/idVendor" ]]; then
+            echo "$(cat "$check_path/idVendor") $(cat "$check_path/idProduct" 2>/dev/null || true)"
+            return 0
+        fi
+        check_path=$(dirname "$check_path")
+    done
+    return 1
+}
+
 # Usage: _find_usb_tty <vendor_id> [product_id]
 # Searches all tty devices (ttyACM* and ttyUSB*) for a matching USB vendor/product.
 _find_usb_tty() {
@@ -67,33 +82,54 @@ _find_usb_tty() {
 
     for dev in /dev/ttyACM* /dev/ttyUSB*; do
         [[ -e "$dev" ]] || continue
-        local devname
-        devname=$(basename "$dev")
-
-        local check_path
-        check_path=$(readlink -f /sys/class/tty/"$devname"/device 2>/dev/null || true)
-        while [[ -n "$check_path" && "$check_path" != "/" ]]; do
-            if [[ -f "$check_path/idVendor" ]]; then
-                local vendor product
-                vendor=$(cat "$check_path/idVendor")
-                product=$(cat "$check_path/idProduct" 2>/dev/null || true)
-                if [[ "$vendor" == "$wanted_vendor" ]]; then
-                    if [[ -z "$wanted_product" || "$product" == "$wanted_product" ]]; then
-                        echo "$dev"
-                        return 0
-                    fi
-                fi
-                break
+        local ids vendor product
+        ids=$(_tty_usb_ids "$dev") || continue
+        read -r vendor product <<< "$ids"
+        if [[ "$vendor" == "$wanted_vendor" ]]; then
+            if [[ -z "$wanted_product" || "$product" == "$wanted_product" ]]; then
+                echo "$dev"
+                return 0
             fi
-            check_path=$(dirname "$check_path")
-        done
+        fi
     done
+}
+
+# Try the radio paths cached in pass (OTBR_PORT_PATHS, one /dev/serial/by-id
+# path per line) and take the first one that is currently plugged in.
+# Sets THREAD_DEVICE_TYPE / THREAD_DEVICE_PORT (the real tty) like
+# find_thread_device; returns 1 if none of the cached radios is present.
+find_cached_thread_device() {
+    local cached ids vendor product type real
+    while IFS= read -r cached; do
+        [[ -n "$cached" && "$cached" != \#* && -e "$cached" ]] || continue
+        real=$(readlink -f "$cached")
+        ids=$(_tty_usb_ids "$real") || continue
+        read -r vendor product <<< "$ids"
+        type=""
+        if [[ "$vendor" == "$ESPRESSIF_VENDOR_ID" ]]; then
+            type="esp32c6"
+        elif [[ "$vendor" == "$SONOFF_VENDOR_ID" && "$product" == "$SONOFF_PRODUCT_ID" ]]; then
+            type="sonoff"
+        fi
+        if [[ -z "$type" ]]; then
+            warn "Cached radio path $cached has unrecognised USB id ${vendor}:${product} -- skipping."
+            continue
+        fi
+        log "Using cached radio: $cached -> $real"
+        THREAD_DEVICE_TYPE="$type"
+        THREAD_DEVICE_PORT="$real"
+        return 0
+    done <<< "${OTBR_PORT_PATHS:-}"
+    return 1
 }
 
 find_thread_device() {
     # NOTE: This function must be called directly (not in a subshell) so that
     # THREAD_DEVICE_TYPE and THREAD_DEVICE_PORT globals are set in the parent shell.
     local port
+
+    # Prefer a radio already known from an earlier run
+    find_cached_thread_device && return 0
 
     # Prefer ESP32-C6
     port=$(_find_usb_tty "$ESPRESSIF_VENDOR_ID")
@@ -320,6 +356,33 @@ stable_port_path() {
     echo "$tty_dev"
 }
 
+# Remember a verified radio's stable path in pass (one path per line, see
+# OTBR_PORT_PATHS_ENTRY in otbr.sh) so later runs can find it by path even if
+# other radios are attached. Non-fatal: caching is a convenience.
+cache_stable_port_path() {
+    local path="$1" entry="${OTBR_PORT_PATHS_ENTRY:-}" current
+
+    [[ "$path" == /dev/serial/by-id/* ]] || return 0
+    if [[ -z "$entry" ]] || ! command -v pass &>/dev/null; then
+        log "pass entry unavailable -- not caching radio path."
+        return 0
+    fi
+
+    current=$(pass show "$entry" 2>/dev/null | sed '/^$/d' || true)
+    if grep -qxF -- "$path" <<< "$current"; then
+        log "Radio path already cached in pass ($entry)."
+        return 0
+    fi
+
+    log "Caching radio path in pass: $entry"
+    if { [[ -n "$current" ]] && printf '%s\n' "$current"; printf '%s\n' "$path"; } \
+            | pass insert -m -f "$entry" > /dev/null 2>&1; then
+        OTBR_PORT_PATHS="${current:+${current}$'\n'}${path}"
+    else
+        warn "Could not write $entry to pass -- radio path not cached."
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # 8b. Keep retrying otbr-agent while the radio is unplugged
 # With the RCP pulled, otbr-agent exits on open() of the serial port; systemd
@@ -352,6 +415,7 @@ ensure_agent_retry_dropin() {
 configure_otbr() {
     local port
     port=$(stable_port_path "$1")
+    cache_stable_port_path "$port"
     local radio_url="spinel+hdlc+uart://${port}?uart-baudrate=${BAUD}"
     local changed=0
 
