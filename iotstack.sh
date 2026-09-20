@@ -2689,6 +2689,7 @@ _update_via_bootstrap() {
   local work_dir
   work_dir=$(mktemp -d)
   local slot_count=0
+  declare -a job_pids=()
   for mac in "${macs[@]}"; do
     while [[ $slot_count -ge $max_jobs ]]; do
       wait -n 2>/dev/null || true
@@ -2706,9 +2707,15 @@ _update_via_bootstrap() {
       fi
       printf '%s\n' ${IOTSTACK_PENDING_HA_HOSTNAMES[@]+"${IOTSTACK_PENDING_HA_HOSTNAMES[@]}"} > "${work_dir}/${mac}.ha"
     ) &
+    job_pids+=($!)
     slot_count=$((slot_count + 1))
   done
-  wait 2>/dev/null || true
+  # Wait on our own jobs only. A bare `wait` also blocks on the background
+  # serial-capture job started by --create-log, which runs until Ctrl-C, so
+  # the HA registration flush below would never be reached.
+  if [[ ${#job_pids[@]} -gt 0 ]]; then
+    wait "${job_pids[@]}" 2>/dev/null || true
+  fi
 
   for mac in "${macs[@]}"; do
     if [[ "$(cat "${work_dir}/${mac}.result" 2>/dev/null)" != ok ]]; then
