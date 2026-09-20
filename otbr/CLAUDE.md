@@ -61,6 +61,7 @@ before an operational command (`vm`, `flash`, `docker`, `snap`) runs.
 | Variable | Scripts | Purpose |
 |----------|---------|---------|
 | `THREAD_DATASET_TLV` | all | Thread Active Operational Dataset (hex). From pass store (`common/thread_tlv`); required. |
+| `SKIP_HA_THREAD_VERIFY` | vm, flash, docker, snap | `1` skips the Home Assistant Thread dataset check (default `0`); see below |
 | `WIFI_SSID` / `WIFI_PASSWORD` | flash | From pass store (`common/wifi_ssid`/`wifi_password`); optional if using Ethernet. |
 | `OTBR_HOSTNAME` | flash | Device hostname (default: `otbr-raspi4`) |
 | `SSH_PUBKEY` | flash, incus | SSH public key to inject into VM/image |
@@ -77,6 +78,29 @@ before an operational command (`vm`, `flash`, `docker`, `snap`) runs.
 | `MQTT_PORT` | flash | MQTT broker port (default: `1883`) |
 | `MQTT_USER` | flash | MQTT username (optional) |
 | `MQTT_PASSWORD` | flash | MQTT password (optional) |
+
+### Home Assistant Thread dataset check
+
+`cmd_otbr_dispatch` calls `_otbr_verify_thread_dataset_with_ha` (otbr.sh) after
+`_otbr_load_config` for `vm`, `flash`, `docker` and `snap` -- the one choke point
+before any provisioner runs. It compares the effective `THREAD_DATASET_TLV`
+against Home Assistant over the WebSocket API (`ha_websocket.py
+verify-thread-dataset`):
+
+- Runs only when pass has a real `ha_url` AND `ha_token` (not empty/`CONFIGURE_ME`).
+  Deliberately ignores `PERFORM_HA_DEVICE_REGISTRATION` (`load_ha_credentials_from_pass`).
+- HA side: the Thread integration's preferred dataset (`thread/list_datasets` +
+  `thread/get_dataset_tlv`), falling back to `otbr/info` `active_dataset_tlvs`.
+  The former works while the border router itself is offline (e.g. re-flashing it).
+- TLVs are parsed and compared per type, order-independent; HA's non-MeshCoP
+  `0x4a` prefix is ignored. Only differing field names are printed -- the values
+  hold the network key and PSKc.
+- Exit codes of the subcommand: 0 match, 3 mismatch or malformed local dataset
+  (aborts provisioning), 1 could not verify (HA down, bad token, no dataset in
+  HA; warns and continues).
+- A malformed local dataset is rejected before HA is contacted.
+- `THREAD_DATASET_TLV` set in the environment is what gets checked, and the
+  message says so. `SKIP_HA_THREAD_VERIFY=1` bypasses the check.
 
 ## Architecture
 

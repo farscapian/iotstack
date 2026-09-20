@@ -26,6 +26,9 @@ Configuration:
     pass edit iotstack/default/common/wifi_ssid
     pass edit iotstack/default/common/wifi_password
     pass edit iotstack/default/common/thread_tlv
+  If pass also holds a real ha_url and ha_token, vm/flash/docker/snap first check
+  the Thread dataset against Home Assistant's and abort on a mismatch
+  (SKIP_HA_THREAD_VERIFY=1 to bypass).
 
 Examples:
   iotstack otbr setup

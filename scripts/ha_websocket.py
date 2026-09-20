@@ -1330,6 +1330,13 @@ def verify_thread_dataset(client: HAWebSocketClient, local_tlv: str) -> str:
     Raises ThreadDatasetMismatch if they differ, HAWebSocketError if Home
     Assistant's dataset cannot be obtained.
     """
+    # A malformed local dataset is wrong whether or not HA agrees, so reject it
+    # before asking HA anything.
+    try:
+        local_tlvs = _parse_thread_tlvs(local_tlv)
+    except ValueError as exc:
+        raise ThreadDatasetMismatch(f"local Thread dataset is invalid: {exc}") from exc
+
     ha_hex, source = fetch_ha_thread_dataset(client)
     try:
         ha_tlvs = _parse_thread_tlvs(ha_hex)
@@ -1341,11 +1348,6 @@ def verify_thread_dataset(client: HAWebSocketClient, local_tlv: str) -> str:
     name_raw = ha_tlvs.get(0x03)
     network = f' (network "{name_raw.decode("utf-8", "replace")}")' if name_raw else ""
     label = f"Home Assistant {source}{network}"
-
-    try:
-        local_tlvs = _parse_thread_tlvs(local_tlv)
-    except ValueError as exc:
-        raise ThreadDatasetMismatch(f"local Thread dataset is invalid: {exc}") from exc
 
     ha_cmp = {k: v for k, v in ha_tlvs.items() if k not in _THREAD_TLV_IGNORED}
     local_cmp = {k: v for k, v in local_tlvs.items() if k not in _THREAD_TLV_IGNORED}

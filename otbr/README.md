@@ -91,6 +91,17 @@ pass edit iotstack/default/common/wifi_password
 - **`wifi_ssid` / `wifi_password`** -- optional if you're using Ethernet; leave
   the `CONFIGURE_ME` placeholder in place and it's treated as unset.
 
+**Home Assistant consistency check.** If the pass store also holds a real
+`ha_url` and `ha_token` (not `CONFIGURE_ME`), every provisioning command
+(`vm`, `flash`, `docker`, `snap`) first opens a WebSocket to Home Assistant and
+compares the Thread dataset it is about to provision against HA's preferred
+Thread network (falling back to the OTBR integration's active dataset). If they
+differ, or the stored value is not a valid dataset, the command aborts and names
+the differing fields (never their values). If HA is unreachable or has no Thread
+dataset, it warns and continues. To provision a deliberately different network
+(for example one you just generated with `dataset init new`), run with
+`SKIP_HA_THREAD_VERIFY=1`.
+
 ### 3. Configure your SSH key and other settings
 
 Everything else lives in `~/.iotstack/environments/default.env` -- see
@@ -330,6 +341,7 @@ Key variables:
 | Variable | Used by | Purpose |
 |----------|---------|---------|
 | `THREAD_DATASET_TLV` | all | Thread Active Operational Dataset (hex). From the pass store. |
+| `SKIP_HA_THREAD_VERIFY` | vm, flash, docker, snap | `1` = skip the check that the dataset matches Home Assistant's (default: `0`) |
 | `SSH_PUBKEY` | flash, vm | SSH public key injected into the image |
 | `OTBR_SNAP_CHANNEL` | flash, snap, vm | Snap channel (default: `latest/edge`) |
 | `CHIP_TOOL_SNAP_CHANNEL` | flash | chip-tool snap channel (default: `latest/stable`) |

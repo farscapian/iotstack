@@ -98,6 +98,8 @@ _otbr_load_config() {
 
     export WIFI_SSID="${WIFI_SSID:-$(iotstack_pass_common_read wifi_ssid 2>/dev/null || echo "")}"
     export WIFI_PASSWORD="${WIFI_PASSWORD:-$(iotstack_pass_common_read wifi_password 2>/dev/null || echo "")}"
+    _OTBR_THREAD_TLV_SOURCE="pass entry $(iotstack_pass_common_path thread_tlv)"
+    [[ -n "${THREAD_DATASET_TLV:-}" ]] && _OTBR_THREAD_TLV_SOURCE="THREAD_DATASET_TLV from the environment"
     export THREAD_DATASET_TLV="${THREAD_DATASET_TLV:-$(iotstack_pass_common_read thread_tlv 2>/dev/null || echo "")}"
     [[ "$WIFI_SSID" == "CONFIGURE_ME" ]] && WIFI_SSID=""
     [[ "$WIFI_PASSWORD" == "CONFIGURE_ME" ]] && WIFI_PASSWORD=""
@@ -113,6 +115,55 @@ _otbr_load_config() {
             fi
         fi
     fi
+}
+
+# Check that the Thread dataset about to be provisioned matches the one Home
+# Assistant uses, so this border router does not end up on a different Thread
+# network than the rest of the home. Must run after _otbr_load_config.
+#
+# Runs only when pass holds a real ha_url AND ha_token (independent of
+# PERFORM_HA_DEVICE_REGISTRATION); otherwise it is skipped. A mismatch aborts.
+# Home Assistant being unreachable, or having no Thread dataset, only warns --
+# there is nothing to compare against. SKIP_HA_THREAD_VERIFY=1 bypasses it.
+_otbr_verify_thread_dataset_with_ha() {
+    if [[ "${SKIP_HA_THREAD_VERIFY:-0}" == "1" ]]; then
+        echo "[otbr] SKIP_HA_THREAD_VERIFY=1 -- not checking the Thread dataset against Home Assistant"
+        return 0
+    fi
+
+    # Empty or CONFIGURE_ME: nothing to compare (the provisioners report it).
+    [[ -n "${THREAD_DATASET_TLV:-}" ]] || return 0
+
+    # shellcheck source=scripts/ensure-integration-secrets.sh
+    source "${_OTBR_REPO_ROOT}/scripts/ensure-integration-secrets.sh"
+    if ! load_ha_credentials_from_pass; then
+        echo "[otbr] No usable ha_url/ha_token in pass -- skipping Home Assistant Thread dataset check"
+        return 0
+    fi
+
+    echo "[otbr] Verifying Thread dataset against Home Assistant (${HA_URL}) ..."
+    local _out _rc=0
+    _out="$(python3 "${_OTBR_REPO_ROOT}/scripts/ha_websocket.py" \
+        --ha-url "$HA_URL" --ha-token "$HA_TOKEN" \
+        verify-thread-dataset 2>&1)" || _rc=$?
+    _out="${_out#\[error\] }"
+
+    case "$_rc" in
+        0)
+            echo "[otbr] OK: ${_out}"
+            ;;
+        3)
+            echo "[otbr] ERROR: ${_OTBR_THREAD_TLV_SOURCE:-Thread dataset} failed the Home Assistant Thread dataset check:" >&2
+            echo "[otbr]        ${_out}" >&2
+            echo "[otbr]        Provisioning with a dataset that does not match Home Assistant's would put this border router on a different Thread network." >&2
+            echo "[otbr]        Fix: pass edit $(iotstack_pass_common_path thread_tlv)  (hex from HA Settings -> Thread)" >&2
+            echo "[otbr]        Or, to provision anyway: SKIP_HA_THREAD_VERIFY=1 iotstack otbr <command>" >&2
+            return 1
+            ;;
+        *)
+            echo "[otbr] WARNING: could not verify the Thread dataset against Home Assistant -- continuing unverified: ${_out}" >&2
+            ;;
+    esac
 }
 
 _otbr_show_help() {
@@ -195,6 +246,9 @@ cmd_otbr_dispatch() {
     # Resolve config and secrets for operational commands (not logs/shutdown/restart).
     if [[ "$cmd" != "logs" && "$cmd" != "shutdown" && "$cmd" != "restart" ]]; then
         _otbr_load_config
+        case "$cmd" in
+            vm|flash|docker|snap) _otbr_verify_thread_dataset_with_ha || return 1 ;;
+        esac
     fi
 
     case "$cmd" in
