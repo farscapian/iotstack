@@ -300,6 +300,32 @@ verify_rcp() {
 }
 
 # ---------------------------------------------------------------------------
+# 8b. Keep retrying otbr-agent while the radio is unplugged
+# With the RCP pulled, otbr-agent exits on open() of the serial port; systemd
+# hits its start limit ("Start request repeated too quickly") and leaves the
+# unit failed, so replugging the radio never brings OTBR back. Disable the
+# start limit and retry slowly instead (same drop-in the Pi image ships).
+# Returns 0 if the drop-in was written/changed, 1 if already current.
+# ---------------------------------------------------------------------------
+ensure_agent_retry_dropin() {
+    local dir=/etc/systemd/system/snap.openthread-border-router.otbr-agent.service.d
+    local file="${dir}/20-retry-forever.conf"
+    local want
+    want=$'[Unit]\nStartLimitIntervalSec=0\nStartLimitAction=none\n\n[Service]\nRestartSec=5\n'
+
+    if [[ -f "$file" && "$(cat "$file")" == "${want%$'\n'}" ]]; then
+        return 1
+    fi
+
+    log "Installing systemd drop-in so otbr-agent retries until the radio returns..."
+    sudo mkdir -p "$dir"
+    printf '%s' "$want" | sudo tee "$file" > /dev/null
+    sudo systemctl daemon-reload
+    sudo systemctl reset-failed snap.openthread-border-router.otbr-agent.service 2>/dev/null || true
+    return 0
+}
+
+# ---------------------------------------------------------------------------
 # 9. Configure and restart OTBR snap
 # ---------------------------------------------------------------------------
 configure_otbr() {
@@ -361,6 +387,8 @@ configure_otbr() {
         sudo snap set openthread-border-router autostart=true
         changed=1
     fi
+
+    ensure_agent_retry_dropin && changed=1
 
     if [[ "$changed" -eq 1 ]]; then
         log "Configuration changed -- restarting OTBR snap..."
