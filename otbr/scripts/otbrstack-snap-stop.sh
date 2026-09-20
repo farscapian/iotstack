@@ -80,7 +80,7 @@ main() {
     fi
 
     log "OTBR stopped and no longer participating in the Thread network."
-    log "Bring it back with: iotstack otbr snap"
+    log "Bring it back with: iotstack otbr snap start"
 }
 
 main "$@"

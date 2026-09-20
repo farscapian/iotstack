@@ -54,7 +54,7 @@ _ensure_peers_file() {
 # One line per named group: <name> <address-or-hostname> [<address-or-hostname> ...]
 # Addresses are IPs, CIDRs or hostnames (resolved on every apply). Use IPv6
 # addresses or prefixes -- the mesh is IPv6. Full-line comments only.
-# Manage with: iotstack otbr snap firewall [apply|list|add|remove]
+# Manage with: iotstack otbr snap ufw [apply|list|add|remove]
 #
 # home-assistant  homeassistant.local 2001:db8:1::/64
 # matter-server   192.168.4.40 fd00:4::40
@@ -226,10 +226,10 @@ cmd_apply() {
 
     if [[ "${#rules[@]}" -eq 0 ]]; then
         warn "No Thread peers known (no ha_url in pass, $THREAD_PEERS_FILE empty): the mesh will be"
-        warn "unreachable. Add peers with: iotstack otbr snap firewall add <name> <address>..."
+        warn "unreachable. Add peers with: iotstack otbr snap ufw add <name> <address>..."
     elif [[ "${rules[*]}" != *:* ]]; then
         warn "No IPv6 address among the Thread peers: the mesh is IPv6, so add the peers' IPv6"
-        warn "addresses or prefix (iotstack otbr snap firewall add <name> <address>...)."
+        warn "addresses or prefix (iotstack otbr snap ufw add <name> <address>...)."
     fi
 
     _ufw_purge_otbr_rules
@@ -371,7 +371,7 @@ cmd_remove() {
 
 usage() {
     cat << EOF
-Usage: iotstack otbr snap firewall [apply|list|add <name> <addr>...|remove <name> [addr...]]
+Usage: iotstack otbr snap ufw [apply|list|add <name> <addr>...|remove <name> [addr...]]
 
   apply                       Rebuild the ufw rules from the peers (default)
   list                        Show peers, resolved addresses and the active rules

@@ -521,8 +521,10 @@ else
 fi
 
 # shellcheck disable=SC2086
+# user.iotstack-otbr marks the instance for 'iotstack otbr list' (custom --name too).
 incus init "$INCUS_IMAGE" "$INST" $TYPE_FLAG \
-    --config "user.user-data=${USER_DATA}"
+    --config "user.user-data=${USER_DATA}" \
+    --config "user.iotstack-otbr=true"
 
 # security.nesting lets snapd manage systemd services inside a container
 [[ "$INSTANCE_MODE" == "container" ]] && \

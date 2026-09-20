@@ -542,7 +542,7 @@ ensure_snap_connections() {
 # 10. Configure UFW rules for OTBR
 # Named peer groups (Home Assistant, Matter server, other OTBRs) and the rules
 # built from them live in otbrstack-snap-firewall.sh; re-apply them on their
-# own with 'iotstack otbr snap firewall'.
+# own with 'iotstack otbr snap ufw'.
 # ---------------------------------------------------------------------------
 configure_ufw() {
     "${SCRIPT_DIR}/otbrstack-snap-firewall.sh" apply

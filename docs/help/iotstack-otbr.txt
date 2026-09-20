@@ -13,10 +13,16 @@ Commands:
   vm arm64          Incus VM (arm64)
   flash             Flash Ubuntu Server 26.04 to SD card (/dev/sdX)
   docker            Docker bare-metal provisioner
-  snap              Snap bare-metal provisioner
-  snap stop         Gracefully leave the Thread network and stop the local OTBR snap
-  snap firewall     Manage the ufw peers (Home Assistant, Matter server, other OTBRs)
-                    that may talk to the Thread mesh: [apply|list|add|remove]
+  snap [help|start|stop|restart|ufw|info]
+                    Local OTBR snap on bare metal (help is the default):
+                      start    install/configure/start the snap (+ ufw rules)
+                      stop     gracefully leave the Thread network and stop it
+                      restart  stop, then start
+                      ufw      ensure the wpan0 ufw rules / manage allowed peers
+                               [apply|list|add|remove]
+                      info     show 'snap info openthread-border-router'
+  list [-a]         Show OTBR instances running on this host: snap, docker,
+                    incus vm (x64 or arm64). -a also shows stopped ones
   logs [-f] <host>  Remote logs over SSH (cloud-init, firstboot, OTBR snap)
   shutdown <host>   Graceful shutdown of a remote OTBR device
   restart <host>    Reboot a remote OTBR device
@@ -39,10 +45,12 @@ Examples:
   iotstack otbr flash --hostname=otbr-kitchen /dev/sdb
   iotstack otbr logs -f otbr-kitchen
   iotstack otbr vm x64
-  iotstack otbr snap
+  iotstack otbr list
+  iotstack otbr snap start
+  iotstack otbr snap restart
   iotstack otbr snap stop
-  iotstack otbr snap firewall add matter-server fd00:4::40 matter.local
-  iotstack otbr snap firewall list
+  iotstack otbr snap ufw add matter-server fd00:4::40 matter.local
+  iotstack otbr snap ufw list
 
 See otbr/README.md for full documentation.
 

@@ -112,7 +112,7 @@ _otbr_load_config() {
     OTBR_PORT_PATHS_ENTRY="$(iotstack_pass_otbr_path port_paths/stable_port_path)"
     export OTBR_PORT_PATHS="${OTBR_PORT_PATHS:-$(pass show "$OTBR_PORT_PATHS_ENTRY" 2>/dev/null || echo "")}"
 
-    # Home Assistant's host (bare host[:port] from pass ha_url): the snap firewall
+    # Home Assistant's host (bare host[:port] from pass ha_url): the snap ufw
     # adds it to the "home-assistant" Thread peer (see otbrstack-snap-firewall.sh).
     export THREAD_HA_HOST="${THREAD_HA_HOST:-$(iotstack_pass_common_read ha_url 2>/dev/null || echo "")}"
     [[ "$THREAD_HA_HOST" == "CONFIGURE_ME" ]] && THREAD_HA_HOST=""
@@ -190,8 +190,9 @@ Commands:
   vm arm64          Incus VM (arm64)
   flash             Flash Ubuntu Server 26.04 to SD card (needs /dev/sdX)
   docker            Docker bare-metal provisioner
-  snap              Snap bare-metal provisioner
-  snap stop         Gracefully leave the Thread network and stop the local OTBR snap
+  snap [help|start|stop|restart|ufw|info]
+                    Local OTBR snap (bare metal); 'iotstack otbr snap help' for details
+  list [-a]         Show OTBR instances running on this host (snap, docker, incus vm)
   logs [-f] <host>  Tail cloud-init + firstboot + OTBR snap logs over SSH
   shutdown <host>   Graceful shutdown of a remote OTBR device
   restart <host>    Reboot a remote OTBR device
@@ -201,27 +202,60 @@ Commands:
 EOF
 }
 
+_otbr_snap_show_help() {
+    cat <<'EOF'
+iotstack otbr snap -- OpenThread Border Router snap on this host (bare metal)
+
+Usage:
+  iotstack otbr snap [help|start|stop|restart|ufw|info]
+
+Commands:
+  help      Show this help (default)
+  start     Install/configure the OTBR snap, apply the ufw rules, and start it
+  stop      Gracefully leave the Thread network and stop the snap
+  restart   stop, then start
+  ufw [apply|list|add <name> <addr>...|remove <name> [addr...]]
+            Ensure the ufw rules for the Thread interface (wpan0) are in place
+            (also done by start), or manage the peers allowed to reach it
+  info      Show 'snap info openthread-border-router'
+
+EOF
+}
+
+# Runs one snap script (start|stop|ufw) with its output logged to snap.log.
+# Usage: _otbr_snap_run <start|stop|ufw> [script args...]
+_otbr_snap_run() {
+    local _sub="$1" _script _banner _otbr_log
+    shift
+    case "$_sub" in
+        start) _script="otbrstack-snap-setup.sh"; _banner="Snap bare-metal provisioner" ;;
+        stop)  _script="otbrstack-snap-stop.sh";  _banner="Snap graceful stop (leave Thread network)" ;;
+        ufw)   _script="otbrstack-snap-firewall.sh"; _banner="Snap Thread firewall (ufw)" ;;
+        *)     echo "[otbr] internal error: unknown snap step '$_sub'" >&2; return 2 ;;
+    esac
+    echo "[otbr] ${_banner}"
+    _otbr_log="${_OTBR_HOME}/logs/$(hostname)/snap.log"
+    mkdir -p "$(dirname "$_otbr_log")"
+    echo "[otbr] Logging to: ${_otbr_log}"
+    printf '\n=== iotstack otbr snap %s %s -- %s ===\n' \
+        "$_sub" \
+        "$(date '+%Y-%m-%d %H:%M:%S')" \
+        "$(_otbr_git_head)" \
+        | tee -a "$_otbr_log"
+    { "$_OTBR_DIR/scripts/${_script}" "$@"; } 2>&1 \
+        | tee -a "$_otbr_log"
+    return "${PIPESTATUS[0]}"
+}
+
 cmd_otbr_dispatch() {
     _otbr_ensure_home_symlink
 
-    local _pass_args=()
-    local _arg _cmd=""
-
-    for _arg in "$@"; do
-        case "$_arg" in
-            help) [[ -z "$_cmd" ]] && _cmd="help" ;;
-            setup|vm|flash|docker|snap|shutdown|restart|logs)
-                [[ -z "$_cmd" ]] && _cmd="$_arg"
-                ;;
-            *)
-                if [[ -n "$_cmd" ]]; then
-                    _pass_args+=("$_arg")
-                else
-                    _cmd="$_arg"
-                fi
-                ;;
-        esac
-    done
+    # The first word is the command; everything after it is passed on as-is
+    # (so 'snap restart' or 'snap help' keep their sub-command).
+    local _cmd="${1:-}"
+    [[ $# -eq 0 ]] || shift
+    local _pass_args=("$@")
+    case "$_cmd" in -h|--help) _cmd="help" ;; esac
 
     local cmd="${_cmd:-}"
 
@@ -256,18 +290,33 @@ cmd_otbr_dispatch() {
             ;;
     esac
 
-    # Resolve config and secrets for operational commands (not logs/shutdown/restart
-    # or 'snap stop', which needs no Thread dataset).
-    if [[ "$cmd" != "logs" && "$cmd" != "shutdown" && "$cmd" != "restart" \
-          && ! ( "$cmd" == "snap" && "${_pass_args[0]:-}" == "stop" ) ]]; then
+    # The snap sub-command (default: help) is split off here so it can decide
+    # whether config and the Thread dataset check are needed.
+    local _snap_sub=""
+    if [[ "$cmd" == "snap" ]]; then
+        _snap_sub="${_pass_args[0]:-help}"
+        [[ "${#_pass_args[@]}" -eq 0 ]] || _pass_args=("${_pass_args[@]:1}")
+        case "$_snap_sub" in -h|--help) _snap_sub="help" ;; esac
+    fi
+
+    # Resolve config and secrets only for operational commands. logs, shutdown,
+    # restart, list and 'snap help|stop|info' need neither; 'snap ufw' needs the
+    # HA host (from config) but not the Thread dataset check.
+    local _need_config=0 _need_verify=0
+    case "$cmd" in
+        vm|flash|docker) _need_config=1; _need_verify=1 ;;
+        snap)
+            case "$_snap_sub" in
+                start|restart) _need_config=1; _need_verify=1 ;;
+                ufw)           _need_config=1 ;;
+            esac
+            ;;
+    esac
+    if [[ "$_need_config" -eq 1 ]]; then
         _otbr_load_config
-        case "$cmd" in
-            vm|flash|docker) _otbr_verify_thread_dataset_with_ha || return 1 ;;
-            snap)
-                # 'snap firewall' only edits ufw rules; it needs the HA host, not the dataset check.
-                [[ "${_pass_args[0]:-}" == "firewall" ]] || _otbr_verify_thread_dataset_with_ha || return 1
-                ;;
-        esac
+        if [[ "$_need_verify" -eq 1 ]]; then
+            _otbr_verify_thread_dataset_with_ha || return 1
+        fi
     fi
 
     case "$cmd" in
@@ -418,36 +467,33 @@ cmd_otbr_dispatch() {
                 | tee -a "$_otbr_log"
             ;;
         snap)
-            local _snap_script="otbrstack-snap-setup.sh" _snap_label=""
-            case "${_pass_args[0]:-}" in
-                stop)
-                    _snap_script="otbrstack-snap-stop.sh"
-                    _snap_label=" stop"
-                    _pass_args=("${_pass_args[@]:1}")
-                    echo "[otbr] Snap graceful stop (leave Thread network)"
+            case "$_snap_sub" in
+                help)
+                    _otbr_snap_show_help
                     ;;
-                firewall)
-                    _snap_script="otbrstack-snap-firewall.sh"
-                    _snap_label=" firewall"
-                    _pass_args=("${_pass_args[@]:1}")
-                    echo "[otbr] Snap Thread firewall (ufw peers)"
+                start|stop|ufw)
+                    _otbr_snap_run "$_snap_sub" "${_pass_args[@]+"${_pass_args[@]}"}"
+                    return $?
+                    ;;
+                restart)
+                    # Config and the dataset check ran above, so a bad dataset
+                    # fails before the snap is stopped.
+                    _otbr_snap_run stop || return $?
+                    _otbr_snap_run start
+                    return $?
+                    ;;
+                info)
+                    snap info openthread-border-router
                     ;;
                 *)
-                    echo "[otbr] Snap bare-metal provisioner"
+                    echo "[otbr] Unknown snap command: $_snap_sub"
+                    _otbr_snap_show_help
+                    return 1
                     ;;
             esac
-            local _otbr_log
-            _otbr_log="${_OTBR_HOME}/logs/$(hostname)/snap.log"
-            mkdir -p "$(dirname "$_otbr_log")"
-            echo "[otbr] Logging to: ${_otbr_log}"
-            printf '\n=== iotstack otbr snap%s %s -- %s ===\n' \
-                "$_snap_label" \
-                "$(date '+%Y-%m-%d %H:%M:%S')" \
-                "$(_otbr_git_head)" \
-                | tee -a "$_otbr_log"
-            { "$_OTBR_DIR/scripts/${_snap_script}" "${_pass_args[@]+"${_pass_args[@]}"}"; } 2>&1 \
-                | tee -a "$_otbr_log"
-            return "${PIPESTATUS[0]}"
+            ;;
+        list)
+            "$_OTBR_DIR/scripts/otbrstack-list.sh" "${_pass_args[@]+"${_pass_args[@]}"}"
             ;;
         shutdown)
             local _host="${_pass_args[0]:-}"

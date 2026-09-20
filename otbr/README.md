@@ -11,7 +11,7 @@ pass store drive all four deployment paths:
 | Command | Where it runs | How |
 |---------|---------------|-----|
 | `iotstack otbr flash` | Raspberry Pi 4B (SD card) | Ubuntu Server + cloud-init + snap |
-| `iotstack otbr snap` | Any Ubuntu host (bare metal) | snap (live install) |
+| `iotstack otbr snap start` | Any Ubuntu host (bare metal) | snap (live install) |
 | `iotstack otbr docker` | Any Ubuntu host (bare metal) | Docker CE + nginx |
 | `iotstack otbr vm x64` | Incus VM or container (testing) | snap (no hardware needed) |
 
@@ -291,8 +291,19 @@ internally only where needed.
 2. Sonoff Dongle-E / CP210x (Silicon Labs `10c4:ea60`) on `/dev/ttyUSB0`
 
 ```bash
-iotstack otbr snap
+iotstack otbr snap start
 ```
+
+`iotstack otbr snap` alone prints help. Sub-commands:
+
+| Command | Does |
+|---------|------|
+| `snap help` | Show the sub-commands (default) |
+| `snap start` | Install/configure the snap, apply the ufw rules, start it |
+| `snap stop` | Gracefully leave the Thread network and stop the snap |
+| `snap restart` | `stop`, then `start` |
+| `snap ufw [apply\|list\|add\|remove]` | Ensure the `wpan0` ufw rules / manage the allowed peers |
+| `snap info` | Show `snap info openthread-border-router` |
 
 The script detects the radio, verifies its Spinel firmware (flashing the
 ESP32-C6 if needed), installs and configures the snap, and commits the Thread
@@ -305,7 +316,7 @@ dataset. Optional settings (`~/.iotstack/environments/default.env`):
 
 ### Firewall (ufw) and Thread peers
 
-`iotstack otbr snap` configures ufw so the Thread interface (`wpan0`) only talks
+`iotstack otbr snap start` (or `snap ufw`) configures ufw so the Thread interface (`wpan0`) only talks
 to named **peers** -- the other border routers, Home Assistant and the Matter
 server:
 
@@ -320,11 +331,11 @@ time the rules are applied). Home Assistant's host is added automatically to
 without re-running the whole snap setup:
 
 ```bash
-iotstack otbr snap firewall list
-iotstack otbr snap firewall add matter-server fd00:4::40 matter.local
-iotstack otbr snap firewall remove matter-server matter.local   # one address
-iotstack otbr snap firewall remove matter-server                # the whole peer
-iotstack otbr snap firewall apply                               # re-resolve hostnames
+iotstack otbr snap ufw list
+iotstack otbr snap ufw add matter-server fd00:4::40 matter.local
+iotstack otbr snap ufw remove matter-server matter.local   # one address
+iotstack otbr snap ufw remove matter-server                # the whole peer
+iotstack otbr snap ufw apply                               # re-resolve hostnames
 ```
 
 The mesh is IPv6, so give each peer IPv6 addresses (or its IPv6 prefix, e.g.
@@ -341,7 +352,7 @@ Gracefully removes this host from the Thread network: `ot-ctl detach` (a router
 releases its router ID and tells its neighbours; a child tells its parent to drop
 it), then `thread stop`, `ifconfig down`, and `snap stop`. It needs no Thread
 dataset or Home Assistant check, and does not unprovision anything -- bring the
-border router back with `iotstack otbr snap`. The snap is not disabled, so it
+border router back with `iotstack otbr snap start`. The snap is not disabled, so it
 starts again on the next reboot.
 
 ---
@@ -402,8 +413,11 @@ otbr.sh                    # iotstack subcommand dispatcher (sourced by ../iotst
 scripts/
   flash-piotbr.sh             # Raspberry Pi SD card flasher (called by iotstack otbr flash)
   provision_incus.sh          # Incus VM/container provisioner (called by iotstack otbr vm)
-  otbrstack-snap-setup.sh     # Bare-metal snap provisioner (called by iotstack otbr snap)
+  otbrstack-snap-setup.sh     # Bare-metal snap provisioner (called by iotstack otbr snap start)
   otbrstack-docker-setup.sh   # Bare-metal Docker provisioner (called by iotstack otbr docker)
+  otbrstack-snap-stop.sh      # Graceful snap stop (called by iotstack otbr snap stop)
+  otbrstack-snap-firewall.sh  # wpan0 ufw rules + peers (called by iotstack otbr snap ufw)
+  otbrstack-list.sh           # Running OTBR instances on this host (called by iotstack otbr list)
   commission.sh               # Standalone dev tool: commission a Thread network over SSH
   run_rpiotbr_cycle.sh        # Standalone dev tool: flash + boot-probe + log-stream cycle
   flash_rcp.sh                # ESP32-C6 RCP firmware builder and flasher

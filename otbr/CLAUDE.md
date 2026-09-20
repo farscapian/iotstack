@@ -32,10 +32,13 @@ incus delete otbr-test-x64 --force   # or otbr-test-ct
 iotstack otbr docker
 
 # Snap on bare metal (Ubuntu Server/Desktop; installs/configures openthread-border-router snap)
-iotstack otbr snap
+iotstack otbr snap [help|start|stop|restart|ufw|info]   # bare 'snap' prints help
+
+# OTBR instances running on this host: snap, docker, incus vm x64/arm64 (-a: include stopped)
+iotstack otbr list [-a]
 
 # Manage which hosts (Home Assistant, Matter server, other OTBRs) may talk to the Thread mesh
-iotstack otbr snap firewall [apply|list|add <name> <addr>...|remove <name> [addr...]]
+iotstack otbr snap ufw [apply|list|add <name> <addr>...|remove <name> [addr...]]
 ```
 
 ## Environment setup
@@ -58,7 +61,7 @@ iotstack environment as everything else:
 
 - **Known radios** are cached in pass at
   `iotstack/<env>/otbr/port_paths/stable_port_path`: one
-  `/dev/serial/by-id/...` path per line, appended by `iotstack otbr snap`
+  `/dev/serial/by-id/...` path per line, appended by `iotstack otbr snap start`
   after it verifies a radio (never removed automatically -- `pass edit` to
   prune). `_otbr_load_config()` exports them as `OTBR_PORT_PATHS` (and the
   entry name as `OTBR_PORT_PATHS_ENTRY`); `otbrstack-snap-setup.sh` and
@@ -124,12 +127,12 @@ Four deployment paths share the same iotstack environment and pass-store secrets
 | Command | Target OS | Runtime | RCP detection |
 |---------|-----------|---------|---------------|
 | `iotstack otbr flash` | Ubuntu Server 26.04 (Raspberry Pi) | snap (cloud-init) | ESP32-C6 via USB |
-| `iotstack otbr snap` | Ubuntu Server/Desktop (bare metal) | snap (live) | ESP32-C6 or Sonoff |
+| `iotstack otbr snap start` | Ubuntu Server/Desktop (bare metal) | snap (live) | ESP32-C6 or Sonoff |
 | `iotstack otbr docker` | Ubuntu Server/Desktop (bare metal) | Docker CE + nginx | any USB dongle via udev symlink |
 | `iotstack otbr vm x64` / `iotstack otbr vm arm64` | Incus VM or container (test) | snap | simulated or USB passthrough |
 
 - `iotstack otbr flash` -- downloads Ubuntu Server 26.04 arm64+raspi image, verifies SHA-256, flashes to SD, injects cloud-init NoCloud payload into the `system-boot` partition
-- `iotstack otbr snap` -- detects USB RCP, verifies Spinel firmware, installs and configures the OTBR snap; runs as normal user (`sudo` invoked internally)
+- `iotstack otbr snap start` -- detects USB RCP, verifies Spinel firmware, installs and configures the OTBR snap; runs as normal user (`sudo` invoked internally)
 - `iotstack otbr docker` -- installs Docker CE, pulls the OTBR image, writes udev rule for stable dongle symlink, sets up nginx reverse proxy, joins Thread network; requires root
 - `iotstack otbr vm x64` / `iotstack otbr vm arm64` -- Incus VM or system container test; native x86_64 or arm64
 - `incus/` -- cloud-init template for Incus VM and container
@@ -142,7 +145,17 @@ Four deployment paths share the same iotstack environment and pass-store secrets
 
 ### Snap architecture notes
 
-`iotstack otbr snap` prefers an **ESP32-C6** (Espressif vendor ID `303a`) and falls back to a Sonoff dongle (Silicon Labs `10c4:ea60`). It verifies RCP firmware via pyspinel before configuring the snap. The pyspinel venv is shared with other scripts at `~/.iotstack/otbr/artifacts/pyspinel-venv/`.
+`iotstack otbr snap start` prefers an **ESP32-C6** (Espressif vendor ID `303a`) and falls back to a Sonoff dongle (Silicon Labs `10c4:ea60`). It verifies RCP firmware via pyspinel before configuring the snap. The pyspinel venv is shared with other scripts at `~/.iotstack/otbr/artifacts/pyspinel-venv/`.
+
+### `otbr list`
+
+`otbrstack-list.sh` reports OTBR instances on this host, running only unless
+`-a`: the snap (`otbr-agent` active), Docker containers (image
+`openthread/otbr*` or name `otbr`; `sudo -n` fallback, never prompts), and Incus
+instances (`kind` = `incus-vm|container` + `x64|arm64`). Incus instances are
+matched by the `user.iotstack-otbr=true` config key `provision_incus.sh` sets, or
+an `otbr*` name (older instances). An unreachable incus daemon (user not yet in
+`incus-admin` for this shell) is a warning, not a silent skip.
 
 ### Snap firewall (ufw)
 
@@ -164,7 +177,7 @@ Every `apply` deletes all tagged rules (found via `ufw show added`, since
 versions added (`route allow in|out on wpan0`, `allow in on wpan0`,
 `allow 5353/udp`, the blanket ICMPv6 block), then rebuilds. Hostnames are
 re-resolved on each apply. The `home-assistant` peer also gets the host from
-pass `ha_url` (`THREAD_HA_HOST`). `snap firewall` skips the HA Thread dataset
+pass `ha_url` (`THREAD_HA_HOST`). `snap ufw` skips the HA Thread dataset
 check. The mesh is IPv6: an IPv4-only peer never matches Thread traffic.
 
 `deny in on wpan0` also blocks Thread devices reaching services on this host
@@ -186,7 +199,7 @@ etc.) so the two subsystems don't collide.
     esp-idf/          <- shallow clone of espressif/esp-idf (auto-cloned if IDF_PATH unset)
     openthread/       <- shallow clone of openthread/openthread; cmake simulation build produces ot-rcp + ot-cli
     ot-rcp-sim/       <- ot-rcp and ot-cli sim binaries (built from cache/openthread/ by otbr vm)
-  thread-peers.conf   <- named Thread peers for the snap ufw rules (snap firewall)
+  thread-peers.conf   <- named Thread peers for the snap ufw rules (snap ufw)
   logs/
     <hostname>/       <- per-device log directories (flash sessions, vm runs, etc.)
   artifacts/
